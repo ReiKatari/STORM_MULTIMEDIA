@@ -236,29 +236,7 @@ export async function getFanFilmDetails(idOrUrl) {
       });
     }
 
-    // 2. HD Плеер / Kinopoisk ID для Kinobox
-    if (kpId) {
-      players.push({
-        id: 'kinobox_multi',
-        name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, VCDN)',
-        type: 'kinobox',
-        quality: '1080p Full HD',
-        kp_id: kpId,
-        url: `https://kinobox.tv/embed/kp/${kpId}`
-      });
-    }
 
-    // 3. Трейлер
-    const trailerIframe = $('[data-tab-content="trailer"] iframe').attr('src') || '';
-    if (trailerIframe) {
-      players.push({
-        id: 'trailer',
-        name: 'Официальный трейлер',
-        type: 'trailer',
-        quality: 'HD',
-        url: trailerIframe.startsWith('//') ? `https:${trailerIframe}` : trailerIframe
-      });
-    }
 
     // Кадры из фильма
     const frames = [];
