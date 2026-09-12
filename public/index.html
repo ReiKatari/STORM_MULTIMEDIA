@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="STORM DARK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
+  <link rel="shortcut icon" href="assets/favicon.svg" type="image/svg+xml">
+  
+  <!-- Стили дизайн-системы STORM SOFT -->
+  <link rel="stylesheet" href="styles/storm-theme.css?v=1.0">
+  <link rel="stylesheet" href="styles/components.css?v=1.0">
+  <link rel="stylesheet" href="styles/main.css?v=1.0">
+</head>
+<body>
+
+  <!-- Шапка сайта и глобальная навигация -->
+  <header class="storm-navbar">
+    <div class="storm-navbar-inner">
+      <!-- Логотип и название экосистемы -->
+      <a href="#home" class="storm-brand" onclick="window.switchTab?.('home'); return false;">
+        <img src="assets/favicon.svg" alt="STORM MULTIMEDIA" class="storm-brand-logo">
+        <div class="storm-brand-text">
+          <span class="storm-brand-title" data-i18n="brand_title">STORM MULTIMEDIA</span>
+          <span class="storm-brand-sub" data-i18n="brand_sub">Кино, сериалы и аниме</span>
+        </div>
+      </a>
+
+      <!-- Поле глобального полнотекстового поиска -->
+      <div class="storm-search-box">
+        <span class="storm-search-icon">🔍</span>
+        <input type="text" id="global-search-input" class="storm-search-input" placeholder="Поиск фильмов, сериалов и аниме..." data-i18n-placeholder="search_placeholder" autocomplete="off">
+        <button type="button" id="search-clear-btn" class="storm-search-clear">✕</button>
+      </div>
+
+      <!-- Действия: Темы, языки и аккаунт -->
+      <div class="storm-nav-actions">
+        <!-- Выбор визуальной темы оформления (8 эталонных стилей STORM) -->
+        <select class="theme-dropdown-select" id="header-theme-select" title="Выбор темы оформления">
+          <option value="STORM DARK">STORM DARK</option>
+          <option value="STORM NIGHT">STORM NIGHT</option>
+          <option value="STORM MATRIX">STORM MATRIX</option>
+          <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
+          <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
+          <option value="STORM FANTASY">STORM FANTASY</option>
+          <option value="STORM WARHAMMER 40K">WARHAMMER 40K</option>
+          <option value="STORM DAY">STORM DAY</option>
+        </select>
+
+        <!-- Выбор языка интерфейса (100% Full Localization) -->
+        <select class="lang-dropdown-select" id="header-lang-select" title="Выбор языка">
+          <option value="ru">RU • Русский</option>
+          <option value="en">EN • English</option>
+          <option value="de">DE • Deutsch</option>
+          <option value="fr">FR • Français</option>
+          <option value="zh">ZH • 中文</option>
+          <option value="ja">JA • 日本語</option>
+        </select>
+
+        <!-- Кнопка входа -->
+        <button class="storm-btn storm-btn-primary storm-btn-sm" id="login-modal-btn">
+          <span>Войти</span>
+        </button>
+
+        <!-- Профиль авторизованного пользователя -->
+        <button class="user-profile-btn" id="user-profile-btn" style="display: none;">
+          <img src="assets/favicon.svg" alt="Avatar" class="user-avatar-img" id="user-avatar-img">
+          <span id="user-name-label">Пользователь</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Быстрые вкладки категорий контента (Quick Tabs) -->
+  <nav class="storm-tabs-bar">
+    <div class="storm-tabs-inner">
+      <button class="storm-tab-btn active" data-tab="home" data-i18n="tab_home">Главная</button>
+      <button class="storm-tab-btn" data-tab="new" data-i18n="tab_new">Новинки</button>
+      <button class="storm-tab-btn" data-tab="movies" data-i18n="tab_movies">Фильмы</button>
+      <button class="storm-tab-btn" data-tab="series" data-i18n="tab_series">Сериалы</button>
+      <button class="storm-tab-btn" data-tab="anime" data-i18n="tab_anime">Аниме</button>
+      <button class="storm-tab-btn" data-tab="cartoons" data-i18n="tab_cartoons">Мультфильмы</button>
+      <button class="storm-tab-btn" data-tab="continue" data-i18n="tab_continue">Продолжить просмотр</button>
+      <button class="storm-tab-btn" data-tab="bookmarks" data-i18n="tab_bookmarks">Мои закладки и списки</button>
+    </div>
+  </nav>
+
+  <!-- Панель инструментов: Фильтры, сортировка и режимы отображения -->
+  <div class="storm-toolbar">
+    <div class="storm-toolbar-left">
+      <!-- Источник контента -->
+      <select class="storm-select" id="source-filter-select" style="width: auto; min-width: 170px;">
+        <option value="all" data-i18n="source_all">Все источники</option>
+        <option value="fanfilm4k" data-i18n="source_fanfilm">FanFilm4K (4K UHD)</option>
+        <option value="anixart" data-i18n="source_anixart">AniXart (Аниме)</option>
+      </select>
+    </div>
+
+    <div class="storm-toolbar-right">
+      <!-- Группа 4 режимов отображения -->
+      <div class="view-modes-group" title="Режим отображения">
+        <button class="view-mode-btn" data-view="grid" title="Сетка карточек">🎴</button>
+        <button class="view-mode-btn" data-view="compact-grid" title="Компактная сетка">📱</button>
+        <button class="view-mode-btn" data-view="detailed-list" title="Детальный список">📋</button>
+        <button class="view-mode-btn" data-view="table" title="Таблица">📑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Основной динамический контейнер медиа-каталога -->
+  <main class="storm-main-container">
+    <div class="media-container view-grid" id="media-render-container">
+      <div style="grid-column: 1 / -1; text-align: center; padding: 100px 20px; color: var(--text-muted);">
+        <div style="font-size: 38px; margin-bottom: 16px; animation: spin 1.5s linear infinite;">⏳</div>
+        <h2>Инициализация портала STORM MULTIMEDIA...</h2>
+      </div>
+    </div>
+  </main>
+
+  <!-- Подвал сайта -->
+  <footer class="storm-footer">
+    <div class="storm-footer-inner">
+      <div>
+        <strong>STORM MULTIMEDIA</strong> • Контент предоставлен источниками <a href="https://v17.fanfilm4k.media/" target="_blank" style="color:var(--accent);text-decoration:none;">FanFilm4K</a> и <a href="https://anixart.tv/" target="_blank" style="color:var(--accent);text-decoration:none;">AniXart</a>
+      </div>
+      <div>
+        Экосистема STORM SOFT • Непрерывное сохранение цифрового наследия
+      </div>
+    </div>
+  </footer>
+
+  <!-- Мобильная нижняя панель навигации (Bottom Bar) -->
+  <div class="storm-mobile-bottom-bar">
+    <button class="storm-mobile-nav-item active" data-tab="home">
+      <span>🏠</span>
+      <span data-i18n="tab_home">Главная</span>
+    </button>
+    <button class="storm-mobile-nav-item" data-tab="movies">
+      <span>🎬</span>
+      <span data-i18n="tab_movies">Фильмы</span>
+    </button>
+    <button class="storm-mobile-nav-item" data-tab="anime">
+      <span>⛩️</span>
+      <span data-i18n="tab_anime">Аниме</span>
+    </button>
+    <button class="storm-mobile-nav-item" data-tab="bookmarks">
+      <span>🔖</span>
+      <span data-i18n="tab_bookmarks">Закладки</span>
+    </button>
+  </div>
+
+  <!-- =============================================================
+       МОДАЛЬНЫЕ ОКНА
+       ============================================================= -->
+
+  <!-- 1. Кинотеатральный плеер (Cinema Modal) -->
+  <div class="storm-modal-backdrop" id="cinema-modal">
+    <div class="storm-modal cinema-modal-dialog">
+      <div class="storm-modal-header">
+        <div>
+          <h3 class="storm-modal-title" id="cinema-modal-title">Название фильма</h3>
+          <span style="font-size: 12px; color: var(--text-muted);" id="cinema-modal-year">2026</span>
+        </div>
+        <button type="button" class="storm-modal-close" title="Закрыть плеер">✕</button>
+      </div>
+
+      <div class="storm-modal-body">
+        <!-- Фрейм видеоплеера -->
+        <div class="cinema-player-wrapper" id="cinema-player-wrapper">
+          <!-- Заполняется динамически -->
+        </div>
+
+        <!-- Переключатель плееров / источников -->
+        <div class="player-sources-bar" id="player-sources-bar">
+          <!-- Заполняется динамически -->
+        </div>
+
+        <!-- Специфичные элементы AniXart (озвучки и серии) -->
+        <div class="episodes-selector-container" id="anixart-controls-container" style="display: none;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary);" data-i18n="player_voiceover">Озвучка:</div>
+          <div class="voiceovers-pills" id="voiceovers-pills"></div>
+
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 6px;" data-i18n="player_series">Серии:</div>
+          <div class="episodes-grid" id="episodes-grid"></div>
+        </div>
+
+        <!-- Панель действий: Индикатор прогресса, статусы и коллекция -->
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
+          <!-- Прогресс просмотра -->
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
+              <span data-i18n="player_progress">Прогресс просмотра:</span>
+              <span id="player-progress-label" style="color: var(--accent);">0%</span>
+            </div>
+            <input type="range" class="storm-slider" id="player-progress-slider" min="0" max="100" value="0">
+          </div>
+
+          <!-- Кнопки статуса просмотра и добавление в список -->
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;" id="player-status-buttons">
+              <!-- Заполняется динамически -->
+            </div>
+
+            <select class="storm-select" id="add-to-custom-list-select" style="width: auto; min-width: 200px;">
+              <option value="">+ Добавить в коллекцию...</option>
+            </select>
+          </div>
+
+          <!-- Описание -->
+          <p id="cinema-modal-desc" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px;"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Модальное окно авторизации (Вход и Регистрация) -->
+  <div class="storm-modal-backdrop" id="auth-modal">
+    <div class="storm-modal">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title" id="auth-modal-title" data-i18n="auth_login">Вход в систему</h3>
+        <button type="button" class="storm-modal-close">✕</button>
+      </div>
+      <div class="storm-modal-body">
+        <!-- Форма входа -->
+        <form id="login-form">
+          <div class="filter-group" style="margin-bottom: 14px;">
+            <label data-i18n="auth_username">Имя пользователя или Email</label>
+            <input type="text" class="storm-input" id="login-username" required placeholder="Введите логин" autocomplete="username">
+          </div>
+          <div class="filter-group" style="margin-bottom: 18px;">
+            <label data-i18n="auth_password">Пароль</label>
+            <input type="password" class="storm-input" id="login-password" required placeholder="Введите пароль" autocomplete="current-password">
+          </div>
+          <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_login_submit">Войти в аккаунт</button>
+          <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
+            <span data-i18n="auth_no_account">Ещё нет аккаунта?</span> <a href="#" id="switch-to-register" style="color: var(--accent); font-weight: 600; text-decoration: none;" data-i18n="auth_register">Регистрация</a>
+          </div>
+        </form>
+
+        <!-- Форма регистрации -->
+        <form id="register-form" style="display: none;">
+          <div class="filter-group" style="margin-bottom: 12px;">
+            <label data-i18n="auth_username">Имя пользователя</label>
+            <input type="text" class="storm-input" id="reg-username" required placeholder="Ваш никнейм" autocomplete="username">
+          </div>
+          <div class="filter-group" style="margin-bottom: 12px;">
+            <label data-i18n="auth_email">Электронная почта</label>
+            <input type="email" class="storm-input" id="reg-email" required placeholder="user@example.com" autocomplete="email">
+          </div>
+          <div class="filter-group" style="margin-bottom: 18px;">
+            <label data-i18n="auth_password">Пароль</label>
+            <input type="password" class="storm-input" id="reg-password" required placeholder="Не менее 6 символов" autocomplete="new-password">
+          </div>
+          <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_register_submit">Создать аккаунт</button>
+          <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
+            <span data-i18n="auth_have_account">Уже есть аккаунт?</span> <a href="#" id="switch-to-login" style="color: var(--accent); font-weight: 600; text-decoration: none;" data-i18n="auth_login">Войти</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Модальное окно профиля пользователя и статистики -->
+  <div class="storm-modal-backdrop" id="profile-modal">
+    <div class="storm-modal">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title" data-i18n="auth_profile">Мой профиль</h3>
+        <button type="button" class="storm-modal-close">✕</button>
+      </div>
+      <div class="storm-modal-body">
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+          <img src="assets/favicon.svg" alt="Avatar" id="profile-avatar" style="width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow);">
+          <div>
+            <h4 id="profile-username" style="font-size: 18px; margin: 0;">Пользователь</h4>
+            <div id="profile-email" style="font-size: 12px; color: var(--text-muted);">user@example.com</div>
+            <div style="font-size: 11px; color: var(--accent); margin-top: 4px;">С нами с <span id="profile-date">—</span></div>
+          </div>
+        </div>
+
+        <!-- Статистика пользователя -->
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px;">
+          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 20px; font-weight: 800; color: var(--accent);" id="profile-stat-hours">0</div>
+            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_total_hours">Часов просмотра</div>
+          </div>
+          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 20px; font-weight: 800; color: var(--color-green);" id="profile-stat-completed">0</div>
+            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_completed">Завершено</div>
+          </div>
+          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 20px; font-weight: 800; color: var(--color-cyan);" id="profile-stat-watching">0</div>
+            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_watching">В процессе</div>
+          </div>
+          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 20px; font-weight: 800; color: var(--color-purple);" id="profile-stat-lists">0</div>
+            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_custom_lists">Своих списков</div>
+          </div>
+        </div>
+
+        <button class="storm-btn storm-btn-danger" style="width: 100%;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Контейнер всплывающих уведомлений (Toasts) -->
+  <div class="storm-toast-container" id="toast-container"></div>
+
+  <!-- Модуль приложения -->
+  <script type="module" src="js/app.js?v=1.0"></script>
+</body>
+</html>

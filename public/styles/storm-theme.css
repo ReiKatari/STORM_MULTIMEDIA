@@ -1,0 +1,204 @@
+/* ==========================================================================
+   STORM DESIGN SYSTEM - 8 ЭТАЛОННЫХ ТЕМ ОФОРМЛЕНИЯ (STORM SOFT)
+   ========================================================================== */
+
+:root,
+[data-theme="STORM DARK"] {
+  --bg-primary: #0c1017;
+  --bg-secondary: #131923;
+  --bg-tertiary: #192231;
+  --bg-card: rgba(19, 25, 35, 0.85);
+  --bg-card-hover: rgba(25, 34, 49, 0.95);
+  --bg-input: #101620;
+  --border-color: rgba(0, 210, 255, 0.2);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(0, 210, 255, 0.45);
+  --accent: #00d2ff;
+  --accent-secondary: #3a7bd5;
+  --accent-glow: rgba(0, 210, 255, 0.35);
+  --accent-subtle: rgba(0, 210, 255, 0.12);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --shadow-color: rgba(0, 0, 0, 0.55);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --btn-3d-shadow: 0 4px 0 #077994, 0 8px 16px rgba(0, 210, 255, 0.3);
+  --btn-3d-shadow-press: 0 1px 0 #077994, 0 3px 8px rgba(0, 210, 255, 0.2);
+}
+
+[data-theme="STORM NIGHT"] {
+  --bg-primary: #05070a;
+  --bg-secondary: #0a0e14;
+  --bg-tertiary: #101620;
+  --bg-card: rgba(10, 14, 20, 0.92);
+  --bg-card-hover: rgba(16, 22, 32, 0.98);
+  --bg-input: #080b10;
+  --border-color: rgba(0, 240, 255, 0.25);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(0, 240, 255, 0.55);
+  --accent: #00f0ff;
+  --accent-secondary: #0088ff;
+  --accent-glow: rgba(0, 240, 255, 0.45);
+  --accent-subtle: rgba(0, 240, 255, 0.14);
+  --text-primary: #ffffff;
+  --text-secondary: #8da2b5;
+  --text-muted: #4e6172;
+  --shadow-color: rgba(0, 0, 0, 0.85);
+  --card-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 240, 255, 0.1);
+  --btn-3d-shadow: 0 4px 0 #008fa0, 0 8px 18px rgba(0, 240, 255, 0.35);
+  --btn-3d-shadow-press: 0 1px 0 #008fa0, 0 3px 8px rgba(0, 240, 255, 0.2);
+}
+
+[data-theme="STORM MATRIX"] {
+  --bg-primary: #030a05;
+  --bg-secondary: #07150a;
+  --bg-tertiary: #0c2211;
+  --bg-card: rgba(7, 21, 10, 0.88);
+  --bg-card-hover: rgba(12, 34, 17, 0.95);
+  --bg-input: #050e07;
+  --border-color: rgba(0, 255, 102, 0.25);
+  --border-subtle: rgba(0, 255, 102, 0.08);
+  --border-hover: rgba(0, 255, 102, 0.5);
+  --accent: #00ff66;
+  --accent-secondary: #00aa44;
+  --accent-glow: rgba(0, 255, 102, 0.4);
+  --accent-subtle: rgba(0, 255, 102, 0.12);
+  --text-primary: #e6ffed;
+  --text-secondary: #7ece90;
+  --text-muted: #418251;
+  --shadow-color: rgba(0, 0, 0, 0.75);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 255, 102, 0.12);
+  --btn-3d-shadow: 0 4px 0 #00993d, 0 8px 16px rgba(0, 255, 102, 0.3);
+  --btn-3d-shadow-press: 0 1px 0 #00993d, 0 3px 8px rgba(0, 255, 102, 0.2);
+}
+
+[data-theme="STORM CYBERPUNK"] {
+  --bg-primary: #0f0717;
+  --bg-secondary: #190c28;
+  --bg-tertiary: #231238;
+  --bg-card: rgba(25, 12, 40, 0.88);
+  --bg-card-hover: rgba(35, 18, 56, 0.95);
+  --bg-input: #140a20;
+  --border-color: rgba(255, 0, 127, 0.3);
+  --border-subtle: rgba(255, 0, 127, 0.09);
+  --border-hover: rgba(255, 0, 127, 0.6);
+  --accent: #ff007f;
+  --accent-secondary: #00f0ff;
+  --accent-glow: rgba(255, 0, 127, 0.4);
+  --accent-subtle: rgba(255, 0, 127, 0.14);
+  --text-primary: #fff0f7;
+  --text-secondary: #d99ac1;
+  --text-muted: #8b5578;
+  --shadow-color: rgba(0, 0, 0, 0.75);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 15px rgba(255, 0, 127, 0.15);
+  --btn-3d-shadow: 0 4px 0 #a30052, 0 8px 16px rgba(255, 0, 127, 0.35);
+  --btn-3d-shadow-press: 0 1px 0 #a30052, 0 3px 8px rgba(255, 0, 127, 0.2);
+}
+
+[data-theme="STORM MIDNIGHT"] {
+  --bg-primary: #0f0c1f;
+  --bg-secondary: #17132e;
+  --bg-tertiary: #201a3e;
+  --bg-card: rgba(23, 19, 46, 0.88);
+  --bg-card-hover: rgba(32, 26, 62, 0.95);
+  --bg-input: #131026;
+  --border-color: rgba(168, 85, 247, 0.28);
+  --border-subtle: rgba(168, 85, 247, 0.08);
+  --border-hover: rgba(168, 85, 247, 0.55);
+  --accent: #a855f7;
+  --accent-secondary: #6366f1;
+  --accent-glow: rgba(168, 85, 247, 0.4);
+  --accent-subtle: rgba(168, 85, 247, 0.14);
+  --text-primary: #faf5ff;
+  --text-secondary: #c4b5fd;
+  --text-muted: #7c6f9e;
+  --shadow-color: rgba(0, 0, 0, 0.7);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 14px rgba(168, 85, 247, 0.12);
+  --btn-3d-shadow: 0 4px 0 #6b21a8, 0 8px 16px rgba(168, 85, 247, 0.35);
+  --btn-3d-shadow-press: 0 1px 0 #6b21a8, 0 3px 8px rgba(168, 85, 247, 0.2);
+}
+
+[data-theme="STORM FANTASY"] {
+  --bg-primary: #0e1017;
+  --bg-secondary: #171b26;
+  --bg-tertiary: #202534;
+  --bg-card: rgba(23, 27, 38, 0.88);
+  --bg-card-hover: rgba(32, 37, 52, 0.95);
+  --bg-input: #12151e;
+  --border-color: rgba(245, 158, 11, 0.28);
+  --border-subtle: rgba(245, 158, 11, 0.08);
+  --border-hover: rgba(245, 158, 11, 0.55);
+  --accent: #f59e0b;
+  --accent-secondary: #d97706;
+  --accent-glow: rgba(245, 158, 11, 0.4);
+  --accent-subtle: rgba(245, 158, 11, 0.14);
+  --text-primary: #fffbeb;
+  --text-secondary: #fde68a;
+  --text-muted: #927e53;
+  --shadow-color: rgba(0, 0, 0, 0.65);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.65), 0 0 14px rgba(245, 158, 11, 0.12);
+  --btn-3d-shadow: 0 4px 0 #b45309, 0 8px 16px rgba(245, 158, 11, 0.35);
+  --btn-3d-shadow-press: 0 1px 0 #b45309, 0 3px 8px rgba(245, 158, 11, 0.2);
+}
+
+[data-theme="STORM WARHAMMER 40K"] {
+  --bg-primary: #0c0d10;
+  --bg-secondary: #15171c;
+  --bg-tertiary: #1e2027;
+  --bg-card: rgba(21, 23, 28, 0.9);
+  --bg-card-hover: rgba(30, 32, 39, 0.96);
+  --bg-input: #111215;
+  --border-color: rgba(212, 175, 55, 0.3);
+  --border-subtle: rgba(212, 175, 55, 0.09);
+  --border-hover: rgba(212, 175, 55, 0.6);
+  --accent: #d4af37;
+  --accent-secondary: #997b1e;
+  --accent-glow: rgba(212, 175, 55, 0.4);
+  --accent-subtle: rgba(212, 175, 55, 0.14);
+  --text-primary: #f8f6f0;
+  --text-secondary: #c9bf9e;
+  --text-muted: #756e58;
+  --shadow-color: rgba(0, 0, 0, 0.8);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 14px rgba(212, 175, 55, 0.15);
+  --btn-3d-shadow: 0 4px 0 #856a16, 0 8px 16px rgba(212, 175, 55, 0.35);
+  --btn-3d-shadow-press: 0 1px 0 #856a16, 0 3px 8px rgba(212, 175, 55, 0.2);
+}
+
+[data-theme="STORM DAY"] {
+  --bg-primary: #f1f5f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e2e8f0;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  --bg-card-hover: #ffffff;
+  --bg-input: #f8fafc;
+  --border-color: rgba(2, 132, 199, 0.25);
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(2, 132, 199, 0.5);
+  --accent: #0284c7;
+  --accent-secondary: #0369a1;
+  --accent-glow: rgba(2, 132, 199, 0.25);
+  --accent-subtle: rgba(2, 132, 199, 0.08);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --btn-3d-shadow: 0 4px 0 #0369a1, 0 8px 16px rgba(2, 132, 199, 0.25);
+  --btn-3d-shadow-press: 0 1px 0 #0369a1, 0 3px 8px rgba(2, 132, 199, 0.15);
+}
+
+/* Статусные глобальные цвета */
+:root {
+  --color-green: #10b981;
+  --color-green-glow: rgba(16, 185, 129, 0.4);
+  --color-cyan: #06b6d4;
+  --color-cyan-glow: rgba(6, 182, 212, 0.4);
+  --color-amber: #f59e0b;
+  --color-amber-glow: rgba(245, 158, 11, 0.4);
+  --color-orange: #f97316;
+  --color-orange-glow: rgba(249, 115, 22, 0.4);
+  --color-red: #ef4444;
+  --color-red-glow: rgba(239, 68, 68, 0.4);
+  --color-purple: #8b5cf6;
+  --color-purple-glow: rgba(139, 92, 246, 0.4);
+}

@@ -1,0 +1,446 @@
+/* ==========================================================================
+   STORM 3D VOLUMETRIC UI COMPONENTS (ЭТАЛОН: E:\STORM SYSTEM OPTIMIZER)
+   ========================================================================== */
+
+/* -------------------------------------------------------------
+   КНОПКИ (BUTTONS) С ТАКТИЛЬНОЙ ФИЗИКОЙ НАЖАТИЯ
+   ------------------------------------------------------------- */
+.storm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4), 0 6px 12px var(--shadow-color);
+  transform: translateY(0);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.storm-btn:hover {
+  transform: translateY(-1.5px);
+  border-color: var(--border-hover);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.4), 0 8px 16px var(--shadow-color), 0 0 12px var(--accent-glow);
+}
+
+.storm-btn:active {
+  transform: translateY(2px) scale(0.98);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 2px 6px var(--shadow-color);
+}
+
+.storm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Акцентная неоновая кнопка ключевых действий (StormHeroButton) */
+.storm-btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+  color: #05070a;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: var(--btn-3d-shadow);
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.storm-btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: var(--btn-3d-shadow), 0 0 22px var(--accent-glow);
+}
+
+.storm-btn-primary:active {
+  box-shadow: var(--btn-3d-shadow-press);
+}
+
+/* Второстепенная кнопка */
+.storm-btn-secondary {
+  background: var(--bg-card);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.storm-btn-secondary:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* Кнопка успешного действия (Зеленый неон) */
+.storm-btn-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #03140b;
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 0 #047857, 0 8px 16px rgba(16, 185, 129, 0.3);
+}
+
+.storm-btn-success:active {
+  box-shadow: 0 1px 0 #047857, 0 2px 6px rgba(16, 185, 129, 0.2);
+}
+
+/* Кнопка отмены / опасного действия */
+.storm-btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  color: #ffffff;
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 4px 0 #991b1b, 0 8px 16px rgba(239, 68, 68, 0.3);
+}
+
+.storm-btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+/* -------------------------------------------------------------
+   ПОЛЯ ВВОДА (INPUTS / TEXTBOXES)
+   ------------------------------------------------------------- */
+.storm-input,
+.storm-select,
+.storm-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  outline: none;
+  caret-color: var(--accent);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.storm-input:focus,
+.storm-select:focus,
+.storm-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 12px var(--accent-glow);
+}
+
+.storm-input::placeholder,
+.storm-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------
+   ЧЕКБОКСЫ (CHECKBOXES) БЕЗ УСТАРЕВШИХ ГАЛОЧЕК
+   Сплошной квадрат со скруглением 4px и неоновой заливкой
+   ------------------------------------------------------------- */
+.storm-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+}
+
+.storm-checkbox-label:hover {
+  color: var(--text-primary);
+}
+
+.storm-checkbox-label input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.storm-checkbox-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 2px 4px var(--shadow-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.storm-checkbox-label:hover .storm-checkbox-box {
+  border-color: var(--border-color);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Активное состояние: сплошной неоновый квадрат */
+.storm-checkbox-label input[type="checkbox"]:checked + .storm-checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow), inset 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* Внутренний акцентный светодиод */
+.storm-checkbox-box::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #05070a;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.15s ease;
+}
+
+.storm-checkbox-label input[type="checkbox"]:checked + .storm-checkbox-box::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* -------------------------------------------------------------
+   ПОЛЗУНКИ (SLIDERS) С НЕОНОВЫМ ТРЕКОМ И THUMB
+   ------------------------------------------------------------- */
+.storm-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  outline: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.storm-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #ffffff;
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--accent-glow), 0 2px 5px rgba(0,0,0,0.5);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.storm-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+/* -------------------------------------------------------------
+   ОБЪЁМНЫЕ КАРТОЧКИ (CARDS)
+   ------------------------------------------------------------- */
+.storm-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
+}
+
+.storm-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-hover);
+  box-shadow: var(--card-shadow), 0 12px 28px -5px var(--shadow-color), 0 0 20px var(--accent-subtle);
+}
+
+/* -------------------------------------------------------------
+   ПРОЦЕНТНЫЙ ИНДИКАТОР ПРОГРЕССА (PROGRESS BAR)
+   ------------------------------------------------------------- */
+.storm-progress-container {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.storm-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-secondary) 100%);
+  border-radius: 4px;
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* -------------------------------------------------------------
+   БЕЙДЖИ И СТАТУСНЫЕ ТЕГИ (BADGES)
+   ------------------------------------------------------------- */
+.storm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.storm-badge-4k {
+  background: linear-gradient(135deg, #ff0055 0%, #b3003b 100%);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 0, 85, 0.4);
+}
+
+.storm-badge-quality {
+  background: rgba(0, 210, 255, 0.15);
+  color: var(--accent);
+  border: 1px solid var(--border-color);
+}
+
+.storm-badge-rating {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.storm-badge-status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.storm-badge-watching {
+  background: rgba(0, 210, 255, 0.2);
+  color: var(--accent);
+  border: 1px solid var(--border-color);
+}
+
+.storm-badge-completed {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.storm-badge-plan {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.storm-badge-hold {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.storm-badge-dropped {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.storm-badge-favorite {
+  background: rgba(255, 0, 127, 0.2);
+  color: #ff007f;
+  border: 1px solid rgba(255, 0, 127, 0.4);
+}
+
+/* -------------------------------------------------------------
+   МОДАЛЬНЫЕ ОКНА (MODALS)
+   ------------------------------------------------------------- */
+.storm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 10, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.storm-modal-backdrop.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.storm-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px var(--accent-subtle);
+  max-width: 540px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  transform: scale(0.94) translateY(20px);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.storm-modal-backdrop.is-open .storm-modal {
+  transform: scale(1) translateY(0);
+}
+
+.storm-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.storm-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.storm-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.storm-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.storm-modal-body {
+  padding: 24px;
+}
+
+.storm-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 18px 24px;
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.15);
+}

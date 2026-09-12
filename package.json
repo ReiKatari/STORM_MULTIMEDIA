@@ -1,0 +1,29 @@
+{
+  "name": "storm-multimedia",
+  "version": "1.0.0",
+  "description": "Мультимедийный портал STORM MULTIMEDIA с фильмами, сериалами, аниме и мультфильмами",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "storm",
+    "multimedia",
+    "cinema",
+    "anime",
+    "series",
+    "movies",
+    "anixart",
+    "fanfilm4k"
+  ],
+  "author": "ReiKatari",
+  "license": "MIT",
+  "dependencies": {
+    "anixapi": "^0.3.2",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

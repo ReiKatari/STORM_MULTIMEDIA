@@ -1,0 +1,895 @@
+/* ==========================================================================
+   STORM MULTIMEDIA - ОСНОВНЫЕ СТИЛИ МАКЕТА И РЕЖИМОВ ОТОБРАЖЕНИЯ
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-x: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* -------------------------------------------------------------
+   ШАПКА САЙТА И НАВИГАЦИЯ (STORM NAVBAR)
+   ------------------------------------------------------------- */
+.storm-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 500;
+  background: rgba(12, 16, 23, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.storm-navbar-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* Бренд и логотип */
+.storm-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.storm-brand-logo {
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+  transition: transform 0.2s ease;
+}
+
+.storm-brand:hover .storm-brand-logo {
+  transform: scale(1.06);
+}
+
+.storm-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.storm-brand-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #ffffff 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.storm-brand-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Поле глобального поиска */
+.storm-search-box {
+  flex: 1;
+  max-width: 480px;
+  position: relative;
+}
+
+.storm-search-input {
+  width: 100%;
+  padding: 9px 40px 9px 38px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.storm-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.storm-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.storm-search-clear {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: none;
+  font-size: 14px;
+}
+
+.storm-search-clear.is-visible {
+  display: block;
+}
+
+/* Действия в шапке: темы, языки, профиль */
+.storm-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.theme-dropdown-select,
+.lang-dropdown-select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-dropdown-select:hover,
+.lang-dropdown-select:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Кнопка профиля пользователя */
+.user-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.user-profile-btn:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.user-avatar-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+}
+
+/* -------------------------------------------------------------
+   БЫСТРЫЕ ВКЛАДКИ (QUICK TABS)
+   ------------------------------------------------------------- */
+.storm-tabs-bar {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.storm-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.storm-tabs-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  gap: 8px;
+}
+
+.storm-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.storm-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.storm-tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* -------------------------------------------------------------
+   ПАНЕЛЬ УПРАВЛЕНИЯ: ФИЛЬТРЫ И РЕЖИМЫ ОТОБРАЖЕНИЯ (TOOLBAR)
+   ------------------------------------------------------------- */
+.storm-toolbar {
+  max-width: 1600px;
+  margin: 20px auto 0;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.storm-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.storm-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Переключатели режимов отображения (View Modes) */
+.view-modes-group {
+  display: flex;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.view-mode-btn {
+  background: transparent;
+  border: none;
+  padding: 7px 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.view-mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.view-mode-btn.active {
+  background: var(--accent);
+  color: #05070a;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* Панель фильтрации */
+.storm-filter-panel {
+  max-width: 1600px;
+  margin: 16px auto 0;
+  padding: 16px 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  display: none;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  box-shadow: var(--card-shadow);
+}
+
+.storm-filter-panel.is-open {
+  display: grid;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* -------------------------------------------------------------
+   ОСНОВНОЙ КОНТЕНТ (MAIN CONTENT)
+   ------------------------------------------------------------- */
+.storm-main-container {
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  flex: 1;
+}
+
+/* -------------------------------------------------------------
+   РЕЖИМЫ ОТОБРАЖЕНИЯ (VIEW MODES)
+   ------------------------------------------------------------- */
+
+/* 1. СЕТКА КАРТОЧЕК (GRID VIEW) */
+.media-container.view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.media-card {
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.media-card-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  position: relative;
+  overflow: hidden;
+  background: #080b10;
+  border-radius: 12px 12px 0 0;
+}
+
+.media-card-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.media-card:hover .media-card-poster img {
+  transform: scale(1.05);
+}
+
+.media-card-badges {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+
+.media-card-rating {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.media-card-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 3;
+}
+
+.media-card:hover .media-card-overlay {
+  opacity: 1;
+}
+
+.media-play-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--accent);
+  color: #05070a;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 0 16px var(--accent-glow);
+  transform: scale(0.9);
+  transition: transform 0.2s ease;
+}
+
+.media-card:hover .media-play-icon {
+  transform: scale(1.1);
+}
+
+.media-card-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+}
+
+.media-card-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.media-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.media-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: auto;
+}
+
+/* 2. КОМПАКТНАЯ СЕТКА (COMPACT GRID) */
+.media-container.view-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.media-container.view-compact-grid .media-card-content {
+  padding: 8px;
+}
+
+.media-container.view-compact-grid .media-card-title {
+  font-size: 12px;
+  -webkit-line-clamp: 1;
+}
+
+.media-container.view-compact-grid .media-play-icon {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+}
+
+/* 3. ДЕТАЛЬНЫЙ СПИСОК (DETAILED LIST) */
+.media-container.view-detailed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.media-detailed-card {
+  display: flex;
+  gap: 20px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.media-detailed-card:hover {
+  border-color: var(--border-hover);
+  transform: translateX(4px);
+  box-shadow: var(--card-shadow), 0 0 16px var(--accent-subtle);
+}
+
+.media-detailed-poster {
+  width: 140px;
+  min-width: 140px;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  background: #080b10;
+}
+
+.media-detailed-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-detailed-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.media-detailed-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.media-detailed-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.media-detailed-orig-title {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.media-detailed-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.media-detailed-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* 4. ТАБЛИЦА (TABLE VIEW) */
+.media-container.view-table {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.media-table-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.media-table-table th {
+  background: var(--bg-tertiary);
+  padding: 12px 16px;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.media-table-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.media-table-table tr:hover td {
+  background: var(--bg-card-hover);
+}
+
+.media-table-thumb {
+  width: 40px;
+  height: 56px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+/* -------------------------------------------------------------
+   КИНОТЕАТРАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПЛЕЕРА (CINEMA MODAL)
+   ------------------------------------------------------------- */
+.cinema-modal-dialog {
+  max-width: 1200px;
+  width: 95vw;
+}
+
+.cinema-player-wrapper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000000;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
+}
+
+.cinema-player-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Переключатель плееров */
+.player-sources-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-subtle);
+  scrollbar-width: none;
+}
+
+.player-source-btn {
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.player-source-btn:hover {
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.player-source-btn.active {
+  background: var(--accent);
+  color: #05070a;
+  border-color: var(--accent);
+  font-weight: 700;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* Выбор озвучки и серий для аниме и сериалов */
+.episodes-selector-container {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voiceovers-pills {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.voiceover-pill {
+  padding: 6px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.voiceover-pill.active {
+  background: var(--accent);
+  color: #05070a;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.episodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.episode-btn {
+  padding: 8px 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.episode-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.episode-btn.active {
+  background: var(--accent);
+  color: #05070a;
+  border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* -------------------------------------------------------------
+   МОБИЛЬНАЯ НАВИГАЦИОННАЯ ПАНЕЛЬ (BOTTOM BAR)
+   ------------------------------------------------------------- */
+.storm-mobile-bottom-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(12, 16, 23, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border-color);
+  padding: 6px 12px;
+  z-index: 600;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.storm-mobile-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.storm-mobile-nav-item.active {
+  color: var(--accent);
+}
+
+.storm-mobile-nav-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* -------------------------------------------------------------
+   ПОДВАЛ САЙТА (FOOTER)
+   ------------------------------------------------------------- */
+.storm-footer {
+  margin-top: auto;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  padding: 24px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.storm-footer-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* -------------------------------------------------------------
+   ТОСТ-УВЕДОМЛЕНИЯ (TOASTS)
+   ------------------------------------------------------------- */
+.storm-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.storm-toast {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 20px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6), 0 0 15px var(--accent-glow);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+  transform: translateY(20px);
+  opacity: 0;
+  animation: toastIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes toastIn {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* -------------------------------------------------------------
+   АДАПТИВНОСТЬ (RESPONSIVE BREAKPOINTS)
+   ------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .storm-search-box {
+    max-width: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .storm-mobile-bottom-bar {
+    display: flex;
+  }
+  
+  body {
+    padding-bottom: 60px;
+  }
+  
+  .storm-navbar-inner {
+    padding: 10px 16px;
+  }
+
+  .storm-brand-sub {
+    display: none;
+  }
+
+  .storm-search-box {
+    max-width: 100%;
+    order: 3;
+    width: 100%;
+  }
+
+  .storm-navbar-inner {
+    flex-wrap: wrap;
+  }
+
+  .media-detailed-card {
+    flex-direction: column;
+  }
+
+  .media-detailed-poster {
+    width: 100%;
+    max-width: 180px;
+    margin: 0 auto;
+  }
+}
