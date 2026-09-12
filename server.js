@@ -9,6 +9,8 @@ import {
   logoutUser,
   getUserByToken,
   updateUserSettings,
+  updateUserProfile,
+  changeUserPassword,
   getUserStats,
   getUserBookmarks,
   getBookmark,
@@ -38,6 +40,11 @@ import {
 } from './services/anixart-service.js';
 
 import {
+  getShikimoriCatalog,
+  searchShikimori
+} from './services/shikimori-service.js';
+
+import {
   getAvailablePlayers
 } from './services/kinobox-service.js';
 
@@ -48,13 +55,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Раздача статических файлов клиентского интерфейса
+// Раздача статических файлов
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware для извлечения пользователя по сессионному токену
+// Middleware для извлечения пользователя
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   let token = null;
@@ -138,6 +145,34 @@ app.get('/api/auth/me', (req, res) => {
   });
 });
 
+app.post('/api/auth/profile/update', requireAuth, (req, res) => {
+  try {
+    const { username, email, avatar } = req.body;
+    const updatedUser = updateUserProfile(req.user.id, { username, email, avatar });
+    const stats = getUserStats(req.user.id);
+    res.json({
+      user: {
+        ...updatedUser,
+        settings: JSON.parse(updatedUser.settings_json || '{}')
+      },
+      stats
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/profile/password', requireAuth, (req, res) => {
+  try {
+    const oldPassword = req.body.oldPassword || req.body.old_password;
+    const newPassword = req.body.newPassword || req.body.new_password;
+    changeUserPassword(req.user.id, oldPassword, newPassword);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/settings', requireAuth, (req, res) => {
   try {
     updateUserSettings(req.user.id, req.body.settings);
@@ -157,54 +192,165 @@ app.get('/api/auth/stats', requireAuth, (req, res) => {
 });
 
 // ==========================================
-// 2. МЕДИА КАТАЛОГ И АГРЕГАЦИЯ ИСТОЧНИКОВ
+// 2. ПРОКСИ ИЗОБРАЖЕНИЙ (100% ГАРАНТИЯ ЗАГРУЗКИ ОБЛОЖЕК)
 // ==========================================
 
-/**
- * Универсальный каталог (комбинирует FanFilm4K и AniXart)
- */
+const imageCache = new Map();
+
+app.get('/api/media/image-proxy', async (req, res) => {
+  const imageUrl = req.query.url;
+  if (!imageUrl) return res.status(400).send('Missing url parameter');
+
+  if (imageCache.has(imageUrl)) {
+    const cached = imageCache.get(imageUrl);
+    res.set('Content-Type', cached.contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    return res.send(cached.buffer);
+  }
+
+  try {
+    const targetUrl = imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': 'https://anixart.tv/'
+      }
+    });
+
+    if (!response.ok) {
+      return res.redirect('/assets/favicon.svg');
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Кэшируем до 300 картинок в памяти
+    if (imageCache.size > 300) {
+      const firstKey = imageCache.keys().next().value;
+      imageCache.delete(firstKey);
+    }
+    imageCache.set(imageUrl, { contentType, buffer });
+
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  } catch (err) {
+    res.redirect('/assets/favicon.svg');
+  }
+});
+
+// ==========================================
+// 3. МЕДИА КАТАЛОГ И АГРЕГАЦИЯ ИСТОЧНИКОВ
+// ==========================================
+
 app.get('/api/media/catalog', async (req, res) => {
   try {
-    const category = req.query.category || 'popular';
+    const category = req.query.category || 'home';
     const page = parseInt(req.query.page, 10) || 1;
-    const source = req.query.source || 'all'; // 'all', 'fanfilm4k', 'anixart'
+    const source = req.query.source || 'all';
 
     let items = [];
     let totalItems = 0;
 
-    // 1. Аниме категория -> запрос в AniXart
-    if (category === 'anime' || source === 'anixart') {
-      const anixartCategory = category === 'new' ? 'interesting' : 'popular';
-      const anixartRes = await getAnixartDiscover(anixartCategory, page - 1);
-      items = anixartRes.items;
-      totalItems = anixartRes.total_count;
+    // Вкладка: Аниме-фильмы
+    if (category === 'anime-movies') {
+      if (source === 'shikimori') {
+        const shikiRes = await getShikimoriCatalog('anime-movies', page);
+        items = shikiRes.items;
+      } else {
+        const anixRes = await getAnixartDiscover('anime-movies', page - 1);
+        items = anixRes.items;
+      }
+      totalItems = items.length;
     }
-    // 2. Только FanFilm4K (фильмы, 4K, сериалы, мультфильмы)
-    else if (source === 'fanfilm4k' || ['movies', 'series', '4k', 'cartoons', 'cartoon-series'].includes(category)) {
-      const fanfilmRes = await getFanFilmCatalog(category, page);
+    // Вкладка: Аниме-сериалы
+    else if (category === 'anime-series') {
+      if (source === 'shikimori') {
+        const shikiRes = await getShikimoriCatalog('anime-series', page);
+        items = shikiRes.items;
+      } else {
+        const anixRes = await getAnixartDiscover('anime-series', page - 1);
+        items = anixRes.items;
+      }
+      totalItems = items.length;
+    }
+    // Вкладка: Мультсериалы
+    else if (category === 'cartoon-series') {
+      const fanfilmRes = await getFanFilmCatalog('cartoon-series', page);
       items = fanfilmRes.items;
       totalItems = fanfilmRes.total_items;
     }
-    // 3. Комбинированная подборка (Популярное / Новинки)
-    else {
-      const [fanfilmRes, anixartRes] = await Promise.all([
-        getFanFilmCatalog(category === 'new' ? 'new' : 'popular', page),
-        getAnixartDiscover(category === 'new' ? 'interesting' : 'popular', page - 1)
-      ]);
-
-      // Чередуем для разнообразия контента
-      const fItems = fanfilmRes.items || [];
-      const aItems = anixartRes.items || [];
-      const maxLength = Math.max(fItems.length, aItems.length);
-
-      for (let i = 0; i < maxLength; i++) {
-        if (i < fItems.length) items.push(fItems[i]);
-        if (i < aItems.length && items.length < 50) items.push(aItems[i]);
+    // Вкладка: Мультфильмы
+    else if (category === 'cartoons') {
+      const fanfilmRes = await getFanFilmCatalog('cartoons', page);
+      items = fanfilmRes.items;
+      totalItems = fanfilmRes.total_items;
+    }
+    // Вкладка: Фильмы
+    else if (category === 'movies') {
+      const fanfilmRes = await getFanFilmCatalog('movies', page);
+      items = fanfilmRes.items;
+      totalItems = fanfilmRes.total_items;
+    }
+    // Вкладка: Сериалы
+    else if (category === 'series') {
+      const fanfilmRes = await getFanFilmCatalog('series', page);
+      items = fanfilmRes.items;
+      totalItems = fanfilmRes.total_items;
+    }
+    // Вкладка: Новинки
+    else if (category === 'new') {
+      if (source === 'fanfilm4k') {
+        const fRes = await getFanFilmCatalog('new', page);
+        items = fRes.items;
+      } else if (source === 'anixart') {
+        const aRes = await getAnixartDiscover('new', page - 1);
+        items = aRes.items;
+      } else {
+        const [fRes, aRes] = await Promise.all([
+          getFanFilmCatalog('new', page),
+          getAnixartDiscover('new', page - 1)
+        ]);
+        const fItems = fRes.items || [];
+        const aItems = aRes.items || [];
+        const maxLen = Math.max(fItems.length, aItems.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (i < fItems.length) items.push(fItems[i]);
+          if (i < aItems.length && items.length < 60) items.push(aItems[i]);
+        }
       }
-      totalItems = fItems.length + aItems.length;
+      totalItems = items.length;
+    }
+    // Вкладка: Главная (Home)
+    else {
+      if (source === 'fanfilm4k') {
+        const fRes = await getFanFilmCatalog('popular', page);
+        items = fRes.items;
+      } else if (source === 'anixart') {
+        const aRes = await getAnixartDiscover('popular', page - 1);
+        items = aRes.items;
+      } else if (source === 'shikimori') {
+        const sRes = await getShikimoriCatalog('popular', page);
+        items = sRes.items;
+      } else {
+        // Комбинируем популярные 4K фильмы и аниме
+        const [fRes, aRes] = await Promise.all([
+          getFanFilmCatalog('popular', page),
+          getAnixartDiscover('popular', page - 1)
+        ]);
+        const fItems = fRes.items || [];
+        const aItems = aRes.items || [];
+        const maxLen = Math.max(fItems.length, aItems.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (i < fItems.length) items.push(fItems[i]);
+          if (i < aItems.length && items.length < 60) items.push(aItems[i]);
+        }
+      }
+      totalItems = items.length;
     }
 
-    // Добавляем пользовательский статус и процент просмотра для каждого тайтла, если пользователь залогинен
+    // Если пользователь авторизован, прикрепляем статусы и прогресс
     if (req.user) {
       items = items.map(item => {
         const bookmark = getBookmark(req.user.id, item.id, item.source);
@@ -230,9 +376,6 @@ app.get('/api/media/catalog', async (req, res) => {
   }
 });
 
-/**
- * Полнотекстовый поиск по всем источникам
- */
 app.get('/api/media/search', async (req, res) => {
   try {
     const query = req.query.q || '';
@@ -252,6 +395,11 @@ app.get('/api/media/search', async (req, res) => {
     if (source === 'all' || source === 'anixart') {
       const anixartResults = await searchAnixart(query, 0);
       items.push(...(anixartResults.items || []));
+    }
+
+    if (source === 'all' || source === 'shikimori') {
+      const shikiResults = await searchShikimori(query);
+      items.push(...shikiResults);
     }
 
     if (req.user) {
@@ -275,9 +423,6 @@ app.get('/api/media/search', async (req, res) => {
   }
 });
 
-/**
- * Получение полной карточки тайтла и списка всех доступных плееров
- */
 app.get('/api/media/item', async (req, res) => {
   try {
     const { id, source, url } = req.query;
@@ -306,7 +451,6 @@ app.get('/api/media/item', async (req, res) => {
       trailer_url: mediaDetails.players?.find(p => p.id === 'trailer')?.url
     });
 
-    // Объединяем плееры
     const allPlayers = [...kinoboxPlayers];
     if (mediaDetails.players) {
       mediaDetails.players.forEach(p => {
@@ -316,7 +460,6 @@ app.get('/api/media/item', async (req, res) => {
       });
     }
 
-    // Данные закладки пользователя
     let userBookmark = null;
     if (req.user) {
       userBookmark = getBookmark(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k');
@@ -333,7 +476,7 @@ app.get('/api/media/item', async (req, res) => {
 });
 
 // ==========================================
-// 3. ANIXART СПЕЦИФИЧНЫЕ ЭНДПОИНТЫ
+// 4. ANIXART СПЕЦИФИЧНЫЕ ЭНДПОИНТЫ
 // ==========================================
 
 app.get('/api/anixart/discover', async (req, res) => {
@@ -367,7 +510,7 @@ app.get('/api/anixart/episodes/:id/:typeId', async (req, res) => {
 });
 
 // ==========================================
-// 4. ЗАКЛАДКИ, СТАТУСЫ И ПРОГРЕСС ПРОСМОТРА
+// 5. ЗАКЛАДКИ, СТАТУСЫ И ПРОГРЕСС ПРОСМОТРА
 // ==========================================
 
 app.get('/api/bookmarks', requireAuth, (req, res) => {
@@ -418,7 +561,7 @@ app.get('/api/media/continue-watching', requireAuth, (req, res) => {
 });
 
 // ==========================================
-// 5. КАСТОМНЫЕ СПИСКИ И КОЛЛЕКЦИИ
+// 6. КАСТОМНЫЕ СПИСКИ И КОЛЛЕКЦИИ
 // ==========================================
 
 app.get('/api/custom-lists', requireAuth, (req, res) => {

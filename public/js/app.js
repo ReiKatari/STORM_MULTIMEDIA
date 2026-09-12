@@ -4,7 +4,7 @@
 
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged } from './auth.js';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 
@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
   initSearch();
   initModals();
+  initProfileHandlers();
   initLanguageSwitcher();
 
   onAuthChanged(() => {
@@ -142,13 +143,9 @@ async function loadCurrentTab() {
     return;
   }
 
-  // Каталог медиа
-  let category = 'popular';
-  if (currentTab === 'new') category = 'new';
-  if (currentTab === 'movies') category = 'movies';
-  if (currentTab === 'series') category = 'series';
-  if (currentTab === 'anime') category = 'anime';
-  if (currentTab === 'cartoons') category = 'cartoons';
+  // Каталог медиа - полная поддержка всех 10 вкладок портала
+  let category = currentTab;
+  if (currentTab === 'home') category = 'popular';
 
   try {
     const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`);
@@ -178,15 +175,18 @@ function renderMediaItems(items) {
     return;
   }
 
-  // 1 & 2. СЕТКА И КОМПАКТНАЯ СЕТКА
+  // 1 и 2. Сетка и компактная сетка
   if (currentViewMode === 'grid' || currentViewMode === 'compact-grid') {
-    container.innerHTML = items.map(item => `
+    container.innerHTML = items.map(item => {
+      const poster = item.poster || 'assets/favicon.svg';
+      return `
       <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
         <div class="media-card-poster">
-          <img src="${item.poster || 'assets/favicon.svg'}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
+          <img src="${poster}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
             ${item.source === 'anixart' ? '<span class="storm-badge storm-badge-quality">ANIXART</span>' : ''}
+            ${item.source === 'shikimori' ? '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>' : ''}
             ${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
@@ -202,12 +202,13 @@ function renderMediaItems(items) {
         <div class="media-card-content">
           <div class="media-card-title" title="${item.title}">${item.title}</div>
           <div class="media-card-meta">
-            <span>${item.year || (item.source === 'anixart' ? 'Аниме' : 'Фильм')}</span>
+            <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' ? 'Аниме' : 'Фильм')}</span>
             ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
           </div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
@@ -217,11 +218,16 @@ function renderMediaItems(items) {
 
   // 3. ДЕТАЛЬНЫЙ СПИСОК
   if (currentViewMode === 'detailed-list') {
-    container.innerHTML = items.map((item, idx) => `
+    container.innerHTML = items.map((item, idx) => {
+      const poster = item.poster || 'assets/favicon.svg';
+      const sourceName = item.source === 'anixart' ? 'AniXart' : item.source === 'shikimori' ? 'Shikimori' : 'FanFilm4K';
+      return `
       <div class="media-detailed-card" data-idx="${idx}">
         <div class="media-detailed-poster">
-          <img src="${item.poster || 'assets/favicon.svg'}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
+          <img src="${poster}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           ${item.is4K ? '<span class="storm-badge storm-badge-4k" style="position:absolute;top:6px;left:6px;">4K UHD</span>' : ''}
+          ${item.source === 'anixart' ? '<span class="storm-badge storm-badge-quality" style="position:absolute;top:6px;right:6px;">ANIXART</span>' : ''}
+          ${item.source === 'shikimori' ? '<span class="storm-badge storm-badge-quality" style="position:absolute;top:6px;right:6px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>' : ''}
         </div>
         <div class="media-detailed-info">
           <div class="media-detailed-header">
@@ -247,12 +253,13 @@ function renderMediaItems(items) {
             </div>
           ` : ''}
           <div class="media-detailed-footer">
-            <span style="font-size:12px;color:var(--text-muted);">${item.year || ''} • ${item.source === 'anixart' ? 'AniXart' : 'FanFilm4K'}</span>
+            <span style="font-size:12px;color:var(--text-muted);">${item.year || ''} • ${sourceName}</span>
             <button class="storm-btn storm-btn-primary storm-btn-sm play-btn">▶ Смотреть</button>
           </div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     container.querySelectorAll('.media-detailed-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
@@ -277,9 +284,11 @@ function renderMediaItems(items) {
           </tr>
         </thead>
         <tbody>
-          ${items.map((item, idx) => `
+          ${items.map((item, idx) => {
+            const poster = item.poster || 'assets/favicon.svg';
+            return `
             <tr data-idx="${idx}" style="cursor:pointer;">
-              <td><img class="media-table-thumb" src="${item.poster || 'assets/favicon.svg'}" onerror="this.src='assets/favicon.svg'"></td>
+              <td><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
               <td><strong>${item.title}</strong></td>
               <td><span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span></td>
               <td>${item.year || '—'}</td>
@@ -295,7 +304,8 @@ function renderMediaItems(items) {
               </td>
               <td><button class="storm-btn storm-btn-primary storm-btn-sm">▶ Плеер</button></td>
             </tr>
-          `).join('')}
+          `;
+          }).join('')}
         </tbody>
       </table>
     `;

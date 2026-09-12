@@ -205,6 +205,53 @@ export function updateUserSettings(userId, settings) {
   db.prepare('UPDATE users SET settings_json = ? WHERE id = ?').run(settingsJson, userId);
 }
 
+export function updateUserProfile(userId, { username, email, avatar }) {
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  if (!user) throw new Error('Пользователь не найден');
+
+  if (username) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, userId);
+    if (existing) throw new Error('Имя пользователя уже занято');
+  }
+
+  if (email) {
+    const existing = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, userId);
+    if (existing) throw new Error('Email уже используется');
+  }
+
+  let query = 'UPDATE users SET ';
+  const params = [];
+  const updates = [];
+
+  if (username) { updates.push('username = ?'); params.push(username); }
+  if (email) { updates.push('email = ?'); params.push(email); }
+  if (avatar) { updates.push('avatar = ?'); params.push(avatar); }
+
+  if (updates.length === 0) return user;
+
+  query += updates.join(', ') + ' WHERE id = ?';
+  params.push(userId);
+
+  db.prepare(query).run(...params);
+  return db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+}
+
+export function changeUserPassword(userId, oldPassword, newPassword) {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!user) throw new Error('Пользователь не найден');
+
+  if (!verifyPassword(oldPassword, user.password_hash)) {
+    throw new Error('Текущий пароль указан неверно');
+  }
+
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('Новый пароль должен содержать не менее 6 символов');
+  }
+
+  const newHash = hashPassword(newPassword);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, userId);
+}
+
 // Статистика пользователя
 export function getUserStats(userId) {
   const bookmarksCount = db.prepare('SELECT count(*) as count FROM bookmarks WHERE user_id = ?').get(userId).count;

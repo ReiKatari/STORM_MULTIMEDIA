@@ -26,11 +26,36 @@ body {
   position: sticky;
   top: 0;
   z-index: 500;
-  background: rgba(12, 16, 23, 0.92);
+  background: var(--bg-secondary);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-color);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="STORM DAY"] .storm-navbar {
+  background: #ffffff !important;
+  border-bottom: 1px solid rgba(2, 132, 199, 0.25);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="STORM DAY"] .storm-tabs-bar {
+  background: #f8fafc !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="STORM DAY"] .storm-search-input {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+[data-theme="STORM DAY"] .theme-dropdown-select,
+[data-theme="STORM DAY"] .lang-dropdown-select,
+[data-theme="STORM DAY"] #source-filter-select {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
 }
 
 .storm-navbar-inner {
@@ -54,8 +79,8 @@ body {
 }
 
 .storm-brand-logo {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   filter: drop-shadow(0 0 8px var(--accent-glow));
   transition: transform 0.2s ease;
 }
@@ -70,10 +95,16 @@ body {
 }
 
 .storm-brand-title {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.5px;
   background: linear-gradient(135deg, #ffffff 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+[data-theme="STORM DAY"] .storm-brand-title {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -142,24 +173,44 @@ body {
   flex-shrink: 0;
 }
 
-.theme-dropdown-select,
-.lang-dropdown-select {
+/* Расширенное поле выбора темы (STORM WARHAMMER 40K и др.) */
+.theme-dropdown-select {
+  min-width: 245px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 7px 12px;
+  padding: 8px 14px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.theme-dropdown-select:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.lang-dropdown-select {
+  min-width: 140px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 600;
   outline: none;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.theme-dropdown-select:hover,
 .lang-dropdown-select:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 0 8px var(--accent-glow);
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 /* Кнопка профиля пользователя */
@@ -167,7 +218,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 12px 5px 6px;
+  padding: 5px 14px 5px 6px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 20px;
@@ -175,23 +226,26 @@ body {
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   transition: all 0.2s ease;
 }
 
 .user-profile-btn:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 0 10px var(--accent-glow);
+  box-shadow: 0 0 12px var(--accent-glow);
+  transform: translateY(-1px);
 }
 
 .user-avatar-img {
   width: 28px;
   height: 28px;
   border-radius: 50%;
+  object-fit: cover;
   background: var(--bg-secondary);
 }
 
 /* -------------------------------------------------------------
-   БЫСТРЫЕ ВКЛАДКИ (QUICK TABS)
+   СТИЛИЗОВАННЫЕ ПЛАШКИ ВКЛАДОК (STORM TAB PILLS)
    ------------------------------------------------------------- */
 .storm-tabs-bar {
   background: var(--bg-secondary);
@@ -201,6 +255,11 @@ body {
   scrollbar-width: none;
 }
 
+[data-theme="STORM DAY"] .storm-tabs-bar {
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
 .storm-tabs-bar::-webkit-scrollbar {
   display: none;
 }
@@ -208,35 +267,52 @@ body {
 .storm-tabs-inner {
   max-width: 1600px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 10px 24px;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
+/* Стилизованные объемные плашки */
 .storm-tab-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 16px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
   user-select: none;
+  white-space: nowrap;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3), 0 3px 6px var(--shadow-color);
+  transform: translateY(0);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .storm-tab-btn:hover {
+  transform: translateY(-1.5px);
   color: var(--text-primary);
+  border-color: var(--border-hover);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 12px var(--shadow-color), 0 0 10px var(--accent-glow);
 }
 
 .storm-tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  text-shadow: 0 0 8px var(--accent-glow);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+  color: #05070a;
+  border-color: rgba(255, 255, 255, 0.4);
+  font-weight: 700;
+  box-shadow: var(--btn-3d-shadow);
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+  transform: translateY(0);
+}
+
+.storm-tab-btn:active {
+  transform: translateY(1.5px) scale(0.98);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
 /* -------------------------------------------------------------
@@ -244,7 +320,7 @@ body {
    ------------------------------------------------------------- */
 .storm-toolbar {
   max-width: 1600px;
-  margin: 20px auto 0;
+  margin: 18px auto 0;
   padding: 0 24px;
   display: flex;
   align-items: center;
@@ -297,36 +373,6 @@ body {
   background: var(--accent);
   color: #05070a;
   box-shadow: 0 0 10px var(--accent-glow);
-}
-
-/* Панель фильтрации */
-.storm-filter-panel {
-  max-width: 1600px;
-  margin: 16px auto 0;
-  padding: 16px 24px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  display: none;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  box-shadow: var(--card-shadow);
-}
-
-.storm-filter-panel.is-open {
-  display: grid;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.filter-group label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
 }
 
 /* -------------------------------------------------------------
@@ -743,6 +789,61 @@ body {
 }
 
 /* -------------------------------------------------------------
+   ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ И СМЕНА АВАТАРА (PROFILE MODAL)
+   ------------------------------------------------------------- */
+.profile-modal-dialog {
+  max-width: 680px;
+}
+
+.profile-avatar-presets {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.profile-avatar-preset-item {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  cursor: pointer;
+  object-fit: cover;
+  transition: all 0.2s ease;
+}
+
+.profile-avatar-preset-item:hover,
+.profile-avatar-preset-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  transform: scale(1.1);
+}
+
+.profile-tab-links {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+  gap: 8px;
+}
+
+.profile-tab-link {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.profile-tab-link.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* -------------------------------------------------------------
    МОБИЛЬНАЯ НАВИГАЦИОННАЯ ПАНЕЛЬ (BOTTOM BAR)
    ------------------------------------------------------------- */
 .storm-mobile-bottom-bar {
@@ -751,13 +852,18 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(12, 16, 23, 0.95);
+  background: var(--bg-secondary);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid var(--border-color);
   padding: 6px 12px;
   z-index: 600;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="STORM DAY"] .storm-mobile-bottom-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .storm-mobile-nav-item {
@@ -780,11 +886,6 @@ body {
   color: var(--accent);
 }
 
-.storm-mobile-nav-item svg {
-  width: 20px;
-  height: 20px;
-}
-
 /* -------------------------------------------------------------
    ПОДВАЛ САЙТА (FOOTER)
    ------------------------------------------------------------- */
@@ -795,6 +896,11 @@ body {
   padding: 24px 0;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+[data-theme="STORM DAY"] .storm-footer {
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .storm-footer-inner {
@@ -852,7 +958,7 @@ body {
    ------------------------------------------------------------- */
 @media (max-width: 900px) {
   .storm-search-box {
-    max-width: 280px;
+    max-width: 260px;
   }
 }
 

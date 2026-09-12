@@ -1,4 +1,4 @@
-import { Anixart } from 'anixapi';
+import { Anixart, FilterSortType, ReleaseCategory } from 'anixapi';
 import { getCache, setCache } from '../db.js';
 
 const client = new Anixart();
@@ -9,15 +9,28 @@ const client = new Anixart();
 function formatAnimeRelease(rel) {
   if (!rel) return null;
 
+  // Извлекаем название
+  const title = rel.title_ru || rel.title_original || rel.title_alt || rel.title || 'Аниме релиз';
+  const origTitle = rel.title_original || rel.title_alt || '';
+
+  // Извлекаем постер
+  let poster = rel.image || '';
+  if (!poster && rel.poster) {
+    poster = `https://s.anixmirai.com/posters/${rel.poster}.jpg`;
+  }
+  if (!poster && rel.screenshot_images && rel.screenshot_images.length > 0) {
+    poster = rel.screenshot_images[0];
+  }
+
   return {
     id: String(rel.id),
     source: 'anixart',
-    title: rel.title_ru || rel.title_original || rel.title_alt || 'Без названия',
-    original_title: rel.title_original || '',
-    poster: rel.image || (rel.poster ? `https://s.anixmirai.com/posters/${rel.poster}.jpg` : ''),
+    title: title.trim(),
+    original_title: origTitle.trim(),
+    poster: poster || 'assets/favicon.svg',
     year: String(rel.year || ''),
-    rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : 0,
-    media_type: 'anime',
+    rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : (typeof rel.rating === 'number' ? Math.round(rel.rating / 1000) / 10 : 0),
+    media_type: rel.category?.name === 'Фильм' ? 'anime-movie' : 'anime-series',
     quality: 'HD 1080p',
     status: rel.status?.name || 'Вышел',
     category: rel.category?.name || 'Сериал',
@@ -34,6 +47,7 @@ function formatAnimeRelease(rel) {
 
 /**
  * Получение подборок аниме из AniXart
+ * Категории: popular, new, anime-movies, anime-series, top-rated
  */
 export async function getAnixartDiscover(category = 'popular', page = 0) {
   const pageNum = parseInt(page, 10) || 0;
@@ -43,21 +57,52 @@ export async function getAnixartDiscover(category = 'popular', page = 0) {
 
   try {
     let res;
+
     switch (category) {
-      case 'recommendations':
-        res = await client.endpoints.discover.recommendations(pageNum);
+      case 'new':
+        // Сортировка по дате обновления (Новинки)
+        res = await client.endpoints.filter.filter(pageNum, {
+          sort: FilterSortType.SortDateUpdate || 0
+        });
         break;
-      case 'interesting':
-        res = await client.endpoints.discover.interesting(pageNum);
+
+      case 'anime-movies':
+        // Только полнометражные аниме-фильмы
+        res = await client.endpoints.filter.filter(pageNum, {
+          category_id: ReleaseCategory.Movie || 2,
+          sort: FilterSortType.SortPopular || 3
+        });
         break;
+
+      case 'anime-series':
+        // Только аниме-сериалы
+        res = await client.endpoints.filter.filter(pageNum, {
+          category_id: ReleaseCategory.Series || 1,
+          sort: FilterSortType.SortPopular || 3
+        });
+        break;
+
+      case 'top-rated':
+        // По оценке зрителей
+        res = await client.endpoints.filter.filter(pageNum, {
+          sort: FilterSortType.SortGrade || 1
+        });
+        break;
+
       case 'popular':
       default:
+        // Популярные онгоинги и сериалы
         res = await client.endpoints.discover.watching(pageNum);
+        if (!res?.content || res.content.length === 0) {
+          res = await client.endpoints.filter.filter(pageNum, {
+            sort: FilterSortType.SortPopular || 3
+          });
+        }
         break;
     }
 
     const rawList = res?.content || res?.releases || [];
-    const items = rawList.map(formatAnimeRelease).filter(Boolean);
+    const items = rawList.map(formatAnimeRelease).filter(it => it && it.title !== 'Без названия');
 
     const result = {
       page: pageNum,
@@ -76,7 +121,7 @@ export async function getAnixartDiscover(category = 'popular', page = 0) {
 }
 
 /**
- * Поиск аниме в AniXart
+ * Полнотекстовый поиск аниме в AniXart
  */
 export async function searchAnixart(query, page = 0) {
   if (!query || !query.trim()) return { items: [], total_count: 0 };
@@ -125,7 +170,7 @@ export async function getAnixartReleaseDetails(releaseId) {
     const baseFormatted = formatAnimeRelease(rel);
     if (!baseFormatted) return null;
 
-    // Получаем озвучки (AniLibria, AniDUB, Студийная Банда и др.)
+    // Получаем озвучки (AniLibria, AniDUB, SovetRomantica, Persona99, Студийная Банда и др.)
     let voiceovers = [];
     try {
       const typesRes = await client.endpoints.episode.types(numId);
@@ -142,7 +187,7 @@ export async function getAnixartReleaseDetails(releaseId) {
       console.warn(`[AniXart] Не удалось загрузить типы озвучек для ${numId}:`, e.message);
     }
 
-    // Дополнительные скриншоты
+    // Скриншоты
     const screenshots = (rel.screenshots || rel.screenshot_images || []).map(s => {
       if (typeof s === 'string') return s;
       return s.url || s.image || '';
@@ -152,7 +197,6 @@ export async function getAnixartReleaseDetails(releaseId) {
       ...baseFormatted,
       screenshots,
       voiceovers,
-      // Резервный мультиплеер Kodik / Kinobox по названию
       kinobox_query: `${baseFormatted.title} ${baseFormatted.year}`.trim()
     };
 
@@ -165,7 +209,7 @@ export async function getAnixartReleaseDetails(releaseId) {
 }
 
 /**
- * Получение серий для конкретной озвучки релиза
+ * Получение списка серий конкретной озвучки
  */
 export async function getAnixartEpisodes(releaseId, typeId) {
   const numReleaseId = parseInt(releaseId, 10);
@@ -177,15 +221,11 @@ export async function getAnixartEpisodes(releaseId, typeId) {
   if (cached) return cached;
 
   try {
-    // 1. Получаем доступные источники (Kodik, Libria, Sibnet и т.д.)
     const sourcesRes = await client.endpoints.episode.sources(numReleaseId, numTypeId);
     const sources = sourcesRes?.sources || [];
     if (!sources.length) return [];
 
-    // Выбираем первый приоритетный источник (например, Kodik или первый доступный)
     const primarySource = sources.find(s => s.name?.toLowerCase().includes('kodik')) || sources[0];
-
-    // 2. Получаем серии
     const episodesRes = await client.endpoints.episode.episodes(numReleaseId, numTypeId, primarySource.id);
     const rawEpisodes = episodesRes?.episodes || [];
 

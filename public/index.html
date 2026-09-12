@@ -7,9 +7,9 @@
   <link rel="shortcut icon" href="assets/favicon.svg" type="image/svg+xml">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="styles/storm-theme.css?v=1.0">
-  <link rel="stylesheet" href="styles/components.css?v=1.0">
-  <link rel="stylesheet" href="styles/main.css?v=1.0">
+  <link rel="stylesheet" href="styles/storm-theme.css?v=1.1">
+  <link rel="stylesheet" href="styles/components.css?v=1.1">
+  <link rel="stylesheet" href="styles/main.css?v=1.1">
 </head>
 <body>
 
@@ -42,7 +42,7 @@
           <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
           <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
           <option value="STORM FANTASY">STORM FANTASY</option>
-          <option value="STORM WARHAMMER 40K">WARHAMMER 40K</option>
+          <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
           <option value="STORM DAY">STORM DAY</option>
         </select>
 
@@ -70,28 +70,31 @@
     </div>
   </header>
 
-  <!-- Быстрые вкладки категорий контента (Quick Tabs) -->
+  <!-- Стилизованные плашки категорий контента (Quick Tabs) -->
   <nav class="storm-tabs-bar">
     <div class="storm-tabs-inner">
       <button class="storm-tab-btn active" data-tab="home" data-i18n="tab_home">Главная</button>
       <button class="storm-tab-btn" data-tab="new" data-i18n="tab_new">Новинки</button>
       <button class="storm-tab-btn" data-tab="movies" data-i18n="tab_movies">Фильмы</button>
       <button class="storm-tab-btn" data-tab="series" data-i18n="tab_series">Сериалы</button>
-      <button class="storm-tab-btn" data-tab="anime" data-i18n="tab_anime">Аниме</button>
       <button class="storm-tab-btn" data-tab="cartoons" data-i18n="tab_cartoons">Мультфильмы</button>
+      <button class="storm-tab-btn" data-tab="cartoon-series" data-i18n="tab_cartoon_series">Мультсериалы</button>
+      <button class="storm-tab-btn" data-tab="anime-movies" data-i18n="tab_anime_movies">Аниме-фильмы</button>
+      <button class="storm-tab-btn" data-tab="anime-series" data-i18n="tab_anime_series">Аниме-сериалы</button>
       <button class="storm-tab-btn" data-tab="continue" data-i18n="tab_continue">Продолжить просмотр</button>
-      <button class="storm-tab-btn" data-tab="bookmarks" data-i18n="tab_bookmarks">Мои закладки и списки</button>
+      <button class="storm-tab-btn" data-tab="bookmarks" data-i18n="tab_bookmarks">Мои списки и закладки</button>
     </div>
   </nav>
 
-  <!-- Панель инструментов: Фильтры, сортировка и режимы отображения -->
+  <!-- Панель инструментов: Фильтры, источники и режимы отображения -->
   <div class="storm-toolbar">
     <div class="storm-toolbar-left">
       <!-- Источник контента -->
-      <select class="storm-select" id="source-filter-select" style="width: auto; min-width: 170px;">
+      <select class="storm-select" id="source-filter-select" style="width: auto; min-width: 190px;">
         <option value="all" data-i18n="source_all">Все источники</option>
         <option value="fanfilm4k" data-i18n="source_fanfilm">FanFilm4K (4K UHD)</option>
         <option value="anixart" data-i18n="source_anixart">AniXart (Аниме)</option>
+        <option value="shikimori" data-i18n="source_shikimori">Shikimori (База аниме)</option>
       </select>
     </div>
 
@@ -120,7 +123,7 @@
   <footer class="storm-footer">
     <div class="storm-footer-inner">
       <div>
-        <strong>STORM MULTIMEDIA</strong> • Контент предоставлен источниками <a href="https://v17.fanfilm4k.media/" target="_blank" style="color:var(--accent);text-decoration:none;">FanFilm4K</a> и <a href="https://anixart.tv/" target="_blank" style="color:var(--accent);text-decoration:none;">AniXart</a>
+        <strong>STORM MULTIMEDIA</strong> • Контент предоставлен источниками <a href="https://v17.fanfilm4k.media/" target="_blank" style="color:var(--accent);text-decoration:none;">FanFilm4K</a>, <a href="https://anixart.tv/" target="_blank" style="color:var(--accent);text-decoration:none;">AniXart</a> и <a href="https://shikimori.one/" target="_blank" style="color:var(--accent);text-decoration:none;">Shikimori</a>
       </div>
       <div>
         Экосистема STORM SOFT • Непрерывное сохранение цифрового наследия
@@ -138,9 +141,9 @@
       <span>🎬</span>
       <span data-i18n="tab_movies">Фильмы</span>
     </button>
-    <button class="storm-mobile-nav-item" data-tab="anime">
+    <button class="storm-mobile-nav-item" data-tab="anime-series">
       <span>⛩️</span>
-      <span data-i18n="tab_anime">Аниме</span>
+      <span>Аниме</span>
     </button>
     <button class="storm-mobile-nav-item" data-tab="bookmarks">
       <span>🔖</span>
@@ -259,44 +262,122 @@
     </div>
   </div>
 
-  <!-- 3. Модальное окно профиля пользователя и статистики -->
+  <!-- 3. Полноценное модальное окно профиля пользователя и настроек -->
   <div class="storm-modal-backdrop" id="profile-modal">
-    <div class="storm-modal">
+    <div class="storm-modal profile-modal-dialog">
       <div class="storm-modal-header">
         <h3 class="storm-modal-title" data-i18n="auth_profile">Мой профиль</h3>
         <button type="button" class="storm-modal-close">✕</button>
       </div>
       <div class="storm-modal-body">
-        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
-          <img src="assets/favicon.svg" alt="Avatar" id="profile-avatar" style="width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow);">
-          <div>
-            <h4 id="profile-username" style="font-size: 18px; margin: 0;">Пользователь</h4>
-            <div id="profile-email" style="font-size: 12px; color: var(--text-muted);">user@example.com</div>
-            <div style="font-size: 11px; color: var(--accent); margin-top: 4px;">С нами с <span id="profile-date">—</span></div>
+        <!-- Вкладки профиля -->
+        <div class="profile-tab-links">
+          <button class="profile-tab-link active" data-ptab="overview">Обзор и статистика</button>
+          <button class="profile-tab-link" data-ptab="edit">Смена аватарки и данных</button>
+          <button class="profile-tab-link" data-ptab="security">Безопасность</button>
+        </div>
+
+        <!-- 1. Обзор и статистика -->
+        <div id="ptab-content-overview">
+          <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+            <img src="assets/favicon.svg" alt="Avatar" id="profile-avatar" style="width: 68px; height: 68px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow); object-fit: cover;">
+            <div>
+              <h4 id="profile-username" style="font-size: 19px; margin: 0; font-weight: 800;">Пользователь</h4>
+              <div id="profile-email" style="font-size: 12px; color: var(--text-muted);">user@example.com</div>
+              <div style="font-size: 11px; color: var(--accent); margin-top: 4px;">Зарегистрирован: <span id="profile-date">—</span></div>
+            </div>
+          </div>
+
+          <!-- Сетка статистики -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+              <div style="font-size: 20px; font-weight: 800; color: var(--accent);" id="profile-stat-hours">0</div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_total_hours">Часов просмотра</div>
+            </div>
+            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+              <div style="font-size: 20px; font-weight: 800; color: var(--color-green);" id="profile-stat-completed">0</div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_completed">Завершено</div>
+            </div>
+            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+              <div style="font-size: 20px; font-weight: 800; color: var(--color-cyan);" id="profile-stat-watching">0</div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_watching">В процессе</div>
+            </div>
+            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+              <div style="font-size: 20px; font-weight: 800; color: var(--color-amber);" id="profile-stat-bookmarks">0</div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_bookmarks">В закладках</div>
+            </div>
+            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+              <div style="font-size: 20px; font-weight: 800; color: var(--color-purple);" id="profile-stat-lists">0</div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_custom_lists">Своих списков</div>
+            </div>
+            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
+              <div style="font-size: 20px; font-weight: 800; color: #ff007f;" id="profile-stat-favorites">0</div>
+              <div style="font-size: 11px; color: var(--text-muted);">Любимых</div>
+            </div>
           </div>
         </div>
 
-        <!-- Статистика пользователя -->
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px;">
-          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-            <div style="font-size: 20px; font-weight: 800; color: var(--accent);" id="profile-stat-hours">0</div>
-            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_total_hours">Часов просмотра</div>
-          </div>
-          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-            <div style="font-size: 20px; font-weight: 800; color: var(--color-green);" id="profile-stat-completed">0</div>
-            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_completed">Завершено</div>
-          </div>
-          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-            <div style="font-size: 20px; font-weight: 800; color: var(--color-cyan);" id="profile-stat-watching">0</div>
-            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_watching">В процессе</div>
-          </div>
-          <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-            <div style="font-size: 20px; font-weight: 800; color: var(--color-purple);" id="profile-stat-lists">0</div>
-            <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_custom_lists">Своих списков</div>
-          </div>
+        <!-- 2. Смена аватарки и данных -->
+        <div id="ptab-content-edit" style="display: none;">
+          <form id="edit-profile-form">
+            <!-- Выбор пресетов аватарок -->
+            <div style="margin-bottom: 16px;">
+              <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Выберите аватарку из коллекции:</label>
+              <div class="profile-avatar-presets" id="avatar-presets-container">
+                <!-- Заполняется JS -->
+              </div>
+            </div>
+
+            <!-- Случайная аватарка или своя ссылка -->
+            <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="random-avatar-btn">🎲 Случайный аватар</button>
+              <label class="storm-btn storm-btn-secondary storm-btn-sm" style="margin: 0; cursor: pointer;">
+                📁 Загрузить файл
+                <input type="file" id="avatar-file-input" accept="image/*" style="display: none;">
+              </label>
+            </div>
+
+            <div class="filter-group" style="margin-bottom: 12px;">
+              <label>Или укажите прямую ссылку на аватарку:</label>
+              <input type="url" class="storm-input" id="edit-avatar-url" placeholder="https://example.com/avatar.jpg">
+            </div>
+
+            <div class="filter-group" style="margin-bottom: 12px;">
+              <label>Имя пользователя:</label>
+              <input type="text" class="storm-input" id="edit-profile-username" required>
+            </div>
+
+            <div class="filter-group" style="margin-bottom: 18px;">
+              <label>Электронная почта:</label>
+              <input type="email" class="storm-input" id="edit-profile-email" required>
+            </div>
+
+            <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">Сохранить изменения</button>
+          </form>
         </div>
 
-        <button class="storm-btn storm-btn-danger" style="width: 100%;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
+        <!-- 3. Безопасность и смена пароля -->
+        <div id="ptab-content-security" style="display: none;">
+          <form id="change-password-form">
+            <div class="filter-group" style="margin-bottom: 12px;">
+              <label>Текущий пароль:</label>
+              <input type="password" class="storm-input" id="old-password" required autocomplete="current-password">
+            </div>
+            <div class="filter-group" style="margin-bottom: 12px;">
+              <label>Новый пароль (не менее 6 символов):</label>
+              <input type="password" class="storm-input" id="new-password" required autocomplete="new-password">
+            </div>
+            <div class="filter-group" style="margin-bottom: 18px;">
+              <label>Повторите новый пароль:</label>
+              <input type="password" class="storm-input" id="confirm-password" required autocomplete="new-password">
+            </div>
+            <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">Обновить пароль</button>
+          </form>
+        </div>
+
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
+          <button class="storm-btn storm-btn-danger" style="width: 100%;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
+        </div>
       </div>
     </div>
   </div>
@@ -305,6 +386,6 @@
   <div class="storm-toast-container" id="toast-container"></div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="js/app.js?v=1.0"></script>
+  <script type="module" src="js/app.js?v=1.1"></script>
 </body>
 </html>
