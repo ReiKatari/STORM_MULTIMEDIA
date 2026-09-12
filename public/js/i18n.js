@@ -116,7 +116,13 @@ export const translations = {
     msg_login_success: "Вы успешно вошли в систему",
     msg_logout_success: "Вы вышли из системы",
     empty_history: "История просмотров пока пуста",
-    empty_bookmarks: "В этом разделе пока нет закладок"
+    empty_bookmarks: "В этом разделе пока нет закладок",
+    tv_mode: "ТВ-режим",
+    watch_together: "Кинозал",
+    sync_backup: "Синхронизация",
+    pwa_install: "Установить",
+    achievements_tab: "Достижения",
+    reviews_tab: "Рецензии"
   },
 
   en: {
@@ -221,7 +227,13 @@ export const translations = {
     msg_login_success: "You have signed in successfully",
     msg_logout_success: "You have signed out",
     empty_history: "Watch history is currently empty",
-    empty_bookmarks: "No bookmarks in this section yet"
+    empty_bookmarks: "No bookmarks in this section yet",
+    tv_mode: "TV Mode",
+    watch_together: "Cinema Room",
+    sync_backup: "Sync and backup",
+    pwa_install: "Install app",
+    achievements_tab: "Achievements",
+    reviews_tab: "Reviews"
   },
 
   de: {
@@ -326,7 +338,13 @@ export const translations = {
     msg_login_success: "Erfolgreich angemeldet",
     msg_logout_success: "Erfolgreich abgemeldet",
     empty_history: "Der Wiedergabeverlauf ist noch leer",
-    empty_bookmarks: "Noch keine Lesezeichen in diesem Bereich"
+    empty_bookmarks: "Noch keine Lesezeichen in diesem Bereich",
+    tv_mode: "TV-Modus",
+    watch_together: "Kinosalon",
+    sync_backup: "Synchronisation",
+    pwa_install: "App installieren",
+    achievements_tab: "Erfolge",
+    reviews_tab: "Bewertungen"
   },
 
   fr: {
@@ -431,7 +449,13 @@ export const translations = {
     msg_login_success: "Connexion réussie",
     msg_logout_success: "Vous êtes déconnecté",
     empty_history: "L'historique de visionnage est vide",
-    empty_bookmarks: "Aucun favori dans cette section pour l'instant"
+    empty_bookmarks: "Aucun favori dans cette section pour l'instant",
+    tv_mode: "Mode TV",
+    watch_together: "Salle de cinéma",
+    sync_backup: "Synchronisation",
+    pwa_install: "Installer",
+    achievements_tab: "Succès",
+    reviews_tab: "Critiques"
   },
 
   zh: {
@@ -536,7 +560,13 @@ export const translations = {
     msg_login_success: "登录成功",
     msg_logout_success: "已退出系统",
     empty_history: "暂无观看历史记录",
-    empty_bookmarks: "该栏目下暂无收藏内容"
+    empty_bookmarks: "该栏目下暂无收藏内容",
+    tv_mode: "电视模式",
+    watch_together: "放映室",
+    sync_backup: "同步与备份",
+    pwa_install: "安装应用",
+    achievements_tab: "成就",
+    reviews_tab: "影评"
   },
 
   ja: {
@@ -641,7 +671,13 @@ export const translations = {
     msg_login_success: "ログインしました",
     msg_logout_success: "ログアウトしました",
     empty_history: "視聴履歴はありません",
-    empty_bookmarks: "このセクションにはまだ作品がありません"
+    empty_bookmarks: "このセクションにはまだ作品がありません",
+    tv_mode: "TVモード",
+    watch_together: "シアター部屋",
+    sync_backup: "同期とバックアップ",
+    pwa_install: "インストール",
+    achievements_tab: "実績",
+    reviews_tab: "レビュー"
   }
 };
 

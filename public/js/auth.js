@@ -307,12 +307,20 @@ export function switchProfileTab(tabName) {
   });
 
   const overview = document.getElementById('ptab-content-overview');
+  const achievements = document.getElementById('ptab-content-achievements');
   const edit = document.getElementById('ptab-content-edit');
   const security = document.getElementById('ptab-content-security');
 
   if (overview) overview.style.display = tabName === 'overview' ? 'block' : 'none';
   if (edit) edit.style.display = tabName === 'edit' ? 'block' : 'none';
   if (security) security.style.display = tabName === 'security' ? 'block' : 'none';
+
+  if (achievements) {
+    achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
+    if (tabName === 'achievements') {
+      import('./achievements.js').then(m => m.renderProfileAchievements(achievements));
+    }
+  }
 }
 
 export function initProfileHandlers() {

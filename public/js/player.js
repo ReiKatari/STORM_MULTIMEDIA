@@ -1,11 +1,16 @@
 /* ==========================================================================
    STORM MULTIMEDIA - КИНОТЕАТРАЛЬНЫЙ МОДАЛЬНЫЙ ПЛЕЕР (CINEMA MODAL)
-   Поддержка 4K FanFilm4K, AniXart аниме (с озвучками и сериями), Kinobox
+   Поддержка 4K FanFilm4K, AniLibria HLS, AniXart, Kinobox, WebTorrent,
+   Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
 import { saveBookmarkStatus, syncWatchProgress, fetchCustomLists, addItemToCollection } from './bookmarks.js';
 import { getUser, showToast } from './auth.js';
 import { t } from './i18n.js';
+import { trackClientAction } from './achievements.js';
+import { renderReviewsSection } from './reviews.js';
+import { attachPlayerToRoom, createWatchRoom, getActiveRoom } from './watch-together.js';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js';
 
 let currentMedia = null;
 let currentPlayers = [];
@@ -15,10 +20,29 @@ let currentEpisodes = [];
 let currentEpisodeIndex = 1;
 let currentProgressPercent = 0;
 
+// Ambilight
+let ambilightEnabled = false;
+let ambilightCanvas = null;
+let ambilightCtx = null;
+let ambilightRaf = null;
+
+// Skip Intro и Outro
+let skipIntervals = null;
+let autoSkipEnabled = false;
+
+// WebTorrent
+let torrentClient = null;
+
 export async function openPlayerModal(mediaItem) {
   currentMedia = mediaItem;
   const modal = document.getElementById('cinema-modal');
   if (!modal) return;
+
+  // Проверяем ночной просмотр (между 02:00 и 05:00)
+  const currentHour = new Date().getHours();
+  if (currentHour >= 2 && currentHour < 5) {
+    trackClientAction('night_watch');
+  }
 
   // Сброс состояния плеера
   const iframeContainer = document.getElementById('cinema-player-wrapper');
@@ -41,9 +65,20 @@ export async function openPlayerModal(mediaItem) {
     currentMedia = { ...mediaItem, ...details };
     currentPlayers = details.players || [];
 
+    // Добавляем P2P WebTorrent в список плееров
+    currentPlayers.push({
+      name: 'P2P WebTorrent (Торрент-стриминг)',
+      url: 'webtorrent://direct',
+      badge: 'P2P 4K'
+    });
+
     renderPlayerSources(currentPlayers);
     renderStatusButtons(details.user_bookmark?.status || mediaItem.user_status);
     renderCustomListsSelector();
+    renderPlayerUtilityButtons();
+
+    // Загружаем таймкоды пропуска заставок
+    loadSkipTimes(mediaItem.id, 1);
 
     // Для AniLibria и AniXart отображаем озвучки и серии
     if (mediaItem.source === 'anilibria' && details.episodes && details.episodes.length > 0) {
@@ -56,6 +91,12 @@ export async function openPlayerModal(mediaItem) {
         selectPlayer(currentPlayers[0]);
       }
     }
+
+    // Рендерим секцию рецензий со спойлер-блоками
+    const reviewsContainer = document.getElementById('cinema-reviews-container');
+    if (reviewsContainer) {
+      renderReviewsSection(reviewsContainer, currentMedia);
+    }
   } catch (err) {
     iframeContainer.innerHTML = `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--color-red);">Ошибка загрузки: ${err.message}</div>`;
   }
@@ -65,8 +106,17 @@ export function closePlayerModal() {
   const modal = document.getElementById('cinema-modal');
   if (modal) {
     modal.classList.remove('is-open');
+    stopAmbilight();
+
     const iframeContainer = document.getElementById('cinema-player-wrapper');
     if (iframeContainer) iframeContainer.innerHTML = '';
+
+    if (torrentClient) {
+      try {
+        torrentClient.destroy();
+      } catch {}
+      torrentClient = null;
+    }
   }
 }
 
@@ -98,6 +148,11 @@ function selectPlayer(player) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
+  if (player.url === 'webtorrent://direct') {
+    renderWebTorrentPlayer();
+    return;
+  }
+
   if (!player.url) {
     container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Ссылка на плеер не найдена</div>';
     return;
@@ -110,11 +165,32 @@ function playStreamUrl(url) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
+  if (currentMedia?.source === 'fanfilm4k') {
+    trackClientAction('use_4k');
+  }
+
   if (url.includes('.m3u8')) {
     container.innerHTML = `
-      <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;" playsinline></video>
+      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+        <!-- Динамическая подсветка Ambilight -->
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+
+        <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
+
+        <!-- Кнопки пропуска заставок -->
+        <button type="button" class="storm-skip-btn" id="skip-intro-btn" style="display: none;">
+          ⏭️ Пропустить заставку
+        </button>
+        <button type="button" class="storm-skip-btn" id="skip-outro-btn" style="display: none;">
+          ⏭️ Следующая серия
+        </button>
+      </div>
     `;
+
     const video = document.getElementById('storm-video-player');
+    const videoBox = container.querySelector('.player-video-box');
+
+    // Настраиваем HLS
     if (window.Hls && window.Hls.isSupported()) {
       const hls = new window.Hls();
       hls.loadSource(url);
@@ -126,12 +202,432 @@ function playStreamUrl(url) {
       video.src = url;
       video.play().catch(() => {});
     }
+
+    // Подключаем Ambilight, Субтитры, Пропуск заставок и Watch Together
+    setupVideoFeatures(video, videoBox);
     return;
   }
 
+  // Стандартный Iframe
   container.innerHTML = `
-    <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture"></iframe>
+    <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+      <div id="player-ambilight-aura" class="ambilight-aura"></div>
+      <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;"></iframe>
+    </div>
   `;
+}
+
+function setupVideoFeatures(video, wrapper) {
+  // 1. Ambilight
+  initAmbilight(video);
+
+  // 2. Субтитры и аудиодорожки
+  initSubtitlesManager(video, wrapper);
+
+  // 3. Синхронизация Кинокомнаты
+  if (getActiveRoom()) {
+    attachPlayerToRoom(video);
+  }
+
+  // 4. Логика пропуска опенингов и эндингов
+  setupSkipLogic(video);
+}
+
+// ==========================================
+// AMBILIGHT (ДИНАМИЧЕСКАЯ ПОДСВЕТКА)
+// ==========================================
+function initAmbilight(video) {
+  if (!ambilightCanvas) {
+    ambilightCanvas = document.createElement('canvas');
+    ambilightCanvas.width = 16;
+    ambilightCanvas.height = 9;
+    ambilightCtx = ambilightCanvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  if (ambilightEnabled) {
+    startAmbilightLoop(video);
+  }
+}
+
+export function toggleAmbilight() {
+  ambilightEnabled = !ambilightEnabled;
+  const aura = document.getElementById('player-ambilight-aura');
+  const btn = document.getElementById('toggle-ambilight-btn');
+
+  if (btn) {
+    btn.classList.toggle('active', ambilightEnabled);
+  }
+
+  if (ambilightEnabled) {
+    trackClientAction('use_ambilight');
+    showToast('Динамическая подсветка Ambilight включена', 'info');
+    const video = document.getElementById('storm-video-player');
+    if (video) startAmbilightLoop(video);
+  } else {
+    stopAmbilight();
+    if (aura) aura.style.opacity = '0';
+    showToast('Подсветка Ambilight выключена', 'info');
+  }
+}
+
+function startAmbilightLoop(video) {
+  stopAmbilight();
+
+  function loop() {
+    if (!ambilightEnabled || !video || video.paused || video.ended) {
+      ambilightRaf = requestAnimationFrame(loop);
+      return;
+    }
+
+    try {
+      if (video.videoWidth > 0) {
+        ambilightCtx.drawImage(video, 0, 0, 16, 9);
+        const data = ambilightCtx.getImageData(0, 0, 16, 9).data;
+
+        // Средний цвет
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let i = 0; i < data.length; i += 16) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count++;
+        }
+        r = Math.round(r / count);
+        g = Math.round(g / count);
+        b = Math.round(b / count);
+
+        const aura = document.getElementById('player-ambilight-aura');
+        if (aura) {
+          aura.style.opacity = '0.75';
+          aura.style.boxShadow = `0 0 90px rgba(${r}, ${g}, ${b}, 0.85), inset 0 0 60px rgba(${r}, ${g}, ${b}, 0.5)`;
+        }
+      }
+    } catch {}
+
+    ambilightRaf = requestAnimationFrame(loop);
+  }
+
+  ambilightRaf = requestAnimationFrame(loop);
+}
+
+function stopAmbilight() {
+  if (ambilightRaf) {
+    cancelAnimationFrame(ambilightRaf);
+    ambilightRaf = null;
+  }
+}
+
+// ==========================================
+// ПРОПУСК ОПЕНИНГОВ И ЭНДИНГОВ (SKIP INTRO/OUTRO)
+// ==========================================
+async function loadSkipTimes(mediaId, episode) {
+  skipIntervals = null;
+  try {
+    const res = await fetch(`/api/media/skip-times?malId=${encodeURIComponent(mediaId)}&episode=${encodeURIComponent(episode)}`);
+    if (res.ok) {
+      skipIntervals = await res.json();
+    }
+  } catch {
+    skipIntervals = { op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } };
+  }
+}
+
+function setupSkipLogic(video) {
+  const skipIntroBtn = document.getElementById('skip-intro-btn');
+  const skipOutroBtn = document.getElementById('skip-outro-btn');
+
+  if (skipIntroBtn) {
+    skipIntroBtn.onclick = () => {
+      if (skipIntervals?.op?.end) {
+        video.currentTime = skipIntervals.op.end + 0.5;
+        trackClientAction('use_skip');
+        showToast('Заставка пропущена', 'info');
+      }
+    };
+  }
+
+  if (skipOutroBtn) {
+    skipOutroBtn.onclick = () => {
+      trackClientAction('use_skip');
+      playNextEpisode();
+    };
+  }
+
+  video.ontimeupdate = () => {
+    const time = video.currentTime;
+
+    // Синхронизация ползунка прогресса
+    if (video.duration) {
+      const percent = Math.min(100, Math.round((time / video.duration) * 100));
+      const slider = document.getElementById('player-progress-slider');
+      const label = document.getElementById('player-progress-label');
+      if (slider) slider.value = percent;
+      if (label) label.textContent = `${percent}%`;
+    }
+
+    if (!skipIntervals) return;
+
+    // Пропуск заставки
+    if (skipIntervals.op && time >= skipIntervals.op.start && time <= skipIntervals.op.end) {
+      if (autoSkipEnabled) {
+        video.currentTime = skipIntervals.op.end + 0.5;
+      } else if (skipIntroBtn) {
+        skipIntroBtn.style.display = 'block';
+      }
+    } else if (skipIntroBtn) {
+      skipIntroBtn.style.display = 'none';
+    }
+
+    // Пропуск титров
+    if (skipIntervals.ed && time >= skipIntervals.ed.start && time <= skipIntervals.ed.end) {
+      if (autoSkipEnabled) {
+        playNextEpisode();
+      } else if (skipOutroBtn) {
+        skipOutroBtn.style.display = 'block';
+      }
+    } else if (skipOutroBtn) {
+      skipOutroBtn.style.display = 'none';
+    }
+  };
+}
+
+function playNextEpisode() {
+  const grid = document.getElementById('episodes-grid');
+  if (!grid) return;
+  const activeBtn = grid.querySelector('.episode-btn.active');
+  if (activeBtn && activeBtn.nextElementSibling) {
+    activeBtn.nextElementSibling.click();
+    showToast('Переход к следующей серии', 'info');
+  }
+}
+
+// ==========================================
+// ПРОДВИНУТЫЙ РЕЖИМ «КАРТИНКА В КАРТИНКЕ» (PIP)
+// ==========================================
+export async function toggleAdvancedPiP() {
+  const video = document.getElementById('storm-video-player');
+  if (!video) {
+    showToast('PiP доступен только для прямого видеопотока', 'warning');
+    return;
+  }
+
+  // Современный Document Picture-in-Picture API
+  if ('documentPictureInPicture' in window) {
+    try {
+      const pipWindow = await window.documentPictureInPicture.requestWindow({
+        width: 520,
+        height: 320
+      });
+
+      // Копируем стили
+      document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+        pipWindow.document.head.appendChild(link.cloneNode(true));
+      });
+
+      pipWindow.document.body.style.margin = '0';
+      pipWindow.document.body.style.background = '#000';
+      pipWindow.document.body.style.display = 'flex';
+      pipWindow.document.body.style.flexDirection = 'column';
+      pipWindow.document.body.style.height = '100vh';
+
+      pipWindow.document.body.appendChild(video);
+
+      trackClientAction('use_pip');
+      showToast('Режим Картинка в картинке активирован', 'info');
+
+      pipWindow.addEventListener('pagehide', () => {
+        const wrapper = document.querySelector('.player-video-box');
+        if (wrapper) wrapper.prepend(video);
+      });
+      return;
+    } catch (err) {
+      console.warn('Document PiP не запустился, переходим к стандартному PiP:', err);
+    }
+  }
+
+  // Стандартный HTML5 PiP
+  if (document.pictureInPictureElement) {
+    await document.exitPictureInPicture();
+  } else if (video.requestPictureInPicture) {
+    await video.requestPictureInPicture();
+    trackClientAction('use_pip');
+  }
+}
+
+// ==========================================
+// P2P WEBTORRENT СТРИМИНГ
+// ==========================================
+function renderWebTorrentPlayer() {
+  const container = document.getElementById('cinema-player-wrapper');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="webtorrent-container">
+      <div style="text-align: center; margin-bottom: 16px;">
+        <span style="font-size: 36px;">🧲</span>
+        <h4 style="margin: 6px 0; font-weight: 800;">P2P WebTorrent Стриминг</h4>
+        <p style="font-size: 12px; color: var(--text-muted); max-width: 480px; margin: 0 auto;">
+          Прямое воспроизведение magnet-ссылок и торрент-файлов в браузере через пиринговую сеть WebTorrent без ожидания загрузки.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 8px; max-width: 600px; margin: 0 auto 16px auto; width: 100%;">
+        <input type="text" class="storm-input" id="torrent-magnet-input" placeholder="Вставьте magnet:?xt=urn:btih:... ссылку">
+        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="start-torrent-btn">Запустить</button>
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="preset-torrent-btn">▶️ Запустить демо (4K Tears of Steel)</button>
+        <label class="storm-btn storm-btn-secondary storm-btn-sm" style="cursor: pointer; margin: 0;">
+          📁 Открыть .torrent файл
+          <input type="file" id="torrent-file-input" accept=".torrent" style="display: none;">
+        </label>
+      </div>
+
+      <!-- Контейнер плеера и HUD пиров -->
+      <div id="torrent-playback-area" style="display: none; width: 100%; height: 380px; position: relative;">
+        <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;"></video>
+        <div class="torrent-stats-hud" id="torrent-stats-hud">
+          <span>👥 Пиров: <b id="torrent-peers">0</b></span>
+          <span>⬇️ Скорость: <b id="torrent-speed">0 MB/s</b></span>
+          <span>📊 Прогресс: <b id="torrent-progress">0%</b></span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const startBtn = container.querySelector('#start-torrent-btn');
+  const magnetInput = container.querySelector('#torrent-magnet-input');
+  const presetBtn = container.querySelector('#preset-torrent-btn');
+  const fileInput = container.querySelector('#torrent-file-input');
+
+  if (startBtn && magnetInput) {
+    startBtn.onclick = () => {
+      const magnet = magnetInput.value.trim();
+      if (!magnet) {
+        showToast('Введите magnet-ссылку', 'warning');
+        return;
+      }
+      startWebTorrentStream(magnet);
+    };
+  }
+
+  if (presetBtn) {
+    presetBtn.onclick = () => {
+      // Официальный открытый торрент Tears of Steel (WebTorrent)
+      const demoMagnet = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com';
+      startWebTorrentStream(demoMagnet);
+    };
+  }
+
+  if (fileInput) {
+    fileInput.onchange = (e) => {
+      if (e.target.files && e.target.files[0]) {
+        startWebTorrentStream(e.target.files[0]);
+      }
+    };
+  }
+}
+
+function startWebTorrentStream(torrentIdentifier) {
+  if (!window.WebTorrent) {
+    showToast('Библиотека WebTorrent загружается, повторите попытку', 'warning');
+    return;
+  }
+
+  const playbackArea = document.getElementById('torrent-playback-area');
+  if (playbackArea) playbackArea.style.display = 'block';
+
+  if (torrentClient) {
+    torrentClient.destroy();
+  }
+
+  torrentClient = new window.WebTorrent();
+  showToast('Подключение к пиринговой сети P2P...', 'info');
+
+  torrentClient.add(torrentIdentifier, (torrent) => {
+    showToast(`Торрент обнаружен: ${torrent.name}`, 'success');
+    trackClientAction('use_torrent');
+
+    // Находим видеофайл
+    const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.mkv') || f.name.endsWith('.webm'));
+    if (file) {
+      const video = document.getElementById('storm-video-player');
+      file.renderTo(video, { autoplay: true });
+      setupVideoFeatures(video, playbackArea);
+    }
+
+    // Обновляем статистику скорости и пиров
+    torrent.on('download', () => {
+      const peersEl = document.getElementById('torrent-peers');
+      const speedEl = document.getElementById('torrent-speed');
+      const progressEl = document.getElementById('torrent-progress');
+
+      if (peersEl) peersEl.textContent = torrent.numPeers;
+      if (speedEl) speedEl.textContent = `${(torrent.downloadSpeed / (1024 * 1024)).toFixed(1)} MB/s`;
+      if (progressEl) progressEl.textContent = `${(torrent.progress * 100).toFixed(1)}%`;
+    });
+  });
+}
+
+function renderPlayerUtilityButtons() {
+  const container = document.getElementById('player-utility-actions');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+      <!-- Кнопка Ambilight -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${ambilightEnabled ? 'active' : ''}" id="toggle-ambilight-btn">
+        🌈 Ambilight
+      </button>
+
+      <!-- Кнопка PiP -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn">
+        🖼️ PiP
+      </button>
+
+      <!-- Кнопка Кинокомнаты -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="create-room-btn">
+        👥 Кинокомната
+      </button>
+
+      <!-- Автопропуск интро/аутро -->
+      <label class="storm-btn storm-btn-secondary storm-btn-sm" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0;">
+        <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
+        Автопропуск интро
+      </label>
+    </div>
+
+    <!-- Панель субтитров -->
+    <div id="subtitles-controls-host"></div>
+  `;
+
+  const ambilightBtn = container.querySelector('#toggle-ambilight-btn');
+  if (ambilightBtn) ambilightBtn.onclick = toggleAmbilight;
+
+  const pipBtn = container.querySelector('#toggle-pip-btn');
+  if (pipBtn) pipBtn.onclick = toggleAdvancedPiP;
+
+  const roomBtn = container.querySelector('#create-room-btn');
+  if (roomBtn) {
+    roomBtn.onclick = async () => {
+      const code = await createWatchRoom(currentMedia);
+      if (code) {
+        showToast(`Кинокомната создана! Код: ${code}`, 'success');
+      }
+    };
+  }
+
+  const autoSkipCheck = container.querySelector('#toggle-autoskip');
+  if (autoSkipCheck) {
+    autoSkipCheck.onchange = (e) => {
+      autoSkipEnabled = e.target.checked;
+      showToast(`Автопропуск заставок: ${autoSkipEnabled ? 'Включен' : 'Выключен'}`, 'info');
+    };
+  }
+
+  const subHost = container.querySelector('#subtitles-controls-host');
+  if (subHost) renderSubtitlesControls(subHost);
 }
 
 function renderAniLibriaControls(details) {
@@ -159,8 +655,10 @@ function renderAniLibriaControls(details) {
     epBtn.onclick = () => {
       grid.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'));
       epBtn.classList.add('active');
+      currentEpisodeIndex = ep.ordinal || (idx + 1);
       const streamUrl = ep.hls_1080 || ep.hls_720 || ep.hls_480;
       if (streamUrl) playStreamUrl(streamUrl);
+      loadSkipTimes(currentMedia.id, currentEpisodeIndex);
     };
     grid.appendChild(epBtn);
   });
@@ -197,7 +695,6 @@ async function renderAnixartControls(details) {
     voiceoversPills.appendChild(pill);
   });
 
-  // Загружаем серии первой озвучки
   loadAnixartEpisodes(details.id, voiceovers[0].id);
 }
 
@@ -226,11 +723,11 @@ async function loadAnixartEpisodes(releaseId, typeId) {
         epBtn.classList.add('active');
         currentEpisodeIndex = ep.position || (idx + 1);
         playAnixartEpisode(ep);
+        loadSkipTimes(releaseId, currentEpisodeIndex);
       };
       grid.appendChild(epBtn);
     });
 
-    // Автоматически запускаем первую серию
     if (currentEpisodes.length > 0) {
       playAnixartEpisode(currentEpisodes[0]);
     }
@@ -245,10 +742,12 @@ function playAnixartEpisode(episode) {
 
   if (episode.url) {
     container.innerHTML = `
-      <iframe class="cinema-player-iframe" src="${episode.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture"></iframe>
+      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <iframe class="cinema-player-iframe" src="${episode.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;"></iframe>
+      </div>
     `;
 
-    // Синхронизируем прогресс
     updateProgressState(currentEpisodeIndex, currentEpisodes.length || 1);
   }
 }
