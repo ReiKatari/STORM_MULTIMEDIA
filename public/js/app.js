@@ -447,6 +447,34 @@ function getSourceName(item) {
 // -------------------------------------------------------------
 // ПОИСК (SEARCH)
 // -------------------------------------------------------------
+export async function executeSearch(query = null) {
+  const input = document.getElementById('global-search-input');
+  const clearBtn = document.getElementById('search-clear-btn');
+  const q = (query !== null ? query : (input ? input.value : '')).trim();
+  searchQuery = q;
+
+  if (clearBtn) {
+    clearBtn.classList.toggle('is-visible', q.length > 0);
+  }
+
+  if (q.length >= 2) {
+    renderSkeletonGrid();
+    try {
+      const res = await fetch(`/api/media/search?q=${encodeURIComponent(q)}&source=${currentSource}`);
+      const data = await res.json();
+      currentItems = data.items || [];
+      renderMediaItems(currentItems);
+    } catch (err) {
+      const container = document.getElementById('media-render-container');
+      if (container) {
+        container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-red);">Ошибка поиска: ${err.message}</div>`;
+      }
+    }
+  } else if (q.length === 0) {
+    loadCurrentTab();
+  }
+}
+
 function initSearch() {
   const input = document.getElementById('global-search-input');
   const clearBtn = document.getElementById('search-clear-btn');
@@ -454,23 +482,24 @@ function initSearch() {
 
   if (!input) return;
 
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(debounceTimer);
+      executeSearch();
+    }
+  });
+
   input.addEventListener('input', (e) => {
     clearTimeout(debounceTimer);
-    searchQuery = e.target.value.trim();
+    const val = e.target.value.trim();
 
     if (clearBtn) {
-      clearBtn.classList.toggle('is-visible', searchQuery.length > 0);
+      clearBtn.classList.toggle('is-visible', val.length > 0);
     }
 
-    debounceTimer = setTimeout(async () => {
-      if (searchQuery.length >= 2) {
-        const res = await fetch(`/api/media/search?q=${encodeURIComponent(searchQuery)}&source=${currentSource}`);
-        const data = await res.json();
-        currentItems = data.items || [];
-        renderMediaItems(currentItems);
-      } else if (searchQuery.length === 0) {
-        loadCurrentTab();
-      }
+    debounceTimer = setTimeout(() => {
+      executeSearch(val);
     }, 350);
   });
 
@@ -479,7 +508,7 @@ function initSearch() {
       input.value = '';
       clearBtn.classList.remove('is-visible');
       searchQuery = '';
-      loadCurrentTab();
+      executeSearch('');
     });
   }
 
@@ -488,7 +517,11 @@ function initSearch() {
   if (sourceSelect) {
     sourceSelect.addEventListener('change', (e) => {
       currentSource = e.target.value;
-      loadCurrentTab();
+      if (searchQuery && searchQuery.length >= 2) {
+        executeSearch(searchQuery);
+      } else {
+        loadCurrentTab();
+      }
     });
   }
 }
@@ -601,10 +634,15 @@ function initModals() {
     };
   }
 
-  // Кнопка профиля
+  // Кнопка профиля (для зарегистрированных пользователей и гостей)
   const profileBtn = document.getElementById('user-profile-btn');
   if (profileBtn) {
     profileBtn.onclick = () => openProfileModal();
+  }
+
+  const headerProfileBtn = document.getElementById('header-profile-btn');
+  if (headerProfileBtn) {
+    headerProfileBtn.onclick = () => openProfileModal();
   }
 
   // Кнопка выхода

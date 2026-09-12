@@ -67,12 +67,46 @@ export async function openPlayerModal(mediaItem) {
   // Открываем модальное окно
   modal.classList.add('is-open');
 
+  // Немедленно инициализируем селекторы и кнопки, чтобы они были интерактивны СРАЗУ
+  renderStatusButtons(mediaItem.user_status);
+  renderCustomListsSelector();
+  renderPlayerUtilityButtons();
+
   try {
-    // Получаем детальные данные с сервера
+    // Получаем детальные данные с сервера с таймаутом 5000мс
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(() => controller.abort(), 5000);
+
     const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(mediaItem.title || '')}&year=${encodeURIComponent(mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}`;
-    const res = await fetch(itemUrl);
-    if (!res.ok) throw new Error('Не удалось загрузить данные фильма');
-    const details = await res.json();
+    
+    let details = null;
+    try {
+      const res = await fetch(itemUrl, { signal: controller.signal });
+      clearTimeout(fetchTimeout);
+      if (res.ok) {
+        details = await res.json();
+      }
+    } catch {
+      clearTimeout(fetchTimeout);
+    }
+
+    if (!details) {
+      details = {
+        ...mediaItem,
+        players: [
+          {
+            name: 'Kodik Онлайн (HD)',
+            url: `https://kodik.info/search?title=${encodeURIComponent(mediaItem.title)}`,
+            badge: 'KODIK'
+          },
+          {
+            name: 'Трейлер и превью (HD)',
+            url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(mediaItem.title + ' трейлер')}`,
+            badge: 'PREVIEW'
+          }
+        ]
+      };
+    }
 
     currentMedia = { ...mediaItem, ...details };
     currentPlayers = details.players || [];
@@ -116,7 +150,12 @@ export async function openPlayerModal(mediaItem) {
       renderReviewsSection(reviewsContainer, currentMedia);
     }
   } catch (err) {
-    iframeContainer.innerHTML = `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--color-red);">Ошибка загрузки: ${err.message}</div>`;
+    console.error('Ошибка модального окна плеера:', err);
+    if (currentPlayers.length > 0) {
+      selectPlayer(currentPlayers[0]);
+    } else {
+      playStreamUrl(`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(mediaItem.title + ' трейлер')}`);
+    }
   }
 }
 
@@ -237,11 +276,10 @@ function playStreamUrl(url) {
     return;
   }
 
-  // Стандартный Iframe с защитным sandbox (блокирует назойливые popunder, всплывающие окна и редиректы)
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen" style="position:relative;z-index:2;"></iframe>
+      <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -837,7 +875,7 @@ function playAnixartEpisode(episode) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${episode.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen" style="position:relative;z-index:2;"></iframe>
+        <iframe class="cinema-player-iframe" src="${episode.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 
@@ -962,11 +1000,6 @@ async function renderCustomListsSelector() {
 
   trigger.onclick = async (e) => {
     e.stopPropagation();
-    if (!getUser()) {
-      showToast('Войдите в систему для добавления в коллекции', 'info');
-      return;
-    }
-
     const isOpen = menu.style.display === 'block';
     if (isOpen) {
       menu.style.display = 'none';
@@ -974,6 +1007,27 @@ async function renderCustomListsSelector() {
     } else {
       menu.style.display = 'block';
       dropdown.classList.add('is-open');
+
+      if (!getUser()) {
+        if (createWrap) createWrap.style.display = 'none';
+        listContainer.innerHTML = `
+          <div style="padding: 16px 12px; text-align: center; color: var(--text-muted); font-size: 12px;">
+            <p style="margin: 0 0 10px 0;">Войдите в аккаунт, чтобы создавать персональные коллекции и списки.</p>
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" style="width: 100%;" id="dropdown-login-trigger-btn">Войти в аккаунт</button>
+          </div>
+        `;
+        const loginTrigger = listContainer.querySelector('#dropdown-login-trigger-btn');
+        if (loginTrigger) {
+          loginTrigger.onclick = () => {
+            menu.style.display = 'none';
+            dropdown.classList.remove('is-open');
+            const authModal = document.getElementById('auth-modal');
+            if (authModal) authModal.classList.add('is-open');
+          };
+        }
+        return;
+      }
+
       lists = await fetchCustomLists();
       if (searchInput) {
         searchInput.value = '';
@@ -982,6 +1036,17 @@ async function renderCustomListsSelector() {
       updateListDisplay('');
     }
   };
+
+  // Закрытие выпадающего меню при клике вне его области
+  if (!dropdown.dataset.hasOutsideListener) {
+    dropdown.dataset.hasOutsideListener = 'true';
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) {
+        menu.style.display = 'none';
+        dropdown.classList.remove('is-open');
+      }
+    });
+  }
 
   if (searchInput) {
     searchInput.onclick = (e) => e.stopPropagation();

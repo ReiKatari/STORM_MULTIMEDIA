@@ -399,80 +399,99 @@ app.get('/api/auth/stats', requireAuth, (req, res) => {
 // 2. ПРОКСИ ИЗОБРАЖЕНИЙ (100% ГАРАНТИЯ ЗАГРУЗКИ ОБЛОЖЕК)
 // ==========================================
 
-const imageCache = new Map();
+const animeCoverCache = new Map();
 
-app.get('/api/media/image-proxy', async (req, res) => {
-  const imageUrl = req.query.url;
-  const title = req.query.title;
-  if (!imageUrl) return res.status(400).send('Missing url parameter');
+async function resolveAnimePoster(title, orig) {
+  const cleanTitle = (title || '').trim();
+  const cleanOrig = (orig || '').trim();
+  const cacheKey = `${cleanTitle}:::${cleanOrig}`;
 
-  if (imageCache.has(imageUrl)) {
-    const cached = imageCache.get(imageUrl);
-    res.set('Content-Type', cached.contentType);
-    res.set('Cache-Control', 'public, max-age=604800, immutable');
-    return res.send(cached.buffer);
+  if (animeCoverCache.has(cacheKey)) {
+    return animeCoverCache.get(cacheKey);
   }
 
-  const tryFetchImage = async (url, referer = 'https://anixart.tv/') => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+  const searchTerms = [cleanOrig, cleanTitle].filter(t => t && t.length >= 2);
+
+  // 1. Быстрый поиск обложки через открытый GraphQL AniList
+  for (const term of searchTerms) {
     try {
-      const targetUrl = url.startsWith('//') ? `https:${url}` : url;
-      const resp = await fetch(targetUrl, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-          'Referer': referer
-        }
-      });
-      clearTimeout(timeout);
-      if (resp.ok) {
-        const contentType = resp.headers.get('content-type') || 'image/jpeg';
-        const buffer = Buffer.from(await resp.arrayBuffer());
-        return { contentType, buffer };
-      }
-      return null;
-    } catch {
-      clearTimeout(timeout);
-      return null;
-    }
-  };
-
-  try {
-    // 1. Пытаемся загрузить исходное изображение
-    let result = await tryFetchImage(imageUrl);
-
-    // 2. Если не удалось и указан заголовок тайтла — ищем в Shikimori CDN
-    if (!result && title) {
-      try {
-        const shikiSearch = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(title)}&limit=1`, {
-          headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' }
-        });
-        if (shikiSearch.ok) {
-          const list = await shikiSearch.json();
-          if (list && list[0]?.image?.original) {
-            const shikiImgUrl = `https://shikimori.one${list[0].image.original}`;
-            result = await tryFetchImage(shikiImgUrl, 'https://shikimori.one/');
+      const q = `
+        query ($search: String) {
+          Media(search: $search, type: ANIME) {
+            coverImage { large }
           }
         }
-      } catch {}
-    }
-
-    if (result) {
-      if (imageCache.size > 1500) {
-        const firstKey = imageCache.keys().next().value;
-        imageCache.delete(firstKey);
+      `;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1800);
+      const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ query: q, variables: { search: term } }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const img = data?.data?.Media?.coverImage?.large;
+        if (img) {
+          if (animeCoverCache.size > 2000) animeCoverCache.clear();
+          animeCoverCache.set(cacheKey, img);
+          return img;
+        }
       }
-      imageCache.set(imageUrl, result);
+    } catch {}
+  }
 
-      res.set('Content-Type', result.contentType);
+  // 2. Поиск через Shikimori API при необходимости
+  for (const term of searchTerms) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1800);
+      const res = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(term)}&limit=1`, {
+        headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const list = await res.json();
+        if (list && list[0]?.image) {
+          const imgPath = list[0].image.original || list[0].image.preview;
+          if (imgPath) {
+            const fullUrl = `https://shikimori.one${imgPath}`;
+            if (animeCoverCache.size > 2000) animeCoverCache.clear();
+            animeCoverCache.set(cacheKey, fullUrl);
+            return fullUrl;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const fallback = '/assets/favicon.svg';
+  animeCoverCache.set(cacheKey, fallback);
+  return fallback;
+}
+
+app.get('/api/media/image-proxy', async (req, res) => {
+  try {
+    const imageUrl = req.query.url || '';
+    const title = req.query.title || '';
+    const orig = req.query.orig || '';
+
+    // Если это ссылка на сторонний быстрый CDN (не anixmirai) — сразу 302 редирект
+    if (imageUrl && !imageUrl.includes('anixmirai.com') && !imageUrl.includes('anixapi')) {
+      const target = imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
       res.set('Cache-Control', 'public, max-age=604800, immutable');
-      return res.send(result.buffer);
+      return res.redirect(302, target);
     }
 
-    res.redirect('/assets/favicon.svg');
-  } catch (err) {
-    res.redirect('/assets/favicon.svg');
+    // Для AniXart постеров — быстро разрешаем через AniList / Shikimori CDN без зависания сокетов
+    const resolvedUrl = await resolveAnimePoster(title, orig);
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    return res.redirect(302, resolvedUrl);
+  } catch {
+    return res.redirect(302, '/assets/favicon.svg');
   }
 });
 
@@ -553,52 +572,52 @@ app.get('/api/media/catalog', async (req, res) => {
     else {
       if (category === 'anime-movies') {
         const [anixRes, shikiRes, libRes] = await Promise.all([
-          getAnixartDiscover('anime-movies', page - 1),
-          getShikimoriCatalog('anime-movies', page),
-          getAniLibriaCatalog('anime-movies', page)
+          getAnixartDiscover('anime-movies', page - 1).catch(() => ({ items: [] })),
+          getShikimoriCatalog('anime-movies', page).catch(() => ({ items: [] })),
+          getAniLibriaCatalog('anime-movies', page).catch(() => ({ items: [] }))
         ]);
-        items = interleaveSources([anixRes.items, shikiRes.items, libRes.items]);
+        items = interleaveSources([anixRes?.items || [], shikiRes?.items || [], libRes?.items || []]);
         totalItems = items.length;
       } else if (category === 'anime-series') {
         const [anixRes, libRes, shikiRes] = await Promise.all([
-          getAnixartDiscover('anime-series', page - 1),
-          getAniLibriaCatalog('anime-series', page),
-          getShikimoriCatalog('anime-series', page)
+          getAnixartDiscover('anime-series', page - 1).catch(() => ({ items: [] })),
+          getAniLibriaCatalog('anime-series', page).catch(() => ({ items: [] })),
+          getShikimoriCatalog('anime-series', page).catch(() => ({ items: [] }))
         ]);
-        items = interleaveSources([anixRes.items, libRes.items, shikiRes.items]);
+        items = interleaveSources([anixRes?.items || [], libRes?.items || [], shikiRes?.items || []]);
         totalItems = items.length;
       } else if (category === 'cartoon-series' || category === 'cartoons') {
         const [fanfilmRes, tmdbRes] = await Promise.all([
-          getFanFilmCatalog(category, page),
-          getTmdbCatalog(category, page)
+          getFanFilmCatalog(category, page).catch(() => ({ items: [] })),
+          getTmdbCatalog(category, page).catch(() => ({ items: [] }))
         ]);
-        items = interleaveSources([fanfilmRes.items, tmdbRes.items]);
+        items = interleaveSources([fanfilmRes?.items || [], tmdbRes?.items || []]);
         totalItems = items.length;
       } else if (category === 'movies' || category === 'series') {
         const [fanfilmRes, tmdbRes] = await Promise.all([
-          getFanFilmCatalog(category, page),
-          getTmdbCatalog(category, page)
+          getFanFilmCatalog(category, page).catch(() => ({ items: [] })),
+          getTmdbCatalog(category, page).catch(() => ({ items: [] }))
         ]);
-        items = interleaveSources([fanfilmRes.items, tmdbRes.items]);
+        items = interleaveSources([fanfilmRes?.items || [], tmdbRes?.items || []]);
         totalItems = items.length;
       } else if (category === 'new') {
         const [fRes, tmdbRes, aRes, libRes] = await Promise.all([
-          getFanFilmCatalog('new', page),
-          getTmdbCatalog('new', page),
-          getAnixartDiscover('new', page - 1),
-          getAniLibriaCatalog('new', page)
+          getFanFilmCatalog('new', page).catch(() => ({ items: [] })),
+          getTmdbCatalog('new', page).catch(() => ({ items: [] })),
+          getAnixartDiscover('new', page - 1).catch(() => ({ items: [] })),
+          getAniLibriaCatalog('new', page).catch(() => ({ items: [] }))
         ]);
-        items = interleaveSources([fRes.items, tmdbRes.items, aRes.items, libRes.items]);
+        items = interleaveSources([fRes?.items || [], tmdbRes?.items || [], aRes?.items || [], libRes?.items || []]);
         totalItems = items.length;
       } else {
         // Главная (home / popular)
         const [fRes, tmdbRes, aRes, libRes] = await Promise.all([
-          getFanFilmCatalog('popular', page),
-          getTmdbCatalog('popular', page),
-          getAnixartDiscover('popular', page - 1),
-          getAniLibriaCatalog('popular', page)
+          getFanFilmCatalog('popular', page).catch(() => ({ items: [] })),
+          getTmdbCatalog('popular', page).catch(() => ({ items: [] })),
+          getAnixartDiscover('popular', page - 1).catch(() => ({ items: [] })),
+          getAniLibriaCatalog('popular', page).catch(() => ({ items: [] }))
         ]);
-        items = interleaveSources([fRes.items, tmdbRes.items, aRes.items, libRes.items]);
+        items = interleaveSources([fRes?.items || [], tmdbRes?.items || [], aRes?.items || [], libRes?.items || []]);
         totalItems = items.length;
       }
     }
@@ -631,39 +650,54 @@ app.get('/api/media/catalog', async (req, res) => {
 
 app.get('/api/media/search', async (req, res) => {
   try {
-    const query = req.query.q || '';
+    const query = (req.query.q || '').trim();
     const source = req.query.source || 'all';
 
-    if (!query.trim()) {
-      return res.json({ items: [], total: 0 });
+    if (!query) {
+      return res.json({ query: '', total: 0, items: [] });
     }
 
-    let items = [];
+    const tasks = [];
+    const withTimeout = (promise, ms = 3500) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+      ]);
 
     if (source === 'all' || source === 'fanfilm4k') {
-      const fanfilmResults = await searchFanFilm(query);
-      items.push(...fanfilmResults);
+      tasks.push(withTimeout(searchFanFilm(query)).catch(() => []));
     }
 
     if (source === 'all' || source === 'tmdb' || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-      const tmdbResults = await searchTmdb(query);
-      items.push(...(tmdbResults.items || []));
+      tasks.push(withTimeout(searchTmdb(query)).then(r => r?.items || []).catch(() => []));
     }
 
     if (source === 'all' || source === 'anixart') {
-      const anixartResults = await searchAnixart(query, 0);
-      items.push(...(anixartResults.items || []));
+      tasks.push(withTimeout(searchAnixart(query, 0)).then(r => r?.items || []).catch(() => []));
     }
 
     if (source === 'all' || source === 'anilibria') {
-      const libResults = await searchAniLibria(query);
-      items.push(...(libResults.items || []));
+      tasks.push(withTimeout(searchAniLibria(query)).then(r => r?.items || []).catch(() => []));
     }
 
     if (source === 'all' || source === 'shikimori') {
-      const shikiResults = await searchShikimori(query);
-      items.push(...shikiResults);
+      tasks.push(withTimeout(searchShikimori(query)).catch(() => []));
     }
+
+    const settled = await Promise.all(tasks);
+    let items = [];
+    settled.forEach(arr => {
+      if (Array.isArray(arr)) items.push(...arr);
+    });
+
+    // Дедупликация
+    const seen = new Set();
+    items = items.filter(item => {
+      const key = `${item.source}_${item.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     if (req.user) {
       items = items.map(item => {
@@ -727,11 +761,25 @@ app.get('/api/media/item', async (req, res) => {
         players: []
       };
     } else {
-      mediaDetails = await getFanFilmDetails(url || id);
+      try {
+        mediaDetails = await getFanFilmDetails(url || id);
+      } catch {
+        mediaDetails = null;
+      }
     }
 
     if (!mediaDetails) {
-      return res.status(404).json({ error: 'Медиа не найдено' });
+      mediaDetails = {
+        id: String(id || 'media_' + Date.now()),
+        source: source || 'fanfilm4k',
+        title: req.query.title || 'Видео',
+        original_title: req.query.original_title || '',
+        poster: req.query.poster || 'assets/favicon.svg',
+        year: req.query.year || '',
+        rating: 0,
+        description: req.query.description || 'Просмотр фильма онлайн в высоком качестве.',
+        players: []
+      };
     }
 
     // Собираем расширенный список плееров (Kodik, Collaps, Alloha, Balda, HDRezka, Ashdi)

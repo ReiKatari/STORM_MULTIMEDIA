@@ -23,8 +23,9 @@ function formatAnimeRelease(rel) {
   }
 
   const cleanTitle = title.trim();
+  const cleanOrig = origTitle.trim();
   const poster = rawPoster
-    ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}`
+    ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`
     : 'assets/favicon.svg';
 
   return {

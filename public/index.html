@@ -60,17 +60,10 @@
           <span>🔄</span>
         </button>
 
-        <!-- Выбор визуальной темы оформления (8 эталонных стилей STORM) -->
-        <select class="theme-dropdown-select" id="header-theme-select" title="Выбор темы оформления">
-          <option value="STORM DARK">STORM DARK</option>
-          <option value="STORM NIGHT">STORM NIGHT</option>
-          <option value="STORM MATRIX">STORM MATRIX</option>
-          <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
-          <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
-          <option value="STORM FANTASY">STORM FANTASY</option>
-          <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
-          <option value="STORM DAY">STORM DAY</option>
-        </select>
+        <!-- Кнопка профиля и настроек -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-profile-btn" title="Профиль и темы оформления">
+          <span>⚙️</span> Профиль
+        </button>
 
         <!-- Кнопка входа -->
         <button class="storm-btn storm-btn-primary storm-btn-sm" id="login-modal-btn">
@@ -405,6 +398,24 @@
               <option value="fr">FR • Français</option>
               <option value="zh">ZH • 中文</option>
               <option value="ja">JA • 日本語</option>
+            </select>
+          </div>
+
+          <!-- Выбор визуальной темы оформления (8 эталонных стилей STORM) -->
+          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
+            <div>
+              <div style="font-weight: 700; font-size: 13px;">Тема оформления</div>
+              <div style="font-size: 11px; color: var(--text-muted);">8 эталонных стилей экосистемы STORM SOFT</div>
+            </div>
+            <select class="storm-select" id="profile-theme-select" style="min-width: 200px;">
+              <option value="STORM DARK">STORM DARK</option>
+              <option value="STORM NIGHT">STORM NIGHT</option>
+              <option value="STORM MATRIX">STORM MATRIX</option>
+              <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
+              <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
+              <option value="STORM FANTASY">STORM FANTASY</option>
+              <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
+              <option value="STORM DAY">STORM DAY</option>
             </select>
           </div>
         </div>
