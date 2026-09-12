@@ -33,7 +33,8 @@ export async function openPlayerModal(mediaItem) {
 
   try {
     // Получаем детальные данные с сервера
-    const res = await fetch(`/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}`);
+    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(mediaItem.title || '')}&year=${encodeURIComponent(mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}`;
+    const res = await fetch(itemUrl);
     if (!res.ok) throw new Error('Не удалось загрузить данные фильма');
     const details = await res.json();
 
@@ -44,8 +45,10 @@ export async function openPlayerModal(mediaItem) {
     renderStatusButtons(details.user_bookmark?.status || mediaItem.user_status);
     renderCustomListsSelector();
 
-    // Для AniXart отображаем озвучки и серии
-    if (mediaItem.source === 'anixart') {
+    // Для AniLibria и AniXart отображаем озвучки и серии
+    if (mediaItem.source === 'anilibria' && details.episodes && details.episodes.length > 0) {
+      renderAniLibriaControls(details);
+    } else if (mediaItem.source === 'anixart') {
       renderAnixartControls(details);
     } else {
       document.getElementById('anixart-controls-container').style.display = 'none';
@@ -100,9 +103,72 @@ function selectPlayer(player) {
     return;
   }
 
+  playStreamUrl(player.url);
+}
+
+function playStreamUrl(url) {
+  const container = document.getElementById('cinema-player-wrapper');
+  if (!container) return;
+
+  if (url.includes('.m3u8')) {
+    container.innerHTML = `
+      <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;" playsinline></video>
+    `;
+    const video = document.getElementById('storm-video-player');
+    if (window.Hls && window.Hls.isSupported()) {
+      const hls = new window.Hls();
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+      video.play().catch(() => {});
+    }
+    return;
+  }
+
   container.innerHTML = `
-    <iframe class="cinema-player-iframe" src="${player.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture"></iframe>
+    <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture"></iframe>
   `;
+}
+
+function renderAniLibriaControls(details) {
+  const container = document.getElementById('anixart-controls-container');
+  if (!container) return;
+  container.style.display = 'block';
+
+  const voiceoversPills = document.getElementById('voiceovers-pills');
+  voiceoversPills.innerHTML = '<button class="voiceover-pill active">Официальный дубляж AniLibria (1080p FHD)</button>';
+
+  const grid = document.getElementById('episodes-grid');
+  grid.innerHTML = '';
+
+  const episodes = details.episodes || [];
+  if (episodes.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px;">Серии не найдены</div>';
+    return;
+  }
+
+  episodes.forEach((ep, idx) => {
+    const epBtn = document.createElement('button');
+    epBtn.className = `episode-btn ${idx === 0 ? 'active' : ''}`;
+    epBtn.textContent = `${ep.ordinal || (idx + 1)}`;
+    epBtn.title = ep.name || `${ep.ordinal || (idx + 1)} серия`;
+    epBtn.onclick = () => {
+      grid.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'));
+      epBtn.classList.add('active');
+      const streamUrl = ep.hls_1080 || ep.hls_720 || ep.hls_480;
+      if (streamUrl) playStreamUrl(streamUrl);
+    };
+    grid.appendChild(epBtn);
+  });
+
+  if (episodes.length > 0) {
+    const firstUrl = episodes[0].hls_1080 || episodes[0].hls_720 || episodes[0].hls_480;
+    if (firstUrl) playStreamUrl(firstUrl);
+  }
 }
 
 async function renderAnixartControls(details) {

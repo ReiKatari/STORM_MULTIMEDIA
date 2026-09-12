@@ -37,45 +37,47 @@ export function getKinoboxPlayerConfig(params = {}) {
 
 /**
  * Получение набора запасных плееров для любого видео
+ * Поддерживает 10+ различных стриминговых шлюзов
  */
 export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, trailer_url }) {
   const players = [];
+  const safeTitle = encodeURIComponent(title || '');
 
-  // 1. Основной 4K UHD плеер (если доступен с FanFilm4K)
+  // 1. Основной 4K UHD плеер (FanFilm4K)
   if (fanfilm_4k_url) {
     players.push({
       id: 'fanfilm_4k',
       name: '4K Ultra HD Плеер (FanFilm4K)',
       type: 'iframe',
       quality: '4K UHD',
-      badge: '4K ULTRA HD',
+      badge: 'FANFILM 4K',
       url: fanfilm_4k_url
     });
   }
 
-  // 2. Kinobox Мультиплеер (Kodik, Collaps, Alloha, VCDN, HDRezka)
+  // 2. Kinobox Мультиплеер (Автоподбор по всем базам)
   if (kp_id || imdb_id || title) {
     const kinobox = getKinoboxPlayerConfig({ kp_id, imdb_id, title });
     players.push({
       id: 'kinobox',
-      name: 'Мультиплеер Kinobox (Kodik, Collaps, Alloha)',
+      name: 'Мультиплеер Kinobox (Kodik, Collaps, Alloha, Balda)',
       type: 'kinobox',
       quality: '1080p FHD',
-      badge: 'МУЛЬТИПЛЕЕР',
+      badge: 'KINOBOX',
       url: kinobox.url,
       kp_id: kp_id || '',
       imdb_id: imdb_id || ''
     });
   }
 
-  // 3. Прямой Kodik плеер
+  // 3. Kodik Плеер (Аниме, дорамы, сериалы)
   if (kp_id || title) {
     const kodikUrl = kp_id 
       ? `https://kodik.info/find-player?kinopoiskID=${kp_id}`
-      : `https://kodik.info/find-player?title=${encodeURIComponent(title)}`;
+      : `https://kodik.info/find-player?title=${safeTitle}`;
     players.push({
       id: 'kodik_direct',
-      name: 'Kodik Плеер (озвучки и сериалы)',
+      name: 'Kodik Плеер (сериалы и озвучки)',
       type: 'iframe',
       quality: '1080p FHD',
       badge: 'KODIK',
@@ -83,7 +85,76 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, tra
     });
   }
 
-  // 4. Трейлер
+  // 4. Collaps Плеер
+  if (kp_id || imdb_id) {
+    const collapsUrl = kp_id
+      ? `https://api.delivembd.ws/embed/kp/${kp_id}`
+      : `https://api.delivembd.ws/embed/imdb/${imdb_id}`;
+    players.push({
+      id: 'collaps_direct',
+      name: 'Collaps Плеер (Full HD)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'COLLAPS',
+      url: collapsUrl
+    });
+  }
+
+  // 5. Alloha TV Плеер
+  if (kp_id || title) {
+    const allohaUrl = `https://kinobox.tv/embed/alloha?kp=${kp_id || ''}&title=${safeTitle}`;
+    players.push({
+      id: 'alloha_direct',
+      name: 'Alloha TV Плеер (быстрый поток)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'ALLOHA',
+      url: allohaUrl
+    });
+  }
+
+  // 6. HDRezka Плеер
+  if (kp_id || title) {
+    const rezkaUrl = `https://kinobox.tv/embed/rezka?kp=${kp_id || ''}&title=${safeTitle}`;
+    players.push({
+      id: 'hdrezka_direct',
+      name: 'HDRezka Плеер (авторский дубляж)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'HDREZKA',
+      url: rezkaUrl
+    });
+  }
+
+  // 7. Videocdn Плеер
+  if (kp_id || imdb_id) {
+    const videocdnUrl = kp_id
+      ? `https://kinobox.tv/embed/videocdn?kp=${kp_id}`
+      : `https://kinobox.tv/embed/videocdn?imdb=${imdb_id}`;
+    players.push({
+      id: 'videocdn_direct',
+      name: 'Videocdn Плеер',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'VIDEOCDN',
+      url: videocdnUrl
+    });
+  }
+
+  // 8. Ashdi Плеер
+  if (kp_id || title) {
+    const ashdiUrl = `https://kinobox.tv/embed/ashdi?kp=${kp_id || ''}&title=${safeTitle}`;
+    players.push({
+      id: 'ashdi_direct',
+      name: 'Ashdi Плеер',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'ASHDI',
+      url: ashdiUrl
+    });
+  }
+
+  // 9. Трейлер
   if (trailer_url) {
     players.push({
       id: 'trailer',

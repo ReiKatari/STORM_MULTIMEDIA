@@ -45,6 +45,17 @@ import {
 } from './services/shikimori-service.js';
 
 import {
+  getTmdbCatalog,
+  searchTmdb
+} from './services/tmdb-service.js';
+
+import {
+  getAniLibriaCatalog,
+  getAniLibriaDetails,
+  searchAniLibria
+} from './services/anilibria-service.js';
+
+import {
   getAvailablePlayers
 } from './services/kinobox-service.js';
 
@@ -240,8 +251,25 @@ app.get('/api/media/image-proxy', async (req, res) => {
   }
 });
 
+// Вспомогательная функция для сбалансированного объединения результатов из разных источников
+function interleaveSources(arrays) {
+  const result = [];
+  const validArrays = arrays.filter(a => Array.isArray(a) && a.length > 0);
+  if (validArrays.length === 0) return [];
+
+  const maxLen = Math.max(...validArrays.map(a => a.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const arr of validArrays) {
+      if (i < arr.length && result.length < 120) {
+        result.push(arr[i]);
+      }
+    }
+  }
+  return result;
+}
+
 // ==========================================
-// 3. МЕДИА КАТАЛОГ И АГРЕГАЦИЯ ИСТОЧНИКОВ
+// 3. МЕДИА КАТАЛОГ И АГРЕГАЦИЯ 12+ ИСТОЧНИКОВ
 // ==========================================
 
 app.get('/api/media/catalog', async (req, res) => {
@@ -253,104 +281,104 @@ app.get('/api/media/catalog', async (req, res) => {
     let items = [];
     let totalItems = 0;
 
-    // Вкладка: Аниме-фильмы
-    if (category === 'anime-movies') {
-      if (source === 'shikimori') {
-        const shikiRes = await getShikimoriCatalog('anime-movies', page);
-        items = shikiRes.items;
-      } else {
-        const anixRes = await getAnixartDiscover('anime-movies', page - 1);
-        items = anixRes.items;
-      }
-      totalItems = items.length;
+    // 1. Прямой источник: The Movie Database (TMDB)
+    if (source === 'tmdb') {
+      const tmdbRes = await getTmdbCatalog(category, page);
+      items = tmdbRes.items;
+      totalItems = tmdbRes.total_items;
     }
-    // Вкладка: Аниме-сериалы
-    else if (category === 'anime-series') {
-      if (source === 'shikimori') {
-        const shikiRes = await getShikimoriCatalog('anime-series', page);
-        items = shikiRes.items;
-      } else {
-        const anixRes = await getAnixartDiscover('anime-series', page - 1);
-        items = anixRes.items;
-      }
-      totalItems = items.length;
+    // 2. Прямой источник: AniLibria
+    else if (source === 'anilibria') {
+      const aLibRes = await getAniLibriaCatalog(category, page);
+      items = aLibRes.items;
+      totalItems = aLibRes.total_items;
     }
-    // Вкладка: Мультсериалы
-    else if (category === 'cartoon-series') {
-      const fanfilmRes = await getFanFilmCatalog('cartoon-series', page);
+    // 3. Стриминговые провайдеры (Kodik, HDRezka, Collaps, Alloha, Videocdn, Ashdi, Kinobox)
+    else if (['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+      const tmdbRes = await getTmdbCatalog(category, page);
+      items = tmdbRes.items.map(i => ({
+        ...i,
+        source: source,
+        provider_name: source.toUpperCase()
+      }));
+      totalItems = tmdbRes.total_items;
+    }
+    // 4. Прямой источник: FanFilm4K
+    else if (source === 'fanfilm4k') {
+      const cat = category === 'home' ? 'popular' : category;
+      const fanfilmRes = await getFanFilmCatalog(cat, page);
       items = fanfilmRes.items;
       totalItems = fanfilmRes.total_items;
     }
-    // Вкладка: Мультфильмы
-    else if (category === 'cartoons') {
-      const fanfilmRes = await getFanFilmCatalog('cartoons', page);
-      items = fanfilmRes.items;
-      totalItems = fanfilmRes.total_items;
+    // 5. Прямой источник: AniXart
+    else if (source === 'anixart') {
+      const cat = category === 'home' ? 'popular' : category;
+      const anixRes = await getAnixartDiscover(cat, page - 1);
+      items = anixRes.items;
+      totalItems = anixRes.items.length;
     }
-    // Вкладка: Фильмы
-    else if (category === 'movies') {
-      const fanfilmRes = await getFanFilmCatalog('movies', page);
-      items = fanfilmRes.items;
-      totalItems = fanfilmRes.total_items;
+    // 6. Прямой источник: Shikimori
+    else if (source === 'shikimori') {
+      const cat = category === 'home' ? 'popular' : category;
+      const shikiRes = await getShikimoriCatalog(cat, page);
+      items = shikiRes.items;
+      totalItems = shikiRes.items.length;
     }
-    // Вкладка: Сериалы
-    else if (category === 'series') {
-      const fanfilmRes = await getFanFilmCatalog('series', page);
-      items = fanfilmRes.items;
-      totalItems = fanfilmRes.total_items;
-    }
-    // Вкладка: Новинки
-    else if (category === 'new') {
-      if (source === 'fanfilm4k') {
-        const fRes = await getFanFilmCatalog('new', page);
-        items = fRes.items;
-      } else if (source === 'anixart') {
-        const aRes = await getAnixartDiscover('new', page - 1);
-        items = aRes.items;
-      } else {
-        const [fRes, aRes] = await Promise.all([
-          getFanFilmCatalog('new', page),
-          getAnixartDiscover('new', page - 1)
-        ]);
-        const fItems = fRes.items || [];
-        const aItems = aRes.items || [];
-        const maxLen = Math.max(fItems.length, aItems.length);
-        for (let i = 0; i < maxLen; i++) {
-          if (i < fItems.length) items.push(fItems[i]);
-          if (i < aItems.length && items.length < 60) items.push(aItems[i]);
-        }
-      }
-      totalItems = items.length;
-    }
-    // Вкладка: Главная (Home)
+    // 7. Сводный каталог всех источников ('all')
     else {
-      if (source === 'fanfilm4k') {
-        const fRes = await getFanFilmCatalog('popular', page);
-        items = fRes.items;
-      } else if (source === 'anixart') {
-        const aRes = await getAnixartDiscover('popular', page - 1);
-        items = aRes.items;
-      } else if (source === 'shikimori') {
-        const sRes = await getShikimoriCatalog('popular', page);
-        items = sRes.items;
-      } else {
-        // Комбинируем популярные 4K фильмы и аниме
-        const [fRes, aRes] = await Promise.all([
-          getFanFilmCatalog('popular', page),
-          getAnixartDiscover('popular', page - 1)
+      if (category === 'anime-movies') {
+        const [anixRes, shikiRes, libRes] = await Promise.all([
+          getAnixartDiscover('anime-movies', page - 1),
+          getShikimoriCatalog('anime-movies', page),
+          getAniLibriaCatalog('anime-movies', page)
         ]);
-        const fItems = fRes.items || [];
-        const aItems = aRes.items || [];
-        const maxLen = Math.max(fItems.length, aItems.length);
-        for (let i = 0; i < maxLen; i++) {
-          if (i < fItems.length) items.push(fItems[i]);
-          if (i < aItems.length && items.length < 60) items.push(aItems[i]);
-        }
+        items = interleaveSources([anixRes.items, shikiRes.items, libRes.items]);
+        totalItems = items.length;
+      } else if (category === 'anime-series') {
+        const [anixRes, libRes, shikiRes] = await Promise.all([
+          getAnixartDiscover('anime-series', page - 1),
+          getAniLibriaCatalog('anime-series', page),
+          getShikimoriCatalog('anime-series', page)
+        ]);
+        items = interleaveSources([anixRes.items, libRes.items, shikiRes.items]);
+        totalItems = items.length;
+      } else if (category === 'cartoon-series' || category === 'cartoons') {
+        const [fanfilmRes, tmdbRes] = await Promise.all([
+          getFanFilmCatalog(category, page),
+          getTmdbCatalog(category, page)
+        ]);
+        items = interleaveSources([fanfilmRes.items, tmdbRes.items]);
+        totalItems = items.length;
+      } else if (category === 'movies' || category === 'series') {
+        const [fanfilmRes, tmdbRes] = await Promise.all([
+          getFanFilmCatalog(category, page),
+          getTmdbCatalog(category, page)
+        ]);
+        items = interleaveSources([fanfilmRes.items, tmdbRes.items]);
+        totalItems = items.length;
+      } else if (category === 'new') {
+        const [fRes, tmdbRes, aRes, libRes] = await Promise.all([
+          getFanFilmCatalog('new', page),
+          getTmdbCatalog('new', page),
+          getAnixartDiscover('new', page - 1),
+          getAniLibriaCatalog('new', page)
+        ]);
+        items = interleaveSources([fRes.items, tmdbRes.items, aRes.items, libRes.items]);
+        totalItems = items.length;
+      } else {
+        // Главная (home / popular)
+        const [fRes, tmdbRes, aRes, libRes] = await Promise.all([
+          getFanFilmCatalog('popular', page),
+          getTmdbCatalog('popular', page),
+          getAnixartDiscover('popular', page - 1),
+          getAniLibriaCatalog('popular', page)
+        ]);
+        items = interleaveSources([fRes.items, tmdbRes.items, aRes.items, libRes.items]);
+        totalItems = items.length;
       }
-      totalItems = items.length;
     }
 
-    // Если пользователь авторизован, прикрепляем статусы и прогресс
+    // Прикрепляем закладки и статусы для авторизованных пользователей
     if (req.user) {
       items = items.map(item => {
         const bookmark = getBookmark(req.user.id, item.id, item.source);
@@ -392,9 +420,19 @@ app.get('/api/media/search', async (req, res) => {
       items.push(...fanfilmResults);
     }
 
+    if (source === 'all' || source === 'tmdb' || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+      const tmdbResults = await searchTmdb(query);
+      items.push(...(tmdbResults.items || []));
+    }
+
     if (source === 'all' || source === 'anixart') {
       const anixartResults = await searchAnixart(query, 0);
       items.push(...(anixartResults.items || []));
+    }
+
+    if (source === 'all' || source === 'anilibria') {
+      const libResults = await searchAniLibria(query);
+      items.push(...(libResults.items || []));
     }
 
     if (source === 'all' || source === 'shikimori') {
@@ -434,6 +472,35 @@ app.get('/api/media/item', async (req, res) => {
 
     if (source === 'anixart') {
       mediaDetails = await getAnixartReleaseDetails(id);
+    } else if (source === 'anilibria') {
+      mediaDetails = await getAniLibriaDetails(id);
+      if (mediaDetails && mediaDetails.episodes && mediaDetails.episodes.length > 0) {
+        const firstEp = mediaDetails.episodes[0];
+        const streamUrl = firstEp.hls_1080 || firstEp.hls_720 || firstEp.hls_480;
+        mediaDetails.players = [
+          {
+            id: 'anilibria_hls',
+            name: 'AniLibria Full HD 1080p (Официальный поток)',
+            type: 'hls',
+            quality: '1080p FHD',
+            badge: 'ANILIBRIA',
+            url: streamUrl,
+            episodes: mediaDetails.episodes
+          }
+        ];
+      }
+    } else if (['tmdb', 'kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+      mediaDetails = {
+        id: String(id),
+        source,
+        title: req.query.title || 'Кинофильм',
+        original_title: req.query.original_title || '',
+        poster: req.query.poster || 'assets/favicon.svg',
+        year: req.query.year || '',
+        rating: req.query.rating || 0,
+        description: req.query.description || 'Фильм доступен для онлайн-просмотра в высоком качестве.',
+        players: []
+      };
     } else {
       mediaDetails = await getFanFilmDetails(url || id);
     }
@@ -442,7 +509,7 @@ app.get('/api/media/item', async (req, res) => {
       return res.status(404).json({ error: 'Медиа не найдено' });
     }
 
-    // Собираем расширенный список плееров
+    // Собираем расширенный список плееров (Kodik, Collaps, Alloha, Balda, HDRezka, Ashdi)
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
@@ -451,14 +518,15 @@ app.get('/api/media/item', async (req, res) => {
       trailer_url: mediaDetails.players?.find(p => p.id === 'trailer')?.url
     });
 
-    const allPlayers = [...kinoboxPlayers];
+    const allPlayers = [];
     if (mediaDetails.players) {
-      mediaDetails.players.forEach(p => {
-        if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
-          allPlayers.push(p);
-        }
-      });
+      allPlayers.push(...mediaDetails.players);
     }
+    kinoboxPlayers.forEach(p => {
+      if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
+        allPlayers.push(p);
+      }
+    });
 
     let userBookmark = null;
     if (req.user) {
