@@ -10,6 +10,9 @@
   <link rel="stylesheet" href="styles/storm-theme.css?v=1.1">
   <link rel="stylesheet" href="styles/components.css?v=1.1">
   <link rel="stylesheet" href="styles/main.css?v=1.1">
+  
+  <!-- HLS плеер для прямых потоков (AniLibria Full HD и CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
 
@@ -89,12 +92,21 @@
   <!-- Панель инструментов: Фильтры, источники и режимы отображения -->
   <div class="storm-toolbar">
     <div class="storm-toolbar-left">
-      <!-- Источник контента -->
-      <select class="storm-select" id="source-filter-select" style="width: auto; min-width: 190px;">
+      <!-- Источник контента: 12+ доступных источников -->
+      <select class="storm-select" id="source-filter-select" style="width: auto; min-width: 220px;">
         <option value="all" data-i18n="source_all">Все источники</option>
-        <option value="fanfilm4k" data-i18n="source_fanfilm">FanFilm4K (4K UHD)</option>
-        <option value="anixart" data-i18n="source_anixart">AniXart (Аниме)</option>
+        <option value="fanfilm4k" data-i18n="source_fanfilm">FanFilm4K (4K Ultra HD)</option>
+        <option value="tmdb" data-i18n="source_tmdb">TMDB (Мировое кино)</option>
+        <option value="anixart" data-i18n="source_anixart">AniXart (Аниме и озвучки)</option>
+        <option value="anilibria" data-i18n="source_anilibria">AniLibria (Аниме Full HD)</option>
         <option value="shikimori" data-i18n="source_shikimori">Shikimori (База аниме)</option>
+        <option value="kodik" data-i18n="source_kodik">Kodik (Аниме и сериалы)</option>
+        <option value="hdrezka" data-i18n="source_hdrezka">HDRezka (Кино и дубляж)</option>
+        <option value="collaps" data-i18n="source_collaps">Collaps (Онлайн-плеер)</option>
+        <option value="alloha" data-i18n="source_alloha">Alloha TV (Кинотеатр)</option>
+        <option value="videocdn" data-i18n="source_videocdn">Videocdn (Премьеры)</option>
+        <option value="ashdi" data-i18n="source_ashdi">Ashdi (Мультистриминг)</option>
+        <option value="kinobox" data-i18n="source_kinobox">Kinobox (Мульти-плеер)</option>
       </select>
     </div>
 

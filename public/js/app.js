@@ -185,8 +185,7 @@ function renderMediaItems(items) {
           <img src="${poster}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
-            ${item.source === 'anixart' ? '<span class="storm-badge storm-badge-quality">ANIXART</span>' : ''}
-            ${item.source === 'shikimori' ? '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>' : ''}
+            ${getSourceBadge(item)}
             ${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
@@ -202,7 +201,7 @@ function renderMediaItems(items) {
         <div class="media-card-content">
           <div class="media-card-title" title="${item.title}">${item.title}</div>
           <div class="media-card-meta">
-            <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' ? 'Аниме' : 'Фильм')}</span>
+            <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' || item.source === 'anilibria' ? 'Аниме' : 'Фильм')}</span>
             ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
           </div>
         </div>
@@ -220,14 +219,15 @@ function renderMediaItems(items) {
   if (currentViewMode === 'detailed-list') {
     container.innerHTML = items.map((item, idx) => {
       const poster = item.poster || 'assets/favicon.svg';
-      const sourceName = item.source === 'anixart' ? 'AniXart' : item.source === 'shikimori' ? 'Shikimori' : 'FanFilm4K';
+      const sourceName = getSourceName(item);
       return `
       <div class="media-detailed-card" data-idx="${idx}">
         <div class="media-detailed-poster">
           <img src="${poster}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           ${item.is4K ? '<span class="storm-badge storm-badge-4k" style="position:absolute;top:6px;left:6px;">4K UHD</span>' : ''}
-          ${item.source === 'anixart' ? '<span class="storm-badge storm-badge-quality" style="position:absolute;top:6px;right:6px;">ANIXART</span>' : ''}
-          ${item.source === 'shikimori' ? '<span class="storm-badge storm-badge-quality" style="position:absolute;top:6px;right:6px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>' : ''}
+          <div style="position:absolute;top:6px;right:6px;">
+            ${getSourceBadge(item)}
+          </div>
         </div>
         <div class="media-detailed-info">
           <div class="media-detailed-header">
@@ -275,7 +275,7 @@ function renderMediaItems(items) {
           <tr>
             <th>Постер</th>
             <th>Название</th>
-            <th>Тип</th>
+            <th>Источник</th>
             <th>Год</th>
             <th>Рейтинг</th>
             <th>Статус</th>
@@ -290,7 +290,7 @@ function renderMediaItems(items) {
             <tr data-idx="${idx}" style="cursor:pointer;">
               <td><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
               <td><strong>${item.title}</strong></td>
-              <td><span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span></td>
+              <td>${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
               <td>${item.year || '—'}</td>
               <td>${item.rating ? `★ ${item.rating}` : '—'}</td>
               <td>${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : '—'}</td>
@@ -326,6 +326,41 @@ function getStatusLabel(status) {
     favorite: t('status_favorite')
   };
   return map[status] || status;
+}
+
+function getSourceBadge(item) {
+  const s = (item.source || '').toLowerCase();
+  if (s === 'fanfilm4k') return '<span class="storm-badge storm-badge-4k">4K UHD</span>';
+  if (s === 'anilibria') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#e11d48,#9f1239);">ANILIBRIA</span>';
+  if (s === 'anixart') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">ANIXART</span>';
+  if (s === 'shikimori') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>';
+  if (s === 'tmdb') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#10b981,#047857);">TMDB</span>';
+  if (s === 'kodik') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#f59e0b,#b45309);">KODIK</span>';
+  if (s === 'hdrezka') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#ef4444,#b91c1c);">HDREZKA</span>';
+  if (s === 'collaps') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#06b6d4,#0e7490);">COLLAPS</span>';
+  if (s === 'alloha') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#ec4899,#be185d);">ALLOHA</span>';
+  if (s === 'videocdn') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#6366f1,#4338ca);">VIDEOCDN</span>';
+  if (s === 'ashdi') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#14b8a6,#0f766e);">ASHDI</span>';
+  if (s === 'kinobox') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#f97316,#c2410c);">KINOBOX</span>';
+  return '';
+}
+
+function getSourceName(item) {
+  const map = {
+    fanfilm4k: 'FanFilm4K (4K UHD)',
+    tmdb: 'TMDB (World Cinema)',
+    anixart: 'AniXart',
+    anilibria: 'AniLibria',
+    shikimori: 'Shikimori',
+    kodik: 'Kodik',
+    hdrezka: 'HDRezka',
+    collaps: 'Collaps',
+    alloha: 'Alloha TV',
+    videocdn: 'Videocdn',
+    ashdi: 'Ashdi',
+    kinobox: 'Kinobox'
+  };
+  return map[item.source] || item.source?.toUpperCase() || 'STORM';
 }
 
 // -------------------------------------------------------------
