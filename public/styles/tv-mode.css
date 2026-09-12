@@ -16,13 +16,29 @@ body.tv-mode .storm-brand-title {
 }
 
 body.tv-mode .storm-tabs-bar {
-  padding: 12px 28px;
+  padding: 10px 28px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+body.tv-mode .storm-tabs-inner {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  padding: 6px 4px;
 }
 
 body.tv-mode .storm-tab-btn {
-  padding: 12px 24px;
-  font-size: 16px;
-  border-radius: 12px;
+  flex-shrink: 0;
+  padding: 10px 20px;
+  font-size: 15px;
+  border-radius: 10px;
+  white-space: nowrap;
 }
 
 body.tv-mode .media-card {

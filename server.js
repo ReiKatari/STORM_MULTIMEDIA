@@ -403,42 +403,74 @@ const imageCache = new Map();
 
 app.get('/api/media/image-proxy', async (req, res) => {
   const imageUrl = req.query.url;
+  const title = req.query.title;
   if (!imageUrl) return res.status(400).send('Missing url parameter');
 
   if (imageCache.has(imageUrl)) {
     const cached = imageCache.get(imageUrl);
     res.set('Content-Type', cached.contentType);
-    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
     return res.send(cached.buffer);
   }
 
-  try {
-    const targetUrl = imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
-    const response = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Referer': 'https://anixart.tv/'
+  const tryFetchImage = async (url, referer = 'https://anixart.tv/') => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    try {
+      const targetUrl = url.startsWith('//') ? `https:${url}` : url;
+      const resp = await fetch(targetUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Referer': referer
+        }
+      });
+      clearTimeout(timeout);
+      if (resp.ok) {
+        const contentType = resp.headers.get('content-type') || 'image/jpeg';
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        return { contentType, buffer };
       }
-    });
+      return null;
+    } catch {
+      clearTimeout(timeout);
+      return null;
+    }
+  };
 
-    if (!response.ok) {
-      return res.redirect('/assets/favicon.svg');
+  try {
+    // 1. Пытаемся загрузить исходное изображение
+    let result = await tryFetchImage(imageUrl);
+
+    // 2. Если не удалось и указан заголовок тайтла — ищем в Shikimori CDN
+    if (!result && title) {
+      try {
+        const shikiSearch = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(title)}&limit=1`, {
+          headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' }
+        });
+        if (shikiSearch.ok) {
+          const list = await shikiSearch.json();
+          if (list && list[0]?.image?.original) {
+            const shikiImgUrl = `https://shikimori.one${list[0].image.original}`;
+            result = await tryFetchImage(shikiImgUrl, 'https://shikimori.one/');
+          }
+        }
+      } catch {}
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    if (result) {
+      if (imageCache.size > 1500) {
+        const firstKey = imageCache.keys().next().value;
+        imageCache.delete(firstKey);
+      }
+      imageCache.set(imageUrl, result);
 
-    // Кэшируем до 300 картинок в памяти
-    if (imageCache.size > 300) {
-      const firstKey = imageCache.keys().next().value;
-      imageCache.delete(firstKey);
+      res.set('Content-Type', result.contentType);
+      res.set('Cache-Control', 'public, max-age=604800, immutable');
+      return res.send(result.buffer);
     }
-    imageCache.set(imageUrl, { contentType, buffer });
 
-    res.set('Content-Type', contentType);
-    res.set('Cache-Control', 'public, max-age=86400');
-    res.send(buffer);
+    res.redirect('/assets/favicon.svg');
   } catch (err) {
     res.redirect('/assets/favicon.svg');
   }

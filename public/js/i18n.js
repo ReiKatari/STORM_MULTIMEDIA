@@ -58,7 +58,8 @@ export const translations = {
     status_plan: "В планах",
     status_completed: "Просмотрено",
     status_hold: "Отложено",
-    status_dropped: "Брошено",
+    status_dropped: "Заброшено",
+    status_wont_watch: "Не буду смотреть",
     status_favorite: "Любимое",
     
     // Аутентификация
@@ -79,6 +80,11 @@ export const translations = {
     stats_bookmarks: "Всего в закладках",
     stats_completed: "Завершено",
     stats_watching: "В процессе",
+    stats_planned: "В планах",
+    stats_favorites: "Любимых",
+    stats_on_hold: "Отложено",
+    stats_dropped: "Заброшено",
+    stats_wont_watch: "Не буду смотреть",
     stats_custom_lists: "Своих списков",
     
     // Плеер и медиа
@@ -98,6 +104,10 @@ export const translations = {
     btn_cancel: "Отмена",
     btn_save: "Сохранить",
     btn_delete: "Удалить",
+    custom_list_search: "Поиск или новая коллекция...",
+    custom_list_create_btn: "Создать коллекцию и добавить",
+    player_frames_title: "Кадры и скриншоты",
+    lang_select_title: "Язык интерфейса",
     
     // Таблица
     col_poster: "Постер",
@@ -175,6 +185,7 @@ export const translations = {
     status_completed: "Completed",
     status_hold: "On hold",
     status_dropped: "Dropped",
+    status_wont_watch: "Won't watch",
     status_favorite: "Favorite",
     
     auth_login: "Sign in",
@@ -193,6 +204,11 @@ export const translations = {
     stats_bookmarks: "Total bookmarks",
     stats_completed: "Completed",
     stats_watching: "In progress",
+    stats_planned: "Planned",
+    stats_favorites: "Favorites",
+    stats_on_hold: "On hold",
+    stats_dropped: "Dropped",
+    stats_wont_watch: "Won't watch",
     stats_custom_lists: "Custom lists",
     
     player_4k_title: "4K Ultra HD player",
@@ -211,6 +227,10 @@ export const translations = {
     btn_cancel: "Cancel",
     btn_save: "Save",
     btn_delete: "Delete",
+    custom_list_search: "Search or new collection...",
+    custom_list_create_btn: "Create collection and add",
+    player_frames_title: "Stills and screenshots",
+    lang_select_title: "Interface language",
     
     col_poster: "Poster",
     col_title: "Title",
@@ -286,6 +306,7 @@ export const translations = {
     status_completed: "Abgeschlossen",
     status_hold: "Pausiert",
     status_dropped: "Abgebrochen",
+    status_wont_watch: "Werde nicht schauen",
     status_favorite: "Favorit",
     
     auth_login: "Anmelden",
@@ -304,6 +325,11 @@ export const translations = {
     stats_bookmarks: "Lesezeichen gesamt",
     stats_completed: "Abgeschlossen",
     stats_watching: "In Arbeit",
+    stats_planned: "Geplant",
+    stats_favorites: "Favoriten",
+    stats_on_hold: "Pausiert",
+    stats_dropped: "Abgebrochen",
+    stats_wont_watch: "Werde nicht schauen",
     stats_custom_lists: "Eigene Listen",
     
     player_4k_title: "4K Ultra HD Player",
@@ -322,6 +348,10 @@ export const translations = {
     btn_cancel: "Abbrechen",
     btn_save: "Speichern",
     btn_delete: "Löschen",
+    custom_list_search: "Suchen oder neue Liste...",
+    custom_list_create_btn: "Sammlung erstellen und hinzufügen",
+    player_frames_title: "Standbilder und Screenshots",
+    lang_select_title: "Oberflächensprache",
     
     col_poster: "Poster",
     col_title: "Titel",
@@ -397,6 +427,7 @@ export const translations = {
     status_completed: "Terminé",
     status_hold: "En pause",
     status_dropped: "Abandonné",
+    status_wont_watch: "Ne regardera pas",
     status_favorite: "Favori",
     
     auth_login: "Connexion",
@@ -415,6 +446,11 @@ export const translations = {
     stats_bookmarks: "Total des favoris",
     stats_completed: "Terminés",
     stats_watching: "En cours",
+    stats_planned: "À voir",
+    stats_favorites: "Favoris",
+    stats_on_hold: "En pause",
+    stats_dropped: "Abandonnés",
+    stats_wont_watch: "Refusés",
     stats_custom_lists: "Listes personnalisées",
     
     player_4k_title: "Lecteur 4K Ultra HD",
@@ -433,6 +469,10 @@ export const translations = {
     btn_cancel: "Annuler",
     btn_save: "Enregistrer",
     btn_delete: "Supprimer",
+    custom_list_search: "Rechercher ou nouvelle collection...",
+    custom_list_create_btn: "Créer la collection et ajouter",
+    player_frames_title: "Images et captures d'écran",
+    lang_select_title: "Langue de l'interface",
     
     col_poster: "Affiche",
     col_title: "Titre",
@@ -508,6 +548,7 @@ export const translations = {
     status_completed: "已看",
     status_hold: "搁置",
     status_dropped: "抛弃",
+    status_wont_watch: "不想看",
     status_favorite: "特别喜爱",
     
     auth_login: "登录",
@@ -526,6 +567,11 @@ export const translations = {
     stats_bookmarks: "收藏总数",
     stats_completed: "已完成",
     stats_watching: "正在观看",
+    stats_planned: "想看",
+    stats_favorites: "特别喜爱",
+    stats_on_hold: "搁置",
+    stats_dropped: "抛弃",
+    stats_wont_watch: "不想看",
     stats_custom_lists: "自定义列表",
     
     player_4k_title: "4K 超清播放器",
@@ -544,6 +590,10 @@ export const translations = {
     btn_cancel: "取消",
     btn_save: "保存",
     btn_delete: "删除",
+    custom_list_search: "搜索或创建新收藏夹...",
+    custom_list_create_btn: "创建收藏夹并加入",
+    player_frames_title: "精彩剧照与截图",
+    lang_select_title: "界面语言",
     
     col_poster: "海报",
     col_title: "名称",
@@ -619,6 +669,7 @@ export const translations = {
     status_completed: "視聴完了",
     status_hold: "保留中",
     status_dropped: "中断",
+    status_wont_watch: "見ない",
     status_favorite: "お気に入り",
     
     auth_login: "ログイン",
@@ -637,6 +688,11 @@ export const translations = {
     stats_bookmarks: "ブックマーク総数",
     stats_completed: "完了した作品",
     stats_watching: "視聴中の作品",
+    stats_planned: "視聴予定",
+    stats_favorites: "お気に入り",
+    stats_on_hold: "保留中",
+    stats_dropped: "中断",
+    stats_wont_watch: "見ない",
     stats_custom_lists: "カスタムリスト",
     
     player_4k_title: "4K Ultra HD プレーヤー",
@@ -655,6 +711,10 @@ export const translations = {
     btn_cancel: "キャンセル",
     btn_save: "保存",
     btn_delete: "削除",
+    custom_list_search: "検索または新規リスト作成...",
+    custom_list_create_btn: "リストを作成して追加",
+    player_frames_title: "場面写真・スクリーンショット",
+    lang_select_title: "表示言語",
     
     col_poster: "ポスター",
     col_title: "タイトル",

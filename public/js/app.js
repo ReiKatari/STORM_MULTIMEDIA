@@ -106,18 +106,57 @@ export function switchTab(tab) {
   loadCurrentTab();
 }
 
+const clientTabCache = new Map();
+
+function renderSkeletonGrid() {
+  const container = document.getElementById('media-render-container');
+  if (!container) return;
+  let html = '';
+  for (let i = 0; i < 14; i++) {
+    html += `
+      <div class="storm-skeleton-card">
+        <div class="storm-skeleton-poster"></div>
+        <div class="storm-skeleton-content">
+          <div class="storm-skeleton-line"></div>
+          <div class="storm-skeleton-line short"></div>
+        </div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+export function formatMediaTitle(item) {
+  if (!item) return '';
+  let rawTitle = (item.title || item.original_title || '').trim();
+
+  // Удаляем из названия технические теги качества и разрешений
+  rawTitle = rawTitle.replace(/\s*[\(\[]?\b(4K|UHD|2160p|1080p|720p|480p|HDR|HDR10|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\b[\)\]]?/gi, '').trim();
+  rawTitle = rawTitle.replace(/[-–—/]\s*$/, '').trim();
+
+  const year = item.year ? String(item.year).trim() : '';
+  const hasYear = year && rawTitle.includes(year);
+
+  let seasonsText = '';
+  if (item.media_type === 'series' || item.media_type === 'anime-series' || item.category === 'Сериал' || item.media_type === 'cartoon-series') {
+    const seasons = item.seasons_count || item.total_seasons || item.seasons;
+    if (seasons) {
+      seasonsText = ` • ${seasons} сез.`;
+    }
+  }
+
+  if (year && !hasYear) {
+    return `${rawTitle} (${year})${seasonsText}`;
+  }
+  return `${rawTitle}${seasonsText}`;
+}
+
 async function loadCurrentTab() {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
-  container.innerHTML = `
-    <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
-      <div style="font-size: 32px; margin-bottom: 12px; animation: spin 1s linear infinite;">⏳</div>
-      <p>Загрузка каталога...</p>
-    </div>
-  `;
-
   if (currentTab === 'continue') {
+    renderSkeletonGrid();
     const history = await fetchContinueWatching();
     currentItems = history.map(h => ({
       id: h.media_id,
@@ -134,6 +173,7 @@ async function loadCurrentTab() {
   }
 
   if (currentTab === 'bookmarks') {
+    renderSkeletonGrid();
     const bookmarks = await fetchUserBookmarks();
     currentItems = bookmarks.map(b => ({
       id: b.media_id,
@@ -151,17 +191,28 @@ async function loadCurrentTab() {
     return;
   }
 
-  // Каталог медиа - полная поддержка всех 10 вкладок портала
+  // Каталог медиа - мгновенная отдача из кэша + фоновое обновление
   let category = currentTab;
   if (currentTab === 'home') category = 'popular';
+  const cacheKey = `${category}_${currentPage}_${currentSource}`;
+
+  if (clientTabCache.has(cacheKey)) {
+    currentItems = clientTabCache.get(cacheKey);
+    renderMediaItems(currentItems);
+  } else {
+    renderSkeletonGrid();
+  }
 
   try {
     const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`);
     const data = await res.json();
     currentItems = data.items || [];
+    clientTabCache.set(cacheKey, currentItems);
     renderMediaItems(currentItems);
   } catch (err) {
-    container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-red);">Ошибка загрузки: ${err.message}</div>`;
+    if (!clientTabCache.has(cacheKey)) {
+      container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-red);">Ошибка загрузки: ${err.message}</div>`;
+    }
   }
 }
 
@@ -187,12 +238,15 @@ function renderMediaItems(items) {
   if (currentViewMode === 'grid' || currentViewMode === 'compact-grid') {
     container.innerHTML = items.map(item => {
       const poster = item.poster || 'assets/favicon.svg';
+      const formattedTitle = formatMediaTitle(item);
+      const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+
       return `
       <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
         <div class="media-card-poster">
-          <img src="${poster}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
-            ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
             ${getSourceBadge(item)}
             ${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : ''}
           </div>
@@ -207,7 +261,7 @@ function renderMediaItems(items) {
           ` : ''}
         </div>
         <div class="media-card-content">
-          <div class="media-card-title" title="${item.title}">${item.title}</div>
+          <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
           <div class="media-card-meta">
             <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' || item.source === 'anilibria' ? 'Аниме' : 'Фильм')}</span>
             ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
@@ -241,11 +295,13 @@ function renderMediaItems(items) {
     container.innerHTML = items.map((item, idx) => {
       const poster = item.poster || 'assets/favicon.svg';
       const sourceName = getSourceName(item);
+      const formattedTitle = formatMediaTitle(item);
+      const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
       return `
       <div class="media-detailed-card" data-idx="${idx}">
         <div class="media-detailed-poster">
-          <img src="${poster}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
-          ${item.is4K ? '<span class="storm-badge storm-badge-4k" style="position:absolute;top:6px;left:6px;">4K UHD</span>' : ''}
+          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          ${isReal4K ? '<span class="storm-badge storm-badge-4k" style="position:absolute;top:6px;left:6px;">4K UHD</span>' : ''}
           <div style="position:absolute;top:6px;right:6px;">
             ${getSourceBadge(item)}
           </div>
@@ -253,7 +309,7 @@ function renderMediaItems(items) {
         <div class="media-detailed-info">
           <div class="media-detailed-header">
             <div>
-              <div class="media-detailed-title">${item.title}</div>
+              <div class="media-detailed-title">${formattedTitle}</div>
               ${item.original_title ? `<div class="media-detailed-orig-title">${item.original_title}</div>` : ''}
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
@@ -307,10 +363,11 @@ function renderMediaItems(items) {
         <tbody>
           ${items.map((item, idx) => {
             const poster = item.poster || 'assets/favicon.svg';
+            const formattedTitle = formatMediaTitle(item);
             return `
             <tr data-idx="${idx}" style="cursor:pointer;">
-              <td><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
-              <td><strong>${item.title}</strong></td>
+              <td><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
+              <td><strong>${formattedTitle}</strong></td>
               <td>${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
               <td>${item.year || '—'}</td>
               <td>${item.rating ? `★ ${item.rating}` : '—'}</td>
@@ -341,9 +398,12 @@ function getStatusLabel(status) {
   const map = {
     watching: t('status_watching'),
     plan: t('status_plan'),
+    planned: t('status_plan'),
     completed: t('status_completed'),
     hold: t('status_hold'),
+    on_hold: t('status_hold'),
     dropped: t('status_dropped'),
+    wont_watch: t('status_wont_watch'),
     favorite: t('status_favorite')
   };
   return map[status] || status;
@@ -351,7 +411,7 @@ function getStatusLabel(status) {
 
 function getSourceBadge(item) {
   const s = (item.source || '').toLowerCase();
-  if (s === 'fanfilm4k') return '<span class="storm-badge storm-badge-4k">4K UHD</span>';
+  if (s === 'fanfilm4k') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#00d2ff,#0072ff);">FANFILM</span>';
   if (s === 'anilibria') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#e11d48,#9f1239);">ANILIBRIA</span>';
   if (s === 'anixart') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">ANIXART</span>';
   if (s === 'shikimori') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>';
@@ -437,6 +497,34 @@ function initSearch() {
 // МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (MODALS)
 // -------------------------------------------------------------
 function initModals() {
+  // Закрытие всех модалок и выпадающих списков по нажатию клавиши Escape (ESC)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      // Закрываем открытые кастомные выпадающие списки
+      document.querySelectorAll('.storm-custom-dropdown.is-open').forEach(dd => {
+        dd.classList.remove('is-open');
+      });
+      // Если открыт плеер - закрываем его через специальную функцию с очисткой потока
+      const cinemaModal = document.getElementById('cinema-modal');
+      if (cinemaModal && cinemaModal.classList.contains('is-open')) {
+        closePlayerModal();
+      }
+      // Закрываем любые другие открытые модальные окна
+      document.querySelectorAll('.storm-modal-backdrop.is-open').forEach(backdrop => {
+        backdrop.classList.remove('is-open');
+      });
+    }
+  });
+
+  // Закрытие кастомных выпадающих списков при клике вне их области
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.storm-custom-dropdown')) {
+      document.querySelectorAll('.storm-custom-dropdown.is-open').forEach(dd => {
+        dd.classList.remove('is-open');
+      });
+    }
+  });
+
   // Закрытие при клике по бэкдропу или крестику
   document.querySelectorAll('.storm-modal-backdrop').forEach(backdrop => {
     backdrop.addEventListener('click', (e) => {

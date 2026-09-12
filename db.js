@@ -296,6 +296,11 @@ export function getUserStats(userId) {
   const bookmarksCount = db.prepare('SELECT count(*) as count FROM bookmarks WHERE user_id = ?').get(userId).count;
   const completedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId).count;
   const watchingCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId).count;
+  const plannedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'planned' OR status = 'plan')").get(userId).count;
+  const favoriteCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'favorite'").get(userId).count;
+  const onHoldCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'on_hold' OR status = 'hold')").get(userId).count;
+  const droppedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'dropped'").get(userId).count;
+  const wontWatchCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'wont_watch' OR status = 'abandoned')").get(userId).count;
   const totalWatchedSeconds = db.prepare('SELECT COALESCE(SUM(time_seconds), 0) as total FROM watch_history WHERE user_id = ?').get(userId).total;
   const customListsCount = db.prepare('SELECT count(*) as count FROM custom_lists WHERE user_id = ?').get(userId).count;
 
@@ -303,6 +308,11 @@ export function getUserStats(userId) {
     bookmarksCount,
     completedCount,
     watchingCount,
+    plannedCount,
+    favoriteCount,
+    onHoldCount,
+    droppedCount,
+    wontWatchCount,
     totalWatchedHours: Math.round((totalWatchedSeconds / 3600) * 10) / 10,
     customListsCount
   };
