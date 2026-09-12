@@ -11,9 +11,9 @@ export function getKinoboxPlayerConfig(params = {}) {
   const { kp_id, imdb_id, title, query } = params;
   let url = '';
   if (kp_id) {
-    url = `https://kinobox.tv/embed/kp/${kp_id}`;
-  } else if (imdb_id) {
-    url = `https://kinobox.tv/embed/imdb/${imdb_id}`;
+    url = `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}`;
+  } else if (title || query) {
+    url = `https://kodikplayer.com/find-player?title=${encodeURIComponent((title || query).trim())}`;
   }
 
   return {
@@ -38,7 +38,7 @@ export function getKinoboxPlayerConfig(params = {}) {
  * Получение набора запасных плееров для любого видео
  * Поддерживает 10+ различных стриминговых шлюзов
  */
-export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, trailer_url }) {
+export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url }) {
   const players = [];
   const safeTitle = encodeURIComponent((title || '').trim());
 
@@ -54,29 +54,11 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, tra
     });
   }
 
-  // 2. Kinobox Мультиплеер (Автоподбор по всем базам)
-  if (kp_id || imdb_id) {
-    const kinobox = getKinoboxPlayerConfig({ kp_id, imdb_id, title });
-    if (kinobox.url) {
-      players.push({
-        id: 'kinobox',
-        name: 'Мультиплеер Kinobox (Kodik, Collaps, Alloha, Balda)',
-        type: 'kinobox',
-        quality: '1080p FHD',
-        badge: 'KINOBOX',
-        url: kinobox.url,
-        kp_id: kp_id || '',
-        imdb_id: imdb_id || '',
-        title: title || ''
-      });
-    }
-  }
-
-  // 3. Kodik Плеер (Аниме, дорамы, сериалы)
+  // 2. Kodik Плеер (Актуальный рабочий шлюз kodikplayer.com)
   if (kp_id || title) {
     const kodikUrl = kp_id 
-      ? `https://kodik.info/find-player?kinopoiskID=${kp_id}`
-      : `https://kodik.info/find-player?title=${safeTitle}`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}`;
     players.push({
       id: 'kodik_direct',
       name: 'Kodik Плеер (сериалы и озвучки)',
@@ -87,31 +69,6 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, tra
     });
   }
 
-  // 4. Collaps Плеер
-  if (kp_id || imdb_id) {
-    const collapsUrl = kp_id
-      ? `https://api.delivembd.ws/embed/kp/${kp_id}`
-      : `https://api.delivembd.ws/embed/imdb/${imdb_id}`;
-    players.push({
-      id: 'collaps_direct',
-      name: 'Collaps Плеер (Full HD)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'COLLAPS',
-      url: collapsUrl
-    });
-  }
-
-  // 5. Трейлер
-  const trailerEmbed = trailer_url || `https://www.youtube-nocookie.com/embed?listType=search&list=${safeTitle}+трейлер`;
-  players.push({
-    id: 'trailer',
-    name: 'Официальный трейлер',
-    type: 'iframe',
-    quality: 'HD 1080p',
-    badge: 'ТРЕЙЛЕР',
-    url: trailerEmbed
-  });
-
   return players;
 }
+

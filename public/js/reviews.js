@@ -51,7 +51,9 @@ export async function fetchReviews(mediaId, source) {
 export async function submitReview(mediaItem, { title, rating, content }) {
   const user = getUser();
   if (!user) {
-    showToast('Для публикации рецензии требуется войти в аккаунт', 'warning');
+    showToast('Рецензии могут писать только зарегистрированные пользователи', 'warning');
+    const authModal = document.getElementById('auth-modal');
+    if (authModal) authModal.classList.add('is-open');
     return null;
   }
 
@@ -90,7 +92,9 @@ export async function submitReview(mediaItem, { title, rating, content }) {
 export async function likeReview(reviewId, isLike) {
   const user = getUser();
   if (!user) {
-    showToast('Войдите, чтобы поставить оценку', 'warning');
+    showToast('Оценивать отзывы могут только зарегистрированные пользователи', 'warning');
+    const authModal = document.getElementById('auth-modal');
+    if (authModal) authModal.classList.add('is-open');
     return null;
   }
 
@@ -123,13 +127,9 @@ export async function renderReviewsSection(containerElement, mediaItem) {
     <div class="reviews-section">
       <div class="reviews-header">
         <h4 class="reviews-title">Рецензии и отзывы зрителей (${reviews.length})</h4>
-        ${user ? `
-          <button class="storm-btn storm-btn-primary storm-btn-sm" id="toggle-review-form-btn">
-            ✍️ Написать рецензию
-          </button>
-        ` : `
-          <span style="font-size: 12px; color: var(--text-muted);">Войдите, чтобы оставить отзыв</span>
-        `}
+        <button class="storm-btn storm-btn-primary storm-btn-sm" id="write-review-btn">
+          ✍️ Написать рецензию
+        </button>
       </div>
 
       <!-- Форма создания рецензии -->
@@ -207,14 +207,20 @@ export async function renderReviewsSection(containerElement, mediaItem) {
   `;
 
   // Обработчики формы
-  const toggleBtn = containerElement.querySelector('#toggle-review-form-btn');
+  const writeBtn = containerElement.querySelector('#write-review-btn');
   const composeCard = containerElement.querySelector('#review-compose-card');
   const cancelBtn = containerElement.querySelector('#cancel-review-btn');
   const submitBtn = containerElement.querySelector('#submit-review-btn');
   let selectedRating = 10;
 
-  if (toggleBtn && composeCard) {
-    toggleBtn.onclick = () => {
+  if (writeBtn && composeCard) {
+    writeBtn.onclick = () => {
+      if (!getUser()) {
+        showToast('Рецензии могут писать только зарегистрированные пользователи', 'warning');
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.classList.add('is-open');
+        return;
+      }
       composeCard.style.display = composeCard.style.display === 'none' ? 'block' : 'none';
     };
   }

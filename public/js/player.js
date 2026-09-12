@@ -95,14 +95,10 @@ export async function openPlayerModal(mediaItem) {
         ...mediaItem,
         players: [
           {
-            name: 'Kodik Онлайн (HD)',
-            url: `https://kodik.info/search?title=${encodeURIComponent(mediaItem.title)}`,
+            id: 'kodik_direct',
+            name: 'Kodik Плеер (HD)',
+            url: `https://kodikplayer.com/find-player?title=${encodeURIComponent(mediaItem.title)}`,
             badge: 'KODIK'
-          },
-          {
-            name: 'Трейлер и превью (HD)',
-            url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(mediaItem.title + ' трейлер')}`,
-            badge: 'PREVIEW'
           }
         ]
       };
@@ -119,6 +115,7 @@ export async function openPlayerModal(mediaItem) {
 
     // Добавляем P2P WebTorrent в список плееров
     currentPlayers.push({
+      id: 'webtorrent',
       name: 'P2P WebTorrent (Торрент-стриминг)',
       url: 'webtorrent://direct',
       badge: 'P2P 4K'
@@ -154,7 +151,7 @@ export async function openPlayerModal(mediaItem) {
     if (currentPlayers.length > 0) {
       selectPlayer(currentPlayers[0]);
     } else {
-      playStreamUrl(`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(mediaItem.title + ' трейлер')}`);
+      iframeContainer.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);font-weight:600;">Плеер временно недоступен для данного релиза</div>';
     }
   }
 }
@@ -188,15 +185,32 @@ function renderPlayerSources(players) {
   if (!container) return;
   container.innerHTML = '';
 
-  if (players.length === 0) {
+  const validPlayers = (players || []).filter(p => {
+    if (!p || !p.url) return false;
+    const lowerName = (p.name || '').toLowerCase();
+    const lowerBadge = (p.badge || '').toLowerCase();
+    const lowerId = (p.id || '').toLowerCase();
+    if (lowerName.includes('трейлер') || lowerName.includes('trailer') ||
+        lowerBadge.includes('трейлер') || lowerBadge.includes('trailer') ||
+        lowerId.includes('trailer')) {
+      return false;
+    }
+    if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
+    return true;
+  });
+
+  currentPlayers = validPlayers;
+
+  if (validPlayers.length === 0) {
     container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Плееры для данного видео недоступны</span>';
     return;
   }
 
-  players.forEach((p, idx) => {
+  validPlayers.forEach((p, idx) => {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = `player-source-btn ${idx === 0 ? 'active' : ''}`;
-    btn.innerHTML = `<span>${p.badge || 'ПЛЕЕР'}</span> ${p.name}`;
+    btn.innerHTML = `<span class="player-source-badge">${p.badge || 'ПЛЕЕР'}</span> <span class="player-source-name">${p.name}</span>`;
     btn.onclick = () => {
       container.querySelectorAll('.player-source-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
@@ -914,13 +928,13 @@ function renderStatusButtons(currentStatus) {
   statusContainer.innerHTML = '';
 
   const statuses = [
-    { id: 'watching', label: t('status_watching') },
-    { id: 'planned', label: t('status_plan') },
-    { id: 'completed', label: t('status_completed') },
-    { id: 'favorite', label: t('status_favorite') },
-    { id: 'on_hold', label: t('status_hold') },
-    { id: 'dropped', label: t('status_dropped') },
-    { id: 'wont_watch', label: t('status_wont_watch') }
+    { id: 'watching', icon: '👁️', label: t('status_watching') },
+    { id: 'planned', icon: '📋', label: t('status_plan') },
+    { id: 'completed', icon: '✅', label: t('status_completed') },
+    { id: 'favorite', icon: '❤️', label: t('status_favorite') },
+    { id: 'on_hold', icon: '⏸️', label: t('status_hold') },
+    { id: 'dropped', icon: '🛑', label: t('status_dropped') },
+    { id: 'wont_watch', icon: '🚫', label: t('status_wont_watch') }
   ];
 
   const normStatus = currentStatus === 'plan' ? 'planned' : (currentStatus === 'hold' ? 'on_hold' : currentStatus);
@@ -930,7 +944,7 @@ function renderStatusButtons(currentStatus) {
     btn.type = 'button';
     const isActive = normStatus === s.id;
     btn.className = `storm-btn storm-btn-sm ${isActive ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
-    btn.textContent = s.label;
+    btn.innerHTML = `<span style="font-size: 13px; line-height: 1;">${s.icon}</span> <span>${s.label}</span>`;
     btn.onclick = async () => {
       const updated = await saveBookmarkStatus(currentMedia, s.id);
       if (updated) {

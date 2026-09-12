@@ -782,18 +782,17 @@ app.get('/api/media/item', async (req, res) => {
       };
     }
 
-    // Собираем расширенный список плееров (Kodik, Collaps, Alloha, Balda, HDRezka, Ashdi)
+    // Собираем расширенный список плееров (FanFilm 4K, Kodik)
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
       title: mediaDetails.title,
-      fanfilm_4k_url: mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd')?.url,
-      trailer_url: mediaDetails.players?.find(p => p.id === 'trailer')?.url
+      fanfilm_4k_url: mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd')?.url
     });
 
     const allPlayers = [];
     if (mediaDetails.players) {
-      allPlayers.push(...mediaDetails.players);
+      allPlayers.push(...mediaDetails.players.filter(p => !p.id?.includes('trailer') && !p.name?.toLowerCase().includes('трейлер')));
     }
     kinoboxPlayers.forEach(p => {
       if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
