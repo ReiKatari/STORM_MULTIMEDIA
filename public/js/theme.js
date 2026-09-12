@@ -25,9 +25,14 @@ export function setTheme(themeName) {
     document.documentElement.setAttribute('data-theme', themeName);
     localStorage.setItem('storm_theme', themeName);
 
-    const themeSelect = document.getElementById('header-theme-select');
-    if (themeSelect && themeSelect.value !== themeName) {
-      themeSelect.value = themeName;
+    const profileThemeSelect = document.getElementById('profile-theme-select');
+    if (profileThemeSelect && profileThemeSelect.value !== themeName) {
+      profileThemeSelect.value = themeName;
+    }
+
+    const headerThemeSelect = document.getElementById('header-theme-select');
+    if (headerThemeSelect && headerThemeSelect.value !== themeName) {
+      headerThemeSelect.value = themeName;
     }
   }
 }
@@ -35,10 +40,18 @@ export function setTheme(themeName) {
 export function initTheme() {
   setTheme(currentTheme);
 
-  const themeSelect = document.getElementById('header-theme-select');
-  if (themeSelect) {
-    themeSelect.value = currentTheme;
-    themeSelect.addEventListener('change', (e) => {
+  const profileThemeSelect = document.getElementById('profile-theme-select');
+  if (profileThemeSelect) {
+    profileThemeSelect.value = currentTheme;
+    profileThemeSelect.addEventListener('change', (e) => {
+      setTheme(e.target.value);
+    });
+  }
+
+  const headerThemeSelect = document.getElementById('header-theme-select');
+  if (headerThemeSelect) {
+    headerThemeSelect.value = currentTheme;
+    headerThemeSelect.addEventListener('change', (e) => {
       setTheme(e.target.value);
     });
   }

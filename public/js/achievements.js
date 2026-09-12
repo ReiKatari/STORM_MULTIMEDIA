@@ -37,19 +37,90 @@ function playAchievementSound() {
   }
 }
 
+export const DEFAULT_ACHIEVEMENTS = [
+  // 1. Киномарафон (Фильмы и сериалы)
+  { id: 'cinema_first', title: 'Первый сеанс', desc: 'Посмотреть 1 фильм или серию', category: 'cinema', rarity: 'bronze', icon: '🎬', target: 1, progress: 0, unlocked: false },
+  { id: 'cinema_novice', title: 'Кинолюбитель', desc: 'Посмотреть 5 тайтлов', category: 'cinema', rarity: 'bronze', icon: '🍿', target: 5, progress: 0, unlocked: false },
+  { id: 'cinema_veteran', title: 'Киноман', desc: 'Посмотреть 15 тайтлов', category: 'cinema', rarity: 'silver', icon: '🎟️', target: 15, progress: 0, unlocked: false },
+  { id: 'cinema_master', title: 'Синефил со стажем', desc: 'Посмотреть 30 тайтлов', category: 'cinema', rarity: 'gold', icon: '📽️', target: 30, progress: 0, unlocked: false },
+  { id: 'cinema_legend', title: 'Архивариус кинематографа', desc: 'Посмотреть 60 тайтлов', category: 'cinema', rarity: 'platinum', icon: '🏆', target: 60, progress: 0, unlocked: false },
+  { id: 'cinema_god', title: 'Владыка киноэкрана', desc: 'Посмотреть 100 тайтлов', category: 'cinema', rarity: 'cyber', icon: '👑', target: 100, progress: 0, unlocked: false },
+
+  // 2. Отаку и аниме-культура
+  { id: 'anime_first', title: 'Первый кохай', desc: 'Посмотреть 1 аниме', category: 'anime', rarity: 'bronze', icon: '⛩️', target: 1, progress: 0, unlocked: false },
+  { id: 'anime_genin', title: 'Путь шиноби', desc: 'Посмотреть 5 аниме-релизов', category: 'anime', rarity: 'bronze', icon: '🍙', target: 5, progress: 0, unlocked: false },
+  { id: 'anime_chunin', title: 'Опытный отаку', desc: 'Посмотреть 15 аниме-релизов', category: 'anime', rarity: 'silver', icon: '🌸', target: 15, progress: 0, unlocked: false },
+  { id: 'anime_jonin', title: 'Мастер ниндзюцу', desc: 'Посмотреть 30 аниме-релизов', category: 'anime', rarity: 'gold', icon: '⚡', target: 30, progress: 0, unlocked: false },
+  { id: 'anime_hokage', title: 'Легендарный хокаге', desc: 'Посмотреть 50 аниме-релизов', category: 'anime', rarity: 'platinum', icon: '🔥', target: 50, progress: 0, unlocked: false },
+  { id: 'anime_kami', title: 'Аниме-божество', desc: 'Посмотреть 100 аниме-релизов', category: 'anime', rarity: 'cyber', icon: '✨', target: 100, progress: 0, unlocked: false },
+
+  // 3. Хранитель времени
+  { id: 'time_1h', title: 'Первый час в Шторме', desc: 'Провести 1 час за просмотром', category: 'time', rarity: 'bronze', icon: '⏱️', target: 1, progress: 0, unlocked: false },
+  { id: 'time_5h', title: 'Погружение в поток', desc: 'Провести 5 часов за просмотром', category: 'time', rarity: 'bronze', icon: '⌛', target: 5, progress: 0, unlocked: false },
+  { id: 'time_20h', title: 'Ночной марафонец', desc: 'Провести 20 часов за просмотром', category: 'time', rarity: 'silver', icon: '🌙', target: 20, progress: 0, unlocked: false },
+  { id: 'time_50h', title: 'Неутомимый зритель', desc: 'Провести 50 часов за просмотром', category: 'time', rarity: 'gold', icon: '🌟', target: 50, progress: 0, unlocked: false },
+  { id: 'time_100h', title: 'Повелитель хроноса', desc: 'Провести 100 часов за просмотром', category: 'time', rarity: 'platinum', icon: '🌌', target: 100, progress: 0, unlocked: false },
+  { id: 'time_250h', title: 'Вечный житель кибервселенной', desc: 'Провести 250 часов за просмотром', category: 'time', rarity: 'cyber', icon: '🪐', target: 250, progress: 0, unlocked: false },
+
+  // 4. Кинокритика и сообщество
+  { id: 'review_first', title: 'Первое мнение', desc: 'Оставить свой первый отзыв', category: 'social', rarity: 'bronze', icon: '✍️', target: 1, progress: 0, unlocked: false },
+  { id: 'review_3', title: 'Внимательный критик', desc: 'Оставить 3 рецензии', category: 'social', rarity: 'silver', icon: '📝', target: 3, progress: 0, unlocked: false },
+  { id: 'review_10', title: 'Золотое перо Шторма', desc: 'Оставить 10 развернутых рецензий', category: 'social', rarity: 'gold', icon: '✒️', target: 10, progress: 0, unlocked: false },
+  { id: 'review_liked', title: 'Голос народа', desc: 'Получить первый лайк на свой отзыв', category: 'social', rarity: 'bronze', icon: '👍', target: 1, progress: 0, unlocked: false },
+  { id: 'review_popular', title: 'Признание зала', desc: 'Собрать 5 лайков на рецензиях', category: 'social', rarity: 'gold', icon: '💖', target: 5, progress: 0, unlocked: false },
+  { id: 'room_host', title: 'Капитан кинозала', desc: 'Создать комнату совместного просмотра', category: 'social', rarity: 'silver', icon: '👥', target: 1, progress: 0, unlocked: false },
+  { id: 'room_guest', title: 'Кино-компания', desc: 'Присоединиться к кинокомнате', category: 'social', rarity: 'bronze', icon: '🤝', target: 1, progress: 0, unlocked: false },
+  { id: 'sync_master', title: 'Синхронизатор данных', desc: 'Синхронизировать или экспортировать библиотеку', category: 'social', rarity: 'silver', icon: '🔄', target: 1, progress: 0, unlocked: false },
+
+  // 5. Коллекционер и архивариус
+  { id: 'bookmark_first', title: 'Первая закладка', desc: 'Добавить релиз в закладки', category: 'collection', rarity: 'bronze', icon: '🔖', target: 1, progress: 0, unlocked: false },
+  { id: 'bookmark_20', title: 'Личная фильмотека', desc: 'Собрать 20 релизов в закладках', category: 'collection', rarity: 'silver', icon: '📁', target: 20, progress: 0, unlocked: false },
+  { id: 'bookmark_50', title: 'Великая коллекция', desc: 'Собрать 50 релизов в закладках', category: 'collection', rarity: 'gold', icon: '🏛️', target: 50, progress: 0, unlocked: false },
+  { id: 'list_first', title: 'Куратор списков', desc: 'Создать пользовательский список', category: 'collection', rarity: 'bronze', icon: '📋', target: 1, progress: 0, unlocked: false },
+  { id: 'list_pro', title: 'Архитектор коллекций', desc: 'Создать 3 тематических списка', category: 'collection', rarity: 'gold', icon: '📚', target: 3, progress: 0, unlocked: false },
+
+  // 6. Кибер-технологии и секреты
+  { id: 'tech_4k', title: 'Ценитель 4K Ultra HD', desc: 'Запустить фильм в оригинальном качестве 4K', category: 'tech', rarity: 'bronze', icon: '💎', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_torrent', title: 'P2P-пионер', desc: 'Запустить стриминг через WebTorrent', category: 'tech', rarity: 'silver', icon: '🧲', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_night', title: 'Ночной охотник', desc: 'Смотреть кино ночью между 02:00 и 05:00', category: 'tech', rarity: 'silver', icon: '🦉', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_chameleon', title: 'Хамелеон киберпространства', desc: 'Опробовать все 8 тем оформления', category: 'tech', rarity: 'gold', icon: '🎨', target: 8, progress: 0, unlocked: false },
+  { id: 'tech_polyglot', title: 'Полиглот Шторма', desc: 'Переключить 3 языка интерфейса', category: 'tech', rarity: 'silver', icon: '🌐', target: 3, progress: 0, unlocked: false },
+  { id: 'tech_voice', title: 'Кибер-голос', desc: 'Использовать голосового ассистента', category: 'tech', rarity: 'bronze', icon: '🎙️', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_gamepad', title: 'Штурман геймпада', desc: 'Использовать геймпад или ТВ-режим', category: 'tech', rarity: 'silver', icon: '🎮', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_subtitles', title: 'Свои титры', desc: 'Загрузить внешние субтитры или дорожку', category: 'tech', rarity: 'bronze', icon: '💬', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_ambilight', title: 'Неоновая аура', desc: 'Включить динамический Ambilight эффект', category: 'tech', rarity: 'bronze', icon: '🌈', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_skip', title: 'Мастер таймкодов', desc: 'Пропустить интро или титры по кнопке', category: 'tech', rarity: 'bronze', icon: '⏭️', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_pip', title: 'Картинка в картинке', desc: 'Воспроизвести видео в режиме PiP', category: 'tech', rarity: 'bronze', icon: '🖼️', target: 1, progress: 0, unlocked: false },
+  { id: 'tech_pwa', title: 'Всегда со мной', desc: 'Установить веб-приложение на устройство', category: 'tech', rarity: 'gold', icon: '📲', target: 1, progress: 0, unlocked: false }
+];
+
 export async function fetchUserAchievements() {
+  if (cachedAchievements && cachedAchievements.length > 0) {
+    return cachedAchievements;
+  }
   try {
     const token = localStorage.getItem('storm_token');
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch('/api/achievements', { headers });
-    if (!res.ok) return [];
-    cachedAchievements = await res.json();
-    return cachedAchievements;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+
+    const res = await fetch('/api/achievements', { headers, signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        cachedAchievements = data;
+        return cachedAchievements;
+      }
+    }
   } catch (err) {
-    console.error('Ошибка загрузки достижений:', err);
-    return [];
+    console.warn('Сервер достижений не ответил вовремя, загружаем локальный каталог:', err);
   }
+
+  cachedAchievements = DEFAULT_ACHIEVEMENTS;
+  return cachedAchievements;
 }
 
 export async function trackClientAction(action, meta = {}) {
@@ -111,11 +182,15 @@ export function showAchievementToast(achievement) {
 
 export async function renderProfileAchievements(containerElement, filterCategory = 'all') {
   if (!containerElement) return;
-  containerElement.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">Загрузка списка достижений...</div>';
+
+  // Если уже в кэше — отрисовываем мгновенно без надписи ожидания
+  if (!cachedAchievements || cachedAchievements.length === 0) {
+    containerElement.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">Загрузка списка достижений...</div>';
+  }
 
   const achievements = await fetchUserAchievements();
-  if (achievements.length === 0) {
-    containerElement.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">Авторизуйтесь, чтобы отслеживать кибер-достижения</div>';
+  if (!achievements || achievements.length === 0) {
+    containerElement.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">Каталог достижений формируется...</div>';
     return;
   }
 

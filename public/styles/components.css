@@ -1199,6 +1199,11 @@
   transition: transform 0.2s ease;
 }
 
+.storm-custom-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
 .storm-custom-dropdown.is-open .storm-dropdown-arrow {
   transform: rotate(180deg);
   color: var(--accent);
@@ -1206,18 +1211,18 @@
 
 .storm-dropdown-menu {
   position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  width: 100%;
-  min-width: 280px;
+  top: calc(100% + 8px);
+  right: 0;
+  width: auto;
+  min-width: 290px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent-glow);
-  z-index: 100;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 24px var(--accent-glow);
+  z-index: 99999;
   backdrop-filter: blur(16px);
-  animation: stormFadeIn 0.2s ease;
+  animation: stormFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .storm-dropdown-search-wrap {

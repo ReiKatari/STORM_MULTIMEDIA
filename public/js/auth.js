@@ -148,16 +148,19 @@ export async function logout() {
 export function updateAuthUI() {
   const profileBtn = document.getElementById('user-profile-btn');
   const loginBtn = document.getElementById('login-modal-btn');
+  const headerProfileBtn = document.getElementById('header-profile-btn');
   const avatarImg = document.getElementById('user-avatar-img');
   const userNameSpan = document.getElementById('user-name-label');
 
   if (currentUser) {
     if (loginBtn) loginBtn.style.display = 'none';
+    if (headerProfileBtn) headerProfileBtn.style.display = 'none';
     if (profileBtn) profileBtn.style.display = 'flex';
     if (avatarImg) avatarImg.src = currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`;
     if (userNameSpan) userNameSpan.textContent = currentUser.username;
   } else {
     if (loginBtn) loginBtn.style.display = 'inline-flex';
+    if (headerProfileBtn) headerProfileBtn.style.display = 'inline-flex';
     if (profileBtn) profileBtn.style.display = 'none';
   }
 }
@@ -178,69 +181,78 @@ export const AVATAR_PRESETS = [
 ];
 
 export async function updateProfile(username, email, avatar) {
-  if (!currentToken) throw new Error('Требуется авторизация');
+  if (!currentUser) return false;
+  try {
+    const res = await fetch('/api/auth/profile/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('storm_token')}`
+      },
+      body: JSON.stringify({ username, email, avatar })
+    });
 
-  const res = await fetch('/api/auth/profile/update', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${currentToken}`
-    },
-    body: JSON.stringify({ username, email, avatar })
-  });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Ошибка обновления профиля');
+    }
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Ошибка при обновлении профиля');
+    const data = await res.json();
+    currentUser = { ...currentUser, ...(data.user || data) };
+    updateAuthUI();
+    showToast('Профиль успешно обновлен!', 'success');
+    return true;
+  } catch (err) {
+    showToast(err.message, 'error');
+    return false;
   }
-
-  currentUser = { ...currentUser, ...data.user };
-  updateAuthUI();
-  notifyAuthChanged();
-  showToast('Профиль успешно обновлен!', 'success');
-  return currentUser;
 }
 
 export async function changePassword(oldPassword, newPassword) {
-  if (!currentToken) throw new Error('Требуется авторизация');
+  if (!currentUser) return false;
+  try {
+    const res = await fetch('/api/auth/profile/password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('storm_token')}`
+      },
+      body: JSON.stringify({ oldPassword, newPassword })
+    });
 
-  const res = await fetch('/api/auth/profile/password', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${currentToken}`
-    },
-    body: JSON.stringify({ oldPassword, newPassword })
-  });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Ошибка смены пароля');
+    }
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Ошибка при смене пароля');
+    showToast('Пароль успешно изменен!', 'success');
+    return true;
+  } catch (err) {
+    showToast(err.message, 'error');
+    return false;
   }
-
-  showToast('Пароль успешно изменен!', 'success');
-  return true;
 }
 
 export function openProfileModal() {
-  if (!currentUser) return;
   const modal = document.getElementById('profile-modal');
   if (!modal) return;
 
-  const currentAvatar = currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`;
+  const currentAvatar = currentUser
+    ? (currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`)
+    : 'assets/favicon.svg';
   const avatarEl = document.getElementById('profile-avatar');
   if (avatarEl) avatarEl.src = currentAvatar;
 
   const userEl = document.getElementById('profile-username');
-  if (userEl) userEl.textContent = currentUser.username;
+  if (userEl) userEl.textContent = currentUser ? currentUser.username : 'Гость (Без авторизации)';
 
   const emailEl = document.getElementById('profile-email');
-  if (emailEl) emailEl.textContent = currentUser.email;
+  if (emailEl) emailEl.textContent = currentUser ? currentUser.email : 'Войдите для синхронизации и сохранения';
 
   const dateEl = document.getElementById('profile-date');
-  if (dateEl) dateEl.textContent = formatDate(currentUser.created_at);
+  if (dateEl) dateEl.textContent = currentUser ? formatDate(currentUser.created_at) : '—';
 
-  const stats = currentUser.stats || {};
+  const stats = currentUser?.stats || {};
   const setStat = (id, val) => {
     const el = document.getElementById(id);
     if (el) el.textContent = val || 0;
@@ -265,18 +277,48 @@ export function openProfileModal() {
     };
   }
 
+  // Тема оформления в настройках профиля
+  const profileThemeSelect = document.getElementById('profile-theme-select');
+  if (profileThemeSelect) {
+    profileThemeSelect.value = localStorage.getItem('storm_theme') || 'STORM DARK';
+    profileThemeSelect.onchange = (e) => {
+      import('./theme.js').then(m => m.setTheme(e.target.value));
+    };
+  }
+
   // Заполняем форму редактирования профиля
   const inputUser = document.getElementById('edit-profile-username');
-  if (inputUser) inputUser.value = currentUser.username;
+  if (inputUser) inputUser.value = currentUser ? currentUser.username : '';
 
   const inputEmail = document.getElementById('edit-profile-email');
-  if (inputEmail) inputEmail.value = currentUser.email;
+  if (inputEmail) inputEmail.value = currentUser ? currentUser.email : '';
 
   const inputAvatar = document.getElementById('edit-avatar-url');
-  if (inputAvatar) inputAvatar.value = currentUser.avatar || '';
+  if (inputAvatar) inputAvatar.value = currentUser?.avatar || '';
 
   // Рендерим пресеты аватарок
-  renderAvatarPresets(currentUser.avatar);
+  renderAvatarPresets(currentUser?.avatar || '');
+
+  // Кнопка выхода / входа внизу модалки
+  const logoutBtn = document.getElementById('profile-logout-btn');
+  if (logoutBtn) {
+    if (currentUser) {
+      logoutBtn.textContent = t('auth_logout') || 'Выйти из аккаунта';
+      logoutBtn.className = 'storm-btn storm-btn-danger';
+      logoutBtn.onclick = () => {
+        logout();
+        modal.classList.remove('is-open');
+      };
+    } else {
+      logoutBtn.textContent = 'Войти в аккаунт';
+      logoutBtn.className = 'storm-btn storm-btn-primary';
+      logoutBtn.onclick = () => {
+        modal.classList.remove('is-open');
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.classList.add('is-open');
+      };
+    }
+  }
 
   // Сбрасываем активную вкладку на 'overview'
   switchProfileTab('overview');
