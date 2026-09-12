@@ -9,22 +9,21 @@
  */
 export function getKinoboxPlayerConfig(params = {}) {
   const { kp_id, imdb_id, title, query } = params;
-
-  let embedUrl = 'https://kinobox.tv/embed/';
+  let url = '';
   if (kp_id) {
-    embedUrl += `kp/${kp_id}`;
+    url = `https://kinobox.tv/embed/kp/${kp_id}`;
   } else if (imdb_id) {
-    embedUrl += `imdb/${imdb_id}`;
-  } else if (title || query) {
-    const searchQuery = encodeURIComponent(title || query);
-    embedUrl += `search?query=${searchQuery}`;
+    url = `https://kinobox.tv/embed/imdb/${imdb_id}`;
   }
 
   return {
     id: 'kinobox_universal',
-    name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, VCDN, HDRezka)',
+    name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka)',
     type: 'kinobox',
-    url: embedUrl,
+    kp_id: kp_id || '',
+    imdb_id: imdb_id || '',
+    title: title || query || '',
+    url: url,
     sources: [
       { name: 'Kodik', description: 'Огромная база аниме, дорам и сериалов с озвучками' },
       { name: 'Collaps', description: 'Фильмы и зарубежные сериалы в Full HD и 4K' },
@@ -41,7 +40,7 @@ export function getKinoboxPlayerConfig(params = {}) {
  */
 export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, trailer_url }) {
   const players = [];
-  const safeTitle = encodeURIComponent(title || '');
+  const safeTitle = encodeURIComponent((title || '').trim());
 
   // 1. Основной 4K UHD плеер (FanFilm4K)
   if (fanfilm_4k_url) {
@@ -56,18 +55,21 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, tra
   }
 
   // 2. Kinobox Мультиплеер (Автоподбор по всем базам)
-  if (kp_id || imdb_id || title) {
+  if (kp_id || imdb_id) {
     const kinobox = getKinoboxPlayerConfig({ kp_id, imdb_id, title });
-    players.push({
-      id: 'kinobox',
-      name: 'Мультиплеер Kinobox (Kodik, Collaps, Alloha, Balda)',
-      type: 'kinobox',
-      quality: '1080p FHD',
-      badge: 'KINOBOX',
-      url: kinobox.url,
-      kp_id: kp_id || '',
-      imdb_id: imdb_id || ''
-    });
+    if (kinobox.url) {
+      players.push({
+        id: 'kinobox',
+        name: 'Мультиплеер Kinobox (Kodik, Collaps, Alloha, Balda)',
+        type: 'kinobox',
+        quality: '1080p FHD',
+        badge: 'KINOBOX',
+        url: kinobox.url,
+        kp_id: kp_id || '',
+        imdb_id: imdb_id || '',
+        title: title || ''
+      });
+    }
   }
 
   // 3. Kodik Плеер (Аниме, дорамы, сериалы)
@@ -100,71 +102,16 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, fanfilm_4k_url, tra
     });
   }
 
-  // 5. Alloha TV Плеер
-  if (kp_id || title) {
-    const allohaUrl = `https://kinobox.tv/embed/alloha?kp=${kp_id || ''}&title=${safeTitle}`;
-    players.push({
-      id: 'alloha_direct',
-      name: 'Alloha TV Плеер (быстрый поток)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'ALLOHA',
-      url: allohaUrl
-    });
-  }
-
-  // 6. HDRezka Плеер
-  if (kp_id || title) {
-    const rezkaUrl = `https://kinobox.tv/embed/rezka?kp=${kp_id || ''}&title=${safeTitle}`;
-    players.push({
-      id: 'hdrezka_direct',
-      name: 'HDRezka Плеер (авторский дубляж)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'HDREZKA',
-      url: rezkaUrl
-    });
-  }
-
-  // 7. Videocdn Плеер
-  if (kp_id || imdb_id) {
-    const videocdnUrl = kp_id
-      ? `https://kinobox.tv/embed/videocdn?kp=${kp_id}`
-      : `https://kinobox.tv/embed/videocdn?imdb=${imdb_id}`;
-    players.push({
-      id: 'videocdn_direct',
-      name: 'Videocdn Плеер',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'VIDEOCDN',
-      url: videocdnUrl
-    });
-  }
-
-  // 8. Ashdi Плеер
-  if (kp_id || title) {
-    const ashdiUrl = `https://kinobox.tv/embed/ashdi?kp=${kp_id || ''}&title=${safeTitle}`;
-    players.push({
-      id: 'ashdi_direct',
-      name: 'Ashdi Плеер',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'ASHDI',
-      url: ashdiUrl
-    });
-  }
-
-  // 9. Трейлер
-  if (trailer_url) {
-    players.push({
-      id: 'trailer',
-      name: 'Официальный трейлер',
-      type: 'trailer',
-      quality: 'HD',
-      badge: 'ТРЕЙЛЕР',
-      url: trailer_url
-    });
-  }
+  // 5. Трейлер
+  const trailerEmbed = trailer_url || `https://www.youtube-nocookie.com/embed?listType=search&list=${safeTitle}+трейлер`;
+  players.push({
+    id: 'trailer',
+    name: 'Официальный трейлер',
+    type: 'iframe',
+    quality: 'HD 1080p',
+    badge: 'ТРЕЙЛЕР',
+    url: trailerEmbed
+  });
 
   return players;
 }

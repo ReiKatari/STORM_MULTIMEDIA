@@ -14,20 +14,25 @@ function formatAnimeRelease(rel) {
   const origTitle = rel.title_original || rel.title_alt || '';
 
   // Извлекаем постер
-  let poster = rel.image || '';
-  if (!poster && rel.poster) {
-    poster = `https://s.anixmirai.com/posters/${rel.poster}.jpg`;
+  let rawPoster = rel.image || '';
+  if (!rawPoster && rel.poster) {
+    rawPoster = `https://s.anixmirai.com/posters/${rel.poster}.jpg`;
   }
-  if (!poster && rel.screenshot_images && rel.screenshot_images.length > 0) {
-    poster = rel.screenshot_images[0];
+  if (!rawPoster && rel.screenshot_images && rel.screenshot_images.length > 0) {
+    rawPoster = rel.screenshot_images[0];
   }
+
+  const cleanTitle = title.trim();
+  const poster = rawPoster
+    ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}`
+    : 'assets/favicon.svg';
 
   return {
     id: String(rel.id),
     source: 'anixart',
-    title: title.trim(),
+    title: cleanTitle,
     original_title: origTitle.trim(),
-    poster: poster || 'assets/favicon.svg',
+    poster,
     year: String(rel.year || ''),
     rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : (typeof rel.rating === 'number' ? Math.round(rel.rating / 1000) / 10 : 0),
     media_type: rel.category?.name === 'Фильм' ? 'anime-movie' : 'anime-series',
@@ -41,7 +46,8 @@ function formatAnimeRelease(rel) {
     description: rel.description || '',
     country: rel.country || 'Япония',
     director: rel.director || '',
-    voiceovers_count: rel.voiceovers_count || 0
+    voiceovers_count: rel.voiceovers_count || 0,
+    screenshots: rel.screenshot_images || []
   };
 }
 

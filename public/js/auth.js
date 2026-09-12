@@ -241,23 +241,29 @@ export function openProfileModal() {
   if (dateEl) dateEl.textContent = formatDate(currentUser.created_at);
 
   const stats = currentUser.stats || {};
-  const elHours = document.getElementById('profile-stat-hours');
-  if (elHours) elHours.textContent = stats.totalWatchedHours || 0;
+  const setStat = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val || 0;
+  };
+  setStat('profile-stat-hours', stats.totalWatchedHours);
+  setStat('profile-stat-watching', stats.watchingCount);
+  setStat('profile-stat-planned', stats.plannedCount);
+  setStat('profile-stat-completed', stats.completedCount);
+  setStat('profile-stat-favorites', stats.favoritesCount || stats.favoriteCount);
+  setStat('profile-stat-onhold', stats.onHoldCount);
+  setStat('profile-stat-dropped', stats.droppedCount);
+  setStat('profile-stat-wontwatch', stats.wontWatchCount);
+  setStat('profile-stat-bookmarks', stats.bookmarksCount);
+  setStat('profile-stat-lists', stats.customListsCount);
 
-  const elBook = document.getElementById('profile-stat-bookmarks');
-  if (elBook) elBook.textContent = stats.bookmarksCount || 0;
-
-  const elComp = document.getElementById('profile-stat-completed');
-  if (elComp) elComp.textContent = stats.completedCount || 0;
-
-  const elWatch = document.getElementById('profile-stat-watching');
-  if (elWatch) elWatch.textContent = stats.watchingCount || 0;
-
-  const elLists = document.getElementById('profile-stat-lists');
-  if (elLists) elLists.textContent = stats.customListsCount || 0;
-
-  const elFav = document.getElementById('profile-stat-favorites');
-  if (elFav) elFav.textContent = stats.favoritesCount || 0;
+  // Язык интерфейса в настройках профиля
+  const profileLangSelect = document.getElementById('profile-lang-select');
+  if (profileLangSelect) {
+    profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
+    profileLangSelect.onchange = (e) => {
+      import('./i18n.js').then(m => m.setLanguage(e.target.value));
+    };
+  }
 
   // Заполняем форму редактирования профиля
   const inputUser = document.getElementById('edit-profile-username');

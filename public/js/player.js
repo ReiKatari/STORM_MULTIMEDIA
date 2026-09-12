@@ -4,7 +4,7 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, syncWatchProgress, fetchCustomLists, addItemToCollection } from './bookmarks.js';
+import { saveBookmarkStatus, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection } from './bookmarks.js';
 import { getUser, showToast } from './auth.js';
 import { t } from './i18n.js';
 import { trackClientAction } from './achievements.js';
@@ -19,6 +19,8 @@ let currentVoiceoverId = null;
 let currentEpisodes = [];
 let currentEpisodeIndex = 1;
 let currentProgressPercent = 0;
+let iframeWatchInterval = null;
+let currentWatchTimeSeconds = 0;
 
 // Ambilight
 let ambilightEnabled = false;
@@ -52,6 +54,16 @@ export async function openPlayerModal(mediaItem) {
   document.getElementById('cinema-modal-year').textContent = mediaItem.year || '';
   document.getElementById('cinema-modal-desc').textContent = mediaItem.description || '';
 
+  // Восстанавливаем сохраненный прогресс просмотра
+  const savedPercent = mediaItem.progress_percent || 0;
+  currentProgressPercent = savedPercent;
+  const progressSlider = document.getElementById('player-progress-slider');
+  const progressLabel = document.getElementById('player-progress-label');
+  if (progressSlider) progressSlider.value = savedPercent;
+  if (progressLabel) progressLabel.textContent = `${savedPercent}%`;
+
+  initProgressSlider();
+
   // Открываем модальное окно
   modal.classList.add('is-open');
 
@@ -64,6 +76,12 @@ export async function openPlayerModal(mediaItem) {
 
     currentMedia = { ...mediaItem, ...details };
     currentPlayers = details.players || [];
+
+    // Обновляем описание и рендерим галерею кадров / скриншотов
+    if (details.description) {
+      document.getElementById('cinema-modal-desc').textContent = details.description;
+    }
+    renderScreenshotsGallery(mediaItem, details);
 
     // Добавляем P2P WebTorrent в список плееров
     currentPlayers.push({
@@ -107,6 +125,12 @@ export function closePlayerModal() {
   if (modal) {
     modal.classList.remove('is-open');
     stopAmbilight();
+
+    if (iframeWatchInterval) {
+      clearInterval(iframeWatchInterval);
+      iframeWatchInterval = null;
+    }
+    currentWatchTimeSeconds = 0;
 
     const iframeContainer = document.getElementById('cinema-player-wrapper');
     if (iframeContainer) iframeContainer.innerHTML = '';
@@ -169,6 +193,11 @@ function playStreamUrl(url) {
     trackClientAction('use_4k');
   }
 
+  if (iframeWatchInterval) {
+    clearInterval(iframeWatchInterval);
+    iframeWatchInterval = null;
+  }
+
   if (url.includes('.m3u8')) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
@@ -208,13 +237,53 @@ function playStreamUrl(url) {
     return;
   }
 
-  // Стандартный Iframe
+  // Стандартный Iframe с защитным sandbox (блокирует назойливые popunder, всплывающие окна и редиректы)
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;"></iframe>
+      <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen" style="position:relative;z-index:2;"></iframe>
     </div>
   `;
+
+  // Автоматический трекинг прогресса при воспроизведении через Iframe
+  currentWatchTimeSeconds = Math.round(((currentProgressPercent || 0) / 100) * 7200);
+  let lastSync = Date.now();
+
+  iframeWatchInterval = setInterval(() => {
+    const modal = document.getElementById('cinema-modal');
+    if (!modal || !modal.classList.contains('is-open')) {
+      clearInterval(iframeWatchInterval);
+      iframeWatchInterval = null;
+      return;
+    }
+
+    currentWatchTimeSeconds += 5;
+    const totalSec = 7200;
+    const percent = Math.min(100, Math.round((currentWatchTimeSeconds / totalSec) * 100));
+    currentProgressPercent = percent;
+
+    const slider = document.getElementById('player-progress-slider');
+    const label = document.getElementById('player-progress-label');
+    if (slider) slider.value = percent;
+    if (label) label.textContent = `${percent}%`;
+
+    const now = Date.now();
+    if (now - lastSync >= 15000 && getUser() && currentMedia) {
+      lastSync = now;
+      syncWatchProgress({
+        media_id: currentMedia.id,
+        source: currentMedia.source,
+        title: currentMedia.title,
+        poster_url: currentMedia.poster,
+        media_type: currentMedia.media_type,
+        season: currentMedia.season || 1,
+        episode: currentEpisodeIndex || 1,
+        total_episodes: currentEpisodes.length || 1,
+        duration_seconds: totalSec,
+        time_seconds: currentWatchTimeSeconds
+      });
+    }
+  }, 5000);
 }
 
 function setupVideoFeatures(video, wrapper) {
@@ -353,16 +422,35 @@ function setupSkipLogic(video) {
     };
   }
 
+  let lastHtml5Sync = 0;
   video.ontimeupdate = () => {
     const time = video.currentTime;
 
     // Синхронизация ползунка прогресса
     if (video.duration) {
       const percent = Math.min(100, Math.round((time / video.duration) * 100));
+      currentProgressPercent = percent;
       const slider = document.getElementById('player-progress-slider');
       const label = document.getElementById('player-progress-label');
       if (slider) slider.value = percent;
       if (label) label.textContent = `${percent}%`;
+
+      const now = Date.now();
+      if (now - lastHtml5Sync >= 10000 && getUser() && currentMedia) {
+        lastHtml5Sync = now;
+        syncWatchProgress({
+          media_id: currentMedia.id,
+          source: currentMedia.source,
+          title: currentMedia.title,
+          poster_url: currentMedia.poster,
+          media_type: currentMedia.media_type,
+          season: currentMedia.season || 1,
+          episode: currentEpisodeIndex || 1,
+          total_episodes: currentEpisodes.length || 1,
+          duration_seconds: Math.round(video.duration),
+          time_seconds: Math.round(time)
+        });
+      }
     }
 
     if (!skipIntervals) return;
@@ -740,11 +828,16 @@ function playAnixartEpisode(episode) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
+  if (iframeWatchInterval) {
+    clearInterval(iframeWatchInterval);
+    iframeWatchInterval = null;
+  }
+
   if (episode.url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${episode.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;"></iframe>
+        <iframe class="cinema-player-iframe" src="${episode.url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen" style="position:relative;z-index:2;"></iframe>
       </div>
     `;
 
@@ -761,7 +854,7 @@ function updateProgressState(episode, totalEpisodes) {
   if (slider) slider.value = percent;
   if (label) label.textContent = `${percent}% (Серия ${episode} из ${totalEpisodes})`;
 
-  if (getUser()) {
+  if (getUser() && currentMedia) {
     syncWatchProgress({
       media_id: currentMedia.id,
       source: currentMedia.source,
@@ -783,19 +876,27 @@ function renderStatusButtons(currentStatus) {
   statusContainer.innerHTML = '';
 
   const statuses = [
-    { id: 'watching', label: t('status_watching'), color: 'watching' },
-    { id: 'plan', label: t('status_plan'), color: 'plan' },
-    { id: 'completed', label: t('status_completed'), color: 'completed' },
-    { id: 'favorite', label: t('status_favorite'), color: 'favorite' }
+    { id: 'watching', label: t('status_watching') },
+    { id: 'planned', label: t('status_plan') },
+    { id: 'completed', label: t('status_completed') },
+    { id: 'favorite', label: t('status_favorite') },
+    { id: 'on_hold', label: t('status_hold') },
+    { id: 'dropped', label: t('status_dropped') },
+    { id: 'wont_watch', label: t('status_wont_watch') }
   ];
+
+  const normStatus = currentStatus === 'plan' ? 'planned' : (currentStatus === 'hold' ? 'on_hold' : currentStatus);
 
   statuses.forEach(s => {
     const btn = document.createElement('button');
-    btn.className = `storm-btn storm-btn-sm ${currentStatus === s.id ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
+    btn.type = 'button';
+    const isActive = normStatus === s.id;
+    btn.className = `storm-btn storm-btn-sm ${isActive ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
     btn.textContent = s.label;
     btn.onclick = async () => {
       const updated = await saveBookmarkStatus(currentMedia, s.id);
       if (updated) {
+        if (currentMedia) currentMedia.user_status = s.id;
         renderStatusButtons(s.id);
       }
     };
@@ -804,25 +905,158 @@ function renderStatusButtons(currentStatus) {
 }
 
 async function renderCustomListsSelector() {
-  const select = document.getElementById('add-to-custom-list-select');
-  if (!select) return;
+  const dropdown = document.getElementById('player-collection-dropdown');
+  if (!dropdown) return;
 
-  select.innerHTML = '<option value="">+ Добавить в коллекцию...</option>';
-  if (!getUser()) return;
+  const trigger = document.getElementById('player-collection-trigger');
+  const triggerText = document.getElementById('player-collection-trigger-text');
+  const menu = document.getElementById('player-collection-menu');
+  const searchInput = document.getElementById('player-collection-search');
+  const listContainer = document.getElementById('player-collection-list');
+  const createWrap = document.getElementById('player-collection-create-wrap');
+  const createBtn = document.getElementById('player-collection-create-btn');
 
-  const lists = await fetchCustomLists();
-  lists.forEach(list => {
-    const opt = document.createElement('option');
-    opt.value = list.id;
-    opt.textContent = list.title;
-    select.appendChild(opt);
-  });
+  if (!trigger || !menu) return;
 
-  select.onchange = async () => {
-    const listId = select.value;
-    if (listId) {
-      await addItemToCollection(listId, currentMedia);
-      select.value = '';
+  let lists = [];
+
+  const updateListDisplay = (query = '') => {
+    const q = query.trim().toLowerCase();
+    const filtered = lists.filter(item => item.title.toLowerCase().includes(q));
+
+    if (filtered.length === 0) {
+      listContainer.innerHTML = `<div style="padding: 10px; color: var(--text-muted); font-size: 12px; text-align: center;">${lists.length === 0 ? 'Коллекций пока нет' : 'Ничего не найдено'}</div>`;
+    } else {
+      listContainer.innerHTML = filtered.map(item => `
+        <div class="storm-dropdown-item" data-id="${item.id}" style="padding: 8px 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 6px; margin-bottom: 2px; transition: background 0.15s ease;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${item.color || 'var(--accent)'};"></span>
+            <span style="font-size: 13px; font-weight: 500;">${item.title}</span>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">${item.items_count || 0}</span>
+        </div>
+      `).join('');
+
+      listContainer.querySelectorAll('.storm-dropdown-item').forEach(el => {
+        el.onmouseenter = () => el.style.background = 'var(--bg-tertiary)';
+        el.onmouseleave = () => el.style.background = 'transparent';
+        el.onclick = async (e) => {
+          e.stopPropagation();
+          const listId = el.dataset.id;
+          if (listId && currentMedia) {
+            await addItemToCollection(listId, currentMedia);
+            menu.style.display = 'none';
+            dropdown.classList.remove('is-open');
+          }
+        };
+      });
+    }
+
+    if (q.length > 0 && !lists.some(l => l.title.toLowerCase() === q)) {
+      if (createWrap) createWrap.style.display = 'block';
+      if (createBtn) createBtn.textContent = `➕ Создать «${query.trim()}» и добавить`;
+    } else {
+      if (createWrap) createWrap.style.display = 'none';
+    }
+  };
+
+  trigger.onclick = async (e) => {
+    e.stopPropagation();
+    if (!getUser()) {
+      showToast('Войдите в систему для добавления в коллекции', 'info');
+      return;
+    }
+
+    const isOpen = menu.style.display === 'block';
+    if (isOpen) {
+      menu.style.display = 'none';
+      dropdown.classList.remove('is-open');
+    } else {
+      menu.style.display = 'block';
+      dropdown.classList.add('is-open');
+      lists = await fetchCustomLists();
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+      updateListDisplay('');
+    }
+  };
+
+  if (searchInput) {
+    searchInput.onclick = (e) => e.stopPropagation();
+    searchInput.oninput = (e) => updateListDisplay(e.target.value);
+  }
+
+  if (createBtn) {
+    createBtn.onclick = async (e) => {
+      e.stopPropagation();
+      const title = searchInput ? searchInput.value.trim() : '';
+      if (!title) return;
+      const newList = await createCustomCollection(title);
+      if (newList) {
+        lists.push(newList);
+        if (currentMedia) {
+          await addItemToCollection(newList.id, currentMedia);
+        }
+        menu.style.display = 'none';
+        dropdown.classList.remove('is-open');
+      }
+    };
+  }
+}
+
+function renderScreenshotsGallery(mediaItem, details) {
+  const container = document.getElementById('cinema-modal-screenshots-container');
+  const gallery = document.getElementById('cinema-modal-screenshots');
+  if (!container || !gallery) return;
+
+  const screenshots = details?.screenshots || details?.screenshot_images || details?.frames || mediaItem?.screenshots || mediaItem?.screenshot_images || [];
+  if (!Array.isArray(screenshots) || screenshots.length === 0) {
+    container.style.display = 'none';
+    gallery.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'block';
+  gallery.innerHTML = screenshots.map((src, idx) => `
+    <img class="cinema-screenshot-thumb" src="${src}" alt="Кадр ${idx + 1}" loading="lazy" onerror="this.style.display='none';" onclick="window.open('${src}', '_blank')">
+  `).join('');
+}
+
+function initProgressSlider() {
+  const slider = document.getElementById('player-progress-slider');
+  const label = document.getElementById('player-progress-label');
+  if (!slider || slider.dataset.inited) return;
+  slider.dataset.inited = 'true';
+
+  slider.oninput = (e) => {
+    const val = parseInt(e.target.value, 10);
+    if (label) label.textContent = `${val}%`;
+  };
+
+  slider.onchange = (e) => {
+    const val = parseInt(e.target.value, 10);
+    const video = document.getElementById('storm-video-player');
+    if (video && video.duration) {
+      video.currentTime = (val / 100) * video.duration;
+    }
+    currentProgressPercent = val;
+    currentWatchTimeSeconds = Math.round((val / 100) * 7200);
+
+    if (getUser() && currentMedia) {
+      syncWatchProgress({
+        media_id: currentMedia.id,
+        source: currentMedia.source,
+        title: currentMedia.title,
+        poster_url: currentMedia.poster,
+        media_type: currentMedia.media_type,
+        season: currentMedia.season || 1,
+        episode: currentEpisodeIndex || 1,
+        total_episodes: currentEpisodes.length || 1,
+        duration_seconds: video?.duration ? Math.round(video.duration) : 7200,
+        time_seconds: currentWatchTimeSeconds
+      });
     }
   };
 }
