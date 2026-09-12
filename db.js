@@ -510,16 +510,22 @@ export function getCustomListDetails(listId, userId) {
 }
 
 export function createCustomList(userId, title, description = '', color = '#00d2ff', isPublic = 0) {
+  const cleanTitle = (title || '').trim();
+  const existing = db.prepare('SELECT id FROM custom_lists WHERE user_id = ? AND LOWER(TRIM(title)) = LOWER(?)').get(userId, cleanTitle);
+  if (existing) {
+    throw new Error('Коллекция с таким названием уже создана');
+  }
+
   const now = Date.now();
   const insert = db.prepare(`
     INSERT INTO custom_lists (user_id, title, description, color, is_public, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
-  const result = insert.run(userId, title, description, color, isPublic ? 1 : 0, now);
+  const result = insert.run(userId, cleanTitle, description, color, isPublic ? 1 : 0, now);
   return {
     id: Number(result.lastInsertRowid),
     user_id: userId,
-    title,
+    title: cleanTitle,
     description,
     color,
     is_public: isPublic,
@@ -536,12 +542,15 @@ export function addCustomListItem(listId, userId, item) {
   const list = db.prepare('SELECT id FROM custom_lists WHERE id = ? AND user_id = ?').get(listId, userId);
   if (!list) throw new Error('Список не найден или нет доступа');
 
+  const existingItem = db.prepare('SELECT id FROM custom_list_items WHERE list_id = ? AND media_id = ? AND source = ?').get(listId, String(item.media_id), item.source);
+  if (existingItem) {
+    throw new Error('Данный релиз уже добавлен в эту коллекцию');
+  }
+
   const now = Date.now();
   const insert = db.prepare(`
     INSERT INTO custom_list_items (list_id, media_id, source, title, poster_url, media_type, year, rating, added_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(list_id, media_id, source) DO UPDATE SET
-      added_at = excluded.added_at
   `);
 
   insert.run(

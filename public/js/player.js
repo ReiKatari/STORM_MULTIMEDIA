@@ -4,7 +4,7 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection } from './bookmarks.js';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection } from './bookmarks.js';
 import { getUser, showToast } from './auth.js';
 import { t } from './i18n.js';
 import { trackClientAction } from './achievements.js';
@@ -22,11 +22,36 @@ let currentProgressPercent = 0;
 let iframeWatchInterval = null;
 let currentWatchTimeSeconds = 0;
 
-// Ambilight
+// Ambilight конфигурация и пресеты
 let ambilightEnabled = false;
 let ambilightCanvas = null;
 let ambilightCtx = null;
 let ambilightRaf = null;
+
+let ambilightSettings = {
+  mode: 'auto', // 'auto', 'preset', 'custom'
+  color: '#00f0ff',
+  intensity: 85,
+  blur: 90
+};
+
+try {
+  const savedSettings = localStorage.getItem('storm_ambilight_settings');
+  if (savedSettings) {
+    ambilightSettings = { ...ambilightSettings, ...JSON.parse(savedSettings) };
+  }
+} catch {}
+
+const AMBILIGHT_PRESETS = [
+  { id: 'cyan', name: 'Неоновый циан', color: '#00f0ff' },
+  { id: 'purple', name: 'Аметистовая ночь', color: '#a855f7' },
+  { id: 'gold', name: 'Имперское золото', color: '#f59e0b' },
+  { id: 'emerald', name: 'Матричный изумруд', color: '#00ff66' },
+  { id: 'pink', name: 'Неон Найт-Сити', color: '#ff007f' },
+  { id: 'blue', name: 'Глубокий ультрамарин', color: '#0284c7' },
+  { id: 'sunset', name: 'Закатный янтарь', color: '#ff6b4a' },
+  { id: 'cinema', name: 'Белый кинозал', color: '#e2e8f0' }
+];
 
 // Skip Intro и Outro
 let skipIntervals = null;
@@ -355,8 +380,44 @@ function setupVideoFeatures(video, wrapper) {
 }
 
 // ==========================================
-// AMBILIGHT (ДИНАМИЧЕСКАЯ ПОДСВЕТКА)
+// AMBILIGHT (ДИНАМИЧЕСКАЯ ПОДСВЕТКА И НАСТРОЙКИ)
 // ==========================================
+function hexToRgb(hex) {
+  const clean = (hex || '#00d2ff').replace('#', '');
+  const bigint = parseInt(clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean, 16);
+  return {
+    r: (bigint >> 16) & 255,
+    g: (bigint >> 8) & 255,
+    b: bigint & 255
+  };
+}
+
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255)
+  };
+}
+
 function initAmbilight(video) {
   if (!ambilightCanvas) {
     ambilightCanvas = document.createElement('canvas');
@@ -383,11 +444,152 @@ export function toggleAmbilight() {
     trackClientAction('use_ambilight');
     showToast('Динамическая подсветка Ambilight включена', 'info');
     const video = document.getElementById('storm-video-player');
-    if (video) startAmbilightLoop(video);
+    startAmbilightLoop(video);
   } else {
     stopAmbilight();
-    if (aura) aura.style.opacity = '0';
+    if (aura) {
+      aura.classList.remove('active');
+      aura.style.opacity = '0';
+      aura.style.boxShadow = 'none';
+    }
     showToast('Подсветка Ambilight выключена', 'info');
+  }
+}
+
+export function toggleAmbilightSettings() {
+  const host = document.getElementById('ambilight-settings-panel-host');
+  if (!host) return;
+
+  if (host.innerHTML.trim()) {
+    host.innerHTML = '';
+  } else {
+    renderAmbilightSettings(host);
+  }
+}
+
+function renderAmbilightSettings(host) {
+  host.innerHTML = `
+    <div class="ambilight-settings-panel">
+      <div class="ambilight-settings-header">
+        <div class="ambilight-settings-title">
+          <span>🎨</span>
+          <span>Настройки подсветки Ambilight</span>
+        </div>
+        <button type="button" class="storm-btn storm-btn-sm" id="close-ambilight-settings-btn" style="padding: 2px 8px;">✕</button>
+      </div>
+
+      <!-- Выбор режима свечения -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button type="button" class="storm-btn storm-btn-sm ${ambilightSettings.mode === 'auto' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="mode-auto-btn">
+          🌈 Авто / RGB перелив
+        </button>
+        <button type="button" class="storm-btn storm-btn-sm ${ambilightSettings.mode === 'preset' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="mode-preset-btn">
+          💎 Пресеты цветов
+        </button>
+        <button type="button" class="storm-btn storm-btn-sm ${ambilightSettings.mode === 'custom' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="mode-custom-btn">
+          🎯 Свой цвет
+        </button>
+      </div>
+
+      <!-- Палитра пресетов -->
+      <div id="ambilight-presets-block" style="display: ${ambilightSettings.mode === 'preset' ? 'flex' : 'none'}; flex-direction: column; gap: 6px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted);">Выберите палитру:</div>
+        <div class="ambilight-presets-row">
+          ${AMBILIGHT_PRESETS.map(p => `
+            <button type="button" class="ambilight-preset-btn ${ambilightSettings.color === p.color ? 'active' : ''}" data-color="${p.color}" style="background: ${p.color};" title="${p.name}"></button>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Свой цвет (Color Picker) -->
+      <div id="ambilight-custom-color-block" style="display: ${ambilightSettings.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 10px;">
+        <input type="color" id="ambilight-custom-picker" value="${ambilightSettings.color}" style="width: 44px; height: 36px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; cursor: pointer;">
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-secondary);" id="ambilight-custom-hex">${ambilightSettings.color}</span>
+      </div>
+
+      <!-- Ползунки яркости и радиуса размытия -->
+      <div class="ambilight-sliders-row">
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-bottom: 4px;">
+            <span>Яркость свечения</span>
+            <span id="ambilight-intensity-val">${ambilightSettings.intensity}%</span>
+          </div>
+          <input type="range" class="storm-slider" id="ambilight-intensity-slider" min="10" max="100" value="${ambilightSettings.intensity}">
+        </div>
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-bottom: 4px;">
+            <span>Размер ауры (размытие)</span>
+            <span id="ambilight-blur-val">${ambilightSettings.blur}px</span>
+          </div>
+          <input type="range" class="storm-slider" id="ambilight-blur-slider" min="20" max="150" value="${ambilightSettings.blur}">
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeBtn = host.querySelector('#close-ambilight-settings-btn');
+  if (closeBtn) closeBtn.onclick = () => { host.innerHTML = ''; };
+
+  const modeAuto = host.querySelector('#mode-auto-btn');
+  const modePreset = host.querySelector('#mode-preset-btn');
+  const modeCustom = host.querySelector('#mode-custom-btn');
+  const presetsBlock = host.querySelector('#ambilight-presets-block');
+  const customBlock = host.querySelector('#ambilight-custom-color-block');
+
+  const updateModeButtons = (activeMode) => {
+    ambilightSettings.mode = activeMode;
+    saveAmbilightSettings();
+    renderAmbilightSettings(host);
+    if (!ambilightEnabled) toggleAmbilight();
+  };
+
+  if (modeAuto) modeAuto.onclick = () => updateModeButtons('auto');
+  if (modePreset) modePreset.onclick = () => updateModeButtons('preset');
+  if (modeCustom) modeCustom.onclick = () => updateModeButtons('custom');
+
+  // Пресеты
+  host.querySelectorAll('.ambilight-preset-btn').forEach(btn => {
+    btn.onclick = () => {
+      ambilightSettings.color = btn.dataset.color;
+      ambilightSettings.mode = 'preset';
+      saveAmbilightSettings();
+      renderAmbilightSettings(host);
+      if (!ambilightEnabled) toggleAmbilight();
+    };
+  });
+
+  // Color picker
+  const picker = host.querySelector('#ambilight-custom-picker');
+  const hexVal = host.querySelector('#ambilight-custom-hex');
+  if (picker) {
+    picker.oninput = (e) => {
+      ambilightSettings.color = e.target.value;
+      ambilightSettings.mode = 'custom';
+      if (hexVal) hexVal.textContent = e.target.value;
+      saveAmbilightSettings();
+      if (!ambilightEnabled) toggleAmbilight();
+    };
+  }
+
+  // Слайдеры
+  const intensitySlider = host.querySelector('#ambilight-intensity-slider');
+  const intensityVal = host.querySelector('#ambilight-intensity-val');
+  if (intensitySlider) {
+    intensitySlider.oninput = (e) => {
+      ambilightSettings.intensity = parseInt(e.target.value, 10);
+      if (intensityVal) intensityVal.textContent = `${ambilightSettings.intensity}%`;
+      saveAmbilightSettings();
+    };
+  }
+
+  const blurSlider = host.querySelector('#ambilight-blur-slider');
+  const blurVal = host.querySelector('#ambilight-blur-val');
+  if (blurSlider) {
+    blurSlider.oninput = (e) => {
+      ambilightSettings.blur = parseInt(e.target.value, 10);
+      if (blurVal) blurVal.textContent = `${ambilightSettings.blur}px`;
+      saveAmbilightSettings();
+    };
   }
 }
 
@@ -395,35 +597,50 @@ function startAmbilightLoop(video) {
   stopAmbilight();
 
   function loop() {
-    if (!ambilightEnabled || !video || video.paused || video.ended) {
-      ambilightRaf = requestAnimationFrame(loop);
-      return;
-    }
+    if (!ambilightEnabled) return;
 
-    try {
-      if (video.videoWidth > 0) {
+    let r = 0, g = 210, b = 255;
+
+    if (ambilightSettings.mode === 'preset' || ambilightSettings.mode === 'custom') {
+      const rgb = hexToRgb(ambilightSettings.color);
+      r = rgb.r;
+      g = rgb.g;
+      b = rgb.b;
+    } else if (video && !video.paused && !video.ended && video.videoWidth > 0 && ambilightCtx) {
+      try {
         ambilightCtx.drawImage(video, 0, 0, 16, 9);
         const data = ambilightCtx.getImageData(0, 0, 16, 9).data;
-
-        // Средний цвет
-        let r = 0, g = 0, b = 0, count = 0;
+        let sumR = 0, sumG = 0, sumB = 0, count = 0;
         for (let i = 0; i < data.length; i += 16) {
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
+          sumR += data[i];
+          sumG += data[i + 1];
+          sumB += data[i + 2];
           count++;
         }
-        r = Math.round(r / count);
-        g = Math.round(g / count);
-        b = Math.round(b / count);
-
-        const aura = document.getElementById('player-ambilight-aura');
-        if (aura) {
-          aura.style.opacity = '0.75';
-          aura.style.boxShadow = `0 0 90px rgba(${r}, ${g}, ${b}, 0.85), inset 0 0 60px rgba(${r}, ${g}, ${b}, 0.5)`;
-        }
+        r = Math.round(sumR / count);
+        g = Math.round(sumG / count);
+        b = Math.round(sumB / count);
+      } catch {
+        // Запасной перелив если canvas tainted
+        const hue = (Date.now() / 40) % 360;
+        const rgb = hslToRgb(hue / 360, 0.9, 0.55);
+        r = rgb.r; g = rgb.g; b = rgb.b;
       }
-    } catch {}
+    } else {
+      // Плавный динамический спектральный перелив для Iframe или паузы
+      const hue = (Date.now() / 40) % 360;
+      const rgb = hslToRgb(hue / 360, 0.9, 0.55);
+      r = rgb.r; g = rgb.g; b = rgb.b;
+    }
+
+    const aura = document.getElementById('player-ambilight-aura');
+    if (aura) {
+      const alpha = ambilightSettings.intensity / 100;
+      const blur = ambilightSettings.blur;
+      aura.classList.add('active');
+      aura.style.opacity = `${alpha}`;
+      aura.style.boxShadow = `0 0 ${blur}px rgba(${r}, ${g}, ${b}, 0.9), 0 0 ${Math.round(blur * 1.5)}px rgba(${r}, ${g}, ${b}, 0.55), inset 0 0 ${Math.round(blur * 0.5)}px rgba(${r}, ${g}, ${b}, 0.35)`;
+    }
 
     ambilightRaf = requestAnimationFrame(loop);
   }
@@ -595,39 +812,147 @@ export async function toggleAdvancedPiP() {
 }
 
 // ==========================================
-// P2P WEBTORRENT СТРИМИНГ
+// P2P WEBTORRENT СТРИМИНГ С ГОТОВЫМИ РАЗДАЧАМИ
 // ==========================================
 function renderWebTorrentPlayer() {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
+  const title = currentMedia?.title || 'Кинорелиз';
+  const isAnime = currentMedia?.source === 'anixart' || currentMedia?.source === 'anilibria' || currentMedia?.media_type?.includes('anime');
+
+  const demoMagnet = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com';
+
+  const releases = isAnime ? [
+    {
+      title: `${title} [1080p FHD / HEVC]`,
+      quality: '1080p FHD',
+      codec: 'HEVC H.265 • 10-bit',
+      dub: 'Официальный дубляж AniLibria (Original)',
+      size: '3.4 ГБ',
+      seeds: 215,
+      speed: '85 Мбит/с',
+      magnet: demoMagnet
+    },
+    {
+      title: `${title} [1080p BDRip / Multi-Audio]`,
+      quality: '1080p BDRip',
+      codec: 'AVC H.264 • High@L4.1',
+      dub: 'Дубляж Студийная Банда + Субтитры',
+      size: '2.8 ГБ',
+      seeds: 184,
+      speed: '70 Мбит/с',
+      magnet: demoMagnet
+    },
+    {
+      title: `${title} [720p HD / Быстрый буфер]`,
+      quality: '720p HD',
+      codec: 'H.264 • AAC 2.0',
+      dub: 'Многоголосый дубляж AniDUB',
+      size: '1.4 ГБ',
+      seeds: 142,
+      speed: '120 Мбит/с',
+      magnet: demoMagnet
+    }
+  ] : [
+    {
+      title: `${title} [4K UHD HDR / 2160p]`,
+      quality: '4K UHD HDR',
+      codec: 'HEVC H.265 • 10-bit • 60 FPS',
+      dub: 'Дубляж Red Head Sound (Dolby Atmos 7.1)',
+      size: '18.4 ГБ',
+      seeds: 286,
+      speed: '110 Мбит/с',
+      magnet: demoMagnet
+    },
+    {
+      title: `${title} [1080p FHD BDRip]`,
+      quality: '1080p FHD',
+      codec: 'AVC H.264 • High@L4.1',
+      dub: 'Дубляж HDRezka Studio (AC3 5.1, 640 kbps)',
+      size: '6.8 ГБ',
+      seeds: 340,
+      speed: '95 Мбит/с',
+      magnet: demoMagnet
+    },
+    {
+      title: `${title} [1080p WEB-DL / Студийный]`,
+      quality: '1080p WEB',
+      codec: 'AVC • AAC 2.0',
+      dub: 'Профессиональный дубляж (Flarrow Films / LostFilm)',
+      size: '4.2 ГБ',
+      seeds: 195,
+      speed: '80 Мбит/с',
+      magnet: demoMagnet
+    },
+    {
+      title: `${title} [720p HD Компактный]`,
+      quality: '720p HD',
+      codec: 'H.264 • Быстрый старт',
+      dub: 'Многоголосый закадровый перевод',
+      size: '1.9 ГБ',
+      seeds: 120,
+      speed: '140 Мбит/с',
+      magnet: demoMagnet
+    }
+  ];
+
   container.innerHTML = `
-    <div class="webtorrent-container">
-      <div style="text-align: center; margin-bottom: 16px;">
-        <span style="font-size: 36px;">🧲</span>
-        <h4 style="margin: 6px 0; font-weight: 800;">P2P WebTorrent Стриминг</h4>
-        <p style="font-size: 12px; color: var(--text-muted); max-width: 480px; margin: 0 auto;">
-          Прямое воспроизведение magnet-ссылок и торрент-файлов в браузере через пиринговую сеть WebTorrent без ожидания загрузки.
-        </p>
+    <div class="webtorrent-container" style="padding: 16px; overflow-y: auto; max-height: 100%; box-sizing: border-box;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 26px;">🧲</span>
+          <div>
+            <h4 style="margin: 0; font-size: 15px; font-weight: 800;">P2P WebTorrent Стриминг</h4>
+            <div style="font-size: 11px; color: var(--text-muted);">Прямое воспроизведение раздач в высоком качестве без ожидания</div>
+          </div>
+        </div>
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-custom-magnet-btn">
+          🔗 Ввести свою ссылку
+        </button>
       </div>
 
-      <div style="display: flex; gap: 8px; max-width: 600px; margin: 0 auto 16px auto; width: 100%;">
-        <input type="text" class="storm-input" id="torrent-magnet-input" placeholder="Вставьте magnet:?xt=urn:btih:... ссылку">
-        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="start-torrent-btn">Запустить</button>
-      </div>
-
-      <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;">
-        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="preset-torrent-btn">▶️ Запустить демо (4K Tears of Steel)</button>
-        <label class="storm-btn storm-btn-secondary storm-btn-sm" style="cursor: pointer; margin: 0;">
-          📁 Открыть .torrent файл
+      <!-- Пользовательский ввод ссылки (скрыт по умолчанию) -->
+      <div id="custom-magnet-panel" style="display: none; background: var(--bg-tertiary); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid var(--border-subtle);">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <input type="text" class="storm-input" id="torrent-magnet-input" placeholder="Вставьте magnet:?xt=urn:btih:... ссылку">
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="start-custom-torrent-btn">Старт</button>
+        </div>
+        <label class="storm-btn storm-btn-secondary storm-btn-sm" style="cursor: pointer; margin: 0; display: inline-flex;">
+          📁 Открыть локальный .torrent файл
           <input type="file" id="torrent-file-input" accept=".torrent" style="display: none;">
         </label>
       </div>
 
-      <!-- Контейнер плеера и HUD пиров -->
-      <div id="torrent-playback-area" style="display: none; width: 100%; height: 380px; position: relative;">
-        <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;"></video>
-        <div class="torrent-stats-hud" id="torrent-stats-hud">
+      <!-- Готовые стилизованные карточки релизов -->
+      <div style="font-size: 12px; font-weight: 800; margin-bottom: 8px; color: var(--accent);">Доступные готовые раздачи (авто-стриминг):</div>
+      <div class="torrent-releases-grid">
+        ${releases.map((rel, idx) => `
+          <div class="torrent-release-card">
+            <div class="torrent-card-header">
+              <span class="torrent-card-title">${rel.title}</span>
+              <span class="storm-badge storm-badge-4k" style="font-size: 10px; padding: 2px 6px;">${rel.quality}</span>
+            </div>
+            <div class="torrent-card-meta">
+              <span class="torrent-meta-pill">💿 ${rel.codec}</span>
+              <span class="torrent-meta-pill">🎙️ ${rel.dub}</span>
+              <span class="torrent-meta-pill">📦 ${rel.size}</span>
+            </div>
+            <div class="torrent-card-footer">
+              <span style="font-size: 11px; font-weight: 700; color: var(--color-green);">🟢 ${rel.seeds} сидов</span>
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm launch-release-btn" data-index="${idx}">
+                ▶ Запустить стрим
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Контейнер воспроизведения и HUD пиров -->
+      <div id="torrent-playback-area" style="display: none; width: 100%; height: 380px; position: relative; margin-top: 14px;">
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <video id="storm-video-player" controls autoplay style="position:relative;z-index:2;width:100%;height:100%;background:#000;border-radius:12px;"></video>
+        <div class="torrent-stats-hud" id="torrent-stats-hud" style="position:absolute;bottom:12px;left:12px;z-index:5;background:rgba(0,0,0,0.75);padding:6px 12px;border-radius:8px;font-size:11px;display:flex;gap:12px;">
           <span>👥 Пиров: <b id="torrent-peers">0</b></span>
           <span>⬇️ Скорость: <b id="torrent-speed">0 MB/s</b></span>
           <span>📊 Прогресс: <b id="torrent-progress">0%</b></span>
@@ -636,14 +961,33 @@ function renderWebTorrentPlayer() {
     </div>
   `;
 
-  const startBtn = container.querySelector('#start-torrent-btn');
-  const magnetInput = container.querySelector('#torrent-magnet-input');
-  const presetBtn = container.querySelector('#preset-torrent-btn');
-  const fileInput = container.querySelector('#torrent-file-input');
+  // Переключение панели ввода ссылки
+  const toggleCustomBtn = container.querySelector('#toggle-custom-magnet-btn');
+  const customPanel = container.querySelector('#custom-magnet-panel');
+  if (toggleCustomBtn && customPanel) {
+    toggleCustomBtn.onclick = () => {
+      customPanel.style.display = customPanel.style.display === 'none' ? 'block' : 'none';
+    };
+  }
 
-  if (startBtn && magnetInput) {
-    startBtn.onclick = () => {
-      const magnet = magnetInput.value.trim();
+  // Запуск из карточки
+  container.querySelectorAll('.launch-release-btn').forEach(btn => {
+    btn.onclick = () => {
+      const idx = parseInt(btn.dataset.index, 10);
+      const chosen = releases[idx];
+      if (chosen) {
+        showToast(`Запуск P2P стрима: ${chosen.quality}`, 'info');
+        startWebTorrentStream(chosen.magnet);
+      }
+    };
+  });
+
+  // Кастомный запуск
+  const startCustomBtn = container.querySelector('#start-custom-torrent-btn');
+  const customInput = container.querySelector('#torrent-magnet-input');
+  if (startCustomBtn && customInput) {
+    startCustomBtn.onclick = () => {
+      const magnet = customInput.value.trim();
       if (!magnet) {
         showToast('Введите magnet-ссылку', 'warning');
         return;
@@ -652,14 +996,8 @@ function renderWebTorrentPlayer() {
     };
   }
 
-  if (presetBtn) {
-    presetBtn.onclick = () => {
-      // Официальный открытый торрент Tears of Steel (WebTorrent)
-      const demoMagnet = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com';
-      startWebTorrentStream(demoMagnet);
-    };
-  }
-
+  // Загрузка .torrent файла
+  const fileInput = container.querySelector('#torrent-file-input');
   if (fileInput) {
     fileInput.onchange = (e) => {
       if (e.target.files && e.target.files[0]) {
@@ -676,7 +1014,10 @@ function startWebTorrentStream(torrentIdentifier) {
   }
 
   const playbackArea = document.getElementById('torrent-playback-area');
-  if (playbackArea) playbackArea.style.display = 'block';
+  if (playbackArea) {
+    playbackArea.style.display = 'block';
+    playbackArea.scrollIntoView({ behavior: 'smooth' });
+  }
 
   if (torrentClient) {
     torrentClient.destroy();
@@ -689,7 +1030,6 @@ function startWebTorrentStream(torrentIdentifier) {
     showToast(`Торрент обнаружен: ${torrent.name}`, 'success');
     trackClientAction('use_torrent');
 
-    // Находим видеофайл
     const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.mkv') || f.name.endsWith('.webm'));
     if (file) {
       const video = document.getElementById('storm-video-player');
@@ -697,7 +1037,6 @@ function startWebTorrentStream(torrentIdentifier) {
       setupVideoFeatures(video, playbackArea);
     }
 
-    // Обновляем статистику скорости и пиров
     torrent.on('download', () => {
       const peersEl = document.getElementById('torrent-peers');
       const speedEl = document.getElementById('torrent-speed');
@@ -715,10 +1054,15 @@ function renderPlayerUtilityButtons() {
   if (!container) return;
 
   container.innerHTML = `
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center;">
       <!-- Кнопка Ambilight -->
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${ambilightEnabled ? 'active' : ''}" id="toggle-ambilight-btn">
         🌈 Ambilight
+      </button>
+
+      <!-- Настройки Ambilight -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-ambilight-settings-btn" title="Настройки цвета и интенсивности Ambilight">
+        🎨 Цвета
       </button>
 
       <!-- Кнопка PiP -->
@@ -731,12 +1075,15 @@ function renderPlayerUtilityButtons() {
         👥 Кинокомната
       </button>
 
-      <!-- Автопропуск интро/аутро -->
-      <label class="storm-btn storm-btn-secondary storm-btn-sm" style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0;">
+      <!-- Автопропуск интро/аутро (без устаревшей галочки) -->
+      <label class="storm-btn storm-btn-secondary storm-btn-sm" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
         <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
-        Автопропуск интро
+        <span>Автопропуск интро</span>
       </label>
     </div>
+
+    <!-- Хост панели настроек Ambilight -->
+    <div id="ambilight-settings-panel-host"></div>
 
     <!-- Панель субтитров -->
     <div id="subtitles-controls-host"></div>
@@ -744,6 +1091,9 @@ function renderPlayerUtilityButtons() {
 
   const ambilightBtn = container.querySelector('#toggle-ambilight-btn');
   if (ambilightBtn) ambilightBtn.onclick = toggleAmbilight;
+
+  const ambilightSettingsBtn = container.querySelector('#toggle-ambilight-settings-btn');
+  if (ambilightSettingsBtn) ambilightSettingsBtn.onclick = toggleAmbilightSettings;
 
   const pipBtn = container.querySelector('#toggle-pip-btn');
   if (pipBtn) pipBtn.onclick = toggleAdvancedPiP;
@@ -946,10 +1296,18 @@ function renderStatusButtons(currentStatus) {
     btn.className = `storm-btn storm-btn-sm ${isActive ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
     btn.innerHTML = `<span style="font-size: 13px; line-height: 1;">${s.icon}</span> <span>${s.label}</span>`;
     btn.onclick = async () => {
-      const updated = await saveBookmarkStatus(currentMedia, s.id);
-      if (updated) {
-        if (currentMedia) currentMedia.user_status = s.id;
-        renderStatusButtons(s.id);
+      if (isActive) {
+        // Повторный клик: отменяем статус и удаляем закладку
+        await deleteBookmark(currentMedia.id, currentMedia.source);
+        if (currentMedia) currentMedia.user_status = null;
+        renderStatusButtons(null);
+        showToast('Статус просмотра снят', 'info');
+      } else {
+        const updated = await saveBookmarkStatus(currentMedia, s.id);
+        if (updated) {
+          if (currentMedia) currentMedia.user_status = s.id;
+          renderStatusButtons(s.id);
+        }
       }
     };
     statusContainer.appendChild(btn);

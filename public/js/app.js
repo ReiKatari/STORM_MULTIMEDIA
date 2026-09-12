@@ -158,7 +158,7 @@ async function loadCurrentTab() {
   if (currentTab === 'continue') {
     renderSkeletonGrid();
     const history = await fetchContinueWatching();
-    currentItems = history.map(h => ({
+    const rawItems = history.map(h => ({
       id: h.media_id,
       source: h.source,
       title: h.title,
@@ -168,6 +168,7 @@ async function loadCurrentTab() {
       season: h.season,
       episode: h.episode
     }));
+    currentItems = deduplicateMediaList(rawItems);
     renderMediaItems(currentItems);
     return;
   }
@@ -175,7 +176,7 @@ async function loadCurrentTab() {
   if (currentTab === 'bookmarks') {
     renderSkeletonGrid();
     const bookmarks = await fetchUserBookmarks();
-    currentItems = bookmarks.map(b => ({
+    const rawItems = bookmarks.map(b => ({
       id: b.media_id,
       source: b.source,
       title: b.title,
@@ -187,6 +188,7 @@ async function loadCurrentTab() {
       episodes_watched: b.episodes_watched,
       total_episodes: b.total_episodes
     }));
+    currentItems = deduplicateMediaList(rawItems);
     renderMediaItems(currentItems);
     return;
   }
@@ -206,7 +208,8 @@ async function loadCurrentTab() {
   try {
     const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`);
     const data = await res.json();
-    currentItems = data.items || [];
+    const fetchedItems = data.items || [];
+    currentItems = deduplicateMediaList(fetchedItems);
     clientTabCache.set(cacheKey, currentItems);
     renderMediaItems(currentItems);
   } catch (err) {
@@ -216,12 +219,32 @@ async function loadCurrentTab() {
   }
 }
 
+// Утилита дедупликации релизов
+function deduplicateMediaList(items) {
+  if (!Array.isArray(items)) return [];
+  const seenKeys = new Set();
+  const deduped = [];
+  for (const item of items) {
+    if (!item || !item.title) continue;
+    const cleanTitle = (item.title || '').trim().toLowerCase().replace(/[^a-zа-я0-9]/gi, '');
+    const cleanYear = String(item.year || '').trim();
+    const key = `${cleanTitle}_${cleanYear || item.source || ''}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      deduped.push(item);
+    }
+  }
+  return deduped;
+}
+
 // -------------------------------------------------------------
 // РЕНДЕРИНГ ЭЛЕМЕНТОВ В 4 РЕЖИМАХ ОТОБРАЖЕНИЯ
 // -------------------------------------------------------------
 function renderMediaItems(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+
+  items = deduplicateMediaList(items);
 
   if (!items || items.length === 0) {
     container.innerHTML = `
@@ -248,9 +271,9 @@ function renderMediaItems(items) {
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
             ${getSourceBadge(item)}
-            ${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
+          ${item.user_status ? getStatusBadge(item.user_status) : ''}
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
@@ -314,7 +337,7 @@ function renderMediaItems(items) {
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
               ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
-              ${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : ''}
+              ${item.user_status ? getStatusBadge(item.user_status) : ''}
             </div>
           </div>
           <div class="media-detailed-desc">${item.description || item.genres || 'Превосходное качество видео и профессиональный перевод.'}</div>
@@ -409,21 +432,44 @@ function getStatusLabel(status) {
   return map[status] || status;
 }
 
+function getStatusBadge(status) {
+  if (!status) return '';
+  const norm = status === 'plan' ? 'planned' : (status === 'hold' ? 'on_hold' : status);
+  const icons = {
+    watching: '👁️',
+    planned: '📋',
+    completed: '✅',
+    favorite: '❤️',
+    on_hold: '⏸️',
+    dropped: '🛑',
+    wont_watch: '🚫'
+  };
+  const icon = icons[norm] || '📌';
+  const label = getStatusLabel(norm);
+  return `<div class="media-card-status-badge"><span class="storm-badge storm-badge-status storm-badge-${norm}"><span>${icon}</span> <span>${label}</span></span></div>`;
+}
+
 function getSourceBadge(item) {
   const s = (item.source || '').toLowerCase();
-  if (s === 'fanfilm4k') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#00d2ff,#0072ff);">FANFILM</span>';
-  if (s === 'anilibria') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#e11d48,#9f1239);">ANILIBRIA</span>';
-  if (s === 'anixart') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">ANIXART</span>';
-  if (s === 'shikimori') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">SHIKIMORI</span>';
-  if (s === 'tmdb') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#10b981,#047857);">TMDB</span>';
-  if (s === 'kodik') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#f59e0b,#b45309);">KODIK</span>';
-  if (s === 'hdrezka') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#ef4444,#b91c1c);">HDREZKA</span>';
-  if (s === 'collaps') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#06b6d4,#0e7490);">COLLAPS</span>';
-  if (s === 'alloha') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#ec4899,#be185d);">ALLOHA</span>';
-  if (s === 'videocdn') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#6366f1,#4338ca);">VIDEOCDN</span>';
-  if (s === 'ashdi') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#14b8a6,#0f766e);">ASHDI</span>';
-  if (s === 'kinobox') return '<span class="storm-badge storm-badge-quality" style="background:linear-gradient(135deg,#f97316,#c2410c);">KINOBOX</span>';
-  return '';
+  const badges = {
+    fanfilm4k: { name: 'FANFILM 4K', bg: 'linear-gradient(135deg,#00d2ff 0%,#0072ff 100%)' },
+    anilibria: { name: 'ANILIBRIA', bg: 'linear-gradient(135deg,#e11d48 0%,#9f1239 100%)' },
+    anixart: { name: 'ANIXART', bg: 'linear-gradient(135deg,#8b5cf6 0%,#6d28d9 100%)' },
+    shikimori: { name: 'SHIKIMORI', bg: 'linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%)' },
+    tmdb: { name: 'TMDB', bg: 'linear-gradient(135deg,#10b981 0%,#047857 100%)' },
+    kodik: { name: 'KODIK', bg: 'linear-gradient(135deg,#f59e0b 0%,#b45309 100%)' },
+    hdrezka: { name: 'HDREZKA', bg: 'linear-gradient(135deg,#ef4444 0%,#b91c1c 100%)' },
+    collaps: { name: 'COLLAPS', bg: 'linear-gradient(135deg,#06b6d4 0%,#0e7490 100%)' },
+    alloha: { name: 'ALLOHA', bg: 'linear-gradient(135deg,#ec4899 0%,#be185d 100%)' },
+    videocdn: { name: 'VIDEOCDN', bg: 'linear-gradient(135deg,#6366f1 0%,#4338ca 100%)' },
+    ashdi: { name: 'ASHDI', bg: 'linear-gradient(135deg,#14b8a6 0%,#0f766e 100%)' },
+    vidsrc: { name: 'VIDSRC', bg: 'linear-gradient(135deg,#84cc16 0%,#4d7c0f 100%)' },
+    kinobaza: { name: 'KINOBAZA', bg: 'linear-gradient(135deg,#f97316 0%,#c2410c 100%)' },
+    kinogo: { name: 'KINOGO', bg: 'linear-gradient(135deg,#a855f7 0%,#7e22ce 100%)' },
+    webtorrent: { name: 'WEBTORRENT', bg: 'linear-gradient(135deg,#f43f5e 0%,#be123c 100%)' }
+  };
+  const b = badges[s] || { name: (item.source || 'MEDIA').toUpperCase(), bg: 'linear-gradient(135deg,#475569 0%,#334155 100%)' };
+  return `<span class="storm-badge storm-badge-quality" style="background:${b.bg}; color:#ffffff !important; border-color:rgba(255,255,255,0.35);">${b.name}</span>`;
 }
 
 function getSourceName(item) {
@@ -439,7 +485,10 @@ function getSourceName(item) {
     alloha: 'Alloha TV',
     videocdn: 'Videocdn',
     ashdi: 'Ashdi',
-    kinobox: 'Kinobox'
+    vidsrc: 'Vidsrc Cinema',
+    kinobaza: 'Kinobaza',
+    kinogo: 'Kinogo',
+    webtorrent: 'P2P WebTorrent'
   };
   return map[item.source] || item.source?.toUpperCase() || 'STORM';
 }
@@ -512,18 +561,115 @@ function initSearch() {
     });
   }
 
-  // Фильтр источников
-  const sourceSelect = document.getElementById('source-filter-select');
-  if (sourceSelect) {
-    sourceSelect.addEventListener('change', (e) => {
-      currentSource = e.target.value;
-      if (searchQuery && searchQuery.length >= 2) {
-        executeSearch(searchQuery);
-      } else {
-        loadCurrentTab();
-      }
+  initSourceFilterDropdown();
+}
+
+// -------------------------------------------------------------
+// СТИЛИЗОВАННЫЙ ВЫПАДАЮЩИЙ СПИСОК ИСТОЧНИКОВ С ПОИСКОМ (16 ИСТОЧНИКОВ)
+// -------------------------------------------------------------
+function initSourceFilterDropdown() {
+  const dropdown = document.getElementById('catalog-source-dropdown');
+  if (!dropdown) return;
+
+  const trigger = document.getElementById('catalog-source-trigger');
+  const triggerBadge = document.getElementById('catalog-source-badge');
+  const triggerLabel = document.getElementById('catalog-source-label');
+  const menu = document.getElementById('catalog-source-menu');
+  const searchInput = document.getElementById('catalog-source-search');
+  const listContainer = document.getElementById('catalog-source-list');
+  const hiddenSelect = document.getElementById('source-filter-select');
+
+  const sources = [
+    { id: 'all', badge: '🌐', name: 'Все источники', desc: 'Объединенная база релизов' },
+    { id: 'fanfilm4k', badge: '🎬', name: 'FanFilm4K (4K Ultra HD)', desc: 'Фильмы и сериалы в 4K UHD' },
+    { id: 'tmdb', badge: '⭐', name: 'TMDB (Мировое кино)', desc: 'Мировая база кинопроката' },
+    { id: 'anixart', badge: '🌸', name: 'AniXart (Аниме и озвучки)', desc: 'Тысячи тайтлов с сотнями озвучек' },
+    { id: 'anilibria', badge: '⚡', name: 'AniLibria (Аниме Full HD)', desc: 'Официальные студийные потоки' },
+    { id: 'shikimori', badge: '🎌', name: 'Shikimori (База аниме)', desc: 'Каталог и просмотр' },
+    { id: 'kodik', badge: '🎥', name: 'Kodik (Аниме и сериалы)', desc: 'Популярная база с озвучками' },
+    { id: 'hdrezka', badge: '🍿', name: 'HDRezka (Кино и дубляж)', desc: 'Студийные дубляжи' },
+    { id: 'collaps', badge: '🎞️', name: 'Collaps (Онлайн-плеер)', desc: 'Мировые премьеры в Full HD' },
+    { id: 'alloha', badge: '📺', name: 'Alloha TV (Кинотеатр)', desc: 'Стабильные серверные потоки' },
+    { id: 'videocdn', badge: '📽️', name: 'VideoCDN (Премьеры)', desc: 'Новинки кинопроката' },
+    { id: 'ashdi', badge: '💎', name: 'Ashdi (Мультистриминг)', desc: 'Быстрые потоки и переводы' },
+    { id: 'vidsrc', badge: '🌍', name: 'Vidsrc Cinema (Original)', desc: 'Оригинальный звук и субтитры' },
+    { id: 'kinobaza', badge: '🔥', name: 'Kinobaza (HD)', desc: 'Фильмы и сериалы в HD' },
+    { id: 'kinogo', badge: '🎪', name: 'Kinogo HD (Классика)', desc: 'Большая база популярного кино' },
+    { id: 'webtorrent', badge: '🧲', name: 'P2P WebTorrent (Торренты)', desc: 'Прямой стриминг раздач' }
+  ];
+
+  const renderOptions = (query = '') => {
+    const q = query.trim().toLowerCase();
+    const filtered = sources.filter(s => s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q));
+    listContainer.innerHTML = '';
+
+    if (filtered.length === 0) {
+      listContainer.innerHTML = '<div style="padding:10px;text-align:center;font-size:12px;color:var(--text-muted);">Источник не найден</div>';
+      return;
+    }
+
+    filtered.forEach(s => {
+      const item = document.createElement('div');
+      item.className = `storm-dropdown-item ${currentSource === s.id ? 'is-active' : ''}`;
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+          <span style="font-size:14px;">${s.badge}</span>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.name}</div>
+            <div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.desc}</div>
+          </div>
+        </div>
+      `;
+      item.onclick = () => {
+        currentSource = s.id;
+        triggerBadge.textContent = s.badge;
+        triggerLabel.textContent = s.name;
+        if (hiddenSelect) hiddenSelect.value = s.id;
+        dropdown.classList.remove('is-open');
+        menu.style.display = 'none';
+
+        if (searchQuery && searchQuery.length >= 2) {
+          executeSearch(searchQuery);
+        } else {
+          loadCurrentTab();
+        }
+      };
+      listContainer.appendChild(item);
     });
+  };
+
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    const isOpen = dropdown.classList.contains('is-open');
+    document.querySelectorAll('.storm-custom-dropdown.is-open').forEach(dd => dd.classList.remove('is-open'));
+    document.querySelectorAll('.storm-dropdown-menu').forEach(m => m.style.display = 'none');
+
+    if (!isOpen) {
+      dropdown.classList.add('is-open');
+      menu.style.display = 'block';
+      if (searchInput) {
+        searchInput.value = '';
+        renderOptions('');
+        setTimeout(() => searchInput.focus(), 50);
+      }
+    }
+  };
+
+  if (searchInput) {
+    searchInput.oninput = (e) => {
+      renderOptions(e.target.value);
+    };
+    searchInput.onclick = (e) => e.stopPropagation();
   }
+
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('is-open');
+      menu.style.display = 'none';
+    }
+  });
+
+  renderOptions('');
 }
 
 // -------------------------------------------------------------

@@ -98,22 +98,25 @@
   <!-- Панель инструментов: Фильтры, источники и режимы отображения -->
   <div class="storm-toolbar">
     <div class="storm-toolbar-left">
-      <!-- Источник контента: 12+ доступных источников -->
-      <select class="storm-select" id="source-filter-select" style="width: auto; min-width: 220px;">
-        <option value="all" data-i18n="source_all">Все источники</option>
-        <option value="fanfilm4k" data-i18n="source_fanfilm">FanFilm4K (4K Ultra HD)</option>
-        <option value="tmdb" data-i18n="source_tmdb">TMDB (Мировое кино)</option>
-        <option value="anixart" data-i18n="source_anixart">AniXart (Аниме и озвучки)</option>
-        <option value="anilibria" data-i18n="source_anilibria">AniLibria (Аниме Full HD)</option>
-        <option value="shikimori" data-i18n="source_shikimori">Shikimori (База аниме)</option>
-        <option value="kodik" data-i18n="source_kodik">Kodik (Аниме и сериалы)</option>
-        <option value="hdrezka" data-i18n="source_hdrezka">HDRezka (Кино и дубляж)</option>
-        <option value="collaps" data-i18n="source_collaps">Collaps (Онлайн-плеер)</option>
-        <option value="alloha" data-i18n="source_alloha">Alloha TV (Кинотеатр)</option>
-        <option value="videocdn" data-i18n="source_videocdn">Videocdn (Премьеры)</option>
-        <option value="ashdi" data-i18n="source_ashdi">Ashdi (Мультистриминг)</option>
-        <option value="kinobox" data-i18n="source_kinobox">Kinobox (Мульти-плеер)</option>
-      </select>
+      <!-- Стилизованный выпадающий список источников с поиском (15+ источников) -->
+      <div class="storm-custom-dropdown" id="catalog-source-dropdown" style="min-width: 250px;">
+        <button type="button" class="storm-btn storm-btn-secondary" id="catalog-source-trigger" style="width: 100%; justify-content: space-between; padding: 8px 14px;">
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span id="catalog-source-badge">🌐</span>
+            <span id="catalog-source-label" style="font-weight: 700;">Все источники</span>
+          </span>
+          <span class="storm-dropdown-arrow">▼</span>
+        </button>
+        <div class="storm-dropdown-menu" id="catalog-source-menu" style="display: none; width: 280px; left: 0; right: auto;">
+          <div class="storm-dropdown-search-wrap">
+            <input type="text" class="storm-dropdown-search" id="catalog-source-search" placeholder="🔍 Поиск источника..." autocomplete="off">
+          </div>
+          <div class="storm-dropdown-list" id="catalog-source-list">
+            <!-- Заполняется динамически -->
+          </div>
+        </div>
+      </div>
+      <input type="hidden" id="source-filter-select" value="all">
     </div>
 
     <div class="storm-toolbar-right">

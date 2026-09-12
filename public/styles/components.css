@@ -78,6 +78,29 @@
   border-color: var(--border-color);
 }
 
+/* Активные кнопки действий (в т.ч. Ambilight) */
+.storm-btn.active,
+.storm-btn-secondary.active {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25) 0%, rgba(0, 210, 255, 0.08) 100%) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 14px var(--accent-glow), 0 3px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  transform: translateY(-1px);
+}
+
+#toggle-ambilight-btn.active {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.35) 0%, rgba(168, 85, 247, 0.35) 100%) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 18px var(--accent-glow), 0 3px 0 rgba(0, 0, 0, 0.5) !important;
+  animation: ambilightBtnGlow 2s infinite alternate;
+}
+
+@keyframes ambilightBtnGlow {
+  0% { box-shadow: 0 0 10px var(--accent-glow), 0 3px 0 rgba(0, 0, 0, 0.5); }
+  100% { box-shadow: 0 0 24px var(--accent-glow), 0 0 12px rgba(255, 255, 255, 0.4), 0 3px 0 rgba(0, 0, 0, 0.5); }
+}
+
 /* Кнопка успешного действия (Зеленый неон) */
 .storm-btn-success {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -136,10 +159,56 @@
   color: var(--text-muted);
 }
 
-/* -------------------------------------------------------------
-   ЧЕКБОКСЫ (CHECKBOXES) БЕЗ УСТАРЕВШИХ ГАЛОЧЕК
-   Сплошной квадрат со скруглением 4px и неоновой заливкой
-   ------------------------------------------------------------- */
+/* Глобальный стандарт всех чекбоксов: сплошной квадрат 4px с неоновой заливкой БЕЗ галочек */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 2px 4px var(--shadow-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  outline: none;
+  margin: 0;
+  vertical-align: middle;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--border-color);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 12px var(--accent-glow), inset 0 0 6px rgba(255, 255, 255, 0.4) !important;
+}
+
+input[type="checkbox"]::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #05070a;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.15s ease;
+  position: absolute;
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .storm-checkbox-label {
   display: inline-flex;
   align-items: center;
@@ -298,66 +367,132 @@
   line-height: 1;
 }
 
+.storm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  user-select: none;
+}
+
 .storm-badge-4k {
-  background: linear-gradient(135deg, #ff0055 0%, #b3003b 100%);
-  color: #ffffff;
-  box-shadow: 0 0 10px rgba(255, 0, 85, 0.4);
+  background: linear-gradient(135deg, #ff0055 0%, #b3003b 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 12px rgba(255, 0, 85, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 
 .storm-badge-quality {
-  background: rgba(0, 210, 255, 0.15);
-  color: var(--accent);
-  border: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.8) 0%, rgba(0, 114, 255, 0.8) 100%);
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.media-card-rating {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
 }
 
 .storm-badge-rating {
-  background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+  color: #ffffff !important;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7), 0 0 12px rgba(245, 158, 11, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Плашка статуса в левом нижнем углу постера */
+.media-card-status-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.media-card-poster:has(.media-card-progress) .media-card-status-badge {
+  bottom: 12px;
 }
 
 .storm-badge-status {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .storm-badge-watching {
-  background: rgba(0, 210, 255, 0.2);
-  color: var(--accent);
-  border: 1px solid var(--border-color);
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(56, 189, 248, 0.7) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 10px rgba(14, 165, 233, 0.5) !important;
 }
 
 .storm-badge-completed {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(110, 231, 183, 0.7) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 10px rgba(16, 185, 129, 0.5) !important;
 }
 
-.storm-badge-plan {
-  background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
-  border: 1px solid rgba(168, 85, 247, 0.4);
+.storm-badge-plan,
+.storm-badge-planned {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(196, 181, 253, 0.7) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 10px rgba(139, 92, 246, 0.5) !important;
 }
 
-.storm-badge-hold {
-  background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+.storm-badge-hold,
+.storm-badge-on_hold {
+  background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(253, 230, 138, 0.7) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 10px rgba(245, 158, 11, 0.5) !important;
 }
 
 .storm-badge-dropped {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(252, 165, 165, 0.7) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 10px rgba(239, 68, 68, 0.5) !important;
 }
 
 .storm-badge-favorite {
-  background: rgba(255, 0, 127, 0.2);
-  color: #ff007f;
-  border: 1px solid rgba(255, 0, 127, 0.4);
+  background: linear-gradient(135deg, #ec4899 0%, #be185d 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(249, 168, 212, 0.7) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 12px rgba(236, 72, 153, 0.6) !important;
+}
+
+.storm-badge-wont_watch {
+  background: linear-gradient(135deg, #475569 0%, #334155 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(148, 163, 184, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
 }
 
 /* -------------------------------------------------------------
@@ -455,16 +590,98 @@
    ========================================================================== */
 .ambilight-aura {
   position: absolute;
-  top: -10px;
-  left: -10px;
-  right: -10px;
-  bottom: -10px;
+  top: -18px;
+  left: -18px;
+  right: -18px;
+  bottom: -18px;
   pointer-events: none;
   z-index: 1;
-  border-radius: 18px;
-  transition: box-shadow 0.3s ease, opacity 0.4s ease;
+  border-radius: 22px;
+  transition: box-shadow 0.35s ease, opacity 0.4s ease, filter 0.35s ease;
   opacity: 0;
-  filter: blur(20px);
+  filter: blur(35px);
+}
+
+.ambilight-aura.active {
+  opacity: 1;
+}
+
+/* Панель настроек динамической подсветки Ambilight */
+.ambilight-settings-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--accent-subtle);
+  margin-top: 10px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: stormModalIn 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.ambilight-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 8px;
+}
+
+.ambilight-settings-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ambilight-mode-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ambilight-presets-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ambilight-preset-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.ambilight-preset-btn:hover {
+  transform: scale(1.15);
+  border-color: #ffffff;
+}
+
+.ambilight-preset-btn.active {
+  border-color: #ffffff !important;
+  transform: scale(1.15);
+  box-shadow: 0 0 14px currentColor;
+}
+
+.ambilight-sliders-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .ambilight-sliders-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ==========================================================================
@@ -708,16 +925,18 @@
   position: fixed;
   top: 70px;
   right: 20px;
-  width: 320px;
+  width: 360px;
   height: calc(100vh - 90px);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-subtle);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 30px var(--accent-subtle);
   display: flex;
   flex-direction: column;
-  z-index: 999;
+  z-index: 1100 !important;
   padding: 16px;
+  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+  overflow: hidden;
 }
 
 .watch-room-header {
@@ -754,8 +973,56 @@
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.watch-room-participants {
+/* Карточка текущего воспроизводимого видео в комнате */
+.watch-room-media-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   margin-bottom: 10px;
+}
+
+.watch-room-media-thumb {
+  width: 42px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.watch-room-media-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.watch-room-media-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watch-room-media-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Панель управления синхронизацией воспроизведения */
+.watch-room-controls-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.watch-room-participants {
+  margin-bottom: 8px;
 }
 
 .participants-avatars-row {
@@ -799,6 +1066,15 @@
 .watch-chat-msg {
   font-size: 12px;
   line-height: 1.4;
+  word-break: break-word;
+}
+
+.watch-chat-msg.has-sticker img {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  display: block;
+  margin-top: 4px;
 }
 
 .chat-msg-time {
@@ -817,6 +1093,147 @@
   display: flex;
   gap: 6px;
   margin-top: 10px;
+  position: relative;
+}
+
+/* Поповер смайликов и Telegram стикеров */
+.watch-chat-stickers-popover {
+  position: absolute;
+  bottom: 45px;
+  right: 0;
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-glow);
+  padding: 12px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 240px;
+}
+
+.stickers-tabs-header {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 6px;
+}
+
+.stickers-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.stickers-tab-btn.active {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.stickers-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 180px;
+}
+
+.sticker-item {
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.sticker-item:hover {
+  transform: scale(1.25);
+  background: var(--bg-tertiary);
+}
+
+/* Фоновые обои комнаты (12 тем) */
+.room-bg-cyberpunk { background: linear-gradient(180deg, #150d2a 0%, #0d0614 100%) !important; }
+.room-bg-oled { background: #050508 !important; }
+.room-bg-cosmos { background: radial-gradient(circle at top right, #1e1b4b 0%, #09090b 100%) !important; }
+.room-bg-anime { background: linear-gradient(180deg, #2e1065 0%, #0f172a 100%) !important; }
+.room-bg-velvet { background: linear-gradient(180deg, #3f0d12 0%, #050505 100%) !important; }
+.room-bg-matrix { background: linear-gradient(180deg, #022c22 0%, #020617 100%) !important; }
+.room-bg-gothic { background: linear-gradient(180deg, #292524 0%, #0c0a09 100%) !important; }
+.room-bg-vaporwave { background: linear-gradient(180deg, #4c0519 0%, #1e1b4b 100%) !important; }
+
+/* Карточки готовых раздач WebTorrent */
+.torrent-releases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.torrent-release-card {
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.torrent-release-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), 0 0 12px var(--accent-subtle);
+  transform: translateY(-2px);
+}
+
+.torrent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.torrent-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.torrent-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.torrent-meta-pill {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.torrent-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* ==========================================================================
