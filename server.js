@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WebSocketServer } from 'ws';
 
 import {
   registerUser,
@@ -23,7 +25,16 @@ import {
   createCustomList,
   deleteCustomList,
   addCustomListItem,
-  removeCustomListItem
+  removeCustomListItem,
+  getMediaReviews,
+  addReview,
+  deleteReview,
+  toggleReviewLike,
+  getUserAchievements,
+  updateAchievementProgress,
+  trackUserAction,
+  exportUserData,
+  importUserData
 } from './db.js';
 
 import {
@@ -63,7 +74,189 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
+
+// Хранилище комнат совместного просмотра в памяти
+const watchRooms = new Map();
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'STORM-';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+wss.on('connection', (ws) => {
+  let currentRoomCode = null;
+  let currentUser = null;
+
+  ws.on('message', (raw) => {
+    try {
+      const data = JSON.parse(raw.toString());
+      switch (data.type) {
+        case 'join_room': {
+          const roomCode = (data.roomCode || '').toUpperCase().trim();
+          let room = watchRooms.get(roomCode);
+          if (!room) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Комната не найдена' }));
+            return;
+          }
+
+          currentRoomCode = roomCode;
+          currentUser = {
+            id: data.user?.id || `guest_${Date.now()}`,
+            username: data.user?.username || 'Гость',
+            avatar: data.user?.avatar || null,
+            isHost: room.hostUserId && data.user && room.hostUserId === data.user.id
+          };
+
+          room.participants.set(ws, currentUser);
+
+          // Отправляем текущее состояние комнаты новому участнику
+          ws.send(JSON.stringify({
+            type: 'room_joined',
+            roomCode: room.code,
+            media: room.media,
+            playback: room.playback,
+            participants: Array.from(room.participants.values()),
+            messages: room.messages
+          }));
+
+          // Уведомляем остальных участников
+          const updateMsg = JSON.stringify({
+            type: 'participant_update',
+            participants: Array.from(room.participants.values()),
+            joinedUser: currentUser
+          });
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(updateMsg);
+            }
+          }
+          break;
+        }
+
+        case 'sync_playback': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          room.playback = {
+            isPlaying: Boolean(data.isPlaying),
+            currentTime: parseFloat(data.currentTime) || 0,
+            updatedAt: Date.now()
+          };
+
+          const syncMsg = JSON.stringify({
+            type: 'playback_sync',
+            isPlaying: room.playback.isPlaying,
+            currentTime: room.playback.currentTime,
+            timestamp: room.playback.updatedAt,
+            sender: currentUser?.username || 'Зритель'
+          });
+
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(syncMsg);
+            }
+          }
+          break;
+        }
+
+        case 'change_media': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          room.media = data.media || null;
+          room.playback = { isPlaying: false, currentTime: 0, updatedAt: Date.now() };
+
+          const mediaMsg = JSON.stringify({
+            type: 'media_changed',
+            media: room.media,
+            sender: currentUser?.username || 'Зритель'
+          });
+
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(mediaMsg);
+            }
+          }
+          break;
+        }
+
+        case 'chat_message': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const text = (data.text || '').trim();
+          if (!text) return;
+
+          const newMsg = {
+            id: Date.now() + Math.random(),
+            userId: currentUser?.id,
+            username: currentUser?.username || 'Гость',
+            avatar: currentUser?.avatar || null,
+            text,
+            time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+          };
+
+          room.messages.push(newMsg);
+          if (room.messages.length > 100) room.messages.shift();
+
+          const chatBroadcast = JSON.stringify({
+            type: 'chat_received',
+            message: newMsg
+          });
+
+          for (const [client] of room.participants) {
+            if (client.readyState === 1) {
+              client.send(chatBroadcast);
+            }
+          }
+          break;
+        }
+
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error('Ошибка WebSocket сообщения:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    if (currentRoomCode) {
+      const room = watchRooms.get(currentRoomCode);
+      if (room) {
+        room.participants.delete(ws);
+        if (room.participants.size === 0) {
+          // Если комната пуста более 15 минут, она удалится
+          setTimeout(() => {
+            if (room.participants.size === 0) {
+              watchRooms.delete(currentRoomCode);
+            }
+          }, 900000);
+        } else {
+          const updateMsg = JSON.stringify({
+            type: 'participant_update',
+            participants: Array.from(room.participants.values())
+          });
+          for (const [client] of room.participants) {
+            if (client.readyState === 1) {
+              client.send(updateMsg);
+            }
+          }
+        }
+      }
+    }
+  });
+});
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -692,13 +885,223 @@ app.delete('/api/custom-lists/:id/items/:mediaId', requireAuth, (req, res) => {
   }
 });
 
+// ==========================================
+// 7. КИНОКОМНАТА И WATCH TOGETHER
+// ==========================================
+app.post('/api/rooms/create', (req, res) => {
+  try {
+    const code = generateRoomCode();
+    const newRoom = {
+      code,
+      hostUserId: req.user?.id || null,
+      hostName: req.user?.username || 'Хост',
+      media: req.body.media || null,
+      playback: { isPlaying: false, currentTime: 0, updatedAt: Date.now() },
+      participants: new Map(),
+      messages: []
+    };
+    watchRooms.set(code, newRoom);
+
+    if (req.user) {
+      trackUserAction(req.user.id, 'room_host');
+    }
+
+    res.json({ success: true, code, room: { code, hostName: newRoom.hostName, media: newRoom.media } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/rooms/:code', (req, res) => {
+  try {
+    const code = (req.params.code || '').toUpperCase().trim();
+    const room = watchRooms.get(code);
+    if (!room) return res.status(404).json({ error: 'Комната не найдена' });
+
+    res.json({
+      code: room.code,
+      hostName: room.hostName,
+      media: room.media,
+      participantsCount: room.participants.size,
+      playback: room.playback
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 8. СИСТЕМА РЕЦЕНЗИЙ И ОТЗЫВОВ
+// ==========================================
+app.get('/api/reviews', (req, res) => {
+  try {
+    const { mediaId, source } = req.query;
+    if (!mediaId || !source) {
+      return res.status(400).json({ error: 'Не указан mediaId или source' });
+    }
+    const reviews = getMediaReviews(mediaId, source, req.user?.id);
+    res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/reviews', requireAuth, (req, res) => {
+  try {
+    const { media_id, source, title, rating, content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Текст рецензии не может быть пустым' });
+    }
+    const review = addReview(req.user.id, {
+      media_id,
+      source,
+      title: title?.trim() || '',
+      rating,
+      content: content.trim()
+    });
+    res.json(review);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/reviews/:id', requireAuth, (req, res) => {
+  try {
+    deleteReview(req.params.id, req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/reviews/:id/like', requireAuth, (req, res) => {
+  try {
+    const { is_like } = req.body;
+    const result = toggleReviewLike(req.params.id, req.user.id, Boolean(is_like));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 9. СИСТЕМА ДОСТИЖЕНИЙ (STORM ACHIEVEMENTS)
+// ==========================================
+app.get('/api/achievements', (req, res) => {
+  try {
+    const achievements = getUserAchievements(req.user ? req.user.id : null);
+    res.json(achievements);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/achievements/track', requireAuth, (req, res) => {
+  try {
+    const { action, meta } = req.body;
+    const unlocked = trackUserAction(req.user.id, action, meta || {});
+    res.json({ success: true, unlocked });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 10. СИНХРОНИЗАЦИЯ И РЕЗЕРВНЫЕ КОПИИ
+// ==========================================
+app.get('/api/sync/export', requireAuth, (req, res) => {
+  try {
+    const data = exportUserData(req.user.id);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sync/import', requireAuth, (req, res) => {
+  try {
+    const result = importUserData(req.user.id, req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sync/shikimori', requireAuth, async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'Укажите никнейм Shikimori' });
+    }
+    const response = await fetch(`https://shikimori.one/api/users/${encodeURIComponent(username.trim())}/anime_rates?limit=500`, {
+      headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' }
+    });
+    if (!response.ok) {
+      throw new Error(`Ошибка Shikimori API: ${response.status}`);
+    }
+    const rates = await response.json();
+    let imported = 0;
+    rates.forEach(rate => {
+      if (rate.anime) {
+        setBookmark(req.user.id, {
+          media_id: String(rate.anime.id),
+          source: 'shikimori',
+          title: rate.anime.russian || rate.anime.name,
+          original_title: rate.anime.name,
+          poster_url: rate.anime.image ? `https://shikimori.one${rate.anime.image.original || rate.anime.image.preview}` : '',
+          media_type: 'anime',
+          status: rate.status || 'watching',
+          episodes_watched: rate.episodes || 0
+        });
+        imported++;
+      }
+    });
+
+    trackUserAction(req.user.id, 'sync_data');
+    res.json({ success: true, count: imported });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 11. ПРОПУСК ОПЕНИНГОВ И ТАЙМКОДЫ (ANISKIP)
+// ==========================================
+app.get('/api/media/skip-times', async (req, res) => {
+  try {
+    const { malId, episode } = req.query;
+    if (!malId || !episode) {
+      return res.json({ op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } });
+    }
+
+    const response = await fetch(`https://api.aniskip.com/v2/skip-times/${encodeURIComponent(malId)}/${encodeURIComponent(episode)}?types=op&types=ed`);
+    if (!response.ok) {
+      return res.json({ op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } });
+    }
+    const data = await response.json();
+    const result = {};
+    if (data.results) {
+      data.results.forEach(item => {
+        if (item.skipType === 'op') {
+          result.op = { start: item.interval.startTime, end: item.interval.endTime };
+        } else if (item.skipType === 'ed') {
+          result.ed = { start: item.interval.startTime, end: item.interval.endTime };
+        }
+      });
+    }
+    res.json(result);
+  } catch {
+    res.json({ op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } });
+  }
+});
+
 // Фронтенд fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Запуск сервера
-app.listen(PORT, () => {
+// Запуск сервера с поддержкой WebSockets
+server.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🚀 STORM MULTIMEDIA Сервер запущен на порту ${PORT}`);
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);

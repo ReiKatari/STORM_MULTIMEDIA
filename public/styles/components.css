@@ -444,3 +444,719 @@
   border-top: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.15);
 }
+
+/* ==========================================================================
+   AMBILIGHT (ДИНАМИЧЕСКАЯ ПОДСВЕТКА)
+   ========================================================================== */
+.ambilight-aura {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 18px;
+  transition: box-shadow 0.3s ease, opacity 0.4s ease;
+  opacity: 0;
+  filter: blur(20px);
+}
+
+/* ==========================================================================
+   ПРОПУСК ОПЕНИНГОВ И ТИТРОВ (SKIP INTRO/OUTRO)
+   ========================================================================== */
+.storm-skip-btn {
+  position: absolute;
+  bottom: 50px;
+  right: 20px;
+  z-index: 25;
+  background: var(--accent-gradient);
+  color: #000;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 10px 18px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 20px var(--accent-glow);
+  animation: stormSkipPulse 1.8s infinite;
+  transition: transform 0.15s ease;
+}
+
+.storm-skip-btn:hover {
+  transform: scale(1.06);
+}
+
+@keyframes stormSkipPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* ==========================================================================
+   СУБТИТРЫ И ВНЕШНИЕ АУДИОДОРОЖКИ
+   ========================================================================== */
+.storm-subtitles-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 6px 14px;
+  border-radius: 6px;
+  text-align: center;
+  max-width: 85%;
+  line-height: 1.4;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+  transition: all 0.1s ease;
+}
+
+.sub-drag-active {
+  outline: 3px dashed var(--accent) !important;
+  outline-offset: -3px;
+}
+
+.subtitles-panel-bar {
+  background: var(--bg-tertiary);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  margin-top: 8px;
+}
+
+/* ==========================================================================
+   РЕЦЕНЗИИ, СПОЙЛЕР-БЛОКИ И РЕЙТИНГИ
+   ========================================================================== */
+.reviews-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reviews-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.reviews-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.spoiler-blur {
+  filter: blur(6px);
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 0 4px;
+  cursor: pointer;
+  transition: filter 0.25s ease, background 0.25s ease;
+  user-select: none;
+  display: inline-block;
+}
+
+.spoiler-blur.unblurred {
+  filter: none;
+  background: transparent;
+  user-select: auto;
+}
+
+.review-compose-card {
+  background: var(--bg-tertiary);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.stars-row {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.star-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.star-btn.selected,
+.star-btn:hover {
+  color: var(--color-amber);
+  transform: scale(1.15);
+}
+
+.review-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 90px;
+}
+
+.review-quote {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.review-item-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.review-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.review-author-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  object-fit: cover;
+}
+
+.review-author-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.review-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.review-rating-badge {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  font-weight: 800;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 16px;
+}
+
+.review-item-title {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.review-item-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.review-item-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.review-likes-group {
+  display: flex;
+  gap: 8px;
+}
+
+.review-like-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: 14px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.review-like-btn.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   КИНОКОМНАТА И WATCH TOGETHER
+   ========================================================================== */
+.watch-together-sidebar {
+  position: fixed;
+  top: 70px;
+  right: 20px;
+  width: 320px;
+  height: calc(100vh - 90px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-subtle);
+  display: flex;
+  flex-direction: column;
+  z-index: 999;
+  padding: 16px;
+}
+
+.watch-room-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 10px;
+}
+
+.room-sync-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.room-sync-badge.synced {
+  background: rgba(0, 255, 102, 0.15);
+  color: var(--color-green);
+  border: 1px solid rgba(0, 255, 102, 0.3);
+}
+
+.room-sync-badge.syncing {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.room-sync-badge.offline {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.watch-room-participants {
+  margin-bottom: 10px;
+}
+
+.participants-avatars-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.participant-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  padding: 3px 8px;
+  border-radius: 14px;
+  font-size: 11px;
+}
+
+.participant-badge img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.host-crown {
+  font-size: 12px;
+}
+
+.watch-room-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.watch-chat-msg {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.chat-msg-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.chat-msg-author {
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 4px;
+}
+
+.watch-room-chat-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ==========================================================================
+   СИСТЕМА ДОСТИЖЕНИЙ (STORM ACHIEVEMENTS)
+   ========================================================================== */
+.achievements-summary-card {
+  background: var(--bg-tertiary);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 14px;
+}
+
+.achievements-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.achievements-progress-fill {
+  height: 100%;
+  background: var(--accent-gradient);
+  box-shadow: 0 0 10px var(--accent-glow);
+  transition: width 0.4s ease;
+}
+
+.achievements-category-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.ach-category-pill {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ach-category-pill.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 800;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.achievement-card.unlocked {
+  border-color: var(--accent-subtle);
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.1);
+}
+
+.achievement-card.locked {
+  opacity: 0.6;
+  filter: grayscale(0.8);
+}
+
+.achievement-card:hover {
+  transform: translateY(-2px);
+}
+
+.achievement-card-icon {
+  font-size: 28px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.achievement-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.achievement-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.achievement-card-status {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.achievement-card-desc {
+  margin: 4px 0 6px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.achievement-item-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.achievement-item-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+/* Всплывающий тост достижения */
+.achievement-toast {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--accent) !important;
+  box-shadow: 0 0 24px var(--accent-glow) !important;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.achievement-toast-icon {
+  font-size: 32px;
+}
+
+.achievement-toast-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.achievement-toast-title {
+  margin: 2px 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.achievement-toast-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   МИКРОФОН ГОЛОСОВОГО ПОИСКА
+   ========================================================================== */
+.storm-search-mic {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.storm-search-mic:hover {
+  color: var(--accent);
+  transform: scale(1.15);
+}
+
+.storm-search-mic.is-listening {
+  color: #ff0055;
+  animation: stormMicPulse 1s infinite alternate;
+  filter: drop-shadow(0 0 8px #ff0055);
+}
+
+@keyframes stormMicPulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.3); }
+}
+
+/* ==========================================================================
+   P2P WEBTORRENT СТРИМИНГ
+   ========================================================================== */
+.webtorrent-container {
+  padding: 24px;
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+.torrent-stats-hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 12px;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+}
+
+/* ==========================================================================
+   КАРТОЧКИ СИНХРОНИЗАЦИИ
+   ========================================================================== */
+.sync-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.sync-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ==========================================================================
+   ВСПЛЫВАЮЩЕЕ ПРЕВЬЮ ПРИ НАВЕДЕНИИ (VIDEO HOVER PREVIEW)
+   ========================================================================== */
+.media-hover-preview-popup {
+  position: absolute;
+  z-index: 1000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
+  overflow: hidden;
+  animation: hoverPreviewIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  pointer-events: auto;
+}
+
+@keyframes hoverPreviewIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.hover-preview-media {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+}
+
+.hover-preview-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.hover-preview-media:hover img {
+  transform: scale(1.08);
+}
+
+.hover-preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg-secondary) 5%, transparent 60%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hover-play-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--accent-gradient);
+  color: #000;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.hover-preview-body {
+  padding: 12px 14px;
+}
+
+.hover-preview-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hover-preview-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.hover-preview-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  margin: 0 0 10px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hover-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+

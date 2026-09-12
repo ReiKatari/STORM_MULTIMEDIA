@@ -5,14 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
   <link rel="shortcut icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#00d2ff">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="styles/storm-theme.css?v=1.1">
-  <link rel="stylesheet" href="styles/components.css?v=1.1">
-  <link rel="stylesheet" href="styles/main.css?v=1.1">
+  <link rel="stylesheet" href="styles/storm-theme.css?v=1.2">
+  <link rel="stylesheet" href="styles/components.css?v=1.2">
+  <link rel="stylesheet" href="styles/main.css?v=1.2">
+  <link rel="stylesheet" href="styles/tv-mode.css?v=1.2">
   
   <!-- HLS плеер для прямых потоков (AniLibria Full HD и CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- WebTorrent для прямого P2P стриминга торрентов в браузере -->
+  <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
 </head>
 <body>
 
@@ -28,15 +33,36 @@
         </div>
       </a>
 
-      <!-- Поле глобального полнотекстового поиска -->
+      <!-- Поле глобального полнотекстового поиска с голосовым вводом -->
       <div class="storm-search-box">
         <span class="storm-search-icon">🔍</span>
         <input type="text" id="global-search-input" class="storm-search-input" placeholder="Поиск фильмов, сериалов и аниме..." data-i18n-placeholder="search_placeholder" autocomplete="off">
+        <button type="button" id="voice-search-btn" class="storm-search-mic" title="Голосовой поиск и команды">🎙️</button>
         <button type="button" id="search-clear-btn" class="storm-search-clear">✕</button>
       </div>
 
       <!-- Действия: Темы, языки и аккаунт -->
       <div class="storm-nav-actions">
+        <!-- Кнопка Smart TV режима -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-tv-mode-btn" title="Режим Smart TV">
+          <span>📺</span> ТВ-режим
+        </button>
+
+        <!-- Кнопка Кинокомнаты (Watch Together) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-rooms-btn" title="Комната совместного просмотра">
+          <span>👥</span> Кинозал
+        </button>
+
+        <!-- Кнопка Синхронизации (Shikimori, MAL, Кинопоиск и бэкап) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-sync-btn" title="Синхронизация и бэкап">
+          <span>🔄</span>
+        </button>
+
+        <!-- Кнопка установки PWA -->
+        <button class="storm-btn storm-btn-primary storm-btn-sm" id="pwa-install-btn" style="display: none;" title="Установить приложение STORM MULTIMEDIA">
+          <span>📲</span> Установить
+        </button>
+
         <!-- Выбор визуальной темы оформления (8 эталонных стилей STORM) -->
         <select class="theme-dropdown-select" id="header-theme-select" title="Выбор темы оформления">
           <option value="STORM DARK">STORM DARK</option>
@@ -189,6 +215,9 @@
           <!-- Заполняется динамически -->
         </div>
 
+        <!-- Утилитарные действия: Ambilight, PiP, Кинокомната, Субтитры -->
+        <div id="player-utility-actions" style="margin-top: 10px;"></div>
+
         <!-- Специфичные элементы AniXart (озвучки и серии) -->
         <div class="episodes-selector-container" id="anixart-controls-container" style="display: none;">
           <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary);" data-i18n="player_voiceover">Озвучка:</div>
@@ -223,6 +252,9 @@
           <!-- Описание -->
           <p id="cinema-modal-desc" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px;"></p>
         </div>
+
+        <!-- Секция рецензий зрителей со спойлер-блоками -->
+        <div id="cinema-reviews-container" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);"></div>
       </div>
     </div>
   </div>
@@ -285,6 +317,7 @@
         <!-- Вкладки профиля -->
         <div class="profile-tab-links">
           <button class="profile-tab-link active" data-ptab="overview">Обзор и статистика</button>
+          <button class="profile-tab-link" data-ptab="achievements">Достижения (42)</button>
           <button class="profile-tab-link" data-ptab="edit">Смена аватарки и данных</button>
           <button class="profile-tab-link" data-ptab="security">Безопасность</button>
         </div>
@@ -329,7 +362,12 @@
           </div>
         </div>
 
-        <!-- 2. Смена аватарки и данных -->
+        <!-- 2. Вкладка достижений (STORM Achievements) -->
+        <div id="ptab-content-achievements" style="display: none;">
+          <!-- Заполняется achievements.js -->
+        </div>
+
+        <!-- 3. Смена аватарки и данных -->
         <div id="ptab-content-edit" style="display: none;">
           <form id="edit-profile-form">
             <!-- Выбор пресетов аватарок -->
@@ -368,7 +406,7 @@
           </form>
         </div>
 
-        <!-- 3. Безопасность и смена пароля -->
+        <!-- 4. Безопасность и смена пароля -->
         <div id="ptab-content-security" style="display: none;">
           <form id="change-password-form">
             <div class="filter-group" style="margin-bottom: 12px;">
@@ -394,10 +432,57 @@
     </div>
   </div>
 
+  <!-- 4. Модальное окно синхронизации и бэкапа -->
+  <div class="storm-modal-backdrop" id="sync-modal">
+    <div class="storm-modal profile-modal-dialog">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title">Синхронизация и резервное копирование</h3>
+        <button type="button" class="storm-modal-close">✕</button>
+      </div>
+      <div class="storm-modal-body" id="sync-modal-body">
+        <!-- Заполняется sync-service.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Модальное окно комнат совместного просмотра -->
+  <div class="storm-modal-backdrop" id="rooms-modal">
+    <div class="storm-modal">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title">Кинозал и совместный просмотр</h3>
+        <button type="button" class="storm-modal-close">✕</button>
+      </div>
+      <div class="storm-modal-body">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+          Смотрите кино и аниме синхронно с друзьями, общайтесь во встроенном кибер-чате и управляйте просмотром вместе.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="background: var(--bg-tertiary); padding: 14px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+            <h5 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 800;">Присоединиться к кинозалу</h5>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" class="storm-input" id="join-room-code-input" placeholder="Введите код (например, STORM-A8K)" style="text-transform: uppercase;">
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="join-room-submit-btn">Войти</button>
+            </div>
+          </div>
+
+          <div style="text-align: center; color: var(--text-muted); font-size: 12px;">— или —</div>
+
+          <button type="button" class="storm-btn storm-btn-secondary" id="create-new-room-btn" style="width: 100%;">
+            ➕ Создать новую кинокомнату
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Боковая панель совместного просмотра -->
+  <div class="watch-together-sidebar" id="watch-together-sidebar" style="display: none;"></div>
+
   <!-- Контейнер всплывающих уведомлений (Toasts) -->
   <div class="storm-toast-container" id="toast-container"></div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="js/app.js?v=1.1"></script>
+  <script type="module" src="js/app.js?v=1.2"></script>
 </body>
 </html>

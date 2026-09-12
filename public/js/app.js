@@ -7,6 +7,11 @@ import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
+import { trackClientAction, renderProfileAchievements } from './achievements.js';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
+import { renderSyncModalContent } from './sync-service.js';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -15,17 +20,20 @@ let currentSort = 'popular';
 let currentPage = 1;
 let currentItems = [];
 let searchQuery = '';
+let hoverPreviewTimer = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   applyTranslations();
 
+  initPwaServiceWorker();
   initViewModes();
   initTabs();
   initSearch();
   initModals();
   initProfileHandlers();
   initLanguageSwitcher();
+  initNewCyberFeatures();
 
   onAuthChanged(() => {
     if (currentTab === 'bookmarks' || currentTab === 'continue') {
@@ -211,6 +219,19 @@ function renderMediaItems(items) {
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
+
+      // Видеопревью при наведении курсора (Video Hover Preview)
+      card.onmouseenter = () => {
+        clearTimeout(hoverPreviewTimer);
+        hoverPreviewTimer = setTimeout(() => {
+          showCardHoverPreview(card, items[idx]);
+        }, 350);
+      };
+
+      card.onmouseleave = () => {
+        clearTimeout(hoverPreviewTimer);
+        hideCardHoverPreview();
+      };
     });
     return;
   }
@@ -518,6 +539,230 @@ function initLanguageSwitcher() {
     langSelect.value = localStorage.getItem('storm_lang') || 'ru';
     langSelect.addEventListener('change', (e) => {
       setLanguage(e.target.value);
+    });
+  }
+}
+
+// -------------------------------------------------------------
+// ВИДЕОПРЕВЬЮ ПРИ НАВЕДЕНИИ КУРСОРА (VIDEO HOVER PREVIEW)
+// -------------------------------------------------------------
+let activeHoverPreviewEl = null;
+
+function showCardHoverPreview(card, item) {
+  hideCardHoverPreview();
+
+  const rect = card.getBoundingClientRect();
+  const preview = document.createElement('div');
+  preview.className = 'media-hover-preview-popup';
+  preview.style.top = `${rect.top + window.scrollY - 10}px`;
+  preview.style.left = `${rect.left + window.scrollX - 10}px`;
+  preview.style.width = `${rect.width + 20}px`;
+
+  const poster = item.poster || 'assets/favicon.svg';
+
+  preview.innerHTML = `
+    <div class="hover-preview-media">
+      <img src="${poster}" alt="${item.title}">
+      <div class="hover-preview-overlay">
+        <span class="hover-play-icon">▶</span>
+      </div>
+    </div>
+    <div class="hover-preview-body">
+      <h4 class="hover-preview-title">${item.title}</h4>
+      <div class="hover-preview-meta">
+        <span>${item.year || ''}</span>
+        ${item.rating ? `<span style="color:var(--color-amber);">★ ${item.rating}</span>` : ''}
+        ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K</span>' : ''}
+      </div>
+      <p class="hover-preview-desc">${item.description || item.genres || 'Превосходное качество видео и профессиональный перевод.'}</p>
+      <div class="hover-preview-actions">
+        <button class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">▶ Смотреть</button>
+        <button class="storm-btn storm-btn-secondary storm-btn-sm hover-room-btn" title="Совместный просмотр">👥</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(preview);
+  activeHoverPreviewEl = preview;
+
+  preview.onmouseleave = hideCardHoverPreview;
+
+  const watchBtn = preview.querySelector('.hover-watch-btn');
+  if (watchBtn) {
+    watchBtn.onclick = (e) => {
+      e.stopPropagation();
+      hideCardHoverPreview();
+      openPlayerModal(item);
+    };
+  }
+
+  const roomBtn = preview.querySelector('.hover-room-btn');
+  if (roomBtn) {
+    roomBtn.onclick = async (e) => {
+      e.stopPropagation();
+      hideCardHoverPreview();
+      const code = await createWatchRoom(item);
+      if (code) {
+        showToast(`Комната создана! Код: ${code}`, 'success');
+      }
+    };
+  }
+}
+
+function hideCardHoverPreview() {
+  if (activeHoverPreviewEl) {
+    activeHoverPreviewEl.remove();
+    activeHoverPreviewEl = null;
+  }
+}
+
+// -------------------------------------------------------------
+// PWA И SERVICE WORKER
+// -------------------------------------------------------------
+let deferredInstallPrompt = null;
+
+function initPwaServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.warn('Регистрация Service Worker не удалась:', err);
+    });
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    const pwaBtn = document.getElementById('pwa-install-btn');
+    if (pwaBtn) {
+      pwaBtn.style.display = 'inline-flex';
+      pwaBtn.onclick = async () => {
+        if (deferredInstallPrompt) {
+          deferredInstallPrompt.prompt();
+          const { outcome } = await deferredInstallPrompt.userChoice;
+          if (outcome === 'accepted') {
+            trackClientAction('install_pwa');
+            showToast('Приложение STORM MULTIMEDIA установлено!', 'success');
+          }
+          pwaBtn.style.display = 'none';
+          deferredInstallPrompt = null;
+        }
+      };
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// НОВЫЕ КИБЕР-ФУНКЦИИ И ИНТЕГРАЦИИ
+// -------------------------------------------------------------
+function initNewCyberFeatures() {
+  // 1. Smart TV и геймпад
+  initGamepadAndTvMode();
+  const tvBtn = document.getElementById('toggle-tv-mode-btn');
+  if (tvBtn) {
+    tvBtn.onclick = () => toggleTvMode();
+  }
+
+  // 2. Голосовой ассистент
+  initVoiceAssistant({
+    onSearch: (query) => {
+      const input = document.getElementById('global-search-input');
+      if (input) input.value = query;
+      searchQuery = query;
+      currentPage = 1;
+      executeSearch();
+    },
+    onTabSwitch: (tab) => switchTab(tab),
+    onThemeSwitch: (theme) => setTheme(theme),
+    onRandomMedia: () => {
+      if (currentItems.length > 0) {
+        const item = currentItems[Math.floor(Math.random() * currentItems.length)];
+        openPlayerModal(item);
+      }
+    }
+  });
+
+  const micBtn = document.getElementById('voice-search-btn');
+  if (micBtn) {
+    micBtn.onclick = toggleVoiceListening;
+  }
+
+  // 3. Синхронизация и бэкап
+  const syncBtn = document.getElementById('header-sync-btn');
+  const syncModal = document.getElementById('sync-modal');
+  if (syncBtn && syncModal) {
+    syncBtn.onclick = () => {
+      syncModal.classList.add('is-open');
+      renderSyncModalContent(document.getElementById('sync-modal-body'));
+    };
+  }
+
+  // 4. Кинокомнаты (Watch Together)
+  const roomsBtn = document.getElementById('header-rooms-btn');
+  const roomsModal = document.getElementById('rooms-modal');
+  if (roomsBtn && roomsModal) {
+    roomsBtn.onclick = () => {
+      roomsModal.classList.add('is-open');
+    };
+  }
+
+  const joinBtn = document.getElementById('join-room-submit-btn');
+  const joinInput = document.getElementById('join-room-code-input');
+  if (joinBtn && joinInput) {
+    joinBtn.onclick = () => {
+      const code = joinInput.value.trim();
+      if (code) {
+        joinWatchRoom(code);
+        if (roomsModal) roomsModal.classList.remove('is-open');
+      }
+    };
+  }
+
+  const createRoomBtn = document.getElementById('create-new-room-btn');
+  if (createRoomBtn) {
+    createRoomBtn.onclick = async () => {
+      const item = currentItems[0] || null;
+      const code = await createWatchRoom(item);
+      if (code) {
+        showToast(`Кинокомната создана! Код: ${code}`, 'success');
+        if (roomsModal) roomsModal.classList.remove('is-open');
+      }
+    };
+  }
+
+  // Закрытие модальных окон
+  document.querySelectorAll('.storm-modal-close').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const backdrop = btn.closest('.storm-modal-backdrop');
+      if (backdrop) backdrop.classList.remove('is-open');
+    });
+  });
+
+  // Трекинг тем для достижения «Хамелеон»
+  const themeSelect = document.getElementById('header-theme-select');
+  if (themeSelect) {
+    themeSelect.addEventListener('change', () => {
+      try {
+        let history = JSON.parse(localStorage.getItem('storm_themes_history') || '[]');
+        if (!history.includes(themeSelect.value)) {
+          history.push(themeSelect.value);
+          localStorage.setItem('storm_themes_history', JSON.stringify(history));
+        }
+        trackClientAction('switch_theme', { themes_count: history.length });
+      } catch {}
+    });
+  }
+
+  // Трекинг языков для достижения «Полиглот»
+  const langSelect = document.getElementById('header-lang-select');
+  if (langSelect) {
+    langSelect.addEventListener('change', () => {
+      try {
+        let history = JSON.parse(localStorage.getItem('storm_langs_history') || '[]');
+        if (!history.includes(langSelect.value)) {
+          history.push(langSelect.value);
+          localStorage.setItem('storm_langs_history', JSON.stringify(history));
+        }
+        trackClientAction('switch_lang', { langs_count: history.length });
+      } catch {}
     });
   }
 }

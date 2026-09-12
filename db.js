@@ -106,6 +106,45 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id, status);
   CREATE INDEX IF NOT EXISTS idx_history_user ON watch_history(user_id, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    media_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    title TEXT NOT NULL,
+    rating INTEGER DEFAULT 10,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS review_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    is_like INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(review_id, user_id),
+    FOREIGN KEY(review_id) REFERENCES reviews(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS user_achievements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    achievement_id TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    target INTEGER DEFAULT 1,
+    unlocked INTEGER DEFAULT 0,
+    unlocked_at INTEGER,
+    UNIQUE(user_id, achievement_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reviews_media ON reviews(media_id, source);
+  CREATE INDEX IF NOT EXISTS idx_achievements_user ON user_achievements(user_id, unlocked);
 `);
 
 // Хеширование пароля через pbkdf2
@@ -541,3 +580,463 @@ export function setCache(source, cacheKey, data, ttlSeconds = 1800) {
       expires_at = excluded.expires_at
   `).run(source, cacheKey, dataJson, expiresAt);
 }
+
+// ==========================================
+// 7. СИСТЕМА РЕЦЕНЗИЙ И ОТЗЫВОВ
+// ==========================================
+
+export function getMediaReviews(mediaId, source, currentUserId = null) {
+  const reviews = db.prepare(`
+    SELECT r.*, u.username, u.avatar,
+      COALESCE((SELECT COUNT(*) FROM review_likes WHERE review_id = r.id AND is_like = 1), 0) AS likes_count,
+      COALESCE((SELECT COUNT(*) FROM review_likes WHERE review_id = r.id AND is_like = 0), 0) AS dislikes_count
+    FROM reviews r
+    JOIN users u ON r.user_id = u.id
+    WHERE r.media_id = ? AND r.source = ?
+    ORDER BY r.created_at DESC
+  `).all(String(mediaId), source);
+
+  return reviews.map(rev => {
+    let userReaction = null;
+    if (currentUserId) {
+      const reaction = db.prepare('SELECT is_like FROM review_likes WHERE review_id = ? AND user_id = ?').get(rev.id, currentUserId);
+      if (reaction) {
+        userReaction = reaction.is_like === 1 ? 'like' : 'dislike';
+      }
+    }
+    return {
+      ...rev,
+      user_reaction: userReaction
+    };
+  });
+}
+
+export function addReview(userId, { media_id, source, title, rating, content }) {
+  const now = Date.now();
+  const safeRating = Math.max(1, Math.min(10, parseInt(rating, 10) || 10));
+  const insert = db.prepare(`
+    INSERT INTO reviews (user_id, media_id, source, title, rating, content, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const result = insert.run(userId, String(media_id), source, title || '', safeRating, content, now, now);
+  const reviewId = Number(result.lastInsertRowid);
+
+  // Начисляем достижения автору рецензии
+  trackUserAction(userId, 'write_review');
+
+  const user = db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(userId);
+  return {
+    id: reviewId,
+    user_id: userId,
+    media_id: String(media_id),
+    source,
+    title: title || '',
+    rating: safeRating,
+    content,
+    created_at: now,
+    updated_at: now,
+    username: user?.username || 'Пользователь',
+    avatar: user?.avatar || null,
+    likes_count: 0,
+    dislikes_count: 0,
+    user_reaction: null
+  };
+}
+
+export function deleteReview(reviewId, userId) {
+  db.prepare('DELETE FROM reviews WHERE id = ? AND user_id = ?').run(reviewId, userId);
+}
+
+export function toggleReviewLike(reviewId, userId, isLike) {
+  const now = Date.now();
+  const targetLike = isLike ? 1 : 0;
+  const existing = db.prepare('SELECT is_like FROM review_likes WHERE review_id = ? AND user_id = ?').get(reviewId, userId);
+
+  if (existing) {
+    if (existing.is_like === targetLike) {
+      db.prepare('DELETE FROM review_likes WHERE review_id = ? AND user_id = ?').run(reviewId, userId);
+    } else {
+      db.prepare('UPDATE review_likes SET is_like = ?, created_at = ? WHERE review_id = ? AND user_id = ?').run(targetLike, now, reviewId, userId);
+    }
+  } else {
+    db.prepare('INSERT INTO review_likes (review_id, user_id, is_like, created_at) VALUES (?, ?, ?, ?)').run(reviewId, userId, targetLike, now);
+
+    // Если поставили лайк, проверяем достижения автора рецензии
+    if (targetLike === 1) {
+      const rev = db.prepare('SELECT user_id FROM reviews WHERE id = ?').get(reviewId);
+      if (rev && rev.user_id !== userId) {
+        trackUserAction(rev.user_id, 'receive_like');
+      }
+    }
+  }
+
+  const likesCount = db.prepare('SELECT COUNT(*) AS count FROM review_likes WHERE review_id = ? AND is_like = 1').get(reviewId).count;
+  const dislikesCount = db.prepare('SELECT COUNT(*) AS count FROM review_likes WHERE review_id = ? AND is_like = 0').get(reviewId).count;
+  const currentReaction = db.prepare('SELECT is_like FROM review_likes WHERE review_id = ? AND user_id = ?').get(reviewId, userId);
+
+  return {
+    likes_count: likesCount,
+    dislikes_count: dislikesCount,
+    user_reaction: currentReaction ? (currentReaction.is_like === 1 ? 'like' : 'dislike') : null
+  };
+}
+
+// ==========================================
+// 8. КАТАЛОГ И СИСТЕМА ДОСТИЖЕНИЙ (STORM ACHIEVEMENTS)
+// ==========================================
+
+export const ACHIEVEMENTS_CATALOG = [
+  // 1. Киномарафон (Фильмы и сериалы)
+  { id: 'cinema_first', title: 'Первый сеанс', desc: 'Посмотреть 1 фильм или серию', category: 'cinema', rarity: 'bronze', icon: '🎬', target: 1 },
+  { id: 'cinema_novice', title: 'Кинолюбитель', desc: 'Посмотреть 5 тайтлов', category: 'cinema', rarity: 'bronze', icon: '🍿', target: 5 },
+  { id: 'cinema_veteran', title: 'Киноман', desc: 'Посмотреть 15 тайтлов', category: 'cinema', rarity: 'silver', icon: '🎟️', target: 15 },
+  { id: 'cinema_master', title: 'Синефил со стажем', desc: 'Посмотреть 30 тайтлов', category: 'cinema', rarity: 'gold', icon: '📽️', target: 30 },
+  { id: 'cinema_legend', title: 'Архивариус кинематографа', desc: 'Посмотреть 60 тайтлов', category: 'cinema', rarity: 'platinum', icon: '🏆', target: 60 },
+  { id: 'cinema_god', title: 'Владыка киноэкрана', desc: 'Посмотреть 100 тайтлов', category: 'cinema', rarity: 'cyber', icon: '👑', target: 100 },
+
+  // 2. Отаку и аниме-культура
+  { id: 'anime_first', title: 'Первый кохай', desc: 'Посмотреть 1 аниме', category: 'anime', rarity: 'bronze', icon: '⛩️', target: 1 },
+  { id: 'anime_genin', title: 'Путь шиноби', desc: 'Посмотреть 5 аниме-релизов', category: 'anime', rarity: 'bronze', icon: '🍙', target: 5 },
+  { id: 'anime_chunin', title: 'Опытный отаку', desc: 'Посмотреть 15 аниме-релизов', category: 'anime', rarity: 'silver', icon: '🌸', target: 15 },
+  { id: 'anime_jonin', title: 'Мастер ниндзюцу', desc: 'Посмотреть 30 аниме-релизов', category: 'anime', rarity: 'gold', icon: '⚡', target: 30 },
+  { id: 'anime_hokage', title: 'Легендарный хокаге', desc: 'Посмотреть 50 аниме-релизов', category: 'anime', rarity: 'platinum', icon: '🔥', target: 50 },
+  { id: 'anime_kami', title: 'Аниме-божество', desc: 'Посмотреть 100 аниме-релизов', category: 'anime', rarity: 'cyber', icon: '✨', target: 100 },
+
+  // 3. Хранитель времени
+  { id: 'time_1h', title: 'Первый час в Шторме', desc: 'Провести 1 час за просмотром', category: 'time', rarity: 'bronze', icon: '⏱️', target: 1 },
+  { id: 'time_5h', title: 'Погружение в поток', desc: 'Провести 5 часов за просмотром', category: 'time', rarity: 'bronze', icon: '⌛', target: 5 },
+  { id: 'time_20h', title: 'Ночной марафонец', desc: 'Провести 20 часов за просмотром', category: 'time', rarity: 'silver', icon: '🌙', target: 20 },
+  { id: 'time_50h', title: 'Неутомимый зритель', desc: 'Провести 50 часов за просмотром', category: 'time', rarity: 'gold', icon: '🌟', target: 50 },
+  { id: 'time_100h', title: 'Повелитель хроноса', desc: 'Провести 100 часов за просмотром', category: 'time', rarity: 'platinum', icon: '🌌', target: 100 },
+  { id: 'time_250h', title: 'Вечный житель кибервселенной', desc: 'Провести 250 часов за просмотром', category: 'time', rarity: 'cyber', icon: '🪐', target: 250 },
+
+  // 4. Кинокритика и сообщество
+  { id: 'review_first', title: 'Первое мнение', desc: 'Оставить свой первый отзыв', category: 'social', rarity: 'bronze', icon: '✍️', target: 1 },
+  { id: 'review_3', title: 'Внимательный критик', desc: 'Оставить 3 рецензии', category: 'social', rarity: 'silver', icon: '📝', target: 3 },
+  { id: 'review_10', title: 'Золотое перо Шторма', desc: 'Оставить 10 развернутых рецензий', category: 'social', rarity: 'gold', icon: '✒️', target: 10 },
+  { id: 'review_liked', title: 'Голос народа', desc: 'Получить первый лайк на свой отзыв', category: 'social', rarity: 'bronze', icon: '👍', target: 1 },
+  { id: 'review_popular', title: 'Признание зала', desc: 'Собрать 5 лайков на рецензиях', category: 'social', rarity: 'gold', icon: '💖', target: 5 },
+  { id: 'room_host', title: 'Капитан кинозала', desc: 'Создать комнату совместного просмотра', category: 'social', rarity: 'silver', icon: '👥', target: 1 },
+  { id: 'room_guest', title: 'Кино-компания', desc: 'Присоединиться к кинокомнате', category: 'social', rarity: 'bronze', icon: '🤝', target: 1 },
+  { id: 'sync_master', title: 'Синхронизатор данных', desc: 'Синхронизировать или экспортировать библиотеку', category: 'social', rarity: 'silver', icon: '🔄', target: 1 },
+
+  // 5. Коллекционер и архивариус
+  { id: 'bookmark_first', title: 'Первая закладка', desc: 'Добавить релиз в закладки', category: 'collection', rarity: 'bronze', icon: '🔖', target: 1 },
+  { id: 'bookmark_20', title: 'Личная фильмотека', desc: 'Собрать 20 релизов в закладках', category: 'collection', rarity: 'silver', icon: '📁', target: 20 },
+  { id: 'bookmark_50', title: 'Великая коллекция', desc: 'Собрать 50 релизов в закладках', category: 'collection', rarity: 'gold', icon: '🏛️', target: 50 },
+  { id: 'list_first', title: 'Куратор списков', desc: 'Создать пользовательский список', category: 'collection', rarity: 'bronze', icon: '📋', target: 1 },
+  { id: 'list_pro', title: 'Архитектор коллекций', desc: 'Создать 3 тематических списка', category: 'collection', rarity: 'gold', icon: '📚', target: 3 },
+
+  // 6. Кибер-технологии и секреты
+  { id: 'tech_4k', title: 'Ценитель 4K Ultra HD', desc: 'Запустить фильм в оригинальном качестве 4K', category: 'tech', rarity: 'bronze', icon: '💎', target: 1 },
+  { id: 'tech_torrent', title: 'P2P-пионер', desc: 'Запустить стриминг через WebTorrent', category: 'tech', rarity: 'silver', icon: '🧲', target: 1 },
+  { id: 'tech_night', title: 'Ночной охотник', desc: 'Смотреть кино ночью между 02:00 и 05:00', category: 'tech', rarity: 'silver', icon: '🦉', target: 1 },
+  { id: 'tech_chameleon', title: 'Хамелеон киберпространства', desc: 'Опробовать все 8 тем оформления', category: 'tech', rarity: 'gold', icon: '🎨', target: 8 },
+  { id: 'tech_polyglot', title: 'Полиглот Шторма', desc: 'Переключить 3 языка интерфейса', category: 'tech', rarity: 'silver', icon: '🌐', target: 3 },
+  { id: 'tech_voice', title: 'Кибер-голос', desc: 'Использовать голосового ассистента', category: 'tech', rarity: 'bronze', icon: '🎙️', target: 1 },
+  { id: 'tech_gamepad', title: 'Штурман геймпада', desc: 'Использовать геймпад или ТВ-режим', category: 'tech', rarity: 'silver', icon: '🎮', target: 1 },
+  { id: 'tech_subtitles', title: 'Свои титры', desc: 'Загрузить внешние субтитры или дорожку', category: 'tech', rarity: 'bronze', icon: '💬', target: 1 },
+  { id: 'tech_ambilight', title: 'Неоновая аура', desc: 'Включить динамический Ambilight эффект', category: 'tech', rarity: 'bronze', icon: '🌈', target: 1 },
+  { id: 'tech_skip', title: 'Мастер таймкодов', desc: 'Пропустить интро или титры по кнопке', category: 'tech', rarity: 'bronze', icon: '⏭️', target: 1 },
+  { id: 'tech_pip', title: 'Картинка в картинке', desc: 'Воспроизвести видео в режиме PiP', category: 'tech', rarity: 'bronze', icon: '🖼️', target: 1 },
+  { id: 'tech_pwa', title: 'Всегда со мной', desc: 'Установить веб-приложение на устройство', category: 'tech', rarity: 'gold', icon: '📲', target: 1 }
+];
+
+export function getUserAchievements(userId) {
+  const userRows = db.prepare('SELECT achievement_id, progress, target, unlocked, unlocked_at FROM user_achievements WHERE user_id = ?').all(userId);
+  const map = new Map();
+  userRows.forEach(row => map.set(row.achievement_id, row));
+
+  return ACHIEVEMENTS_CATALOG.map(ach => {
+    const userAch = map.get(ach.id);
+    return {
+      ...ach,
+      progress: userAch ? userAch.progress : 0,
+      unlocked: userAch ? Boolean(userAch.unlocked) : false,
+      unlocked_at: userAch ? userAch.unlocked_at : null
+    };
+  });
+}
+
+export function updateAchievementProgress(userId, achievementId, amount = 1, isSet = false) {
+  const achMeta = ACHIEVEMENTS_CATALOG.find(a => a.id === achievementId);
+  if (!achMeta) return null;
+
+  const target = achMeta.target;
+  const existing = db.prepare('SELECT progress, unlocked FROM user_achievements WHERE user_id = ? AND achievement_id = ?').get(userId, achievementId);
+
+  let newProgress = 0;
+  if (existing) {
+    if (existing.unlocked) return null; // Уже разблокировано
+    newProgress = isSet ? amount : existing.progress + amount;
+  } else {
+    newProgress = amount;
+  }
+
+  const isUnlocked = newProgress >= target ? 1 : 0;
+  const now = isUnlocked ? Date.now() : null;
+
+  db.prepare(`
+    INSERT INTO user_achievements (user_id, achievement_id, progress, target, unlocked, unlocked_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, achievement_id) DO UPDATE SET
+      progress = excluded.progress,
+      unlocked = excluded.unlocked,
+      unlocked_at = excluded.unlocked_at
+  `).run(userId, achievementId, Math.min(newProgress, target), target, isUnlocked, now);
+
+  if (isUnlocked && (!existing || !existing.unlocked)) {
+    return {
+      unlocked: true,
+      achievement: {
+        ...achMeta,
+        progress: target,
+        unlocked: true,
+        unlocked_at: now
+      }
+    };
+  }
+
+  return {
+    unlocked: false,
+    progress: newProgress,
+    target
+  };
+}
+
+export function trackUserAction(userId, actionType, meta = {}) {
+  if (!userId) return [];
+  const unlockedAchievements = [];
+
+  const tryUnlock = (achId, amount = 1, isSet = false) => {
+    const res = updateAchievementProgress(userId, achId, amount, isSet);
+    if (res && res.unlocked) {
+      unlockedAchievements.push(res.achievement);
+    }
+  };
+
+  switch (actionType) {
+    case 'watch_complete':
+      tryUnlock('cinema_first', 1);
+      tryUnlock('cinema_novice', 1);
+      tryUnlock('cinema_veteran', 1);
+      tryUnlock('cinema_master', 1);
+      tryUnlock('cinema_legend', 1);
+      tryUnlock('cinema_god', 1);
+      if (meta.is_anime) {
+        tryUnlock('anime_first', 1);
+        tryUnlock('anime_genin', 1);
+        tryUnlock('anime_chunin', 1);
+        tryUnlock('anime_jonin', 1);
+        tryUnlock('anime_hokage', 1);
+        tryUnlock('anime_kami', 1);
+      }
+      break;
+
+    case 'watch_time':
+      const hours = meta.total_hours || 1;
+      tryUnlock('time_1h', hours, true);
+      tryUnlock('time_5h', hours, true);
+      tryUnlock('time_20h', hours, true);
+      tryUnlock('time_50h', hours, true);
+      tryUnlock('time_100h', hours, true);
+      tryUnlock('time_250h', hours, true);
+      break;
+
+    case 'write_review':
+      tryUnlock('review_first', 1);
+      tryUnlock('review_3', 1);
+      tryUnlock('review_10', 1);
+      break;
+
+    case 'receive_like':
+      tryUnlock('review_liked', 1);
+      tryUnlock('review_popular', 1);
+      break;
+
+    case 'room_host':
+      tryUnlock('room_host', 1);
+      break;
+
+    case 'room_guest':
+      tryUnlock('room_guest', 1);
+      break;
+
+    case 'sync_data':
+      tryUnlock('sync_master', 1);
+      break;
+
+    case 'add_bookmark':
+      const totalBookmarks = db.prepare('SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ?').get(userId).count;
+      tryUnlock('bookmark_first', totalBookmarks, true);
+      tryUnlock('bookmark_20', totalBookmarks, true);
+      tryUnlock('bookmark_50', totalBookmarks, true);
+      break;
+
+    case 'create_list':
+      const totalLists = db.prepare('SELECT COUNT(*) AS count FROM custom_lists WHERE user_id = ?').get(userId).count;
+      tryUnlock('list_first', totalLists, true);
+      tryUnlock('list_pro', totalLists, true);
+      break;
+
+    case 'use_4k':
+      tryUnlock('tech_4k', 1);
+      break;
+
+    case 'use_torrent':
+      tryUnlock('tech_torrent', 1);
+      break;
+
+    case 'night_watch':
+      tryUnlock('tech_night', 1);
+      break;
+
+    case 'switch_theme':
+      if (meta.themes_count) {
+        tryUnlock('tech_chameleon', meta.themes_count, true);
+      }
+      break;
+
+    case 'switch_lang':
+      if (meta.langs_count) {
+        tryUnlock('tech_polyglot', meta.langs_count, true);
+      }
+      break;
+
+    case 'use_voice':
+      tryUnlock('tech_voice', 1);
+      break;
+
+    case 'use_gamepad':
+      tryUnlock('tech_gamepad', 1);
+      break;
+
+    case 'use_subtitles':
+      tryUnlock('tech_subtitles', 1);
+      break;
+
+    case 'use_ambilight':
+      tryUnlock('tech_ambilight', 1);
+      break;
+
+    case 'use_skip':
+      tryUnlock('tech_skip', 1);
+      break;
+
+    case 'use_pip':
+      tryUnlock('tech_pip', 1);
+      break;
+
+    case 'install_pwa':
+      tryUnlock('tech_pwa', 1);
+      break;
+
+    default:
+      break;
+  }
+
+  return unlockedAchievements;
+}
+
+// ==========================================
+// 9. СИНХРОНИЗАЦИЯ И РЕЗЕРВНОЕ КОПИРОВАНИЕ ДАННЫХ
+// ==========================================
+
+export function exportUserData(userId) {
+  const user = db.prepare('SELECT id, username, email, avatar, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (!user) throw new Error('Пользователь не найден');
+
+  const bookmarks = db.prepare('SELECT * FROM bookmarks WHERE user_id = ?').all(userId);
+  const customLists = db.prepare('SELECT * FROM custom_lists WHERE user_id = ?').all(userId);
+  const customListItems = db.prepare(`
+    SELECT cli.* FROM custom_list_items cli
+    JOIN custom_lists cl ON cli.list_id = cl.id
+    WHERE cl.user_id = ?
+  `).all(userId);
+  const history = db.prepare('SELECT * FROM watch_history WHERE user_id = ?').all(userId);
+  const achievements = db.prepare('SELECT * FROM user_achievements WHERE user_id = ?').all(userId);
+  const reviews = db.prepare('SELECT * FROM reviews WHERE user_id = ?').all(userId);
+
+  trackUserAction(userId, 'sync_data');
+
+  return {
+    version: '1.2',
+    exported_at: Date.now(),
+    system: 'STORM MULTIMEDIA',
+    user,
+    bookmarks,
+    custom_lists: customLists.map(list => ({
+      ...list,
+      items: customListItems.filter(item => item.list_id === list.id)
+    })),
+    history,
+    achievements,
+    reviews
+  };
+}
+
+export function importUserData(userId, data) {
+  if (!data || typeof data !== 'object') throw new Error('Некорректный формат данных резервной копии');
+
+  let importedCount = 0;
+  const now = Date.now();
+
+  // Импорт закладок
+  if (Array.isArray(data.bookmarks)) {
+    const stmt = db.prepare(`
+      INSERT INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, media_id, source) DO UPDATE SET
+        status = excluded.status,
+        episodes_watched = excluded.episodes_watched,
+        total_episodes = excluded.total_episodes,
+        progress_percent = excluded.progress_percent,
+        updated_at = excluded.updated_at
+    `);
+    data.bookmarks.forEach(b => {
+      stmt.run(
+        userId,
+        String(b.media_id),
+        b.source || 'fanfilm4k',
+        b.title || 'Без названия',
+        b.original_title || '',
+        b.poster_url || '',
+        b.media_type || 'movie',
+        b.status || 'watching',
+        b.episodes_watched || 0,
+        b.total_episodes || 0,
+        b.progress_percent || 0.0,
+        b.last_time_seconds || 0,
+        now
+      );
+      importedCount++;
+    });
+  }
+
+  // Импорт кастомных списков
+  if (Array.isArray(data.custom_lists)) {
+    const listStmt = db.prepare(`
+      INSERT INTO custom_lists (user_id, title, description, color, is_public, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const itemStmt = db.prepare(`
+      INSERT INTO custom_list_items (list_id, media_id, source, title, poster_url, media_type, year, rating, added_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(list_id, media_id, source) DO NOTHING
+    `);
+
+    data.custom_lists.forEach(list => {
+      const res = listStmt.run(userId, list.title, list.description || '', list.color || '#00d2ff', list.is_public ? 1 : 0, now);
+      const newListId = Number(res.lastInsertRowid);
+      if (Array.isArray(list.items)) {
+        list.items.forEach(item => {
+          itemStmt.run(newListId, String(item.media_id), item.source || 'fanfilm4k', item.title || '', item.poster_url || '', item.media_type || 'movie', item.year || '', item.rating || 0.0, now);
+        });
+      }
+    });
+  }
+
+  trackUserAction(userId, 'sync_data');
+  return { success: true, imported_count: importedCount };
+}
+
