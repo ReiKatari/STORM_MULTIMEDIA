@@ -239,6 +239,47 @@ function updateSyncStatus(status) {
   }
 }
 
+// Обои для кинокомнаты
+const ROOM_WALLPAPERS = [
+  { id: 'room-bg-cyberpunk', name: 'Киберпанк Найт-Сити', color: '#ff007f' },
+  { id: 'room-bg-oled', name: 'Глубокий OLED', color: '#00f0ff' },
+  { id: 'room-bg-cosmos', name: 'Звездный космос', color: '#a855f7' },
+  { id: 'room-bg-anime', name: 'Аниме закат', color: '#f59e0b' },
+  { id: 'room-bg-velvet', name: 'Бархатный кинозал', color: '#ef4444' },
+  { id: 'room-bg-matrix', name: 'Матричный изумруд', color: '#00ff66' },
+  { id: 'room-bg-gothic', name: 'Имперская готика 40K', color: '#d4af37' },
+  { id: 'room-bg-vaporwave', name: 'Неоновый Vaporwave', color: '#ec4899' }
+];
+
+let currentRoomWallpaper = localStorage.getItem('storm_room_wallpaper') || 'room-bg-cyberpunk';
+
+// Наборы Telegram стикеров и эмодзи
+const CHAT_EMOJIS = ['😂', '🔥', '🍿', '❤️', '👏', '😱', '🚀', '💀', '🤩', '🎉', '🎬', '👀', '💯', '⚡', '🤖', '🎮', '🪐', '🍕', '🍷', '✨'];
+
+const CHAT_STICKER_PACKS = {
+  pepe: [
+    { icon: '🐸🍿', label: 'Пепе с попкорном' },
+    { icon: '🐸🕶️', label: 'Крутой Пепе' },
+    { icon: '🐸🍷', label: 'Пепе с бокалом' },
+    { icon: '🐸❤️', label: 'Влюбленный Пепе' },
+    { icon: '🐸👍', label: 'Одобряющий Пепе' }
+  ],
+  cats: [
+    { icon: '🐱🍿', label: 'Кот киноман' },
+    { icon: '😼✨', label: 'Довольный кот' },
+    { icon: '🙀💥', label: 'Шокированный кот' },
+    { icon: '😻💖', label: 'Кот в восторге' },
+    { icon: '😹🔥', label: 'Ржущий кот' }
+  ],
+  popcorn: [
+    { icon: '🍿🥤', label: 'Кино-сет' },
+    { icon: '🎬🎟️', label: 'Билет в кино' },
+    { icon: '🎞️📽️', label: 'Пленка' },
+    { icon: '⭐🏆', label: 'Оскар' },
+    { icon: '🔥🚀', label: 'Шедевр' }
+  ]
+};
+
 export function renderRoomUi(room) {
   const container = document.getElementById('watch-together-sidebar');
   if (!container) return;
@@ -248,31 +289,80 @@ export function renderRoomUi(room) {
     return;
   }
 
+  // Применяем выбранные обои
+  container.className = `watch-together-sidebar ${currentRoomWallpaper}`;
   container.style.display = 'flex';
+
+  const media = room.media || null;
+  const mediaTitle = media ? (media.title || 'Фильм') : 'Медиа не выбрано';
+  const mediaPoster = media ? (media.poster || 'assets/favicon.svg') : 'assets/favicon.svg';
+  const mediaYear = media ? (media.year || '') : '';
+
   container.innerHTML = `
     <div class="watch-room-header">
       <div>
-        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); font-weight: 800;">Кинокомната</div>
-        <div style="font-size: 16px; font-weight: 800;">Код: <span id="room-code-display" style="color: var(--accent); cursor: pointer;" title="Нажмите, чтобы скопировать">${room.code}</span></div>
+        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); font-weight: 800;">Кинозал</div>
+        <div style="font-size: 15px; font-weight: 800;">Код: <span id="room-code-display" style="color: var(--accent); cursor: pointer;" title="Скопировать код">${room.code}</span></div>
       </div>
-      <div id="room-sync-badge" class="room-sync-badge synced">🟢 Синхронизировано</div>
-      <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="leave-room-btn" title="Выйти из комнаты">✕ Выйти</button>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button type="button" class="storm-btn storm-btn-sm" id="room-wallpaper-btn" title="Сменить обои кинокомнаты" style="padding: 4px 8px; font-size: 12px;">🖼️</button>
+        <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="leave-room-btn" title="Выйти из комнаты" style="padding: 4px 8px; font-size: 11px;">✕</button>
+      </div>
+    </div>
+
+    <!-- Поповер выбора обоев (скрыт по умолчанию) -->
+    <div id="room-wallpapers-popover" style="display: none; background: var(--bg-tertiary); padding: 10px; border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--border-subtle);">
+      <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Обои кинозала:</div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        ${ROOM_WALLPAPERS.map(wp => `
+          <button type="button" class="storm-btn storm-btn-sm set-wallpaper-btn ${currentRoomWallpaper === wp.id ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-wp="${wp.id}" style="font-size: 11px; padding: 3px 8px;">
+            ${wp.name}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Карточка текущего видео -->
+    <div class="watch-room-media-card">
+      <img src="${mediaPoster}" alt="${mediaTitle}" class="watch-room-media-thumb" onerror="this.src='assets/favicon.svg'">
+      <div class="watch-room-media-info">
+        <div class="watch-room-media-title" title="${mediaTitle}">🎬 ${mediaTitle}</div>
+        <div class="watch-room-media-sub">${mediaYear ? mediaYear + ' г.' : 'Синхронный показ'} • <span id="room-sync-badge" class="room-sync-badge synced" style="display: inline-block;">🟢 В сети</span></div>
+      </div>
+    </div>
+
+    <!-- Кнопки управления синхронизацией воспроизведения -->
+    <div class="watch-room-controls-bar">
+      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="room-play-pause-btn" style="flex: 1; font-size: 11px;">
+        ⏯️ Пауза / Плей
+      </button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="room-sync-timecode-btn" style="flex: 1; font-size: 11px;" title="Синхронизировать таймкод видео">
+        ⏱️ Синхронизация
+      </button>
     </div>
 
     <!-- Участники просмотра -->
-    <div class="watch-room-participants" id="watch-room-participants">
-      <!-- Заполняется динамически -->
-    </div>
+    <div class="watch-room-participants" id="watch-room-participants"></div>
 
     <!-- Кибер-чат -->
-    <div class="watch-room-chat-messages" id="watch-room-chat-messages">
-      <!-- Сообщения чата -->
+    <div class="watch-room-chat-messages" id="watch-room-chat-messages"></div>
+
+    <!-- Поповер эмодзи и стикеров -->
+    <div class="watch-chat-stickers-popover" id="chat-stickers-popover" style="display: none;">
+      <div class="stickers-tabs-header">
+        <button type="button" class="stickers-tab-btn active" data-tab="emojis">🌟</button>
+        <button type="button" class="stickers-tab-btn" data-tab="pepe">🐸</button>
+        <button type="button" class="stickers-tab-btn" data-tab="cats">🐱</button>
+        <button type="button" class="stickers-tab-btn" data-tab="popcorn">🍿</button>
+      </div>
+      <div class="stickers-grid" id="stickers-grid-content"></div>
     </div>
 
-    <!-- Поле ввода сообщения -->
+    <!-- Форма отправки сообщения -->
     <form class="watch-room-chat-form" id="watch-room-chat-form">
-      <input type="text" class="storm-input" id="watch-chat-input" placeholder="Написать в кинозал..." autocomplete="off">
-      <button type="submit" class="storm-btn storm-btn-primary storm-btn-sm">➤</button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-stickers-btn" style="padding: 6px 10px;">😊</button>
+      <input type="text" class="storm-input" id="watch-chat-input" placeholder="Написать зрителям..." autocomplete="off" style="font-size: 12px; padding: 6px 10px;">
+      <button type="submit" class="storm-btn storm-btn-primary storm-btn-sm" style="padding: 6px 12px;">➤</button>
     </form>
   `;
 
@@ -285,20 +375,121 @@ export function renderRoomUi(room) {
     };
   }
 
+  // Обои комнаты
+  const wpBtn = container.querySelector('#room-wallpaper-btn');
+  const wpPopover = container.querySelector('#room-wallpapers-popover');
+  if (wpBtn && wpPopover) {
+    wpBtn.onclick = () => {
+      wpPopover.style.display = wpPopover.style.display === 'none' ? 'block' : 'none';
+    };
+  }
+
+  container.querySelectorAll('.set-wallpaper-btn').forEach(btn => {
+    btn.onclick = () => {
+      currentRoomWallpaper = btn.dataset.wp;
+      localStorage.setItem('storm_room_wallpaper', currentRoomWallpaper);
+      container.className = `watch-together-sidebar ${currentRoomWallpaper}`;
+      container.querySelectorAll('.set-wallpaper-btn').forEach(b => {
+        b.className = `storm-btn storm-btn-sm set-wallpaper-btn ${b.dataset.wp === currentRoomWallpaper ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
+      });
+      wpPopover.style.display = 'none';
+    };
+  });
+
   // Выход
   const leaveBtn = container.querySelector('#leave-room-btn');
-  if (leaveBtn) {
-    leaveBtn.onclick = leaveWatchRoom;
+  if (leaveBtn) leaveBtn.onclick = leaveWatchRoom;
+
+  // Управление воспроизведением
+  const playPauseBtn = container.querySelector('#room-play-pause-btn');
+  if (playPauseBtn) {
+    playPauseBtn.onclick = () => {
+      const video = attachedVideoElement || document.getElementById('storm-video-player');
+      if (video) {
+        const nextPlay = video.paused;
+        if (nextPlay) video.play().catch(() => {});
+        else video.pause();
+        broadcastPlaybackState(nextPlay, video.currentTime);
+        showToast(nextPlay ? 'Воспроизведение запущено для всех' : 'Пауза установлена для всех', 'info');
+      } else {
+        broadcastPlaybackState(true, 0);
+        showToast('Сигнал воспроизведения отправлен участникам', 'info');
+      }
+    };
+  }
+
+  const syncTimecodeBtn = container.querySelector('#room-sync-timecode-btn');
+  if (syncTimecodeBtn) {
+    syncTimecodeBtn.onclick = () => {
+      const video = attachedVideoElement || document.getElementById('storm-video-player');
+      const time = video ? video.currentTime : 0;
+      broadcastPlaybackState(video ? !video.paused : true, time);
+      showToast('Таймкод синхронизирован со всеми зрителями!', 'success');
+    };
+  }
+
+  // Смайлики и стикеры
+  const stickersBtn = container.querySelector('#toggle-stickers-btn');
+  const stickersPopover = container.querySelector('#chat-stickers-popover');
+  const stickersContent = container.querySelector('#stickers-grid-content');
+  const chatInput = container.querySelector('#watch-chat-input');
+
+  const renderStickersTab = (tab) => {
+    stickersContent.innerHTML = '';
+    if (tab === 'emojis') {
+      CHAT_EMOJIS.forEach(emoji => {
+        const span = document.createElement('div');
+        span.className = 'sticker-item';
+        span.textContent = emoji;
+        span.onclick = () => {
+          chatInput.value += emoji;
+          stickersPopover.style.display = 'none';
+          chatInput.focus();
+        };
+        stickersContent.appendChild(span);
+      });
+    } else {
+      const pack = CHAT_STICKER_PACKS[tab] || [];
+      pack.forEach(st => {
+        const div = document.createElement('div');
+        div.className = 'sticker-item';
+        div.textContent = st.icon;
+        div.title = st.label;
+        div.onclick = () => {
+          sendRoomChatMessage(st.icon);
+          stickersPopover.style.display = 'none';
+        };
+        stickersContent.appendChild(div);
+      });
+    }
+  };
+
+  if (stickersBtn && stickersPopover) {
+    stickersBtn.onclick = (e) => {
+      e.stopPropagation();
+      const isVisible = stickersPopover.style.display === 'block';
+      stickersPopover.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible) renderStickersTab('emojis');
+    };
+
+    container.querySelectorAll('.stickers-tab-btn').forEach(tabBtn => {
+      tabBtn.onclick = (e) => {
+        e.stopPropagation();
+        container.querySelectorAll('.stickers-tab-btn').forEach(b => b.classList.remove('active'));
+        tabBtn.classList.add('active');
+        renderStickersTab(tabBtn.dataset.tab);
+      };
+    });
   }
 
   // Отправка сообщений
   const chatForm = container.querySelector('#watch-room-chat-form');
-  const chatInput = container.querySelector('#watch-chat-input');
   if (chatForm && chatInput) {
     chatForm.onsubmit = (e) => {
       e.preventDefault();
       sendRoomChatMessage(chatInput.value);
       chatInput.value = '';
+      if (stickersPopover) stickersPopover.style.display = 'none';
     };
   }
 
@@ -311,7 +502,7 @@ function renderParticipants(participants) {
   if (!container) return;
 
   container.innerHTML = `
-    <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Зрители в зале (${participants.length}):</div>
+    <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">Зрители (${participants.length}):</div>
     <div class="participants-avatars-row">
       ${participants.map(p => `
         <div class="participant-badge" title="${p.username} ${p.isHost ? '(Хост)' : ''}">

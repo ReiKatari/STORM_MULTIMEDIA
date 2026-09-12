@@ -149,12 +149,15 @@ export async function createCustomCollection(title, description = '', color = '#
       body: JSON.stringify({ title, description, color })
     });
 
-    if (!res.ok) throw new Error('Ошибка создания списка');
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || 'Ошибка создания списка');
+    }
     const newList = await res.json();
     showToast(t('msg_list_created'), 'success');
     return newList;
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast(err.message, 'warning');
     return null;
   }
 }
@@ -183,9 +186,12 @@ export async function addItemToCollection(listId, item) {
 
     if (res.ok) {
       showToast(t('msg_added_to_list'), 'success');
+    } else {
+      const errJson = await res.json().catch(() => ({}));
+      showToast(errJson.error || 'Ошибка добавления в список', 'warning');
     }
   } catch (err) {
-    showToast('Ошибка добавления в список', 'error');
+    showToast(err.message || 'Ошибка добавления в список', 'error');
   }
 }
 
