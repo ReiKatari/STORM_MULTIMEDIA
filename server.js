@@ -1078,9 +1078,36 @@ app.get('/api/media/item', async (req, res) => {
           }
         } catch {}
       }
+
+      // Извлекаем прямые стриминговые плееры и kp_id со страницы FanFilm4K
+      if (mediaDetails.fanfilm_4k_url) {
+        try {
+          const ffDetails = await getFanFilmDetails(mediaDetails.fanfilm_4k_url);
+          if (ffDetails) {
+            if (ffDetails.kp_id && !mediaDetails.kp_id) {
+              mediaDetails.kp_id = ffDetails.kp_id;
+            }
+            if (ffDetails.players && ffDetails.players.length > 0) {
+              mediaDetails.players = mediaDetails.players || [];
+              ffDetails.players.forEach(p => {
+                if (!mediaDetails.players.some(mp => mp.id === p.id || mp.url === p.url)) {
+                  mediaDetails.players.push(p);
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.error('[FanFilm4K Details Error]:', e.message);
+        }
+      }
     } else {
       try {
         mediaDetails = await getFanFilmDetails(url || id);
+        if (mediaDetails) {
+          mediaDetails.fanfilm_4k_url = url || id;
+          mediaDetails.is4K = true;
+          mediaDetails.quality = '4K Ultra HD';
+        }
       } catch {
         mediaDetails = null;
       }
@@ -1187,6 +1214,7 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.rating_metacritic = mediaDetails.rating_metacritic || Math.min(98, Math.round(baseRating * 10.1));
 
     // Собираем расширенный список плееров (FanFilm 4K, Kodik, Трейлер, и др.)
+    const fanfilmStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url || mediaDetails.fanfilm_4k_url;
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
@@ -1195,30 +1223,49 @@ app.get('/api/media/item', async (req, res) => {
       media_type: mediaDetails.media_type,
       genres: mediaDetails.genres,
       source: mediaDetails.source || source,
-      fanfilm_4k_url: mediaDetails.fanfilm_4k_url || mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url,
+      fanfilm_4k_url: fanfilmStreamUrl,
       trailer_url: mediaDetails.trailer_url,
       is_upcoming: mediaDetails.is_upcoming
     });
 
     let allPlayers = [];
-    if (mediaDetails.is_upcoming) {
-      allPlayers = kinoboxPlayers;
-    } else {
-      if (mediaDetails.players) {
-        allPlayers.push(...mediaDetails.players);
-      }
-      kinoboxPlayers.forEach(p => {
-        if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
-          allPlayers.push(p);
-        }
-      });
-      allPlayers = allPlayers.filter(p => !p.is_trailer && p.id !== 'official_trailer' && !p.name?.toLowerCase().includes('трейлер') && !p.name?.toLowerCase().includes('trailer') && !p.badge?.toLowerCase().includes('трейлер') && !p.badge?.toLowerCase().includes('trailer'));
-      if (!allPlayers.some(p => p.is_recommended) && allPlayers.length > 0) {
-        allPlayers[0].is_recommended = true;
-        allPlayers[0].recommended_badge = '🔥 Рекомендуемый';
-      }
+    if (mediaDetails.players && mediaDetails.players.length > 0) {
+      allPlayers.push(...mediaDetails.players);
     }
-    mediaDetails.trailer_url = null;
+    kinoboxPlayers.forEach(p => {
+      // Исключаем дубли FanFilm, если fanfilm4k_uhd уже добавлен
+      if (p.id === 'fanfilm_4k' && allPlayers.some(ap => ap.id === 'fanfilm4k_uhd')) return;
+      if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
+        allPlayers.push(p);
+      }
+    });
+
+    // Если нет ни одного плеера, гарантируем наличие промо/трейлера с YouTube
+    if (allPlayers.length === 0) {
+      const cleanSearchTitle = (mediaDetails.title || 'Фильм').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
+      const safeSearch = encodeURIComponent(`${cleanSearchTitle} официальный русский трейлер`);
+      allPlayers.push({
+        id: 'official_trailer_fallback',
+        name: 'Официальный трейлер и промо (HD)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'ТРЕЙЛЕР',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный промо-трейлер',
+        speed: '⚡ YouTube',
+        url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
+        is_trailer: true,
+        is_recommended: true,
+        recommended_badge: '🔥 Рекомендуемый'
+      });
+    }
+
+    // Гарантируем, что ровно один плеер отмечен как рекомендуемый
+    if (!allPlayers.some(p => p.is_recommended) && allPlayers.length > 0) {
+      allPlayers[0].is_recommended = true;
+      allPlayers[0].recommended_badge = '🔥 Рекомендуемый';
+    }
 
     let userBookmark = null;
     if (req.user) {

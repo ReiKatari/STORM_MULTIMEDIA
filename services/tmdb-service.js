@@ -262,7 +262,16 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
       }));
 
       // Трейлеры
-      const trailers = (data.videos?.results || []).filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+      let trailers = (data.videos?.results || []).filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+      if (trailers.length === 0) {
+        try {
+          const globalVideosRes = await fetch(`${TMDB_BASE}/${type}/${cleanId}/videos?api_key=${TMDB_API_KEY}`);
+          if (globalVideosRes.ok) {
+            const globalVideosData = await globalVideosRes.json();
+            trailers = (globalVideosData.results || []).filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+          }
+        } catch {}
+      }
       let trailerUrl = null;
       if (trailers.length > 0) {
         trailerUrl = `https://www.youtube-nocookie.com/embed/${trailers[0].key}?autoplay=1&rel=0`;
@@ -364,7 +373,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
         soundtrack,
         trivia,
         cast,
-        trailer_url: null,
+        trailer_url: trailerUrl,
         is_upcoming: isUpcoming,
         seasons,
         players: []
