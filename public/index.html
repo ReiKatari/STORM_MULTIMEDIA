@@ -21,8 +21,9 @@
 </head>
 <body>
 
-  <!-- Шапка сайта и глобальная навигация -->
-  <header class="storm-navbar">
+  <!-- Закрепленная зона: Шапка, Вкладки и Фильтры (Sticky Header Container) -->
+  <div class="storm-sticky-header-container" id="storm-sticky-header-container">
+    <header class="storm-navbar">
     <div class="storm-navbar-inner">
       <!-- Логотип и название экосистемы -->
       <a href="#home" class="storm-brand" onclick="window.switchTab?.('home'); return false;">
@@ -45,8 +46,8 @@
 
       <!-- Действия: Темы и аккаунт -->
       <div class="storm-nav-actions">
-        <!-- Кнопка ИИ-советника (Neural Recommender) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-recommender-btn" title="Персональный ИИ-советник на вечер">
+        <!-- Кнопка ИИ-советника (STORM NEURAL RECOMMENDER) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-recommender-btn" title="ИИ-советник на вечер (STORM NEURAL RECOMMENDER)">
           <span>🧠</span> Советник
         </button>
 
@@ -55,8 +56,8 @@
           <span>📅</span> Календарь
         </button>
 
-        <!-- Кнопка Пульта со смартфона (STORM Remote) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-remote-btn" title="Пульт управления со смартфона (QR-код)">
+        <!-- Кнопка Пульта со смартфона (STORM REMOTE) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-remote-btn" title="Пульт управления со смартфона (STORM REMOTE)">
           <span>📱</span> Пульт
         </button>
 
@@ -227,6 +228,7 @@
         <button class="view-mode-btn" data-view="table" title="Таблица">📑</button>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- Основной динамический контейнер медиа-каталога -->

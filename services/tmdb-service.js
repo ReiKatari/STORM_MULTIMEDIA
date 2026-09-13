@@ -145,17 +145,18 @@ export async function searchTmdb(query, page = 1) {
 /**
  * Получение подробной информации о релизе (актеры, режиссеры, жанры, рейтинги, сезоны)
  */
-export async function getTmdbItemDetails(id, mediaTypeHint = null) {
+export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = null, yearHint = null) {
   if (!id) return null;
   const cleanId = String(id).replace('tmdb_', '').trim();
-  const cacheKey = `details_${cleanId}_${mediaTypeHint || 'any'}`;
+  const cacheKey = `details_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached) return cached;
 
   const isExplicitTv = mediaTypeHint === 'series' || mediaTypeHint === 'tv' || mediaTypeHint === 'cartoon-series' || mediaTypeHint === 'anime-series';
-  const tryEndpoints = isExplicitTv ? ['tv', 'movie'] : ['movie', 'tv'];
+  let tryEndpoints = isExplicitTv ? ['tv', 'movie'] : ['movie', 'tv'];
 
-  for (const type of tryEndpoints) {
+  for (let i = 0; i < tryEndpoints.length; i++) {
+    const type = tryEndpoints[i];
     try {
       const url = `${TMDB_BASE}/${type}/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids`;
       const res = await fetch(url);
@@ -165,6 +166,30 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null) {
       const isTv = type === 'tv';
 
       const title = (isTv ? data.name : data.title) || 'Кинофильм';
+
+      // Если мы начали с movie, но передан titleHint (например, "Менталист"),
+      // и название из movie ("Ле-Ман") совершенно не совпадает, переключаемся на tv!
+      if (!isExplicitTv && type === 'movie' && titleHint) {
+        const normTitle = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+        const normHint = titleHint.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+        if (normTitle && normHint && !normTitle.includes(normHint) && !normHint.includes(normTitle)) {
+          // Проверим, не является ли этот ID сериалом
+          try {
+            const tvUrl = `${TMDB_BASE}/tv/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids`;
+            const tvRes = await fetch(tvUrl);
+            if (tvRes.ok) {
+              const tvData = await tvRes.json();
+              const tvTitle = (tvData.name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+              if (tvTitle.includes(normHint) || normHint.includes(tvTitle)) {
+                // TV совпал с запрошенным сериалом! Перенаправляем на ветку tv
+                tryEndpoints[i] = 'tv';
+                i--;
+                continue;
+              }
+            }
+          } catch {}
+        }
+      }
       const originalTitle = (isTv ? data.original_name : data.original_title) || '';
       const dateStr = (isTv ? data.first_air_date : data.release_date) || '';
       

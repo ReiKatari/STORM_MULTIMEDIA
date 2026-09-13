@@ -75,7 +75,7 @@ export async function openNeuralRecommenderModal() {
         <div class="storm-modal-header">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 20px;">🧠</span>
-            <h3 style="margin: 0;">STORM Neural Recommender</h3>
+            <h3 style="margin: 0;">STORM NEURAL RECOMMENDER</h3>
           </div>
           <button type="button" class="storm-modal-close" id="neural-modal-close-btn">✕</button>
         </div>
