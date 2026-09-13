@@ -12,6 +12,8 @@
  * - Студийный 10-полосный параметрический эквалайзер и Subwoofer Bass Boost
  */
 
+import { showToast } from './auth.js';
+
 // ==========================================
 // 1. КОНФИГУРАЦИЯ И СОСТОЯНИЕ ВИДЕО-ДВИЖКА
 // ==========================================
@@ -130,16 +132,18 @@ function ensureSvgFiltersInjected() {
         <feConvolveMatrix order="3" kernelMatrix="-0.2 -0.6 -0.2 -0.6 4.2 -0.6 -0.2 -0.6 -0.2" preserveAlpha="true" />
       </filter>
       <!-- 35mm Analog Film Grain Subtle -->
-      <filter id="storm-film-grain-subtle">
+      <filter id="storm-film-grain-subtle" x="0%" y="0%" width="100%" height="100%">
         <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" result="noise" />
-        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.07 0" in="noise" result="coloredNoise" />
-        <feBlend mode="overlay" in="SourceGraphic" in2="coloredNoise" />
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.08 0" in="noise" result="coloredNoise" />
+        <feComposite in="coloredNoise" in2="SourceGraphic" operator="in" result="clippedNoise" />
+        <feBlend mode="overlay" in="SourceGraphic" in2="clippedNoise" />
       </filter>
       <!-- 35mm Analog Film Grain Cinema -->
-      <filter id="storm-film-grain-cinema">
+      <filter id="storm-film-grain-cinema" x="0%" y="0%" width="100%" height="100%">
         <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="4" result="noise" />
-        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.14 0" in="noise" result="coloredNoise" />
-        <feBlend mode="overlay" in="SourceGraphic" in2="coloredNoise" />
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.16 0" in="noise" result="coloredNoise" />
+        <feComposite in="coloredNoise" in2="SourceGraphic" operator="in" result="clippedNoise" />
+        <feBlend mode="overlay" in="SourceGraphic" in2="clippedNoise" />
       </filter>
     </defs>
   `;
@@ -437,16 +441,16 @@ export function applyProAudioSettings() {
   if (proAudioCtx) {
     const now = proAudioCtx.currentTime;
 
-    // 1. Усиление баса
+    // 1. Усиление баса (Subwoofer Bass Boost)
     if (proBassFilter) {
-      const bassGains = { off: 0, cinema: 5.0, ultra: 9.0 };
+      const bassGains = { off: 0, cinema: 8.5, ultra: 15.0 };
       const gain = bassGains[s.bassBoost] || 0;
       proBassFilter.gain.setTargetAtTime(gain, now, 0.05);
     }
 
     // 2. Интеллектуальное выделение речи (AI Voice Boost)
     if (proVoiceFilter) {
-      const voiceGains = { off: 0, mild: 4.0, strong: 7.5 };
+      const voiceGains = { off: 0, mild: 7.0, strong: 12.5 };
       const gain = voiceGains[s.voiceBoost] || 0;
       proVoiceFilter.gain.setTargetAtTime(gain, now, 0.05);
     }
@@ -462,14 +466,14 @@ export function applyProAudioSettings() {
     // 4. Пространственный звук (Dolby Atmos & DTS:X 3D)
     if (proWetGain && proDryGain) {
       if (s.spatialMode === 'atmos') {
-        proDryGain.gain.setTargetAtTime(0.82, now, 0.05);
-        proWetGain.gain.setTargetAtTime(0.42, now, 0.05);
+        proDryGain.gain.setTargetAtTime(0.72, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.55, now, 0.05);
       } else if (s.spatialMode === 'dtsx') {
-        proDryGain.gain.setTargetAtTime(0.88, now, 0.05);
-        proWetGain.gain.setTargetAtTime(0.32, now, 0.05);
+        proDryGain.gain.setTargetAtTime(0.78, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.42, now, 0.05);
       } else if (s.spatialMode === 'headphones') {
-        proDryGain.gain.setTargetAtTime(0.80, now, 0.05);
-        proWetGain.gain.setTargetAtTime(0.38, now, 0.05);
+        proDryGain.gain.setTargetAtTime(0.70, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.48, now, 0.05);
       } else {
         // Стерео прямое
         proDryGain.gain.setTargetAtTime(1.0, now, 0.05);
@@ -501,7 +505,7 @@ export function applyProAudioSettings() {
   }
 
   // Трансляция настроек во все активные iframe (FanFilm4K, Stravers)
-  const iframes = document.querySelectorAll('.cinema-player-iframe');
+  const iframes = document.querySelectorAll('.cinema-player-iframe, #cinema-player-wrapper iframe, iframe');
   iframes.forEach(iframe => {
     try {
       if (iframe.contentWindow) {
@@ -509,6 +513,10 @@ export function applyProAudioSettings() {
           type: 'STORM_PRO_AUDIO',
           settings: s
         }, '*');
+        iframe.contentWindow.postMessage(JSON.stringify({
+          type: 'STORM_PRO_AUDIO',
+          settings: s
+        }), '*');
       }
     } catch {}
   });
@@ -886,6 +894,7 @@ export function renderProAudioPanel(hostElement) {
       proAudioSettings.nightMode = !proAudioSettings.nightMode;
       setProAudioNightMode(proAudioSettings.nightMode);
       renderProAudioPanel(hostElement);
+      showToast(proAudioSettings.nightMode ? '🌙 Ночной режим звука включен' : 'Ночной режим звука выключен', 'info');
     };
   }
 
@@ -896,6 +905,7 @@ export function renderProAudioPanel(hostElement) {
       btn.classList.add('active');
       proAudioSettings.preampGain = parseFloat(btn.dataset.preamp);
       applyProAudioSettings();
+      showToast(`🔊 Предусилитель: ${Math.round(proAudioSettings.preampGain * 100)}%`, 'info');
     };
   });
 
@@ -906,6 +916,7 @@ export function renderProAudioPanel(hostElement) {
       btn.classList.add('active');
       proAudioSettings.spatialMode = btn.dataset.spatial;
       applyProAudioSettings();
+      showToast(`🎧 3D Звук: ${btn.textContent.trim()}`, 'info');
     };
   });
 
@@ -916,6 +927,7 @@ export function renderProAudioPanel(hostElement) {
       btn.classList.add('active');
       proAudioSettings.voiceBoost = btn.dataset.voice;
       applyProAudioSettings();
+      showToast(`🎙️ Выделение речи: ${btn.textContent.trim()}`, 'info');
     };
   });
 
@@ -926,6 +938,7 @@ export function renderProAudioPanel(hostElement) {
       btn.classList.add('active');
       proAudioSettings.bassBoost = btn.dataset.bass;
       applyProAudioSettings();
+      showToast(`🔊 Усиление баса: ${btn.textContent.trim()}`, 'info');
     };
   });
 
@@ -948,6 +961,7 @@ export function renderProAudioPanel(hostElement) {
         });
 
         applyProAudioSettings();
+        showToast(`🎛️ Эквалайзер: ${btn.textContent.trim()}`, 'info');
       }
     };
   });

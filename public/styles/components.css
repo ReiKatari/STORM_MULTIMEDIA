@@ -57,10 +57,9 @@
   text-shadow: none !important;
 }
 
-.storm-btn-primary,
-.storm-btn-primary *,
-.storm-btn-primary span,
-.storm-btn-primary div {
+.storm-btn-primary:not(.storm-btn-secondary),
+.storm-btn-primary:not(.storm-btn-secondary) > span,
+.storm-btn-primary:not(.storm-btn-secondary) > div {
   color: #05070a !important;
 }
 
@@ -72,27 +71,19 @@
   margin-top: 2px;
 }
 
-.storm-btn-primary .storm-btn-subtext,
-.storm-btn-primary div[style*="font-size: 10px"],
-.storm-btn-primary div[style*="font-size: 11px"],
-.storm-btn-primary div[style*="var(--text-muted)"],
-.storm-btn-primary span[style*="var(--text-muted)"],
-.storm-btn.active .storm-btn-subtext {
+.storm-btn-primary:not(.storm-btn-secondary) .storm-btn-subtext {
   color: rgba(5, 7, 10, 0.85) !important;
   font-weight: 600 !important;
 }
 
 /* Светлая тема STORM DAY — белый текст на синей акцентной кнопке */
-[data-theme="STORM DAY"] .storm-btn-primary,
-[data-theme="STORM DAY"] .storm-btn-primary *,
-[data-theme="STORM DAY"] .storm-btn-primary span,
-[data-theme="STORM DAY"] .storm-btn-primary div {
+[data-theme="STORM DAY"] .storm-btn-primary:not(.storm-btn-secondary),
+[data-theme="STORM DAY"] .storm-btn-primary:not(.storm-btn-secondary) > span,
+[data-theme="STORM DAY"] .storm-btn-primary:not(.storm-btn-secondary) > div {
   color: #ffffff !important;
 }
 
-[data-theme="STORM DAY"] .storm-btn-primary .storm-btn-subtext,
-[data-theme="STORM DAY"] .storm-btn.active .storm-btn-subtext,
-[data-theme="STORM DAY"] .storm-btn-primary div[style*="var(--text-muted)"] {
+[data-theme="STORM DAY"] .storm-btn-primary:not(.storm-btn-secondary) .storm-btn-subtext {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
@@ -117,14 +108,29 @@
   border-color: var(--border-color);
 }
 
-/* Активные кнопки действий */
+/* Активные кнопки действий и карточки сервисов под все 8 тем STORM */
 .storm-btn.active,
 .storm-btn-secondary.active {
-  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25) 0%, rgba(0, 210, 255, 0.08) 100%) !important;
+  background: var(--bg-card-hover) !important;
   border-color: var(--accent) !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 14px var(--accent-glow), 0 3px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 14px var(--accent-glow), 0 3px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
   transform: translateY(-1px);
+}
+
+.storm-btn.active *,
+.storm-btn.active div,
+.storm-btn.active span,
+.storm-btn-secondary.active *,
+.storm-btn-secondary.active div,
+.storm-btn-secondary.active span {
+  color: var(--text-primary) !important;
+}
+
+.storm-btn.active .storm-btn-subtext,
+.storm-btn-secondary.active .storm-btn-subtext {
+  color: var(--accent) !important;
+  font-weight: 600 !important;
 }
 
 #toggle-ambilight-btn.active {

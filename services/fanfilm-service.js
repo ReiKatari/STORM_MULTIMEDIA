@@ -14,6 +14,7 @@ async function fetchHtml(url, options = {}) {
   };
 
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(options.timeout || 3000),
     ...options,
     headers
   });

@@ -1549,6 +1549,16 @@ function playStreamUrl(url) {
     mountInPlayerOverlay(iframeBox);
   }
 
+  const iframeEl = container.querySelector('.cinema-player-iframe');
+  if (iframeEl) {
+    iframeEl.onload = () => {
+      applySavedPlaybackSpeed();
+      applyProAudioSettings();
+    };
+  }
+
+  applySavedPlaybackSpeed();
+  applyProAudioSettings();
   applyProVideoSettings();
 
   if (ambilightEnabled) {
@@ -2537,14 +2547,24 @@ function setupSkipLogic(video) {
    ========================================================================== */
 
 export function applySavedPlaybackSpeed(video) {
-  if (!video) return;
   const saved = localStorage.getItem('storm_playback_speed') || '1';
-  const speed = parseFloat(saved);
-  if (!isNaN(speed) && speed > 0) {
-    try {
-      video.playbackRate = speed;
-    } catch {}
+  const speed = parseFloat(saved) || 1;
+  if (video) {
+    try { video.playbackRate = speed; } catch {}
   }
+  document.querySelectorAll('video').forEach(v => {
+    try { v.playbackRate = speed; } catch {}
+  });
+  document.querySelectorAll('.cinema-player-iframe, #cinema-player-wrapper iframe, iframe').forEach(iframe => {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        doc.querySelectorAll('video').forEach(v => {
+          v.playbackRate = speed;
+        });
+      }
+    } catch {}
+  });
   updateInPlayerSpeedDisplay(speed);
 }
 
@@ -2582,15 +2602,17 @@ export function setGlobalPlaybackSpeed(speed) {
     } catch {}
   });
 
-  // 3. Отправка postMessage во все поддерживаемые типы сторонних плееров
+  // 3. Отправка postMessage во все поддерживаемые типы сторонних плееров (объекты и JSON)
   const msgs = [
     { event: 'speed', value: sp },
     { api: 'speed', val: sp },
     { api: 'speed', set: sp },
     { api: 'playbackRate', set: sp },
     { action: 'speed', rate: sp },
-    { key: 'kodik_player_api', value: { action: 'speed', rate: sp } },
-    { type: 'SET_SPEED', speed: sp }
+    { method: 'setSpeed', speed: sp },
+    { method: 'speed', rate: sp, value: sp },
+    { key: 'kodik_player_api', value: { action: 'speed', rate: sp, method: 'speed' } },
+    { type: 'SET_SPEED', speed: sp, value: sp }
   ];
   document.querySelectorAll('.cinema-player-iframe, #cinema-player-wrapper iframe, iframe').forEach(iframe => {
     msgs.forEach(msg => {
@@ -2602,18 +2624,27 @@ export function setGlobalPlaybackSpeed(speed) {
   });
 
   updateInPlayerSpeedDisplay(sp);
-  showToast(`⚡ Скорость: ${sp}x`, 'info');
+  showToast(`⏱️ Скорость: ${sp}x`, 'info');
 }
 
 function updateInPlayerSpeedDisplay(speed) {
+  const sp = parseFloat(speed) || 1;
   const overlay = document.getElementById('storm-inplayer-overlay');
   if (!overlay) return;
   const btn = overlay.querySelector('#inplayer-speed-btn');
-  if (btn) btn.textContent = `⚡ ${speed}x`;
+  if (btn) {
+    btn.innerHTML = `
+      <svg class="inplayer-speed-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span>${sp}x</span>
+    `;
+  }
   const menu = overlay.querySelector('#inplayer-speed-menu');
   if (menu) {
     menu.querySelectorAll('.inplayer-speed-item').forEach(item => {
-      item.classList.toggle('active', parseFloat(item.dataset.speed) === parseFloat(speed));
+      item.classList.toggle('active', parseFloat(item.dataset.speed) === sp);
     });
   }
 }
@@ -3076,7 +3107,11 @@ export function mountInPlayerOverlay(videoBox) {
         </div>
         <div class="inplayer-top-actions">
           <button type="button" class="inplayer-ctrl-btn" id="inplayer-speed-btn" title="Скорость воспроизведения (нажмите для переключения)">
-            ⚡ 1x
+            <svg class="inplayer-speed-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>${parseFloat(localStorage.getItem('storm_playback_speed') || '1')}x</span>
           </button>
           <div class="inplayer-speed-menu" id="inplayer-speed-menu">
             <div class="inplayer-speed-item" data-speed="0.5">0.5x</div>
@@ -3339,6 +3374,24 @@ const WEBTORRENT_TRACKERS = [
   'wss://tracker.btorrent.xyz'
 ];
 
+let webTorrentLoadPromise = null;
+export async function ensureWebTorrentLoaded() {
+  if (window.WebTorrent) return true;
+  if (webTorrentLoadPromise) return webTorrentLoadPromise;
+  webTorrentLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => {
+      webTorrentLoadPromise = null;
+      reject(new Error('Не удалось загрузить WebTorrent модуль'));
+    };
+    document.head.appendChild(script);
+  });
+  return webTorrentLoadPromise;
+}
+
 function renderWebTorrentPlayer() {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
@@ -3557,10 +3610,15 @@ function renderWebTorrentPlayer() {
   }
 }
 
-function startWebTorrentStream(torrentIdentifier) {
+async function startWebTorrentStream(torrentIdentifier) {
   if (!window.WebTorrent) {
-    showToast('Библиотека WebTorrent загружается, повторите попытку через секунду', 'warning');
-    return;
+    showToast('Подключение модуля P2P WebTorrent...', 'info');
+    try {
+      await ensureWebTorrentLoaded();
+    } catch (e) {
+      showToast('Не удалось загрузить P2P WebTorrent модуль', 'error');
+      return;
+    }
   }
 
   const playbackArea = document.getElementById('torrent-playback-area');
@@ -3813,7 +3871,7 @@ function renderPlayerUtilityButtons() {
       openDrawerTab('services', '⚡', 'Интеллектуальные сервисы и утилиты воспроизведения', (body) => {
         body.innerHTML = `
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
-            <button type="button" class="storm-btn ${document.getElementById('toggle-whisper-btn')?.classList.contains('active') ? 'storm-btn-primary active' : 'storm-btn-secondary'} storm-btn-sm" id="drawer-whisper-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
+            <button type="button" class="storm-btn storm-btn-secondary ${document.getElementById('toggle-whisper-btn')?.classList.contains('active') ? 'active' : ''} storm-btn-sm" id="drawer-whisper-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
               <span style="font-size: 16px;">🎙️</span>
               <div style="text-align: left;">
                 <div style="font-weight: 800; font-size: 12px;">Whisper AI</div>
@@ -3853,9 +3911,7 @@ function renderPlayerUtilityButtons() {
         if (whisperBtn) {
           whisperBtn.onclick = () => {
             toggleWhisperAiSubtitles();
-            const isActive = whisperBtn.classList.toggle('storm-btn-primary');
-            whisperBtn.classList.toggle('active', isActive);
-            whisperBtn.classList.toggle('storm-btn-secondary', !isActive);
+            whisperBtn.classList.toggle('active');
           };
         }
 

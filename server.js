@@ -906,7 +906,19 @@ function interleaveSources(arrays) {
 // ==========================================
 
 const memoryCatalogCache = new Map();
-const MEMORY_CATALOG_TTL = 10 * 60 * 1000; // 10 минут
+const MEMORY_CATALOG_TTL = 30 * 60 * 1000; // 30 минут
+
+// Мгновенный предпрогрев кэша популярных категорий для мгновенного отклика на старте (< 10мс)
+try {
+  ['popular', 'new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-series', 'anime-movies', 'home'].forEach(cat => {
+    const fb = getCategoryFallback(cat);
+    if (fb && fb.length > 0) {
+      memoryCatalogCache.set(`${cat}_1_all`, { items: fb, totalItems: fb.length, timestamp: Date.now() });
+    }
+  });
+} catch (e) {
+  console.warn('Catalog cache pre-warm notice:', e.message);
+}
 
 app.get('/api/media/catalog', async (req, res) => {
   try {
@@ -920,7 +932,7 @@ app.get('/api/media/catalog', async (req, res) => {
     let items = [];
     let totalItems = 0;
 
-    if (cachedEntry && (Date.now() - cachedEntry.timestamp < MEMORY_CATALOG_TTL) && Array.isArray(cachedEntry.items) && cachedEntry.items.length > 0) {
+    if (cachedEntry && Array.isArray(cachedEntry.items) && cachedEntry.items.length > 0) {
       items = cachedEntry.items;
       totalItems = cachedEntry.totalItems;
     } else {
@@ -1890,11 +1902,11 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               const now = audioCtx.currentTime;
 
               if (bassFilter) {
-                const gains = { off: 0, cinema: 5.0, ultra: 9.0 };
+                const gains = { off: 0, cinema: 8.5, ultra: 15.0 };
                 bassFilter.gain.setTargetAtTime(gains[s.bassBoost] || 0, now, 0.05);
               }
               if (voiceFilter) {
-                const gains = { off: 0, mild: 4.0, strong: 7.5 };
+                const gains = { off: 0, mild: 7.0, strong: 12.5 };
                 voiceFilter.gain.setTargetAtTime(gains[s.voiceBoost] || 0, now, 0.05);
               }
               if (eqFilters.length === 10 && s.eqBands) {
@@ -1904,14 +1916,14 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }
               if (wetGain && dryGain) {
                 if (s.spatialMode === 'atmos') {
-                  dryGain.gain.setTargetAtTime(0.82, now, 0.05);
-                  wetGain.gain.setTargetAtTime(0.42, now, 0.05);
+                  dryGain.gain.setTargetAtTime(0.72, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.55, now, 0.05);
                 } else if (s.spatialMode === 'dtsx') {
-                  dryGain.gain.setTargetAtTime(0.88, now, 0.05);
-                  wetGain.gain.setTargetAtTime(0.32, now, 0.05);
+                  dryGain.gain.setTargetAtTime(0.78, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.42, now, 0.05);
                 } else if (s.spatialMode === 'headphones') {
-                  dryGain.gain.setTargetAtTime(0.80, now, 0.05);
-                  wetGain.gain.setTargetAtTime(0.38, now, 0.05);
+                  dryGain.gain.setTargetAtTime(0.70, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.48, now, 0.05);
                 } else {
                   dryGain.gain.setTargetAtTime(1.0, now, 0.05);
                   wetGain.gain.setTargetAtTime(0.0, now, 0.05);
@@ -1938,25 +1950,39 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             setInterval(() => {
               const v = document.querySelector('video');
               if (v) {
-                if (currentSpeed && currentSpeed !== 1 && v.playbackRate !== currentSpeed) {
+                if (currentSpeed && v.playbackRate !== currentSpeed) {
                   v.playbackRate = currentSpeed;
                 }
-                v.addEventListener('play', () => {
-                  if (!sourceNode) initAudio(v);
-                  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-                });
+                if (!v._stormEventsHooked) {
+                  v._stormEventsHooked = true;
+                  v.addEventListener('play', () => {
+                    if (!sourceNode) initAudio(v);
+                    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                    if (currentSpeed && v.playbackRate !== currentSpeed) v.playbackRate = currentSpeed;
+                  });
+                  v.addEventListener('ratechange', () => {
+                    if (currentSpeed && v.playbackRate !== currentSpeed) v.playbackRate = currentSpeed;
+                  });
+                }
                 if (!sourceNode) initAudio(v);
               }
-            }, 350);
+            }, 250);
 
             window.addEventListener('message', (e) => {
-              if (!e.data) return;
-              if (e.data.type === 'STORM_PRO_AUDIO') {
-                applySettings(e.data.settings);
+              let data = e.data;
+              if (typeof data === 'string') {
+                try { data = JSON.parse(data); } catch {}
               }
-              if (e.data.type === 'SET_SPEED' || e.data.event === 'speed') {
-                const sp = parseFloat(e.data.value || e.data.speed);
-                if (sp) {
+              if (!data) return;
+
+              if (data.type === 'STORM_PRO_AUDIO') {
+                applySettings(data.settings);
+              }
+
+              const isSpeedMsg = data.type === 'SET_SPEED' || data.event === 'speed' || data.action === 'speed' || data.method === 'setSpeed' || data.api === 'speed' || data.playbackRate !== undefined;
+              if (isSpeedMsg) {
+                const sp = parseFloat(data.value || data.speed || data.rate || data.set || data.playbackRate || data.val);
+                if (sp && !isNaN(sp)) {
                   currentSpeed = sp;
                   const v = document.querySelector('video');
                   if (v) v.playbackRate = sp;
