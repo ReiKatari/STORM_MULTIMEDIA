@@ -252,21 +252,40 @@ export function openProfileModal() {
   const dateEl = document.getElementById('profile-date');
   if (dateEl) dateEl.textContent = currentUser ? formatDate(currentUser.created_at) : '—';
 
-  const stats = currentUser?.stats || {};
   const setStat = (id, val) => {
     const el = document.getElementById(id);
-    if (el) el.textContent = val || 0;
+    if (el) el.textContent = val !== undefined && val !== null ? val : 0;
   };
-  setStat('profile-stat-hours', stats.totalWatchedHours);
-  setStat('profile-stat-watching', stats.watchingCount);
-  setStat('profile-stat-planned', stats.plannedCount);
-  setStat('profile-stat-completed', stats.completedCount);
-  setStat('profile-stat-favorites', stats.favoritesCount || stats.favoriteCount);
-  setStat('profile-stat-onhold', stats.onHoldCount);
-  setStat('profile-stat-dropped', stats.droppedCount);
-  setStat('profile-stat-wontwatch', stats.wontWatchCount);
-  setStat('profile-stat-bookmarks', stats.bookmarksCount);
-  setStat('profile-stat-lists', stats.customListsCount);
+
+  const updateStatsUI = (st = {}) => {
+    setStat('profile-stat-hours', st.totalWatchedHours);
+    setStat('profile-stat-watching', st.watchingCount);
+    setStat('profile-stat-planned', st.plannedCount);
+    setStat('profile-stat-completed', st.completedCount);
+    setStat('profile-stat-favorites', st.favoritesCount || st.favoriteCount);
+    setStat('profile-stat-onhold', st.onHoldCount);
+    setStat('profile-stat-dropped', st.droppedCount);
+    setStat('profile-stat-wontwatch', st.wontWatchCount);
+    setStat('profile-stat-bookmarks', st.bookmarksCount);
+    setStat('profile-stat-lists', st.customListsCount);
+  };
+
+  updateStatsUI(currentUser?.stats || {});
+
+  // Всегда синхронизируем свежую статистику с сервера при открытии профиля
+  if (currentToken) {
+    fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${currentToken}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && d.stats) {
+          if (currentUser) {
+            currentUser.stats = d.stats;
+          }
+          updateStatsUI(d.stats);
+        }
+      })
+      .catch(e => console.warn('Ошибка обновления статистики профиля:', e.message));
+  }
 
   // Язык интерфейса в настройках профиля
   const profileLangSelect = document.getElementById('profile-lang-select');

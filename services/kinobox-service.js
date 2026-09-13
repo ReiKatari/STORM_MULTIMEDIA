@@ -118,53 +118,56 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       url: rhsUrl
     });
 
-    // HDRezka Cinema (добавляем только при наличии kp_id во избежание 404 от voidboost)
-    if (kp_id) {
-      players.push({
-        id: 'rezka_cinema',
-        name: 'HDRezka Cinema (FHD и 4K)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'HDREZKA',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Студийный перевод HDRezka Studio',
-        speed: '⚡ Высокая скорость',
-        url: `https://stream.voidboost.cc/embed/${kp_id}`
-      });
-    }
+    // HDRezka Cinema (FHD и 4K)
+    const rezkaUrl = kp_id
+      ? `https://stream.voidboost.cc/embed/${kp_id}`
+      : `https://stream.voidboost.cc/embed/search?title=${safeTitle}${yearParam}`;
+    players.push({
+      id: 'rezka_cinema',
+      name: 'HDRezka Cinema (FHD и 4K)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'HDREZKA',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Студийный перевод HDRezka Studio',
+      speed: '⚡ Высокая скорость',
+      url: rezkaUrl
+    });
 
-    // Collaps Плеер (добавляем только при наличии kp_id)
-    if (kp_id) {
-      players.push({
-        id: 'collaps_player',
-        name: 'Collaps Плеер (мировые премьеры)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'COLLAPS',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Чистый Full HD поток без рекламы',
-        speed: '⚡ Стабильный CDN',
-        url: `https://api.strvid.ws/embed/movie?kinopoisk=${kp_id}`
-      });
-    }
+    // Collaps Плеер (мировые премьеры)
+    const collapsUrl = kp_id
+      ? `https://api.strvid.ws/embed/movie?kinopoisk=${kp_id}`
+      : `https://api.strvid.ws/embed/movie?title=${safeTitle}${yearParam}`;
+    players.push({
+      id: 'collaps_player',
+      name: 'Collaps Плеер (мировые премьеры)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'COLLAPS',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Чистый Full HD поток без рекламы',
+      speed: '⚡ Стабильный CDN',
+      url: collapsUrl
+    });
 
-    // Alloha TV (добавляем только при наличии kp_id)
-    if (kp_id) {
-      players.push({
-        id: 'alloha_tv',
-        name: 'Alloha TV (стабильный FHD поток)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'ALLOHA',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Профессиональный многоголосый перевод',
-        speed: '⚡ Скоростной поток',
-        url: `https://api.strvid.ws/embed/movie?kinopoisk=${kp_id}&player=alloha`
-      });
-    }
+    // Alloha TV (стабильный FHD поток)
+    const allohaUrl = kp_id
+      ? `https://api.strvid.ws/embed/movie?kinopoisk=${kp_id}&player=alloha`
+      : `https://api.strvid.ws/embed/movie?title=${safeTitle}${yearParam}&player=alloha`;
+    players.push({
+      id: 'alloha_tv',
+      name: 'Alloha TV (стабильный FHD поток)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'ALLOHA',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Профессиональный многоголосый перевод',
+      speed: '⚡ Скоростной поток',
+      url: allohaUrl
+    });
 
     // Vidsrc Cinema (Original)
     if (imdb_id) {

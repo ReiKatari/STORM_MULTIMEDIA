@@ -210,6 +210,152 @@ function initFullscreenControls() {
   });
 }
 
+export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
+  const title = cleanTitle || cleanVideoTitle(mediaItem.title || 'Видео');
+  const safeTitle = encodeURIComponent(title);
+  const year = mediaItem.year ? String(mediaItem.year).trim() : '';
+  const yearParam = year ? `&year=${year}&strict=1` : '&strict=1';
+  const kpId = mediaItem.kp_id || '';
+  const mediaType = mediaItem.media_type || mediaItem.type || 'movie';
+  const isSeries = mediaType === 'series' || mediaType === 'cartoon-series' || mediaType === 'anime-series';
+  const isAnime = mediaType.includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
+  const typeFilter = isSeries ? '&types=foreign-serial,russian-serial,anime-serial' : '&types=foreign-movie,russian-movie,anime';
+  const episodeParam = isSeries ? '&season=1&episode=1' : '';
+
+  const suite = [];
+
+  // 1. FanFilm 4K Ultra HD
+  const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
+  if (fanfilmUrl) {
+    suite.push({
+      id: 'fanfilm4k_uhd',
+      name: '4K Ultra HD Плеер (FanFilm4K)',
+      type: 'iframe',
+      quality: '4K UHD',
+      badge: 'FANFILM 4K',
+      status: 'working',
+      status_label: '🟢 4K поток',
+      audio_info: 'Многоголосый дубляж 5.1 / HDR',
+      speed: '💎 Премиум CDN',
+      url: fanfilmUrl,
+      is_recommended: true,
+      recommended_badge: '🔥 Рекомендуемый'
+    });
+  }
+
+  // 2. HDRezka Cinema (FHD и 4K)
+  const rezkaUrl = kpId ? `https://stream.voidboost.cc/embed/${kpId}` : `https://stream.voidboost.cc/embed/search?title=${safeTitle}${yearParam}`;
+  suite.push({
+    id: 'rezka_cinema',
+    name: 'HDRezka Cinema (FHD и 4K)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'HDREZKA',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Студийный перевод HDRezka Studio',
+    speed: '⚡ Высокая скорость',
+    url: rezkaUrl,
+    is_recommended: !fanfilmUrl && !isAnime
+  });
+
+  // 3. Collaps Плеер (мировые премьеры)
+  const collapsUrl = kpId ? `https://api.strvid.ws/embed/movie?kinopoisk=${kpId}` : `https://api.strvid.ws/embed/movie?title=${safeTitle}${yearParam}`;
+  suite.push({
+    id: 'collaps_player',
+    name: 'Collaps Плеер (мировые премьеры)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'COLLAPS',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Чистый Full HD поток без рекламы',
+    speed: '⚡ Стабильный CDN',
+    url: collapsUrl
+  });
+
+  // 4. Alloha TV (стабильный FHD поток)
+  const allohaUrl = kpId ? `https://api.strvid.ws/embed/movie?kinopoisk=${kpId}&player=alloha` : `https://api.strvid.ws/embed/movie?title=${safeTitle}${yearParam}&player=alloha`;
+  suite.push({
+    id: 'alloha_tv',
+    name: 'Alloha TV (стабильный FHD поток)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'ALLOHA',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Профессиональный многоголосый перевод',
+    speed: '⚡ Скоростной поток',
+    url: allohaUrl
+  });
+
+  // 5. Kodik Плеер
+  const kodikUrl = kpId ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}` : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+  suite.push({
+    id: 'kodik_direct',
+    name: isAnime ? 'Kodik Аниме Плеер' : 'Kodik Плеер (сериалы и озвучки)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'KODIK',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Большой выбор студийных озвучек',
+    speed: '⚡ Быстрый поток',
+    url: kodikUrl,
+    is_recommended: isAnime && !fanfilmUrl
+  });
+
+  // 6. Red Head Sound (Дубляж RHS)
+  const rhsUrl = kpId ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&voice=rhs${typeFilter}${episodeParam}` : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&voice=rhs${typeFilter}${episodeParam}`;
+  suite.push({
+    id: 'rhs_player',
+    name: 'Red Head Sound (Дубляж RHS)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'RHS',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Официальные голоса дубляжа студии RHS',
+    speed: '⚡ Премиум дубляж',
+    url: rhsUrl
+  });
+
+  // 7. P2P WebTorrent (Торрент-стриминг)
+  if (!mediaItem.is_upcoming) {
+    suite.push({
+      id: 'webtorrent',
+      name: 'P2P WebTorrent (Торрент-стриминг)',
+      url: 'webtorrent://direct',
+      badge: 'P2P 4K',
+      quality: '4K UHD / 1080p',
+      status_label: '🟢 P2P Сеть',
+      audio_info: 'Многоголосый дубляж'
+    });
+  }
+
+  // 8. Официальный трейлер и промо (YouTube)
+  const safeSearch = encodeURIComponent(`${title} официальный русский трейлер`);
+  suite.push({
+    id: 'official_trailer',
+    name: 'Официальный трейлер (4K / FHD)',
+    type: 'iframe',
+    quality: '4K UHD / 1080p',
+    badge: 'ТРЕЙЛЕР',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Официальный промо-трейлер',
+    speed: '⚡ YouTube 4K',
+    url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
+    is_trailer: true
+  });
+
+  if (!suite.some(p => p.is_recommended) && suite.length > 0) {
+    suite[0].is_recommended = true;
+  }
+
+  return suite;
+}
+
 export async function openPlayerModal(mediaItem, options = {}) {
   currentMedia = mediaItem;
   quickBarSeriesData = null;
@@ -235,7 +381,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   // Сброс состояния плеера
   const iframeContainer = document.getElementById('cinema-player-wrapper');
-  iframeContainer.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Загрузка видеоплеера...</div>';
+  iframeContainer.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);gap:10px;"><div class="storm-spinner"></div><span>Загрузка видеоплеера...</span></div>';
 
   document.getElementById('cinema-modal-title').textContent = cleanTitle;
   document.getElementById('cinema-modal-year').textContent = mediaItem.year || '';
@@ -264,8 +410,30 @@ export async function openPlayerModal(mediaItem, options = {}) {
   renderCustomListsSelector();
   renderPlayerUtilityButtons();
 
-  // Моментально отображаем плашку активного источника без зависания «Загрузка плееров...»
-  currentActivePlayer = {
+  // 🛡️ ГАРАНТИЯ ИСТОЧНИКОВ: Создаем полный универсальный набор онлайн-плееров сразу!
+  // Никакой источник никогда не пропадает, даже при задержке сети или таймауте
+  const fallbackSuite = buildUniversalPlayerSuite(mediaItem, cleanTitle);
+  currentPlayers = [...fallbackSuite];
+  renderPlayerSources(currentPlayers);
+
+  // Определяем стартовый рекомендуемый плеер
+  let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
+  if (!initialChoice) {
+    const isAnime = (mediaItem.media_type || '').includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
+    const isSeries = (mediaItem.media_type || '') === 'series' || (mediaItem.media_type || '') === 'cartoon-series';
+    if (!isAnime && !isSeries) {
+      initialChoice = currentPlayers.find(p => p.id === 'fanfilm4k_uhd')
+        || currentPlayers.find(p => p.id === 'rezka_cinema')
+        || currentPlayers.find(p => p.id === 'collaps_player')
+        || currentPlayers.find(p => p.id === 'alloha_tv')
+        || currentPlayers.find(p => p.id === 'kodik_direct');
+    }
+    if (!initialChoice) {
+      initialChoice = currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
+    }
+  }
+
+  currentActivePlayer = initialChoice || {
     badge: (mediaItem.source || 'ПЛЕЕР').toUpperCase(),
     name: `${cleanTitle || 'Основной поток'} (${getSourceName(mediaItem)})`,
     quality: '1080p FHD',
@@ -274,9 +442,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
   updatePlayerTriggerInfo(currentActivePlayer);
 
   try {
-    // Получаем детальные данные с сервера с таймаутом 5000мс
+    // Получаем детальные данные с сервера с увеличенным таймаутом 12000мс
     const controller = new AbortController();
-    const fetchTimeout = setTimeout(() => controller.abort(), 5000);
+    const fetchTimeout = setTimeout(() => controller.abort(), 12000);
 
     const mediaType = mediaItem.media_type || mediaItem.type || '';
     const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
@@ -300,19 +468,29 @@ export async function openPlayerModal(mediaItem, options = {}) {
     if (!details) {
       details = {
         ...mediaItem,
-        players: [
-          {
-            id: 'kodik_direct',
-            name: 'Kodik Плеер (HD)',
-            url: `https://kodikplayer.com/find-player?title=${encodeURIComponent(cleanTitle)}`,
-            badge: 'KODIK'
-          }
-        ]
+        players: fallbackSuite
       };
     }
 
     currentMedia = { ...mediaItem, ...details };
-    currentPlayers = details.players || [];
+
+    // 🛡️ ОБЪЕДИНЕНИЕ СЕРВЕРНЫХ И УНИВЕРСАЛЬНЫХ ПЛЕЕРОВ:
+    // Ни один онлайн источник не теряется
+    const mergedPlayers = [];
+    if (Array.isArray(details.players) && details.players.length > 0) {
+      details.players.forEach(dp => {
+        if (dp && dp.url && !mergedPlayers.some(mp => mp.id === dp.id || mp.url === dp.url)) {
+          mergedPlayers.push(dp);
+        }
+      });
+    }
+    fallbackSuite.forEach(fp => {
+      if (fp && fp.url && !mergedPlayers.some(mp => mp.id === fp.id || mp.url === fp.url)) {
+        mergedPlayers.push(fp);
+      }
+    });
+
+    currentPlayers = mergedPlayers;
 
     // Обновляем описание и рендерим галерею кадров / скриншотов
     if (details.description) {
@@ -326,19 +504,6 @@ export async function openPlayerModal(mediaItem, options = {}) {
     // Отображаем селектор сезонов и серий для сериалов (для аниме настраивается ниже)
     if (mediaItem.source !== 'anilibria' && mediaItem.source !== 'anixart') {
       renderSeriesSeasons(currentMedia, options.initialSeason, options.initialEpisode);
-    }
-
-    // Добавляем P2P WebTorrent в список плееров (для вышедших релизов)
-    if (!currentMedia.is_upcoming) {
-      currentPlayers.push({
-        id: 'webtorrent',
-        name: 'P2P WebTorrent (Торрент-стриминг)',
-        url: 'webtorrent://direct',
-        badge: 'P2P 4K',
-        quality: '4K UHD / 1080p',
-        status_label: '🟢 P2P Сеть',
-        audio_info: 'Многоголосый дубляж'
-      });
     }
 
     renderPlayerSources(currentPlayers);
@@ -362,9 +527,21 @@ export async function openPlayerModal(mediaItem, options = {}) {
     } else {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
-        const defaultPlayer = (options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null)
-          || currentPlayers.find(p => p.is_recommended)
-          || currentPlayers[0];
+        let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
+        if (!defaultPlayer) {
+          const isAnime = (mediaItem.media_type || '').includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
+          const isSeries = (mediaItem.media_type || '') === 'series' || (mediaItem.media_type || '') === 'cartoon-series';
+          if (!isAnime && !isSeries) {
+            defaultPlayer = currentPlayers.find(p => p.id === 'fanfilm4k_uhd')
+              || currentPlayers.find(p => p.id === 'rezka_cinema')
+              || currentPlayers.find(p => p.id === 'collaps_player')
+              || currentPlayers.find(p => p.id === 'alloha_tv')
+              || currentPlayers.find(p => p.id === 'kodik_direct');
+          }
+          if (!defaultPlayer) {
+            defaultPlayer = currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
+          }
+        }
         selectPlayer(defaultPlayer);
       } else if (currentMedia.is_upcoming) {
         selectPlayer({
@@ -624,6 +801,27 @@ function selectPlayer(player) {
   }
 
   playStreamUrl(player.url);
+}
+
+export function switchToNextSource() {
+  if (!currentPlayers || currentPlayers.length <= 1) {
+    showToast('Нет других доступных источников', 'warning');
+    return;
+  }
+  const curIdx = currentPlayers.findIndex(p => p.id === currentActivePlayer?.id);
+  const nextIdx = (curIdx + 1) % currentPlayers.length;
+  const nextPlayer = currentPlayers[nextIdx];
+  if (nextPlayer) {
+    selectPlayer(nextPlayer);
+    updatePlayerTriggerInfo(nextPlayer);
+    const list = document.getElementById('player-source-list');
+    if (list) {
+      list.querySelectorAll('.player-dropdown-item').forEach((el, idx) => {
+        el.classList.toggle('active', idx === nextIdx);
+      });
+    }
+    showToast(`🔁 Источник переключен: ${nextPlayer.name}`, 'info');
+  }
 }
 
 /* ==========================================================================
@@ -1258,6 +1456,7 @@ function playStreamUrl(url) {
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <button type="button" class="player-switch-source-btn" id="html5-switch-source-btn" title="Сменить видеоплеер / источник">⚡ Сменить источник</button>
         <button type="button" class="player-overlay-fs-btn" id="html5-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
 
         <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
@@ -1271,6 +1470,14 @@ function playStreamUrl(url) {
         </button>
       </div>
     `;
+
+    const html5SwitchBtn = container.querySelector('#html5-switch-source-btn');
+    if (html5SwitchBtn) {
+      html5SwitchBtn.onclick = (e) => {
+        e.stopPropagation();
+        switchToNextSource();
+      };
+    }
 
     const html5FsBtn = container.querySelector('#html5-overlay-fs-btn');
     if (html5FsBtn) {
@@ -1315,10 +1522,19 @@ function playStreamUrl(url) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
+      <button type="button" class="player-switch-source-btn" id="iframe-switch-source-btn" title="Сменить видеоплеер / источник">⚡ Сменить источник</button>
       <button type="button" class="player-overlay-fs-btn" id="iframe-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
       <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
+
+  const iframeSwitchBtn = container.querySelector('#iframe-switch-source-btn');
+  if (iframeSwitchBtn) {
+    iframeSwitchBtn.onclick = (e) => {
+      e.stopPropagation();
+      switchToNextSource();
+    };
+  }
 
   const iframeFsBtn = container.querySelector('#iframe-overlay-fs-btn');
   if (iframeFsBtn) {

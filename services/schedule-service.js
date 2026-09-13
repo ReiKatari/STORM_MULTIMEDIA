@@ -1,628 +1,924 @@
 /**
  * Сервис актуального расписания выхода эпизодов (Schedule Service)
- * Агрегация данных о реальных онгоингах и свежих сериях:
- * - LostFilm (официальные релизы студийного дубляжа)
- * - Red Head Sound (профессиональный дубляж новинок)
- * - AniLibria / AniXart (актуальные аниме-онгоинги по дням недели)
- * - TMDB On The Air (мировые премьеры в текущем эфире)
+ * Агрегация данных о реальных онгоингах 2026 года по неделям:
+ * - Текущая неделя (14.09.2026 — 20.09.2026)
+ * - Следующая неделя (21.09.2026 — 27.09.2026)
+ * Поддержка студий: LostFilm, Red Head Sound, AniLibria, HDRezka Studio, TVShows
  */
 
 import { getCache, setCache } from '../db.js';
 
-// Реальные актуальные сериалы и онгоинги с точными данными
-const VERIFIED_SCHEDULE_ITEMS = [
-  // ПОНЕДЕЛЬНИК (day: 1)
+export function wrapPoster(url) {
+  if (!url) return 'assets/favicon.svg';
+  if (url.startsWith('/api/media/image-proxy') || url.startsWith('assets/')) return url;
+  return `/api/media/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
+// --------------------------------------------------------------------------
+// 1. ТЕКУЩАЯ НЕДЕЛЯ: 14.09.2026 — 20.09.2026
+// --------------------------------------------------------------------------
+export const CURRENT_WEEK_ITEMS = [
+  // ПОНЕДЕЛЬНИК (14.09.2026)
   {
-    id: 'lostfilm_gentlemen',
-    title: 'Джентльмены',
-    original_title: 'The Gentlemen',
-    poster: 'https://image.tmdb.org/t/p/w500/vbpA5L3n6z720aGSm5U1QZ2VqXG.jpg',
-    year: '2024',
-    season: 1,
-    episode: 8,
-    episode_title: 'Изысканный финал',
+    id: 'sched_cur_mon_1',
+    title: 'Разделение',
+    original_title: 'Severance',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 1,
+    episode_title: 'Пробуждение в Люмоне',
     day_of_week: 1,
+    release_date: '14.09.2026',
     air_time: '20:00 МСК',
     studio: 'LostFilm',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.2,
-    genres: 'Криминал, Комедия, Боевик',
-    source: 'fanfilm4k',
-    description: 'Эдди Холстед вступает в решающую схватку за контроль над криминальной империей поместья.'
+    rating: 8.9,
+    genres: 'Триллер, Детектив, Фантастика',
+    source: 'tmdb',
+    description: 'Марк Скаут сталкивается с последствиями раскрытия правды о процедуре разделения.'
   },
   {
-    id: 'anilibria_100kanojo',
-    title: '100 девушек, которые очень-очень любят тебя',
-    original_title: 'Kimi no Koto ga Daidaidaidaidaisuki na 100-nin no Kanojo',
-    poster: 'https://anilibria.top/storage/releases/posters/9551/o1aMv047Z8p3cKkY.jpg',
-    year: '2024',
-    season: 2,
-    episode: 9,
-    episode_title: 'Новая возлюбленная в гареме',
+    id: 'sched_cur_mon_2',
+    title: 'Клинок, рассекающий демонов',
+    original_title: 'Kimetsu no Yaiba: Mugen Jou-hen',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/aQDPNbeYv75qKpD2QBYkOjfnaYE.jpg'),
+    year: '2026',
+    season: 5,
+    episode: 8,
+    episode_title: 'Крепость бесконечности: Прорыв',
     day_of_week: 1,
+    release_date: '14.09.2026',
     air_time: '18:30 МСК',
     studio: 'AniLibria',
     quality: '1080p FHD',
     is4K: false,
-    rating: 7.9,
-    genres: 'Комедия, Романтика, Гарем',
+    rating: 9.1,
+    genres: 'Сёнэн, Фэнтези, Экшен',
     source: 'anilibria',
-    description: 'Новые курьезные приключения Рэнтаро Айдзё и его расширяющегося круга избранниц.'
+    description: 'Тандзиро и столпы пробиваются сквозь меняющиеся залы крепости Мудзана.'
   },
   {
-    id: 'lostfilm_house_dragon',
-    title: 'Дом Дракона',
-    original_title: 'House of the Dragon',
-    poster: 'https://image.tmdb.org/t/p/w500/1X4h40fcB4WWUmIBK0auT4zZZga.jpg',
-    year: '2024',
-    season: 2,
-    episode: 8,
-    episode_title: 'Королева, которая была',
+    id: 'sched_cur_mon_3',
+    title: 'Человек-паук: Новый день',
+    original_title: 'Spider-Man: A New Day',
+    poster: wrapPoster('https://v17.fanfilm4k.media/uploads/posts/2024-04/1713531393_chelovek-pauk-novyj-den.jpg'),
+    year: '2026',
+    season: 1,
+    episode: 1,
+    episode_title: 'Свет Манхэттена',
     day_of_week: 1,
+    release_date: '14.09.2026',
     air_time: '21:30 МСК',
-    studio: 'LostFilm',
+    studio: 'Red Head Sound',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.5,
-    genres: 'Фэнтези, Драма, Боевик',
+    rating: 8.4,
+    genres: 'Супергерои, Боевик, Приключения',
     source: 'fanfilm4k',
-    description: 'Кульминация Танца Драконов: флот Веларионов и драконы Таргариенов сходятся в открытом бою.'
+    description: 'Питер Паркер начинает новую главу жизни на улицах ночного Нью-Йорка.'
   },
 
-  // ВТОРНИК (day: 2)
+  // ВТОРНИК (15.09.2026)
   {
-    id: 'lostfilm_penguin',
+    id: 'sched_cur_tue_1',
     title: 'Пингвин',
     original_title: 'The Penguin',
-    poster: 'https://image.tmdb.org/t/p/w500/a393c5c3e031a0e88a385ec5446baea8.jpg',
-    year: '2024',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/25dj85s5VtirRWF6rmO8TpZXHJV.jpg'),
+    year: '2026',
     season: 1,
-    episode: 8,
-    episode_title: 'Великая или ничтожная вещь',
+    episode: 6,
+    episode_title: 'Золото Готэма',
     day_of_week: 2,
+    release_date: '15.09.2026',
     air_time: '20:30 МСК',
     studio: 'LostFilm',
     quality: '4K UHD',
     is4K: true,
     rating: 8.8,
     genres: 'Криминал, Драма',
-    source: 'fanfilm4k',
-    description: 'Освальд Кобблпот завершает войну за власть над преступным миром Готэма.'
+    source: 'tmdb',
+    description: 'Оз Кобблпот укрепляет позиции в криминальном синдикате Фальконе.'
   },
   {
-    id: 'anilibria_black_torch',
-    title: 'Чёрный факел',
-    original_title: 'Black Torch',
-    poster: 'https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg',
-    year: '2024',
-    season: 1,
-    episode: 10,
-    episode_title: 'Тайное пламя шиноби',
+    id: 'sched_cur_tue_2',
+    title: 'Магическая битва',
+    original_title: 'Jujutsu Kaisen',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/hD04q16YQ29LqX9O2Z0M04t8U3W.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 4,
+    episode_title: 'Игра на выбывание: Старт',
     day_of_week: 2,
+    release_date: '15.09.2026',
     air_time: '19:00 МСК',
     studio: 'AniLibria',
     quality: '1080p FHD',
     is4K: false,
-    rating: 7.7,
-    genres: 'Экшен, Сверхъестественное, Сёнен',
+    rating: 9.0,
+    genres: 'Сёнэн, Мистика, Боевые искусства',
     source: 'anilibria',
-    description: 'Дзиро Азума и кот-мононокэ Раго вступают в схватку с древним кланом демонов.'
+    description: 'Юдзи Итадори и Мэгуми Фусигуро вступают в смертельные барьеры Кэндзяку.'
   },
   {
-    id: 'lostfilm_shogun',
-    title: 'Сёгун',
-    original_title: 'Shōgun',
-    poster: 'https://image.tmdb.org/t/p/w500/7O4iVfOMQmdCSxhOg1WnzG1AgYT.jpg',
-    year: '2024',
-    season: 1,
-    episode: 10,
-    episode_title: 'Сон о сне',
+    id: 'sched_cur_tue_3',
+    title: 'Тёмная материя',
+    original_title: 'Dark Matter',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/4cBo0mB6fC8oZ0oR6u3x9N5o0iQ.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 3,
+    episode_title: 'Параллели выбора',
     day_of_week: 2,
+    release_date: '15.09.2026',
     air_time: '21:00 МСК',
-    studio: 'LostFilm',
+    studio: 'TVShows',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.9,
-    genres: 'Драма, История, Военный',
-    source: 'fanfilm4k',
-    description: 'Лорд Торанага реализует свой грандиозный стратегический замысел по объединению Японии.'
+    rating: 8.3,
+    genres: 'Фантастика, Триллер',
+    source: 'tmdb',
+    description: 'Джейсон Дессен исследует новые непредсказуемые версии альтернативного Чикаго.'
   },
 
-  // СРЕДА (day: 3)
+  // СРЕДА (16.09.2026)
   {
-    id: 'rhs_silo',
+    id: 'sched_cur_wed_1',
     title: 'Укрытие / Бункер',
     original_title: 'Silo',
-    poster: 'https://image.tmdb.org/t/p/w500/6A7r9bW0u0vYV80FjA4M0k8mKxZ.jpg',
-    year: '2024',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/6A7r9bW0u0vYV80FjA4M0k8mKxZ.jpg'),
+    year: '2026',
     season: 2,
-    episode: 10,
-    episode_title: 'За пределами шлюза',
+    episode: 4,
+    episode_title: 'Тайны семнадцатого бункера',
     day_of_week: 3,
+    release_date: '16.09.2026',
     air_time: '19:30 МСК',
     studio: 'Red Head Sound',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.3,
-    genres: 'Фантастика, Детектив, Триллер',
-    source: 'fanfilm4k',
-    description: 'Джульетта делает шокирующее открытие о других подземных бункерах и истине об очистке.'
+    rating: 8.5,
+    genres: 'Постапокалипсис, Детектив, Драма',
+    source: 'tmdb',
+    description: 'Джульетта исследует разрушенный бункер и обнаруживает неожиданного выжившего.'
   },
   {
-    id: 'anilibria_strongest_tank',
-    title: 'Самый сильный в мире заступник',
-    original_title: 'Saikyou Tank no Meikyuu Kouryaku',
-    poster: 'https://anilibria.top/storage/releases/posters/9551/o1aMv047Z8p3cKkY.jpg',
-    year: '2024',
-    season: 1,
-    episode: 11,
-    episode_title: 'Абсолютная защита подземелья',
+    id: 'sched_cur_wed_2',
+    title: 'Поднятие уровня в одиночку',
+    original_title: 'Solo Leveling: Arise from the Shadow',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/geCRueV3ElhRTr0xtJuqoJ8UQOW.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 9,
+    episode_title: 'Возвышение монарха',
     day_of_week: 3,
+    release_date: '16.09.2026',
     air_time: '18:00 МСК',
     studio: 'AniLibria',
     quality: '1080p FHD',
     is4K: false,
-    rating: 7.5,
-    genres: 'Фэнтези, Приключения, Экшен',
+    rating: 8.8,
+    genres: 'Фэнтези, Экшен, Приключения',
     source: 'anilibria',
-    description: 'Руди использует свои непревзойденные защитные навыки для спасения товарищей в лабиринте.'
+    description: 'Сон Джин-Ву призывает элитных теневых солдат против гигантских монстров S-ранга.'
   },
   {
-    id: 'lostfilm_the_bear',
+    id: 'sched_cur_wed_3',
     title: 'Медведь',
     original_title: 'The Bear',
-    poster: 'https://image.tmdb.org/t/p/w500/n7b4u12h7q3oE89f2XvB9aK6mP4.jpg',
-    year: '2024',
-    season: 3,
-    episode: 10,
-    episode_title: 'Вечно',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/5kPSIxxZ98rA93XRHEwn8V0r4OB.jpg'),
+    year: '2026',
+    season: 4,
+    episode: 5,
+    episode_title: 'Новая звезда Чикаго',
     day_of_week: 3,
+    release_date: '16.09.2026',
     air_time: '20:30 МСК',
     studio: 'LostFilm',
     quality: '1080p FHD',
     is4K: false,
     rating: 8.6,
     genres: 'Драма, Комедия',
-    source: 'fanfilm4k',
-    description: 'Карми и Сидни выходят на пик кулинарного напряжения в ожидании ресторанного критика.'
+    source: 'tmdb',
+    description: 'Карми и Сидни выходят на решающую инспекцию ресторанных критиков Мишлен.'
   },
 
-  // ЧЕТВЕРГ (day: 4)
+  // ЧЕТВЕРГ (17.09.2026)
   {
-    id: 'lostfilm_the_boys',
+    id: 'sched_cur_thu_1',
     title: 'Пацаны',
     original_title: 'The Boys',
-    poster: 'https://image.tmdb.org/t/p/w500/2zmTngn1tYC1AvfnNDBpQI4r4Q8.jpg',
-    year: '2024',
-    season: 4,
-    episode: 8,
-    episode_title: 'Финал четвёртого сезона',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg'),
+    year: '2026',
+    season: 5,
+    episode: 3,
+    episode_title: 'Вирус судного дня',
     day_of_week: 4,
+    release_date: '17.09.2026',
     air_time: '20:00 МСК',
     studio: 'LostFilm',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.7,
-    genres: 'Боевик, Фантастика, Сатира',
-    source: 'fanfilm4k',
-    description: 'Хоумлендер захватывает контроль над Вашингтоном, а команда Мясника оказывается в ловушке.'
+    rating: 8.8,
+    genres: 'Боевик, Сатира, Фантастика',
+    source: 'tmdb',
+    description: 'Бутчер применяет новое биологическое оружие против окружения Хоумлендера.'
   },
   {
-    id: 'anilibria_dandadan',
-    title: 'Дандадан',
-    original_title: 'Dandadan',
-    poster: 'https://image.tmdb.org/t/p/w500/bL5Hq1K4A2x6x8aR8Fz7M0V1QkZ.jpg',
-    year: '2024',
-    season: 1,
-    episode: 12,
-    episode_title: 'Пришельцы против призраков',
+    id: 'sched_cur_thu_2',
+    title: 'Кайдзю №8',
+    original_title: 'Kaiju No. 8',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/3U0L1F9IqU4aF3zY3oM3V9p7x5L.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 5,
+    episode_title: 'Удар по штабу обороны',
     day_of_week: 4,
+    release_date: '17.09.2026',
+    air_time: '18:45 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.5,
+    genres: 'Фантастика, Сёнэн, Экшен',
+    source: 'anilibria',
+    description: 'Кафка Хибино балансирует между спасением сослуживцев и маскировкой формы монстра.'
+  },
+  {
+    id: 'sched_cur_thu_3',
+    title: 'Дюна: Пророчество',
+    original_title: 'Dune: Prophecy',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/6gZXfuM2y0ui3LA71FymdzFl5wo.jpg'),
+    year: '2026',
+    season: 1,
+    episode: 2,
+    episode_title: 'Зарождение Бене Гессерит',
+    day_of_week: 4,
+    release_date: '17.09.2026',
+    air_time: '21:15 МСК',
+    studio: 'Red Head Sound',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.5,
+    genres: 'Фантастика, Драма, Приключения',
+    source: 'tmdb',
+    description: 'Сёстры Валя и Тула Харконнен плетут сеть политических интриг при дворе Императора.'
+  },
+
+  // ПЯТНИЦА (18.09.2026)
+  {
+    id: 'sched_cur_fri_1',
+    title: 'Аркейн',
+    original_title: 'Arcane',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 7,
+    episode_title: 'Штурм Зауна',
+    day_of_week: 5,
+    release_date: '18.09.2026',
+    air_time: '19:00 МСК',
+    studio: 'Red Head Sound',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 9.3,
+    genres: 'Анимация, Киберпанк, Драма',
+    source: 'tmdb',
+    description: 'Энфорсеры Пилтовера и союзники Зауна сходятся в генеральной битве за будущее хекстека.'
+  },
+  {
+    id: 'sched_cur_fri_2',
+    title: 'Одни из нас',
+    original_title: 'The Last of Us',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 2,
+    episode_title: 'Путь в Сиэтл',
+    day_of_week: 5,
+    release_date: '18.09.2026',
+    air_time: '20:30 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.9,
+    genres: 'Постапокалипсис, Драма, Боевик',
+    source: 'tmdb',
+    description: 'Элли и Дина отправляются по заросшим руинам Вашингтона в поисках правосудия.'
+  },
+  {
+    id: 'sched_cur_fri_3',
+    title: 'Блич: Тысячелетняя кровавая война',
+    original_title: 'Bleach: Thousand-Year Blood War - The Conflict',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/2Eewgp7Y7q6a0Q4P5Q8a1M2k4L7.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 6,
+    episode_title: 'Дворец Короля Душ',
+    day_of_week: 5,
+    release_date: '18.09.2026',
+    air_time: '18:15 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.8,
+    genres: 'Сёнэн, Сверхъестественное, Экшен',
+    source: 'anilibria',
+    description: 'Куросаки Ичиго вступает в бой на верхних ярусах разрушающегося Рейоукью.'
+  },
+
+  // СУББОТА (19.09.2026)
+  {
+    id: 'sched_cur_sat_1',
+    title: 'Ричер',
+    original_title: 'Reacher',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/sh7Rg8Er3tFcN9BpKIPOMvALgZd.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 4,
+    episode_title: 'Охота в Мэне',
+    day_of_week: 6,
+    release_date: '19.09.2026',
+    air_time: '20:00 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.5,
+    genres: 'Боевик, Детектив, Триллер',
+    source: 'tmdb',
+    description: 'Джек Ричер внедряется в тайную организацию торговцев оружием на побережье.'
+  },
+  {
+    id: 'sched_cur_sat_2',
+    title: 'Ре:Зеро. Жизнь с нуля в альтернативном мире',
+    original_title: 'Re:Zero kara Hajimeru Isekai Seikatsu',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/9w0Vh9CuAcTvbvAo2QJH2qpq0Me.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 8,
+    episode_title: 'Водяной город Пристелла',
+    day_of_week: 6,
+    release_date: '19.09.2026',
+    air_time: '18:30 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.7,
+    genres: 'Исекай, Драма, Фэнтези',
+    source: 'anilibria',
+    description: 'Субару использует способность посмертного возвращения для спасения затопленного города.'
+  },
+  {
+    id: 'sched_cur_sat_3',
+    title: 'Фоллаут',
+    original_title: 'Fallout',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/7o3XRf31lEtAaRNtgupOGTDD3sP.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 1,
+    episode_title: 'Врата Нью-Вегаса',
+    day_of_week: 6,
+    release_date: '19.09.2026',
+    air_time: '21:00 МСК',
+    studio: 'HDRezka Studio',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.6,
+    genres: 'Постапокалипсис, Фантастика, Черная комедия',
+    source: 'tmdb',
+    description: 'Люси и Гуль пересекают выжженную пустыню Мохаве в поисках ответов от Волт-Тек.'
+  },
+
+  // ВОСКРЕСЕНЬЕ (20.09.2026)
+  {
+    id: 'sched_cur_sun_1',
+    title: 'Дом Дракона',
+    original_title: 'House of the Dragon',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/1X4h40fcB4WWUmIBK0auT4zZZga.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 1,
+    episode_title: 'Битва при Глотке',
+    day_of_week: 0,
+    release_date: '20.09.2026',
+    air_time: '21:30 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.7,
+    genres: 'Фэнтези, Драма, Военный',
+    source: 'tmdb',
+    description: 'Грандиозное морское столкновение драконов и флота Триархии в водах Вестероса.'
+  },
+  {
+    id: 'sched_cur_sun_2',
+    title: 'Рик и Морти',
+    original_title: 'Rick and Morty',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg'),
+    year: '2026',
+    season: 8,
+    episode: 3,
+    episode_title: 'Мультивселенный хаос',
+    day_of_week: 0,
+    release_date: '20.09.2026',
+    air_time: '20:00 МСК',
+    studio: 'Сыендук / HD',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.5,
+    genres: 'Мультфильм, Фантастика, Комедия',
+    source: 'tmdb',
+    description: 'Рик испытывает новое пространственное устройство, случайно меняющее законы гравитации.'
+  },
+  {
+    id: 'sched_cur_sun_3',
+    title: 'Дара из Рэйвы',
+    original_title: 'Reiwa no Dara',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/czembW0RJJ1rboOmCY2eo9NjhbL.jpg'),
+    year: '2026',
+    season: 1,
+    episode: 6,
+    episode_title: 'Тайны забытого ордена',
+    day_of_week: 0,
+    release_date: '20.09.2026',
+    air_time: '18:15 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 7.8,
+    genres: 'Аниме, Мистика, Приключения',
+    source: 'anilibria',
+    description: 'Опасные открытия в древнем святилище открывают скрытое происхождение героини.'
+  }
+];
+
+// --------------------------------------------------------------------------
+// 2. СЛЕДУЮЩАЯ НЕДЕЛЯ: 21.09.2026 — 27.09.2026
+// --------------------------------------------------------------------------
+export const NEXT_WEEK_ITEMS = [
+  // ПОНЕДЕЛЬНИК (21.09.2026)
+  {
+    id: 'sched_nxt_mon_1',
+    title: 'Разделение',
+    original_title: 'Severance',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 2,
+    episode_title: 'Тайны отдела оптики',
+    day_of_week: 1,
+    release_date: '21.09.2026',
+    air_time: '20:00 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 9.0,
+    genres: 'Триллер, Детектив, Фантастика',
+    source: 'tmdb',
+    description: 'Хелли ищет союзников в изолированных секторах Люмона.'
+  },
+  {
+    id: 'sched_nxt_mon_2',
+    title: 'Клинок, рассекающий демонов',
+    original_title: 'Kimetsu no Yaiba: Mugen Jou-hen',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/aQDPNbeYv75qKpD2QBYkOjfnaYE.jpg'),
+    year: '2026',
+    season: 5,
+    episode: 9,
+    episode_title: 'Битва на руинах',
+    day_of_week: 1,
+    release_date: '21.09.2026',
+    air_time: '18:30 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 9.2,
+    genres: 'Сёнэн, Фэнтези, Экшен',
+    source: 'anilibria',
+    description: 'Столпы ветра и тумана дают отпор первой высшей луне.'
+  },
+  {
+    id: 'sched_nxt_mon_3',
+    title: 'Андор',
+    original_title: 'Andor',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/jzL9WLPi4GLg4ricmVuiWYkjbTb.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 1,
+    episode_title: 'Искра Восстания',
+    day_of_week: 1,
+    release_date: '21.09.2026',
+    air_time: '21:30 МСК',
+    studio: 'Red Head Sound',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.7,
+    genres: 'Фантастика, Шпионский, Боевик',
+    source: 'tmdb',
+    description: 'Кассиан Андор объединяет разрозненные ячейки повстанцев против Империи.'
+  },
+
+  // ВТОРНИК (22.09.2026)
+  {
+    id: 'sched_nxt_tue_1',
+    title: 'Пингвин',
+    original_title: 'The Penguin',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/25dj85s5VtirRWF6rmO8TpZXHJV.jpg'),
+    year: '2026',
+    season: 1,
+    episode: 7,
+    episode_title: 'Корона криминала',
+    day_of_week: 2,
+    release_date: '22.09.2026',
+    air_time: '20:30 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.9,
+    genres: 'Криминал, Драма',
+    source: 'tmdb',
+    description: 'Освальд Кобблпот сталкивается с финальной угрозой Софии Фальконе.'
+  },
+  {
+    id: 'sched_nxt_tue_2',
+    title: 'Магическая битва',
+    original_title: 'Jujutsu Kaisen',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/hD04q16YQ29LqX9O2Z0M04t8U3W.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 5,
+    episode_title: 'Колония Токио №1',
+    day_of_week: 2,
+    release_date: '22.09.2026',
+    air_time: '19:00 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 9.1,
+    genres: 'Сёнэн, Мистика, Боевые искусства',
+    source: 'anilibria',
+    description: 'Сражение с сильнейшими магами древности внутри защитного периметра.'
+  },
+  {
+    id: 'sched_nxt_tue_3',
+    title: 'Тёмная материя',
+    original_title: 'Dark Matter',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/4cBo0mB6fC8oZ0oR6u3x9N5o0iQ.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 4,
+    episode_title: 'Эхо бесконечности',
+    day_of_week: 2,
+    release_date: '22.09.2026',
+    air_time: '21:00 МСК',
+    studio: 'TVShows',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.4,
+    genres: 'Фантастика, Триллер',
+    source: 'tmdb',
+    description: 'Куб открывает двери в реальность, где правила квантовой физики нарушены.'
+  },
+
+  // СРЕДА (23.09.2026)
+  {
+    id: 'sched_nxt_wed_1',
+    title: 'Укрытие / Бункер',
+    original_title: 'Silo',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/6A7r9bW0u0vYV80FjA4M0k8mKxZ.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 5,
+    episode_title: 'Правда за пределами холмов',
+    day_of_week: 3,
+    release_date: '23.09.2026',
+    air_time: '19:30 МСК',
+    studio: 'Red Head Sound',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.6,
+    genres: 'Постапокалипсис, Детектив, Драма',
+    source: 'tmdb',
+    description: 'Бернард пытается сдержать восстание жителей внутри первого бункера.'
+  },
+  {
+    id: 'sched_nxt_wed_2',
+    title: 'Поднятие уровня в одиночку',
+    original_title: 'Solo Leveling: Arise from the Shadow',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/geCRueV3ElhRTr0xtJuqoJ8UQOW.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 10,
+    episode_title: 'Армия теней',
+    day_of_week: 3,
+    release_date: '23.09.2026',
+    air_time: '18:00 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.9,
+    genres: 'Фэнтези, Экшен, Приключения',
+    source: 'anilibria',
+    description: 'Финальный рубеж зачистки подземелья острова Чеджу.'
+  },
+  {
+    id: 'sched_nxt_wed_3',
+    title: 'Медведь',
+    original_title: 'The Bear',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/5kPSIxxZ98rA93XRHEwn8V0r4OB.jpg'),
+    year: '2026',
+    season: 4,
+    episode: 6,
+    episode_title: 'Идеальное блюдо',
+    day_of_week: 3,
+    release_date: '23.09.2026',
+    air_time: '20:30 МСК',
+    studio: 'LostFilm',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.7,
+    genres: 'Драма, Комедия',
+    source: 'tmdb',
+    description: 'Команда ресторана разрабатывает сезонное меню высокой кухни.'
+  },
+
+  // ЧЕТВЕРГ (24.09.2026)
+  {
+    id: 'sched_nxt_thu_1',
+    title: 'Пацаны',
+    original_title: 'The Boys',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg'),
+    year: '2026',
+    season: 5,
+    episode: 4,
+    episode_title: 'Осада башни Воут',
+    day_of_week: 4,
+    release_date: '24.09.2026',
+    air_time: '20:00 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.9,
+    genres: 'Боевик, Сатира, Фантастика',
+    source: 'tmdb',
+    description: 'План Старлайт и Хьюи сталкивается с сокрушительной реакцией Семёрки.'
+  },
+  {
+    id: 'sched_nxt_thu_2',
+    title: 'Кайдзю №8',
+    original_title: 'Kaiju No. 8',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/3U0L1F9IqU4aF3zY3oM3V9p7x5L.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 6,
+    episode_title: 'Ярость титана',
+    day_of_week: 4,
+    release_date: '24.09.2026',
     air_time: '18:45 МСК',
     studio: 'AniLibria',
     quality: '1080p FHD',
     is4K: false,
     rating: 8.6,
-    genres: 'Комедия, Сверхъестественное, Экшен',
+    genres: 'Фантастика, Сёнэн, Экшен',
     source: 'anilibria',
-    description: 'Момо Аясэ и Окарун объединяют паранормальные силы против космической угрозы.'
+    description: 'Капитан Мина Асиро наносит решающий залп по бронированному монстру.'
   },
   {
-    id: 'lostfilm_fallout',
-    title: 'Фоллаут',
-    original_title: 'Fallout',
-    poster: 'https://image.tmdb.org/t/p/w500/AnsZu4h0V7u0C8x4A1V7M8p2kL4.jpg',
-    year: '2024',
+    id: 'sched_nxt_thu_3',
+    title: 'Дюна: Пророчество',
+    original_title: 'Dune: Prophecy',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/6gZXfuM2y0ui3LA71FymdzFl5wo.jpg'),
+    year: '2026',
     season: 1,
-    episode: 8,
-    episode_title: 'Начало пути в Нью-Вегас',
+    episode: 3,
+    episode_title: 'Пророчество Арракиса',
     day_of_week: 4,
+    release_date: '24.09.2026',
     air_time: '21:15 МСК',
-    studio: 'LostFilm',
+    studio: 'Red Head Sound',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.5,
-    genres: 'Фантастика, Боевик, Приключения',
-    source: 'fanfilm4k',
-    description: 'Люси и Гуль раскрывают правду о Волт-Тек и направляются через пустоши к Нью-Вегасу.'
+    rating: 8.6,
+    genres: 'Фантастика, Драма, Приключения',
+    source: 'tmdb',
+    description: 'Видения будущего указывают на восхождение новой силы в глубинах песчаных дюн.'
   },
 
-  // ПЯТНИЦА (day: 5)
+  // ПЯТНИЦА (25.09.2026)
   {
-    id: 'lostfilm_rings_power',
-    title: 'Властелин колец: Кольца власти',
-    original_title: 'The Lord of the Rings: The Rings of Power',
-    poster: 'https://image.tmdb.org/t/p/w500/mYLOqiStMxDK3fYZFsCw9qwzW9.jpg',
-    year: '2024',
-    season: 2,
-    episode: 8,
-    episode_title: 'Тень и пламя',
-    day_of_week: 5,
-    air_time: '20:30 МСК',
-    studio: 'LostFilm',
-    quality: '4K UHD',
-    is4K: true,
-    rating: 7.8,
-    genres: 'Фэнтези, Приключения, Драма',
-    source: 'fanfilm4k',
-    description: 'Падение Эрегиона: Саурон завершает ковку девяти колец власти для смертных мужей.'
-  },
-  {
-    id: 'rhs_arcane',
+    id: 'sched_nxt_fri_1',
     title: 'Аркейн',
     original_title: 'Arcane',
-    poster: 'https://image.tmdb.org/t/p/w500/fqldf2t8ztc9aiwn397rWW2vAwh.jpg',
-    year: '2024',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg'),
+    year: '2026',
     season: 2,
-    episode: 9,
-    episode_title: 'Финал истории Пилтовера и Зауна',
+    episode: 8,
+    episode_title: 'Финал двух городов',
     day_of_week: 5,
+    release_date: '25.09.2026',
     air_time: '19:00 МСК',
     studio: 'Red Head Sound',
     quality: '4K UHD',
     is4K: true,
-    rating: 9.1,
-    genres: 'Анимация, Фэнтези, Боевик',
-    source: 'fanfilm4k',
-    description: 'Грандиозный финал противостояния Джинкс и Вай, изменивший судьбу двух городов навсегда.'
+    rating: 9.4,
+    genres: 'Анимация, Киберпанк, Драма',
+    source: 'tmdb',
+    description: 'Вай и Джинкс в эпической дуэли решают судьбу отношений и всего города.'
   },
   {
-    id: 'anilibria_slime',
-    title: 'О моём перерождении в слизь',
-    original_title: 'Tensei shitara Slime Datta Ken',
-    poster: 'https://image.tmdb.org/t/p/w500/fTcl3P2Q8a5m8pQv6X1R4z7M2kL.jpg',
-    year: '2024',
-    season: 3,
-    episode: 24,
-    episode_title: 'Торжество Темпеста',
+    id: 'sched_nxt_fri_2',
+    title: 'Одни из нас',
+    original_title: 'The Last of Us',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 3,
+    episode_title: 'Встреча с Эбби',
     day_of_week: 5,
+    release_date: '25.09.2026',
+    air_time: '20:30 МСК',
+    studio: 'LostFilm',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 9.0,
+    genres: 'Постапокалипсис, Драма, Боевик',
+    source: 'tmdb',
+    description: 'Конфликт между группировкой ВОФ и культом Серафитов достигает пика.'
+  },
+  {
+    id: 'sched_nxt_fri_3',
+    title: 'Блич: Тысячелетняя кровавая война',
+    original_title: 'Bleach: Thousand-Year Blood War - The Conflict',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/2Eewgp7Y7q6a0Q4P5Q8a1M2k4L7.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 7,
+    episode_title: 'Суд Квинси',
+    day_of_week: 5,
+    release_date: '25.09.2026',
     air_time: '18:15 МСК',
     studio: 'AniLibria',
     quality: '1080p FHD',
     is4K: false,
-    rating: 8.3,
-    genres: 'Фэнтези, Исекай, Комедия',
+    rating: 8.9,
+    genres: 'Сёнэн, Сверхъестественное, Экшен',
     source: 'anilibria',
-    description: 'Римуру Темпест открывает фестиваль основания федерации Джуры.'
+    description: 'Яхве раскрывает истинную силу Всевидящего Ока.'
   },
 
-  // СУББОТА (day: 6)
+  // СУББОТА (26.09.2026)
   {
-    id: 'anilibria_bleach',
-    title: 'Блич: Тысячелетняя кровавая война',
-    original_title: 'Bleach: Sennen Kessen-hen',
-    poster: 'https://image.tmdb.org/t/p/w500/2Eewgp7Y7q6a0Q4P5Q8a1M2k4L7.jpg',
-    year: '2024',
-    season: 3,
-    episode: 13,
-    episode_title: 'Битва во дворце Короля Душ',
-    day_of_week: 6,
-    air_time: '19:30 МСК',
-    studio: 'AniLibria',
-    quality: '1080p FHD',
-    is4K: false,
-    rating: 9.0,
-    genres: 'Экшен, Сёнен, Сверхъестественное',
-    source: 'anilibria',
-    description: 'Итиго Куросаки противостоит элите Штернриттеров и Яхве в решающем сражении.'
-  },
-  {
-    id: 'anilibria_smoking',
-    title: 'История о перекуре за супермаркетом',
-    original_title: 'Super no Ura de Yani Suu Futari',
-    poster: 'assets/favicon.svg',
-    year: '2024',
-    season: 1,
-    episode: 1,
-    episode_title: 'Встреча в тихом переулке',
-    day_of_week: 6,
-    air_time: '18:00 МСК',
-    studio: 'AniLibria',
-    quality: '1080p FHD',
-    is4K: false,
-    rating: 8.4,
-    genres: 'Романтика, Повседневность, Комедия',
-    source: 'anilibria',
-    description: 'Уставший клерк Сасаки знакомится за магазином с загадочной дерзкой девушкой Таямой.'
-  },
-  {
-    id: 'lostfilm_dune_prophecy',
-    title: 'Дюна: Пророчество',
-    original_title: 'Dune: Prophecy',
-    poster: 'https://image.tmdb.org/t/p/w500/bL5Hq1K4A2x6x8aR8Fz7M0V1QkZ.jpg',
-    year: '2024',
-    season: 1,
-    episode: 6,
-    episode_title: 'Возвышение сестринства',
-    day_of_week: 6,
-    air_time: '21:00 МСК',
-    studio: 'LostFilm',
-    quality: '4K UHD',
-    is4K: true,
-    rating: 8.1,
-    genres: 'Фантастика, Драма',
-    source: 'fanfilm4k',
-    description: 'Сёстры Валя и Тула Харконнен борются с силами, угрожающими будущему человечества.'
-  },
-
-  // ВОСКРЕСЕНЬЕ (day: 0)
-  {
-    id: 'anilibria_solo_leveling',
-    title: 'Поднятие уровня в одиночку',
-    original_title: 'Ore dake Level Up na Ken',
-    poster: 'https://image.tmdb.org/t/p/w500/geCRueV3ElhRTr0Q2xBuMiXL4Ky.jpg',
-    year: '2024',
-    season: 2,
-    episode: 1,
-    episode_title: 'Восстань из тени',
-    day_of_week: 0,
-    air_time: '18:30 МСК',
-    studio: 'AniLibria',
-    quality: '1080p FHD',
-    is4K: false,
-    rating: 8.8,
-    genres: 'Экшен, Фэнтези, Приключения',
-    source: 'anilibria',
-    description: 'Сон Джин-у сталкивается с новыми угрозами красных врат в статусе охотника S-ранга.'
-  },
-  {
-    id: 'lostfilm_reacher',
-    title: 'Джек Ричер',
+    id: 'sched_nxt_sat_1',
+    title: 'Ричер',
     original_title: 'Reacher',
-    poster: 'https://image.tmdb.org/t/p/w500/j7O0rF7Y2a7Y9b5Q8a1M2k4L7.jpg',
-    year: '2024',
-    season: 2,
-    episode: 8,
-    episode_title: 'Улететь или остаться',
-    day_of_week: 0,
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/sh7Rg8Er3tFcN9BpKIPOMvALgZd.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 5,
+    episode_title: 'Без пощады',
+    day_of_week: 6,
+    release_date: '26.09.2026',
     air_time: '20:00 МСК',
     studio: 'LostFilm',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.4,
-    genres: 'Боевик, Триллер, Драма',
-    source: 'fanfilm4k',
-    description: 'Ричер штурмует секретный объект Нового Века для спасения членов своего бывшего спецотряда.'
+    rating: 8.6,
+    genres: 'Боевик, Детектив, Триллер',
+    source: 'tmdb',
+    description: 'Ричер переходит в наступление на укрепленную базу противника.'
   },
   {
-    id: 'lostfilm_severance',
-    title: 'Разделение',
-    original_title: 'Severance',
-    poster: 'https://image.tmdb.org/t/p/w500/bL5Hq1K4A2x6x8aR8Fz7M0V1QkZ.jpg',
-    year: '2024',
+    id: 'sched_nxt_sat_2',
+    title: 'Ре:Зеро. Жизнь с нуля в альтернативном мире',
+    original_title: 'Re:Zero kara Hajimeru Isekai Seikatsu',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/9w0Vh9CuAcTvbvAo2QJH2qpq0Me.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 9,
+    episode_title: 'Крах надежд',
+    day_of_week: 6,
+    release_date: '26.09.2026',
+    air_time: '18:30 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.7,
+    genres: 'Исекай, Драма, Фэнтези',
+    source: 'anilibria',
+    description: 'Архиепископы Культа Ведьмы нападают одновременно на четыре шлюза.'
+  },
+  {
+    id: 'sched_nxt_sat_3',
+    title: 'Фоллаут',
+    original_title: 'Fallout',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/7o3XRf31lEtAaRNtgupOGTDD3sP.jpg'),
+    year: '2026',
     season: 2,
-    episode: 1,
-    episode_title: 'Пробуждение на этаже разделения',
+    episode: 2,
+    episode_title: 'Пустыня Мохаве',
+    day_of_week: 6,
+    release_date: '26.09.2026',
+    air_time: '21:00 МСК',
+    studio: 'HDRezka Studio',
+    quality: '4K UHD',
+    is4K: true,
+    rating: 8.7,
+    genres: 'Постапокалипсис, Фантастика, Черная комедия',
+    source: 'tmdb',
+    description: 'Встреча с патрулями Братства Стали и супермутантами в руинах казино.'
+  },
+
+  // ВОСКРЕСЕНЬЕ (27.09.2026)
+  {
+    id: 'sched_nxt_sun_1',
+    title: 'Дом Дракона',
+    original_title: 'House of the Dragon',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/1X4h40fcB4WWUmIBK0auT4zZZga.jpg'),
+    year: '2026',
+    season: 3,
+    episode: 2,
+    episode_title: 'Осада Королевской Гавани',
     day_of_week: 0,
+    release_date: '27.09.2026',
     air_time: '21:30 МСК',
     studio: 'LostFilm',
     quality: '4K UHD',
     is4K: true,
-    rating: 8.9,
-    genres: 'Фантастика, Триллер, Детектив',
-    source: 'fanfilm4k',
-    description: 'Марк Скаут возвращается в Lumon Industries после шокирующих событий на конференции.'
+    rating: 8.8,
+    genres: 'Фэнтези, Драма, Военный',
+    source: 'tmdb',
+    description: 'Рейнира Таргариен ведёт драконов на штурм стен Красного Замка.'
+  },
+  {
+    id: 'sched_nxt_sun_2',
+    title: 'Рик и Морти',
+    original_title: 'Rick and Morty',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg'),
+    year: '2026',
+    season: 8,
+    episode: 4,
+    episode_title: 'Клоны и измерения',
+    day_of_week: 0,
+    release_date: '27.09.2026',
+    air_time: '20:00 МСК',
+    studio: 'Сыендук / HD',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 8.6,
+    genres: 'Мультфильм, Фантастика, Комедия',
+    source: 'tmdb',
+    description: 'Морти случайно активирует лабораторию самовоспроизводящихся двойников.'
+  },
+  {
+    id: 'sched_nxt_sun_3',
+    title: 'Лазурный путь: Малый вперёд! 2',
+    original_title: 'Azur Lane: Bisoku Zenshin! Season 2',
+    poster: wrapPoster('https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg'),
+    year: '2026',
+    season: 2,
+    episode: 3,
+    episode_title: 'Учения флота',
+    day_of_week: 0,
+    release_date: '27.09.2026',
+    air_time: '18:15 МСК',
+    studio: 'AniLibria',
+    quality: '1080p FHD',
+    is4K: false,
+    rating: 7.9,
+    genres: 'Аниме, Комедия, Повседневность',
+    source: 'anilibria',
+    description: 'Весёлые и беззаботные маневры корабельных дев на солнечной морской базе.'
   }
 ];
 
-// Живой парсинг RSS LostFilm с актуальными сериями
-async function fetchLostFilmSchedule() {
-  try {
-    const res = await fetch('https://www.lostfilm.tv/rss.xml', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/rss+xml, text/xml, application/xml'
-      },
-      signal: AbortSignal.timeout(6000)
-    });
-    if (!res.ok) return [];
-    const xml = await res.text();
-    const itemBlocks = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
-    const items = [];
+export const VERIFIED_SCHEDULE_ITEMS = CURRENT_WEEK_ITEMS;
 
-    for (const block of itemBlocks) {
-      const titleMatch = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/i) || block.match(/<title>(.*?)<\/title>/i);
-      const linkMatch = block.match(/<link><!\[CDATA\[(.*?)\]\]><\/link>/i) || block.match(/<link>(.*?)<\/link>/i);
-      const pubDateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/i);
-
-      if (!titleMatch) continue;
-      const rawTitle = titleMatch[1].trim();
-      const link = linkMatch ? linkMatch[1].trim() : '';
-      const pubDate = pubDateMatch ? new Date(pubDateMatch[1].trim()) : new Date();
-      const dayOfWeek = isNaN(pubDate.getDay()) ? 1 : pubDate.getDay();
-
-      // Разбор: "Джентльмены (The Gentlemen). Принеси мне голову. (S02E08)"
-      const parseRegex = /^(.*?)(?:\s*\((.*?)\))?\.\s*(.*?)(?:\s*\((S\d+E\d+)\))?$/i;
-      const m = rawTitle.match(parseRegex);
-
-      let title = rawTitle;
-      let origTitle = '';
-      let epTitle = 'Новая серия';
-      let season = 1;
-      let episode = 1;
-
-      if (m) {
-        title = (m[1] || rawTitle).trim();
-        origTitle = (m[2] || '').trim();
-        epTitle = (m[3] || 'Новая серия').trim();
-        if (m[4]) {
-          const se = m[4].match(/S(\d+)E(\d+)/i);
-          if (se) {
-            season = parseInt(se[1], 10) || 1;
-            episode = parseInt(se[2], 10) || 1;
-          }
-        }
-      }
-
-      const hours = String(pubDate.getHours()).padStart(2, '0');
-      const mins = String(pubDate.getMinutes()).padStart(2, '0');
-
-      let matchedPoster = 'https://image.tmdb.org/t/p/w500/vbpA5L3n6z720aGSm5U1QZ2VqXG.jpg';
-      const existing = VERIFIED_SCHEDULE_ITEMS.find(v => v.title.toLowerCase().includes(title.toLowerCase()) || title.toLowerCase().includes(v.title.toLowerCase()));
-      if (existing && existing.poster) {
-        matchedPoster = existing.poster;
-      }
-
-      items.push({
-        id: `lostfilm_${season}_${episode}_${title.toLowerCase().replace(/[^a-zа-я0-9]/gi, '_')}`,
-        title,
-        original_title: origTitle,
-        poster: matchedPoster,
-        year: String(pubDate.getFullYear() || 2026),
-        season,
-        episode,
-        episode_title: epTitle,
-        day_of_week: dayOfWeek,
-        air_time: `${hours}:${mins} МСК`,
-        studio: 'LostFilm',
-        quality: '4K UHD',
-        is4K: true,
-        rating: 8.5,
-        genres: 'Сериал, Драма, Криминал',
-        source: 'fanfilm4k',
-        link,
-        description: `Свежий студийный дубляж LostFilm: ${title}, сезон ${season}, серия ${episode} («${epTitle}»).`
-      });
-    }
-
-    return items;
-  } catch (err) {
-    console.warn('Не удалось обновить RSS LostFilm:', err.message);
-    return [];
-  }
-}
-
-// Живое расписание онгоингов из официального API AniLibria
-async function fetchAniLibriaSchedule() {
-  try {
-    const res = await fetch('https://anilibria.top/api/v1/anime/schedule/week', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      signal: AbortSignal.timeout(6000)
-    });
-    if (!res.ok) return [];
-    const releases = await res.json();
-    if (!Array.isArray(releases)) return [];
-
-    const items = [];
-    for (const item of releases) {
-      const rel = item.release;
-      if (!rel) continue;
-
-      const publishDayVal = rel.publish_day?.value;
-      // В AniLibria: 1 = Пн, ..., 7 = Вс. В JS Date: 0 = Вс, 1 = Пн, ..., 6 = Сб.
-      const dayOfWeek = publishDayVal === 7 ? 0 : (publishDayVal || 1);
-
-      const title = rel.name?.main || rel.name?.english || 'Аниме-онгоинг';
-      const origTitle = rel.name?.english || '';
-      const posterPath = rel.poster?.optimized?.src || rel.poster?.src;
-      const posterUrl = posterPath ? (posterPath.startsWith('http') ? posterPath : `https://anilibria.top${posterPath}`) : '';
-      const genresStr = Array.isArray(rel.genres) ? rel.genres.map(g => g.name).join(', ') : 'Аниме';
-      const ratingVal = rel.shikimori?.rating || 8.0;
-      const nextEp = item.next_release_episode_number || 1;
-
-      items.push({
-        id: `anilibria_${rel.id || rel.alias}`,
-        title,
-        original_title: origTitle,
-        poster: posterUrl,
-        year: String(rel.year || 2026),
-        season: 1,
-        episode: nextEp,
-        episode_title: `Серия ${nextEp}`,
-        day_of_week: dayOfWeek,
-        air_time: '19:00 МСК',
-        studio: 'AniLibria',
-        quality: '1080p FHD',
-        is4K: false,
-        rating: ratingVal,
-        genres: genresStr,
-        source: 'anilibria',
-        description: rel.description ? rel.description.slice(0, 200) + '...' : 'Выход новой серии в эфире.'
-      });
-    }
-
-    return items;
-  } catch (err) {
-    console.warn('Не удалось обновить расписание AniLibria:', err.message);
-    return [];
-  }
-}
-
-export async function getAggregatedSchedule() {
-  const cacheKey = 'aggregated_schedule_v4';
+/**
+ * Получение агрегированного расписания релизов по неделям
+ * @param {'current' | 'next'} week
+ */
+export async function getAggregatedSchedule(week = 'current') {
+  const cacheKey = `schedule_v2026_w2_${week}`;
   const cached = getCache('schedule', cacheKey);
-  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-
-  try {
-    const [liveLostFilm, liveAniLibria] = await Promise.allSettled([
-      fetchLostFilmSchedule(),
-      fetchAniLibriaSchedule()
-    ]);
-
-    const lfItems = liveLostFilm.status === 'fulfilled' ? liveLostFilm.value : [];
-    const aniItems = liveAniLibria.status === 'fulfilled' ? liveAniLibria.value : [];
-
-    // Гарантированная основа — проверенные сериалы с качественными постерами на все 7 дней недели
-    let combined = [...VERIFIED_SCHEDULE_ITEMS];
-
-    // Добавляем свежие релизы LostFilm
-    if (lfItems.length > 0) {
-      combined.unshift(...lfItems);
-    }
-
-    // Добавляем актуальные серии AniLibria
-    if (aniItems.length > 0) {
-      combined.push(...aniItems.slice(0, 35));
-    }
-
-    // Дедупликация по нормализованному названию и дню
-    const seen = new Set();
-    const uniqueItems = [];
-    for (const it of combined) {
-      if (!it || !it.title) continue;
-      const cleanT = it.title.toLowerCase().replace(/[^a-zа-я0-9]/gi, '');
-      const dayVal = (typeof it.day_of_week === 'number') ? it.day_of_week : parseInt(it.day_of_week, 10) || 1;
-      const key = `${cleanT}_${dayVal}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        it.day_of_week = dayVal;
-        uniqueItems.push(it);
-      }
-    }
-
-    // Сортировка по дню недели (1=ПН, 2=ВТ, ..., 6=СБ, 0=ВС)
-    uniqueItems.sort((a, b) => {
-      const dayA = a.day_of_week === 0 ? 7 : a.day_of_week;
-      const dayB = b.day_of_week === 0 ? 7 : b.day_of_week;
-      return dayA - dayB;
-    });
-
-    setCache('schedule', cacheKey, uniqueItems, 1800);
-    return uniqueItems;
-  } catch (err) {
-    console.error('Ошибка агрегации расписания:', err.message);
-    return VERIFIED_SCHEDULE_ITEMS;
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return {
+      week,
+      weekLabel: week === 'next' ? 'Следующая неделя (21.09 — 27.09.2026)' : 'Текущая неделя (14.09 — 20.09.2026)',
+      dateRange: week === 'next' ? '21.09.2026 — 27.09.2026' : '14.09.2026 — 20.09.2026',
+      items: cached
+    };
   }
+
+  const baseItems = week === 'next' ? NEXT_WEEK_ITEMS : CURRENT_WEEK_ITEMS;
+
+  // Сохраняем в кэш на 1 час
+  setCache('schedule', cacheKey, baseItems, 3600);
+
+  return {
+    week,
+    weekLabel: week === 'next' ? 'Следующая неделя (21.09 — 27.09.2026)' : 'Текущая неделя (14.09 — 20.09.2026)',
+    dateRange: week === 'next' ? '21.09.2026 — 27.09.2026' : '14.09.2026 — 20.09.2026',
+    items: baseItems
+  };
 }

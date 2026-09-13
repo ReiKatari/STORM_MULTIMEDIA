@@ -4422,6 +4422,45 @@ body.player-dropdown-active .cinema-player-iframe {
   flex-direction: column;
 }
 
+.cal-week-switcher {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  background: var(--bg-tertiary);
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+.cal-week-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cal-week-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cal-week-btn.active {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.2) 0%, rgba(0, 240, 255, 0.1) 100%);
+  color: var(--accent);
+  border-color: rgba(0, 210, 255, 0.4);
+  box-shadow: 0 2px 10px rgba(0, 210, 255, 0.15);
+}
+
 .cal-days-navbar {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
