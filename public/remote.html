@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>STORM Remote — Пульт управления</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles/main.css">
+  <style>
+    body {
+      background: #0a0b10;
+      color: #fff;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      box-sizing: border-box;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    .remote-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .remote-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent, #00d2ff);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .remote-dpad-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .remote-dpad {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 2px solid rgba(0, 210, 255, 0.3);
+      border-radius: 50%;
+      box-shadow: 0 0 30px rgba(0, 210, 255, 0.15);
+    }
+    .dpad-btn {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: 12px;
+      transition: all 0.1s ease;
+      touch-action: manipulation;
+    }
+    .dpad-btn:active {
+      background: var(--accent, #00d2ff);
+      color: #000;
+      transform: scale(0.92);
+    }
+    .dpad-up { top: 10px; left: 75px; width: 70px; height: 50px; }
+    .dpad-down { bottom: 10px; left: 75px; width: 70px; height: 50px; }
+    .dpad-left { top: 75px; left: 10px; width: 50px; height: 70px; }
+    .dpad-right { top: 75px; right: 10px; width: 50px; height: 70px; }
+    .dpad-center { top: 75px; left: 75px; width: 70px; height: 70px; border-radius: 50%; font-weight: 800; font-size: 16px; background: rgba(0, 210, 255, 0.15); border-color: var(--accent, #00d2ff); }
+
+    .remote-controls-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .remote-ctrl-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      color: #fff;
+      padding: 14px 6px;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .remote-ctrl-btn:active {
+      background: var(--accent, #00d2ff);
+      color: #000;
+    }
+    .remote-search-wrap {
+      display: flex;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="remote-header">
+    <div class="remote-title">
+      <span>📱</span> STORM Remote
+    </div>
+    <span id="remote-status-badge" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; background: rgba(0, 255, 102, 0.15); color: #00ff66;">🟢 Подключено</span>
+  </div>
+
+  <div class="remote-dpad-container">
+    <div class="remote-dpad">
+      <button class="dpad-btn dpad-up" data-action="up">▲</button>
+      <button class="dpad-btn dpad-down" data-action="down">▼</button>
+      <button class="dpad-btn dpad-left" data-action="left">◀</button>
+      <button class="dpad-btn dpad-right" data-action="right">▶</button>
+      <button class="dpad-btn dpad-center" data-action="enter">OK</button>
+    </div>
+  </div>
+
+  <div class="remote-controls-grid">
+    <button class="remote-ctrl-btn" data-action="back">
+      <span style="font-size: 18px;">↩</span>
+      <span>Назад</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="play_pause">
+      <span style="font-size: 18px;">⏯</span>
+      <span>Пауза</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="home">
+      <span style="font-size: 18px;">🏠</span>
+      <span>Домой</span>
+    </button>
+
+    <button class="remote-ctrl-btn" data-action="seek_back">
+      <span style="font-size: 18px;">⏪</span>
+      <span>-10 сек</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="mute">
+      <span style="font-size: 18px;">🔇</span>
+      <span>Звук</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="seek_forward">
+      <span style="font-size: 18px;">⏩</span>
+      <span>+10 сек</span>
+    </button>
+  </div>
+
+  <div class="remote-search-wrap">
+    <input type="text" id="remote-search-input" class="storm-input" placeholder="Поиск на большом экране..." style="flex: 1; font-size: 14px; padding: 10px;">
+    <button id="remote-search-btn" class="storm-btn storm-btn-primary" style="padding: 10px 16px;">🔍</button>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const session = urlParams.get('session') || 'default_room';
+
+    let ws = null;
+    function connectWs() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${window.location.host}/ws/rooms?code=${encodeURIComponent(session)}`);
+
+      ws.onopen = () => {
+        document.getElementById('remote-status-badge').textContent = '🟢 В сети';
+        document.getElementById('remote-status-badge').style.color = '#00ff66';
+      };
+
+      ws.onclose = () => {
+        document.getElementById('remote-status-badge').textContent = '🔴 Переподключение...';
+        document.getElementById('remote-status-badge').style.color = '#ff4444';
+        setTimeout(connectWs, 2000);
+      };
+    }
+
+    function sendRemoteAction(action, extra = {}) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'storm_remote_action',
+          session,
+          action,
+          ...extra
+        }));
+      }
+      if (navigator.vibrate) navigator.vibrate(30);
+    }
+
+    document.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sendRemoteAction(btn.dataset.action);
+      });
+    });
+
+    const searchInput = document.getElementById('remote-search-input');
+    const searchBtn = document.getElementById('remote-search-btn');
+    const doSearch = () => {
+      const q = searchInput.value.trim();
+      if (q) {
+        sendRemoteAction('search', { query: q });
+        searchInput.value = '';
+      }
+    };
+    searchBtn.onclick = doSearch;
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    connectWs();
+  </script>
+</body>
+</html>

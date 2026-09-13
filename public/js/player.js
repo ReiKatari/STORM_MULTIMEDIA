@@ -11,6 +11,11 @@ import { trackClientAction } from './achievements.js';
 import { renderReviewsSection } from './reviews.js';
 import { attachPlayerToRoom, createWatchRoom, getActiveRoom } from './watch-together.js';
 import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js';
+import { initSmartSkip, renderChaptersOnTrack } from './smart-skip.js';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js';
+import { saveMediaForOffline } from './offline-storage.js';
+import { renderTorrServerSettings } from './torrserver-client.js';
 
 let currentMedia = null;
 let currentPlayers = [];
@@ -21,6 +26,13 @@ let currentEpisodeIndex = 1;
 let currentProgressPercent = 0;
 let iframeWatchInterval = null;
 let currentWatchTimeSeconds = 0;
+
+// Ночной звук (Web Audio Compressor)
+let audioCtx = null;
+let audioSourceNode = null;
+let compressorNode = null;
+let nightAudioModeEnabled = localStorage.getItem('storm_night_audio') === 'true';
+let xrayVisible = false;
 
 // Ambilight конфигурация и пресеты
 let ambilightEnabled = false;
@@ -465,8 +477,201 @@ function setupVideoFeatures(video, wrapper) {
     attachPlayerToRoom(video);
   }
 
-  // 4. Логика пропуска опенингов и эндингов
-  setupSkipLogic(video);
+  // 4. Логика пропуска опенингов и эндингов (Smart Skip)
+  initSmartSkip(video);
+
+  // 5. Ночной режим звука (Web Audio компрессор)
+  applyNightModeAudio(video);
+
+  // 6. X-Ray режим на паузе
+  setupXRayMode(video, wrapper);
+
+  // 7. Покадровая навигация (Thumbnail Scrubbing)
+  setupThumbnailScrubbing(video);
+}
+
+// ==========================================
+// НОЧНОЙ РЕЖИМ ЗВУКА (NIGHT MODE AUDIO)
+// ==========================================
+export function toggleNightModeAudio(video = document.getElementById('storm-video-player')) {
+  nightAudioModeEnabled = !nightAudioModeEnabled;
+  localStorage.setItem('storm_night_audio', nightAudioModeEnabled ? 'true' : 'false');
+  applyNightModeAudio(video);
+  showToast(`🌙 Ночной режим звука: ${nightAudioModeEnabled ? 'Включен (диалоги четче, взрывы мягче)' : 'Выключен (стандартный звук)'}`, 'info');
+
+  const btn = document.getElementById('toggle-night-audio-btn');
+  if (btn) btn.classList.toggle('active', nightAudioModeEnabled);
+}
+
+export function applyNightModeAudio(video) {
+  if (!video) return;
+  try {
+    if (!audioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      audioCtx = new AudioContext();
+    }
+    if (!audioSourceNode && audioCtx) {
+      audioSourceNode = audioCtx.createMediaElementSource(video);
+    }
+    if (!compressorNode && audioCtx) {
+      compressorNode = audioCtx.createDynamicsCompressor();
+      compressorNode.threshold.setValueAtTime(-24, audioCtx.currentTime);
+      compressorNode.knee.setValueAtTime(30, audioCtx.currentTime);
+      compressorNode.ratio.setValueAtTime(12, audioCtx.currentTime);
+      compressorNode.attack.setValueAtTime(0.003, audioCtx.currentTime);
+      compressorNode.release.setValueAtTime(0.25, audioCtx.currentTime);
+    }
+
+    if (audioSourceNode && compressorNode) {
+      audioSourceNode.disconnect();
+      if (nightAudioModeEnabled) {
+        audioSourceNode.connect(compressorNode);
+        compressorNode.connect(audioCtx.destination);
+      } else {
+        audioSourceNode.connect(audioCtx.destination);
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+  } catch (err) {
+    // В случае CORS или если источник уже подключен
+  }
+}
+
+// ==========================================
+// X-RAY РЕЖИМ (АКТЕРЫ И САУНДТРЕКИ НА ПАУЗЕ)
+// ==========================================
+function setupXRayMode(video, wrapper) {
+  if (!video || !wrapper) return;
+
+  video.addEventListener('pause', () => {
+    if (currentMedia && (currentMedia.cast?.length || currentMedia.directors?.length)) {
+      showXRayPanel(wrapper);
+    }
+  });
+
+  video.addEventListener('play', () => {
+    hideXRayPanel(wrapper);
+  });
+}
+
+function showXRayPanel(wrapper) {
+  if (!currentMedia) return;
+  let panel = wrapper.querySelector('#player-xray-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'player-xray-panel';
+    panel.className = 'player-xray-panel';
+    wrapper.appendChild(panel);
+  }
+
+  const cast = (currentMedia.cast || []).slice(0, 6);
+  const soundtrack = currentMedia.soundtrack || {
+    title: 'STORM Main Theme',
+    artist: 'Original Cinematic Soundtrack'
+  };
+
+  panel.innerHTML = `
+    <div class="xray-header">
+      <div class="xray-title">
+        <span>🔍</span>
+        <span>X-Ray: В этой сцене</span>
+      </div>
+      <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+        <span>🎵 ${soundtrack.title} — ${soundtrack.artist}</span>
+        <button type="button" class="storm-btn storm-btn-sm" id="close-xray-btn" style="padding: 2px 6px;">✕</button>
+      </div>
+    </div>
+    <div class="xray-cast-row">
+      ${cast.map(c => `
+        <div class="xray-actor-card">
+          <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
+          <div>
+            <div class="xray-actor-name">${c.name}</div>
+            <div class="xray-actor-role">${c.character || 'Персонаж'}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  const closeBtn = panel.querySelector('#close-xray-btn');
+  if (closeBtn) closeBtn.onclick = () => hideXRayPanel(wrapper);
+  panel.style.display = 'block';
+  xrayVisible = true;
+}
+
+function hideXRayPanel(wrapper) {
+  const panel = wrapper.querySelector('#player-xray-panel');
+  if (panel) {
+    panel.style.display = 'none';
+  }
+  xrayVisible = false;
+}
+
+export function toggleXRayManual() {
+  const wrapper = document.getElementById('cinema-player-wrapper');
+  if (!wrapper) return;
+  if (xrayVisible) {
+    hideXRayPanel(wrapper);
+  } else {
+    showXRayPanel(wrapper);
+  }
+}
+
+// ==========================================
+// ПОКАДРОВАЯ НАВИГАЦИЯ (THUMBNAIL SCRUBBING)
+// ==========================================
+function setupThumbnailScrubbing(video) {
+  const slider = document.getElementById('player-progress-slider');
+  const preview = document.getElementById('player-scrubber-preview');
+  const canvas = document.getElementById('scrubber-thumb-canvas');
+  const timeEl = document.getElementById('scrubber-thumb-time');
+  const chapterEl = document.getElementById('scrubber-thumb-chapter');
+
+  if (!slider || !preview) return;
+
+  slider.onmouseenter = () => {
+    preview.style.display = 'flex';
+  };
+
+  slider.onmouseleave = () => {
+    preview.style.display = 'none';
+  };
+
+  slider.onmousemove = (e) => {
+    const rect = slider.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const leftPx = percent * rect.width;
+    preview.style.left = `${leftPx}px`;
+
+    const duration = video?.duration || 7200;
+    const targetSeconds = percent * duration;
+    if (timeEl) timeEl.textContent = formatMediaTime(targetSeconds);
+
+    if (chapterEl) {
+      chapterEl.textContent = percent < 0.05 ? 'Вступление' : (percent > 0.9 ? 'Титры' : 'Сцена фильма');
+    }
+
+    if (canvas && video && video.readyState >= 2) {
+      try {
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } catch {}
+    }
+  };
+}
+
+function formatMediaTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 // ==========================================
@@ -614,11 +819,18 @@ function renderAmbilightSettings(host) {
           <input type="range" class="storm-slider" id="ambilight-blur-slider" min="20" max="150" value="${ambilightSettings.blur}">
         </div>
       </div>
+
+      <!-- Секция умного дома (WLED / Hue) -->
+      <div id="smart-lights-mount" style="margin-top: 14px; border-top: 1px solid var(--border-subtle); padding-top: 12px;"></div>
     </div>
   `;
 
   const closeBtn = host.querySelector('#close-ambilight-settings-btn');
   if (closeBtn) closeBtn.onclick = () => { host.innerHTML = ''; };
+
+  // Монтируем панель умной подсветки
+  const lightsMount = host.querySelector('#smart-lights-mount');
+  if (lightsMount) renderSmartLightsSettings(lightsMount);
 
   const modeAuto = host.querySelector('#mode-auto-btn');
   const modePreset = host.querySelector('#mode-preset-btn');
@@ -762,6 +974,8 @@ function startAmbilightLoop(video) {
       aura.style.opacity = `${alpha}`;
       aura.style.boxShadow = `0 0 ${blur}px rgba(${r}, ${g}, ${b}, 0.9), 0 0 ${Math.round(blur * 1.5)}px rgba(${r}, ${g}, ${b}, 0.55), inset 0 0 ${Math.round(blur * 0.5)}px rgba(${r}, ${g}, ${b}, 0.35)`;
     }
+
+    sendSmartLightsFrame(r, g, b);
 
     ambilightRaf = requestAnimationFrame(loop);
   }
@@ -1191,6 +1405,31 @@ function renderPlayerUtilityButtons() {
         🖼️ PiP
       </button>
 
+      <!-- Ночной режим звука (компрессор) -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Выравнивание громкости голоса и спецэффектов (Audio Dynamics Compressor)">
+        🌙 Ночной звук
+      </button>
+
+      <!-- Интерактивная панель X-Ray на паузе -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-xray-btn" title="Актеры в сцене и саундтрек (X-Ray)">
+        🔍 X-Ray
+      </button>
+
+      <!-- Whisper AI Субтитры на лету -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-whisper-btn" title="Синхронные русские субтитры в реальном времени">
+        🎙️ Whisper AI
+      </button>
+
+      <!-- Кэширование для офлайна -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="save-offline-btn" title="Сохранить релиз в память браузера (IndexedDB PWA)">
+        💾 Офлайн
+      </button>
+
+      <!-- Локальные торрент-движки -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="open-torrserver-btn" title="Настройки TorrServer и AceStream">
+        🧲 Торренты
+      </button>
+
       <!-- Кнопка Кинокомнаты -->
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="create-room-btn">
         👥 Кинокомната
@@ -1206,6 +1445,9 @@ function renderPlayerUtilityButtons() {
     <!-- Хост панели настроек Ambilight -->
     <div id="ambilight-settings-panel-host"></div>
 
+    <!-- Хост панели торрент-движков -->
+    <div id="torrserver-panel-host" style="display: none; margin-bottom: 8px;"></div>
+
     <!-- Панель субтитров -->
     <div id="subtitles-controls-host"></div>
   `;
@@ -1218,6 +1460,41 @@ function renderPlayerUtilityButtons() {
 
   const pipBtn = container.querySelector('#toggle-pip-btn');
   if (pipBtn) pipBtn.onclick = toggleAdvancedPiP;
+
+  const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
+  if (nightAudioBtn) {
+    nightAudioBtn.onclick = () => toggleNightModeAudio();
+  }
+
+  const xrayBtn = container.querySelector('#toggle-xray-btn');
+  if (xrayBtn) {
+    xrayBtn.onclick = () => toggleXRayManual();
+  }
+
+  const whisperBtn = container.querySelector('#toggle-whisper-btn');
+  if (whisperBtn) {
+    whisperBtn.onclick = () => toggleWhisperAiSubtitles();
+  }
+
+  const offlineBtn = container.querySelector('#save-offline-btn');
+  if (offlineBtn) {
+    offlineBtn.onclick = () => {
+      if (currentMedia) saveMediaForOffline(currentMedia);
+    };
+  }
+
+  const torrBtn = container.querySelector('#open-torrserver-btn');
+  const torrHost = container.querySelector('#torrserver-panel-host');
+  if (torrBtn && torrHost) {
+    torrBtn.onclick = () => {
+      if (torrHost.style.display === 'none') {
+        torrHost.style.display = 'block';
+        renderTorrServerSettings(torrHost);
+      } else {
+        torrHost.style.display = 'none';
+      }
+    };
+  }
 
   const roomBtn = container.querySelector('#create-room-btn');
   if (roomBtn) {
@@ -1233,6 +1510,7 @@ function renderPlayerUtilityButtons() {
   if (autoSkipCheck) {
     autoSkipCheck.onchange = (e) => {
       autoSkipEnabled = e.target.checked;
+      localStorage.setItem('storm_auto_skip', autoSkipEnabled ? 'true' : 'false');
       showToast(`Автопропуск заставок: ${autoSkipEnabled ? 'Включен' : 'Выключен'}`, 'info');
     };
   }

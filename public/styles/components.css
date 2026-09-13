@@ -2337,4 +2337,317 @@ input[type="checkbox"]::after {
   border-radius: 4px;
 }
 
+/* ==========================================================================
+   ЖИВЫЕ РЕАКЦИИ И АНИМИРОВАННЫЕ ВСПЛЫВАЮЩИЕ ЭМОДЗИ (LIVE REACTIONS)
+   ========================================================================== */
+.watch-room-reactions-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.reaction-trigger-btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reaction-trigger-btn:hover {
+  transform: scale(1.35);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.reaction-trigger-btn:active {
+  transform: scale(0.9);
+}
+
+.floating-live-reaction {
+  position: absolute;
+  pointer-events: none;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: floatUpReaction 2.4s ease-out forwards;
+}
+
+.floating-live-reaction .reaction-emoji {
+  font-size: 34px;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8));
+}
+
+.floating-live-reaction .reaction-user {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+@keyframes floatUpReaction {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.6) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1.2) rotate(-5deg);
+  }
+  70% {
+    opacity: 0.9;
+    transform: translateY(-180px) scale(1) rotate(5deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-260px) scale(0.8) rotate(-10deg);
+  }
+}
+
+/* ==========================================================================
+   SMART SKIP (ПРОПУСК ЗАСТАВОК И ТИТРОВ)
+   ========================================================================== */
+.smart-skip-floating-banner {
+  position: absolute;
+  bottom: 70px;
+  right: 24px;
+  z-index: 50;
+  animation: slideInSkip 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInSkip {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.smart-skip-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(14, 17, 23, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), 0 0 16px rgba(0, 210, 255, 0.25);
+  color: #fff;
+  font-size: 13px;
+}
+
+.smart-skip-text {
+  white-space: nowrap;
+}
+
+.smart-skip-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.smart-skip-close-btn:hover {
+  color: #fff;
+}
+
+/* ==========================================================================
+   ПОКАДРОВОЕ ПРЕВЬЮ И ИНТЕРАКТИВНЫЕ ГЛАВЫ (THUMBNAIL SCRUBBING & CHAPTERS)
+   ========================================================================== */
+.player-chapters-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.player-chapter-segment {
+  position: absolute;
+  height: 100%;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.player-chapter-segment.intro {
+  background: rgba(245, 158, 11, 0.65);
+}
+
+.player-chapter-segment.outro {
+  background: rgba(168, 85, 247, 0.65);
+}
+
+.player-scrubber-preview {
+  position: absolute;
+  bottom: 34px;
+  transform: translateX(-50%);
+  background: rgba(14, 17, 23, 0.95);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.8), 0 0 12px rgba(0, 210, 255, 0.3);
+  pointer-events: none;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 160px;
+  animation: fadeIn 0.15s ease;
+}
+
+.scrubber-thumb-wrap {
+  width: 148px;
+  height: 84px;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.scrubber-thumb-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+.scrubber-thumb-chapter {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   WHISPER AI СУБТИТРЫ
+   ========================================================================== */
+.whisper-subtitles-overlay {
+  position: absolute;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  text-align: center;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.whisper-sub-text {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+  line-height: 1.4;
+}
+
+/* ==========================================================================
+   ИНТЕРАКТИВНАЯ ПАНЕЛЬ X-RAY MODE (АКТЕРЫ И САУНДТРЕК НА ПАУЗЕ)
+   ========================================================================== */
+.player-xray-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(10, 11, 16, 0.96) 0%, rgba(10, 11, 16, 0.85) 75%, transparent 100%);
+  backdrop-filter: blur(12px);
+  padding: 24px 20px 16px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  z-index: 35;
+  animation: slideUpXray 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpXray {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.xray-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.xray-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.xray-cast-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.xray-actor-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 160px;
+}
+
+.xray-actor-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.xray-actor-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.xray-actor-role {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+
 
