@@ -57,7 +57,10 @@ import {
 
 import {
   getTmdbCatalog,
-  searchTmdb
+  searchTmdb,
+  getTmdbItemDetails,
+  getTmdbSeasonEpisodes,
+  getTmdbPersonMedia
 } from './services/tmdb-service.js';
 
 import {
@@ -203,7 +206,12 @@ wss.on('connection', (ws) => {
             username: currentUser?.username || 'Гость',
             avatar: currentUser?.avatar || null,
             text,
-            time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+            time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            replyTo: data.replyTo ? {
+              id: data.replyTo.id,
+              username: data.replyTo.username,
+              text: data.replyTo.text
+            } : null
           };
 
           room.messages.push(newMsg);
@@ -217,6 +225,31 @@ wss.on('connection', (ws) => {
           for (const [client] of room.participants) {
             if (client.readyState === 1) {
               client.send(chatBroadcast);
+            }
+          }
+          break;
+        }
+
+        case 'delete_chat_message': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const msgId = data.messageId;
+          const index = room.messages.findIndex(m => String(m.id) === String(msgId));
+          if (index !== -1) {
+            const msg = room.messages[index];
+            if (currentUser?.id === msg.userId || currentUser?.isHost) {
+              room.messages.splice(index, 1);
+              const delBroadcast = JSON.stringify({
+                type: 'chat_deleted',
+                messageId: msgId
+              });
+              for (const [client] of room.participants) {
+                if (client.readyState === 1) {
+                  client.send(delBroadcast);
+                }
+              }
             }
           }
           break;
@@ -748,18 +781,24 @@ app.get('/api/media/item', async (req, res) => {
           }
         ];
       }
-    } else if (['tmdb', 'kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-      mediaDetails = {
-        id: String(id),
-        source,
-        title: req.query.title || 'Кинофильм',
-        original_title: req.query.original_title || '',
-        poster: req.query.poster || 'assets/favicon.svg',
-        year: req.query.year || '',
-        rating: req.query.rating || 0,
-        description: req.query.description || 'Фильм доступен для онлайн-просмотра в высоком качестве.',
-        players: []
-      };
+    } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+      const cleanTmdbId = String(id || '').replace('tmdb_', '');
+      mediaDetails = await getTmdbItemDetails(cleanTmdbId, req.query.media_type);
+
+      if (!mediaDetails) {
+        mediaDetails = {
+          id: String(id),
+          source: source || 'tmdb',
+          title: req.query.title || 'Кинофильм',
+          original_title: req.query.original_title || '',
+          poster: req.query.poster || 'assets/favicon.svg',
+          year: req.query.year || '',
+          rating: req.query.rating || 0,
+          description: req.query.description || 'Фильм доступен для онлайн-просмотра в высоком качестве.',
+          media_type: req.query.media_type || 'movie',
+          players: []
+        };
+      }
     } else {
       try {
         mediaDetails = await getFanFilmDetails(url || id);
@@ -778,21 +817,50 @@ app.get('/api/media/item', async (req, res) => {
         year: req.query.year || '',
         rating: 0,
         description: req.query.description || 'Просмотр фильма онлайн в высоком качестве.',
+        media_type: req.query.media_type || 'movie',
         players: []
       };
     }
 
-    // Собираем расширенный список плееров (FanFilm 4K, Kodik)
+    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров/актеров
+    if (!mediaDetails.directors?.length && !mediaDetails.cast?.length && mediaDetails.title) {
+      try {
+        const tmdbSearch = await searchTmdb(mediaDetails.title, 1);
+        if (tmdbSearch.items?.length > 0) {
+          const first = tmdbSearch.items[0];
+          const enriched = await getTmdbItemDetails(first.id, mediaDetails.media_type);
+          if (enriched) {
+            mediaDetails.release_date = mediaDetails.release_date || enriched.release_date;
+            mediaDetails.duration = mediaDetails.duration || enriched.duration;
+            mediaDetails.rating_kp = mediaDetails.rating_kp || enriched.rating_kp;
+            mediaDetails.rating_tmdb = mediaDetails.rating_tmdb || enriched.rating_tmdb;
+            mediaDetails.genres = mediaDetails.genres || enriched.genres;
+            mediaDetails.countries = mediaDetails.countries || enriched.countries;
+            mediaDetails.directors = enriched.directors;
+            mediaDetails.cast = enriched.cast;
+            mediaDetails.trailer_url = mediaDetails.trailer_url || enriched.trailer_url;
+            if (enriched.seasons?.length && !mediaDetails.seasons?.length) {
+              mediaDetails.seasons = enriched.seasons;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Собираем расширенный список плееров (FanFilm 4K, Kodik, Трейлер, и др.)
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
       title: mediaDetails.title,
-      fanfilm_4k_url: mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd')?.url
+      year: mediaDetails.year,
+      media_type: mediaDetails.media_type,
+      fanfilm_4k_url: mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd')?.url,
+      trailer_url: mediaDetails.trailer_url
     });
 
     const allPlayers = [];
     if (mediaDetails.players) {
-      allPlayers.push(...mediaDetails.players.filter(p => !p.id?.includes('trailer') && !p.name?.toLowerCase().includes('трейлер')));
+      allPlayers.push(...mediaDetails.players);
     }
     kinoboxPlayers.forEach(p => {
       if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
@@ -810,6 +878,34 @@ app.get('/api/media/item', async (req, res) => {
       players: allPlayers,
       user_bookmark: userBookmark
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Получение серий сезона сериала с русскими названиями и синопсисами
+app.get('/api/media/series-episodes', async (req, res) => {
+  try {
+    const { tvId, season } = req.query;
+    if (!tvId) {
+      return res.status(400).json({ error: 'Укажите tvId' });
+    }
+    const data = await getTmdbSeasonEpisodes(tvId, parseInt(season, 10) || 1);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Получение всех видео актера или режиссера
+app.get('/api/media/person', async (req, res) => {
+  try {
+    const { id } = req.query;
+    if (!id) {
+      return res.status(400).json({ error: 'Укажите id персоны' });
+    }
+    const data = await getTmdbPersonMedia(id);
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
