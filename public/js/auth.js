@@ -44,20 +44,6 @@ export function showToast(message, type = 'info') {
 
 export async function checkAuth() {
   if (!currentToken) {
-    try {
-      const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
-      if (autoRes.ok) {
-        const autoData = await autoRes.json();
-        if (autoData?.token && autoData?.user) {
-          currentToken = autoData.token;
-          currentUser = autoData.user;
-          localStorage.setItem('storm_token', currentToken);
-          updateAuthUI();
-          notifyAuthChanged();
-          return currentUser;
-        }
-      }
-    } catch {}
     currentUser = null;
     updateAuthUI();
     notifyAuthChanged();

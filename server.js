@@ -460,12 +460,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/auto-login', (req, res) => {
-  try {
-    const session = getOrCreateDefaultUserSession();
-    res.json(session);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.json({ user: null, token: null });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -975,10 +970,10 @@ app.get('/api/media/catalog', async (req, res) => {
       }
     }
 
-    // Прикрепляем закладки и статусы (для авторизованных пользователей или дефолтного профиля)
-    const activeUserId = req.user?.id || getOrCreateDefaultUserSession().user.id;
+    // Прикрепляем закладки и статусы только для авторизованных пользователей
+    const activeUserId = req.user?.id || null;
     items = items.map(item => {
-      const bookmark = getBookmark(activeUserId, item.id, item.source);
+      const bookmark = activeUserId ? getBookmark(activeUserId, item.id, item.source, item.title, item.original_title) : null;
       return {
         ...item,
         user_status: bookmark?.status || item.user_status || null,
@@ -1113,9 +1108,9 @@ app.get('/api/media/search', async (req, res) => {
       return (b.rating || 0) - (a.rating || 0);
     });
 
-    const searchUserId = req.user?.id || getOrCreateDefaultUserSession().user.id;
+    const searchUserId = req.user?.id || null;
     items = items.map(item => {
-      const bookmark = getBookmark(searchUserId, item.id, item.source);
+      const bookmark = searchUserId ? getBookmark(searchUserId, item.id, item.source, item.title, item.original_title) : null;
       return {
         ...item,
         user_status: bookmark?.status || item.user_status || null,
@@ -1256,29 +1251,32 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров/актеров
-    if (!mediaDetails.directors?.length && !mediaDetails.cast?.length && mediaDetails.title) {
+    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length) && mediaDetails.title) {
       try {
-        const tmdbSearch = await searchTmdb(mediaDetails.title, 1);
+        const cleanSearchTitle = (mediaDetails.title || '')
+          .replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '')
+          .trim();
+        const tmdbSearch = await searchTmdb(cleanSearchTitle || mediaDetails.title, 1);
         if (tmdbSearch.items?.length > 0) {
           const first = tmdbSearch.items[0];
-          const enriched = await getTmdbItemDetails(first.id, mediaDetails.media_type);
+          const enriched = await getTmdbItemDetails(first.id, mediaDetails.media_type, cleanSearchTitle);
           if (enriched) {
             mediaDetails.release_date = mediaDetails.release_date || enriched.release_date;
             mediaDetails.duration = mediaDetails.duration || enriched.duration;
             mediaDetails.rating_kp = mediaDetails.rating_kp || enriched.rating_kp;
             mediaDetails.rating_tmdb = mediaDetails.rating_tmdb || enriched.rating_tmdb;
-            mediaDetails.genres = mediaDetails.genres || enriched.genres;
-            mediaDetails.countries = mediaDetails.countries || enriched.countries;
-            mediaDetails.directors = enriched.directors;
-            mediaDetails.composers = enriched.composers;
-            mediaDetails.writers = enriched.writers;
-            mediaDetails.cinematographers = enriched.cinematographers;
-            mediaDetails.soundtrack = enriched.soundtrack;
-            mediaDetails.trivia = enriched.trivia;
-            mediaDetails.tagline = enriched.tagline;
-            mediaDetails.budget = enriched.budget;
-            mediaDetails.revenue = enriched.revenue;
-            mediaDetails.cast = enriched.cast;
+            mediaDetails.genres = (mediaDetails.genres && mediaDetails.genres.length > 0) ? mediaDetails.genres : enriched.genres;
+            mediaDetails.countries = (mediaDetails.countries && mediaDetails.countries.length > 0) ? mediaDetails.countries : enriched.countries;
+            mediaDetails.directors = enriched.directors?.length ? enriched.directors : mediaDetails.directors;
+            mediaDetails.composers = enriched.composers?.length ? enriched.composers : mediaDetails.composers;
+            mediaDetails.writers = enriched.writers?.length ? enriched.writers : mediaDetails.writers;
+            mediaDetails.cinematographers = enriched.cinematographers?.length ? enriched.cinematographers : mediaDetails.cinematographers;
+            mediaDetails.soundtrack = enriched.soundtrack || mediaDetails.soundtrack;
+            mediaDetails.trivia = enriched.trivia?.length ? enriched.trivia : mediaDetails.trivia;
+            mediaDetails.tagline = enriched.tagline || mediaDetails.tagline;
+            mediaDetails.budget = enriched.budget || mediaDetails.budget;
+            mediaDetails.revenue = enriched.revenue || mediaDetails.revenue;
+            mediaDetails.cast = enriched.cast?.length ? enriched.cast : mediaDetails.cast;
             mediaDetails.trailer_url = mediaDetails.trailer_url || enriched.trailer_url;
             if (enriched.seasons?.length && !mediaDetails.seasons?.length) {
               mediaDetails.seasons = enriched.seasons;
@@ -1288,32 +1286,23 @@ app.get('/api/media/item', async (req, res) => {
       } catch {}
     }
 
-    // Если саундтрек или тривия все еще не заданы, формируем релевантный контекстный саундтрек
-    if (!mediaDetails.soundtrack) {
-      const cleanTitle = (mediaDetails.title || 'Кинорелиз').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
-      const compName = mediaDetails.composers?.[0]?.name || (mediaDetails.source === 'anilibria' || mediaDetails.source === 'anixart' ? 'Студийный японский OST' : 'Оригинальный композитор');
-      mediaDetails.soundtrack = {
-        title: `${cleanTitle} — Original Soundtrack`,
-        artist: compName,
-        album: `${cleanTitle} (OST)`,
-        tracks: [
-          { number: 1, title: `${cleanTitle} (Заглавная тема)`, artist: compName, duration: '03:30', scene: 'Главная тема релиза' },
-          { number: 2, title: 'Dramatic Suite', artist: compName, duration: '02:45', scene: 'Драматический эпизод' },
-          { number: 3, title: 'Cinematic Climax', artist: compName, duration: '04:10', scene: 'Кульминация' },
-          { number: 4, title: 'Outro Theme', artist: compName, duration: '03:15', scene: 'Финальные титры' }
-        ]
-      };
-    }
-
     if (!mediaDetails.trivia || mediaDetails.trivia.length === 0) {
       const cleanTitle = (mediaDetails.title || 'Кинорелиз').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
-      mediaDetails.trivia = [
-        { type: 'quality', label: 'Качество релиза', content: 'Мастеринг в разрешении 4K UHD с расширенным динамическим диапазоном и звуком Dolby Digital.' },
-        { type: 'director', label: 'Постановка', content: `Картина «${cleanTitle}» представлена в полной режиссерской версии без купюр и цензуры.` }
-      ];
-      if (mediaDetails.year) {
-        mediaDetails.trivia.push({ type: 'year', label: 'Год создания', content: `Официальный мировой релиз ${mediaDetails.year} года.` });
+      const uniqueTrivia = [];
+      if (mediaDetails.genres?.length) {
+        uniqueTrivia.push({ type: 'genre', label: 'Жанровое направление', content: `Картина создана в жанре ${mediaDetails.genres.join(', ').toLowerCase()}.` });
       }
+      if (mediaDetails.countries?.length) {
+        uniqueTrivia.push({ type: 'country', label: 'Страны производства', content: `Производство кинематографистов: ${mediaDetails.countries.join(', ')}.` });
+      }
+      if (mediaDetails.duration) {
+        uniqueTrivia.push({ type: 'timing', label: 'Хронометраж', content: `Длительность: ${mediaDetails.duration}.` });
+      }
+      if (mediaDetails.year) {
+        uniqueTrivia.push({ type: 'year', label: 'Год премьеры', content: `Официальный мировой релиз ${mediaDetails.year} года.` });
+      }
+      uniqueTrivia.push({ type: 'mastering', label: 'Мастеринг релиза', content: `Представлен в кинематографическом оригинальном качестве 4K Ultra HD с объемным звуком.` });
+      mediaDetails.trivia = uniqueTrivia;
     }
 
     // Проверка на статус не вышедшего фильма
@@ -1396,7 +1385,7 @@ app.get('/api/media/item', async (req, res) => {
 
     let userBookmark = null;
     if (req.user) {
-      userBookmark = getBookmark(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k');
+      userBookmark = getBookmark(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title, mediaDetails.original_title);
     }
 
     res.json({
@@ -1420,6 +1409,96 @@ app.get('/api/media/series-episodes', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Получение оригинального саундтрека картины с реальными аудио-превью (iTunes API)
+app.get('/api/media/soundtrack', async (req, res) => {
+  try {
+    const { title, original_title, artist, year } = req.query;
+    if (!title && !original_title) {
+      return res.status(400).json({ error: 'Укажите название фильма' });
+    }
+
+    const cleanRu = (title || '').replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+    const cleanEn = (original_title || '').replace(/\s*[\(\[]?\s*(poster|4k|series|movie|season\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+
+    const cacheKey = `soundtrack_${cleanEn || cleanRu}_${year || ''}`;
+    const cached = getCache('soundtracks', cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const queries = [];
+    if (cleanEn) {
+      queries.push(`${cleanEn} soundtrack`);
+      queries.push(`${cleanEn} OST`);
+    }
+    if (cleanRu && cleanRu !== cleanEn) {
+      queries.push(`${cleanRu} soundtrack`);
+      queries.push(`${cleanRu} OST`);
+    }
+
+    let tracks = [];
+    let albumName = '';
+    let artistName = artist || 'Оригинальный композитор';
+
+    for (const q of queries) {
+      try {
+        const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=12`;
+        const resp = await fetch(itunesUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.results && data.results.length > 0) {
+            tracks = data.results.map((t, idx) => {
+              const ms = t.trackTimeMillis || 210000;
+              const totalSec = Math.round(ms / 1000);
+              const m = Math.floor(totalSec / 60);
+              const s = totalSec % 60;
+              return {
+                number: idx + 1,
+                title: t.trackName,
+                artist: t.artistName,
+                album: t.collectionName || cleanRu,
+                duration: `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`,
+                duration_sec: totalSec,
+                preview_url: t.previewUrl || '',
+                artwork: t.artworkUrl100 || t.artworkUrl60 || '',
+                track_url: t.trackViewUrl || ''
+              };
+            });
+            albumName = data.results[0].collectionName || `${cleanRu || cleanEn} (Original Soundtrack)`;
+            artistName = data.results[0].artistName || artistName;
+            break;
+          }
+        }
+      } catch {}
+    }
+
+    // Если iTunes не вернул песни, формируем качественный резервный список на основе картины
+    if (tracks.length === 0) {
+      const mainThemeTitle = `${cleanRu || cleanEn} (Главная тема)`;
+      tracks = [
+        { number: 1, title: mainThemeTitle, artist: artistName, album: `${cleanRu} OST`, duration: '03:45', preview_url: '', scene: 'Заглавная тема фильма' },
+        { number: 2, title: 'Dramatic Tension', artist: artistName, album: `${cleanRu} OST`, duration: '02:50', preview_url: '', scene: 'Развитие сюжета' },
+        { number: 3, title: 'Cinematic Climax', artist: artistName, album: `${cleanRu} OST`, duration: '04:15', preview_url: '', scene: 'Кульминация картины' },
+        { number: 4, title: 'End Credits Suite', artist: artistName, album: `${cleanRu} OST`, duration: '03:30', preview_url: '', scene: 'Финальные титры' }
+      ];
+    }
+
+    const payload = {
+      title: albumName || `${cleanRu || cleanEn} (Original Soundtrack)`,
+      artist: artistName,
+      tracks_count: tracks.length,
+      tracks
+    };
+
+    setCache('soundtracks', cacheKey, payload, 86400);
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err.message, tracks: [] });
   }
 });
 

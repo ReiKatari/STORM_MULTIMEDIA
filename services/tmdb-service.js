@@ -158,7 +158,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
   for (let i = 0; i < tryEndpoints.length; i++) {
     const type = tryEndpoints[i];
     try {
-      const url = `${TMDB_BASE}/${type}/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids`;
+      const url = `${TMDB_BASE}/${type}/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids,keywords`;
       const res = await fetch(url);
       if (!res.ok) continue;
 
@@ -175,7 +175,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
         if (normTitle && normHint && !normTitle.includes(normHint) && !normHint.includes(normTitle)) {
           // Проверим, не является ли этот ID сериалом
           try {
-            const tvUrl = `${TMDB_BASE}/tv/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids`;
+            const tvUrl = `${TMDB_BASE}/tv/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids,keywords`;
             const tvRes = await fetch(tvUrl);
             if (tvRes.ok) {
               const tvData = await tvRes.json();
@@ -213,9 +213,9 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
         durationStr = h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
       }
 
-      // Режиссеры
-      const directors = (data.credits?.crew || [])
-        .filter(c => c.job === 'Director')
+      // Создатели и Режиссеры
+      let directors = (data.credits?.crew || [])
+        .filter(c => c.job === 'Director' || c.job === 'Series Director')
         .map(d => ({
           id: d.id,
           name: d.name,
@@ -223,9 +223,36 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
           photo: d.profile_path ? `${IMAGE_BASE}${d.profile_path}` : 'assets/avatar_default.svg'
         }));
 
+      // Для сериалов добавляем создателей и шоураннеров из created_by
+      if (Array.isArray(data.created_by) && data.created_by.length > 0) {
+        data.created_by.forEach(c => {
+          if (!directors.some(d => d.id === c.id || d.name === c.name)) {
+            directors.unshift({
+              id: c.id,
+              name: c.name,
+              role: 'Создатель сериала',
+              photo: c.profile_path ? `${IMAGE_BASE}${c.profile_path}` : 'assets/avatar_default.svg'
+            });
+          }
+        });
+      }
+
+      // Если режиссеров нет (для ТВ), смотрим Executive Producer / Showrunner
+      if (directors.length === 0 && Array.isArray(data.credits?.crew)) {
+        directors = data.credits.crew
+          .filter(c => c.job === 'Executive Producer' || c.job === 'Showrunner' || c.department === 'Directing')
+          .slice(0, 3)
+          .map(c => ({
+            id: c.id,
+            name: c.name,
+            role: c.job === 'Executive Producer' ? 'Исполнительный продюсер' : 'Режиссер',
+            photo: c.profile_path ? `${IMAGE_BASE}${c.profile_path}` : 'assets/avatar_default.svg'
+          }));
+      }
+
       // Композиторы
-      const composers = (data.credits?.crew || [])
-        .filter(c => c.job === 'Original Music Composer' || c.job === 'Music' || c.job === 'Composer')
+      let composers = (data.credits?.crew || [])
+        .filter(c => c.job === 'Original Music Composer' || c.job === 'Music' || c.job === 'Composer' || (c.department === 'Sound' && c.job && c.job.includes('Music')))
         .map(c => ({
           id: c.id,
           name: c.name,
@@ -234,8 +261,9 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
         }));
 
       // Сценаристы
-      const writers = (data.credits?.crew || [])
-        .filter(c => c.job === 'Screenplay' || c.job === 'Writer' || c.job === 'Story')
+      let writers = (data.credits?.crew || [])
+        .filter(c => c.job === 'Screenplay' || c.job === 'Writer' || c.job === 'Story' || c.job === 'Author' || c.job === 'Teleplay' || c.department === 'Writing')
+        .slice(0, 5)
         .map(w => ({
           id: w.id,
           name: w.name,
@@ -244,8 +272,9 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
         }));
 
       // Операторы
-      const cinematographers = (data.credits?.crew || [])
-        .filter(c => c.job === 'Director of Photography')
+      let cinematographers = (data.credits?.crew || [])
+        .filter(c => c.job === 'Director of Photography' || c.job === 'Cinematographer' || c.department === 'Camera')
+        .slice(0, 3)
         .map(c => ({
           id: c.id,
           name: c.name,
@@ -317,10 +346,13 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
         ]
       };
 
-      // Генерация списка интересных фактов (Trivia)
+      // Генерация списка уникальных интересных фактов (Trivia)
       const trivia = [];
       if (data.tagline) {
         trivia.push({ type: 'tagline', label: 'Официальный слоган', content: `«${data.tagline}»` });
+      }
+      if (data.belongs_to_collection) {
+        trivia.push({ type: 'universe', label: 'Кинофраншиза', content: `Картина входит в официальный кинематографический цикл «${data.belongs_to_collection.name}».` });
       }
       if (data.budget && data.budget > 0) {
         const budgetMil = (data.budget / 1000000).toFixed(1);
@@ -328,17 +360,36 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
       }
       if (data.revenue && data.revenue > 0) {
         const revMil = (data.revenue / 1000000).toFixed(1);
-        trivia.push({ type: 'revenue', label: 'Кассовые сборы в мире', content: `$${revMil} млн` });
+        trivia.push({ type: 'revenue', label: 'Мировые кассовые сборы', content: `$${revMil} млн` });
       }
       const prodCompanies = (data.production_companies || []).map(p => p.name).slice(0, 3);
       if (prodCompanies.length > 0) {
         trivia.push({ type: 'studios', label: 'Киностудии', content: prodCompanies.join(', ') });
       }
+      const prodCountries = (data.production_countries || []).map(c => c.name).slice(0, 3);
+      if (prodCountries.length > 0) {
+        trivia.push({ type: 'locations', label: 'Страны производства', content: prodCountries.join(', ') });
+      }
+      if (data.status) {
+        const statusMap = { 'Released': 'Официальный мировой кинопрокат завершен', 'Ended': 'Сериал полностью завершен', 'Returning Series': 'Сериал официально продлен на следующий сезон' };
+        if (statusMap[data.status]) {
+          trivia.push({ type: 'status', label: 'Статус релиза', content: statusMap[data.status] });
+        }
+      }
+      if (isTv && seasons.length > 0) {
+        const totalEps = seasons.reduce((sum, s) => sum + (s.episode_count || 0), 0);
+        trivia.push({ type: 'seasons', label: 'Формат сериала', content: `Всего выпущено ${seasons.length} сезон(ов) и ${totalEps} серий.` });
+      }
+      const rawKeywords = data.keywords?.keywords || data.keywords?.results || [];
+      if (Array.isArray(rawKeywords) && rawKeywords.length > 0) {
+        const topKeywords = rawKeywords.slice(0, 4).map(k => k.name).join(', ');
+        trivia.push({ type: 'themes', label: 'Сюжетные темы', content: `Ключевые мотивы произведения: ${topKeywords}.` });
+      }
       if (directors.length > 0) {
-        trivia.push({ type: 'director', label: 'Режиссерское видение', content: `Картина срежиссирована ${directors.map(d => d.name).join(', ')} с акцентом на кинематографичность и детализацию.` });
+        trivia.push({ type: 'director', label: 'Постановка', content: `Постановку осуществили: ${directors.map(d => d.name).join(', ')}.` });
       }
       if (composers.length > 0) {
-        trivia.push({ type: 'music', label: 'Музыкальное сопровождение', content: `Оригинальный саундтрек написал композитор ${composers.map(c => c.name).join(', ')}, создавший уникальную звуковую атмосферу.` });
+        trivia.push({ type: 'music', label: 'Музыкальное сопровождение', content: `Оригинальный саундтрек написал композитор ${composers.map(c => c.name).join(', ')}.` });
       }
 
       const details = {

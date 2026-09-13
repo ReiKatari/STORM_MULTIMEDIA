@@ -33,20 +33,23 @@ export function toggleWhisperAiSubtitles(video = document.getElementById('storm-
 }
 
 function startWhisperEngine(video) {
-  const wrapper = video?.closest('.player-video-box') || document.getElementById('cinema-player-wrapper');
+  const wrapper = video?.closest('.player-video-box') || document.querySelector('.player-video-box') || document.getElementById('cinema-player-wrapper');
   if (!wrapper) return;
 
-  if (!subtitleOverlay) {
+  if (!subtitleOverlay || !subtitleOverlay.isConnected || !wrapper.contains(subtitleOverlay)) {
+    if (subtitleOverlay && subtitleOverlay.parentNode) {
+      subtitleOverlay.parentNode.removeChild(subtitleOverlay);
+    }
     subtitleOverlay = document.createElement('div');
     subtitleOverlay.className = 'whisper-subtitles-overlay';
     subtitleOverlay.id = 'whisper-subtitles-overlay';
     subtitleOverlay.style.cssText = `
       position: absolute;
-      bottom: 58px;
+      bottom: 64px;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 45;
-      max-width: 85%;
+      z-index: 99999;
+      max-width: 88%;
       text-align: center;
       pointer-events: none;
       transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;

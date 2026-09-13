@@ -61,14 +61,33 @@ const DEFAULT_AUDIO_SETTINGS = {
   audioDelayMs: 0 // -1000 to +1000 ms
 };
 
-let proAudioSettings = { ...DEFAULT_AUDIO_SETTINGS };
+export let proAudioSettings = { ...DEFAULT_AUDIO_SETTINGS };
 
 try {
   const savedAudio = localStorage.getItem('storm_pro_audio_settings');
   if (savedAudio) {
     proAudioSettings = { ...DEFAULT_AUDIO_SETTINGS, ...JSON.parse(savedAudio) };
+  } else {
+    const nightAudio = localStorage.getItem('storm_night_audio');
+    if (nightAudio) {
+      proAudioSettings.nightMode = nightAudio === 'true';
+    }
   }
 } catch {}
+
+export function setProAudioNightMode(enabled) {
+  proAudioSettings.nightMode = !!enabled;
+  try {
+    localStorage.setItem('storm_pro_audio_settings', JSON.stringify(proAudioSettings));
+    localStorage.setItem('storm_night_audio', proAudioSettings.nightMode ? 'true' : 'false');
+  } catch {}
+  applyProAudioSettings();
+  return proAudioSettings.nightMode;
+}
+
+export function getProAudioNightMode() {
+  return !!proAudioSettings.nightMode;
+}
 
 // Узлы Web Audio API
 let proAudioCtx = null;
