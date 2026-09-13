@@ -19,6 +19,7 @@ export const translations = {
     tab_anime_series: "Аниме-сериалы",
     tab_continue: "Продолжить просмотр",
     tab_bookmarks: "Мои списки и закладки",
+    mobile_tab_bookmarks: "Закладки",
     tab_offline: "Офлайн-просмотр",
     
     // Источники и виды
@@ -150,6 +151,7 @@ export const translations = {
     tab_anime_series: "Anime series",
     tab_continue: "Continue watching",
     tab_bookmarks: "My lists and bookmarks",
+    mobile_tab_bookmarks: "Bookmarks",
     tab_offline: "Offline viewing",
     
     source_all: "All sources",
@@ -272,6 +274,7 @@ export const translations = {
     tab_anime_series: "Anime-Serien",
     tab_continue: "Weiterschauen",
     tab_bookmarks: "Meine Listen und Lesezeichen",
+    mobile_tab_bookmarks: "Lesezeichen",
     tab_offline: "Offline-Wiedergabe",
     
     source_all: "Alle Quellen",
@@ -394,6 +397,7 @@ export const translations = {
     tab_anime_series: "Séries d'animation",
     tab_continue: "Reprendre la lecture",
     tab_bookmarks: "Mes listes et favoris",
+    mobile_tab_bookmarks: "Favoris",
     tab_offline: "Visionnage hors-ligne",
     
     source_all: "Toutes les sources",
@@ -516,6 +520,7 @@ export const translations = {
     tab_anime_series: "日本动画剧集",
     tab_continue: "继续观看",
     tab_bookmarks: "我的列表与收藏",
+    mobile_tab_bookmarks: "收藏",
     tab_offline: "离线播放",
     
     source_all: "所有片源",
@@ -638,6 +643,7 @@ export const translations = {
     tab_anime_series: "アニメTVシリーズ",
     tab_continue: "続きを見る",
     tab_bookmarks: "リストとブックマーク",
+    mobile_tab_bookmarks: "ブックマーク",
     tab_offline: "オフライン再生",
     
     source_all: "すべてのソース",
