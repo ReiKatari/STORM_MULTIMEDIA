@@ -309,12 +309,19 @@ async function loadCurrentTab() {
 // Нормализация названий медиа для надежного сопоставления и исключения дублей
 function normalizeMediaTitle(title, originalTitle = '') {
   if (!title && !originalTitle) return '';
-  const raw = `${title || ''} ${originalTitle || ''}`.toLowerCase();
-  return raw
-    .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
-    .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
-    .replace(/[^a-zа-я0-9]/gi, '')
-    .trim();
+  const clean = (t) => {
+    if (!t) return '';
+    return String(t)
+      .toLowerCase()
+      .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
+      .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
+      .replace(/[^a-zа-я0-9]/gi, '')
+      .trim();
+  };
+
+  const primary = clean(title);
+  if (primary) return primary;
+  return clean(originalTitle);
 }
 
 // Утилита дедупликации релизов (полностью исключает дубли одного фильма из разных источников и баз)
@@ -332,22 +339,37 @@ function deduplicateMediaList(items) {
       itemMap.set(key, item);
     } else {
       const existing = itemMap.get(key);
-      // Предпочитаем источник TMDB, либо наличие постера/статуса, либо максимальный прогресс
+      const fanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
+        (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
+      const has4K = item.is4K || existing.is4K;
+
       const isNewBetter =
         (item.source === 'tmdb' && existing.source !== 'tmdb') ||
         (!existing.poster && (item.poster || item.poster_url)) ||
         (!existing.user_status && item.user_status) ||
         ((item.progress_percent || 0) > (existing.progress_percent || 0));
 
-      if (isNewBetter) {
-        itemMap.set(key, {
-          ...existing,
-          ...item,
-          poster: item.poster || item.poster_url || existing.poster || existing.poster_url,
-          user_status: item.user_status || existing.user_status,
-          progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
-        });
-      }
+      const merged = isNewBetter ? {
+        ...existing,
+        ...item,
+        fanfilm_4k_url: fanfilmUrl,
+        is4K: has4K,
+        quality: has4K ? '4K Ultra HD' : (item.quality || existing.quality),
+        poster: item.poster || item.poster_url || existing.poster || existing.poster_url,
+        user_status: item.user_status || existing.user_status,
+        progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
+      } : {
+        ...item,
+        ...existing,
+        fanfilm_4k_url: fanfilmUrl,
+        is4K: has4K,
+        quality: has4K ? '4K Ultra HD' : (existing.quality || item.quality),
+        poster: existing.poster || existing.poster_url || item.poster || item.poster_url,
+        user_status: existing.user_status || item.user_status,
+        progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
+      };
+
+      itemMap.set(key, merged);
     }
   }
 

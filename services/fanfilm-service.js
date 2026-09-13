@@ -63,13 +63,21 @@ function parseMediaList(html) {
     let poster = el.find('img').first().attr('data-src') || el.find('img').first().attr('src') || '';
     if (poster && poster.startsWith('/')) poster = `${BASE_URL}${poster}`;
 
-    // Лейбл 4K / Качество
-    const is4K = el.text().includes('4K') || el.find('span').text().includes('4K');
-    const quality = is4K ? '4K Ultra HD' : 'Full HD';
+    // Лейбл 4K / Качество (FanFilm4K специализирован на 4K UHD)
+    const isTS = el.text().includes('TS') || title.includes('TS');
+    const is4K = true;
+    const quality = isTS ? 'TS / Экранка' : '4K Ultra HD';
 
-    // Год и рейтинг
-    const yearText = el.find('.card__year, .top__year, .poster__year').text().trim();
-    const ratingText = el.find('.card__rating, .rating, .top__rating').text().trim();
+    // Год и рейтинг (на карточках FanFilm4K находятся в .hover-tags .tag.top-left / top-right)
+    let yearText = el.find('.tag.top-left, .hover-tags .tag, .card__year, .top__year, .poster__year').first().text().trim();
+    const ym = (yearText || el.text() || title).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) yearText = ym[1];
+
+    let ratingText = el.find('.tag.top-right, .hover-tags .tag, .card__rating, .rating, .top__rating').first().text().replace(/[^\d\.]/g, '').trim();
+    if (!ratingText) {
+      const rm = el.text().match(/(?:⭐|★|рейтинг:?)\s*([\d\.]+)/i);
+      if (rm) ratingText = rm[1];
+    }
 
     // Тип медиа
     let mediaType = 'movie';
@@ -159,7 +167,30 @@ export async function getFanFilmCatalog(category = 'popular', page = 1) {
 export async function searchFanFilm(query) {
   if (!query || !query.trim()) return [];
 
-  const cacheKey = `search_${query.toLowerCase().trim()}`;
+  const cleanQuery = query.trim();
+
+  // Поддержка поиска по прямой ссылке на новость FanFilm4K
+  if (/fanfilm4k\.media\/(\d+)[^\s]*/i.test(cleanQuery)) {
+    const details = await getFanFilmDetails(cleanQuery);
+    if (details) {
+      return [{
+        id: details.id,
+        source: 'fanfilm4k',
+        title: details.title,
+        original_title: details.original_title || '',
+        link: cleanQuery,
+        poster: details.poster,
+        quality: details.quality || '4K Ultra HD',
+        is4K: true,
+        year: details.year || '2026',
+        rating: details.rating || 8.0,
+        media_type: details.media_type || 'movie',
+        description: details.description || ''
+      }];
+    }
+  }
+
+  const cacheKey = `search_${cleanQuery.toLowerCase()}`;
   const cached = getCache('fanfilm4k', cacheKey);
   if (cached) return cached;
 
@@ -167,7 +198,7 @@ export async function searchFanFilm(query) {
     const formData = new URLSearchParams();
     formData.append('do', 'search');
     formData.append('subaction', 'search');
-    formData.append('story', query);
+    formData.append('story', cleanQuery);
 
     const html = await fetchHtml(`${BASE_URL}/index.php?do=search`, {
       method: 'POST',
@@ -190,13 +221,16 @@ export async function searchFanFilm(query) {
  * Получение детальной страницы фильма / сериала и плееров
  */
 export async function getFanFilmDetails(idOrUrl) {
-  let url = String(idOrUrl);
+  let url = String(idOrUrl).trim();
   if (!url.startsWith('http')) {
     const cachedLink = getCache('fanfilm4k', `item_link_${idOrUrl}`);
     if (cachedLink) {
       url = cachedLink;
+    } else if (url.includes('-')) {
+      url = `${BASE_URL}/${idOrUrl.replace(/\.html$/i, '')}.html`;
     } else {
-      url = `${BASE_URL}/${idOrUrl}.html`;
+      // DLE канонический редирект по числовому ID новости: /index.php?newsid=12345
+      url = `${BASE_URL}/index.php?newsid=${idOrUrl}`;
     }
   }
 
@@ -215,6 +249,35 @@ export async function getFanFilmDetails(idOrUrl) {
     const originalTitle = $('meta[property="ya:original_name"]').attr('content') || '';
     const description = $('.pmovie__text, .description, meta[property="og:description"]').first().text().trim() ||
                         $('meta[property="og:description"]').attr('content') || '';
+
+    // Метаданные из блока характеристик (.page__subcols и .info-row)
+    const subcolsText = $('.page__subcols').text().replace(/\s+/g, ' ').trim();
+
+    // Год
+    let year = '';
+    const ym = subcolsText.match(/\|\s*(\d{4})\b/) || subcolsText.match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) year = ym[1];
+
+    // Рейтинг
+    let rating = 0;
+    const kpRatingMatch = subcolsText.match(/Рейтинг КП\s*([\d\.]+)/i);
+    const imdbRatingMatch = subcolsText.match(/Рейтинг IMDb\s*([\d\.]+)/i);
+    if (kpRatingMatch) rating = parseFloat(kpRatingMatch[1]);
+    else if (imdbRatingMatch) rating = parseFloat(imdbRatingMatch[1]);
+
+    let genres = '', countries = '', director = '', actors = '', duration = '', slogan = '', premiere = '';
+
+    $('.info-row').each((_, el) => {
+      const label = $(el).find('.info-label').text().trim().toLowerCase();
+      const value = $(el).text().replace($(el).find('.info-label').text(), '').replace(/\s+/g, ' ').trim();
+      if (label.includes('жанр')) genres = value;
+      else if (label.includes('страна')) countries = value;
+      else if (label.includes('режисс')) director = value;
+      else if (label.includes('актёр')) actors = value;
+      else if (label.includes('длительн')) duration = value;
+      else if (label.includes('слоган')) slogan = value;
+      else if (label.includes('премьер')) premiere = value;
+    });
 
     // Извлекаем числовой ID новости для селекторов
     const numIdMatch = String(idOrUrl).match(/(\d+)/);
@@ -250,8 +313,6 @@ export async function getFanFilmDetails(idOrUrl) {
       });
     }
 
-
-
     // Кадры из фильма
     const frames = [];
     $('.pmovie__shots img, .screenshots img').each((_, el) => {
@@ -269,6 +330,16 @@ export async function getFanFilmDetails(idOrUrl) {
       original_title: originalTitle,
       poster,
       description,
+      year: year || '2026',
+      rating: rating || 8.0,
+      genres,
+      countries,
+      director,
+      actors,
+      duration,
+      slogan,
+      is4K: true,
+      quality: '4K Ultra HD',
       kp_id: kpId,
       likes,
       dislikes,
