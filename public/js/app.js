@@ -41,6 +41,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   initPwaServiceWorker();
   initViewModes();
   initTabs();
+  initBottomNav();
+  initFilterSheet();
+  initCardActionSheet();
   initSearch();
   initFilterDropdowns();
   initModals();
@@ -181,7 +184,460 @@ export function switchTab(tab) {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
 
+  // Синхронизация нижней панели навигации (Emby & Plex Dock)
+  document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
+    const bTab = b.dataset.bottomTab;
+    let isActive = false;
+    if (tab === 'home' && bTab === 'home') isActive = true;
+    else if (['new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series'].includes(tab) && bTab === 'catalog') isActive = true;
+    else if (tab === 'bookmarks' && bTab === 'bookmarks') isActive = true;
+    b.classList.toggle('active', isActive);
+  });
+
   loadCurrentTab();
+}
+
+if (typeof window !== 'undefined') {
+  window.switchTab = switchTab;
+  window.resetAllFilters = resetAllFilters;
+}
+
+function initBottomNav() {
+  document.querySelectorAll('.storm-bottom-nav-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tab = btn.dataset.bottomTab;
+      if (tab === 'home') {
+        switchTab('home');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (tab === 'catalog') {
+        if (currentTab === 'home' || currentTab === 'bookmarks') {
+          switchTab('movies');
+        } else {
+          const filterBtn = document.getElementById('mobile-filter-sheet-trigger');
+          if (filterBtn) filterBtn.click();
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (tab === 'search') {
+        const searchInput = document.getElementById('global-search-input');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      } else if (tab === 'bookmarks') {
+        switchTab('bookmarks');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (tab === 'more') {
+        const drawer = document.getElementById('mobile-drawer');
+        if (drawer) {
+          drawer.classList.add('is-open');
+        }
+      }
+    });
+  });
+}
+
+// -------------------------------------------------------------
+// МОБИЛЬНАЯ ШТОРКА ФИЛЬТРОВ И СОРТИРОВКИ (FILTER BOTTOM SHEET)
+// -------------------------------------------------------------
+let currentFilterSheetSort = 'popular';
+let currentFilterSheetRating = 0;
+let currentFilterSheetYear = 'all';
+let currentFilterSheetGenre = 'all';
+let currentFilterSheetSource = 'all';
+
+function initFilterSheet() {
+  const trigger = document.getElementById('mobile-filter-sheet-trigger');
+  const modal = document.getElementById('filter-sheet-modal');
+  const closeBtn = document.getElementById('filter-sheet-close-btn');
+  const resetBtn = document.getElementById('filter-sheet-reset-btn');
+  const applyBtn = document.getElementById('filter-sheet-apply-btn');
+
+  if (!modal) return;
+
+  if (trigger) {
+    trigger.addEventListener('click', () => {
+      openFilterSheet();
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      closeFilterSheet();
+    });
+  }
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeFilterSheet();
+    }
+  });
+
+  // Обработка чипов сортировки
+  const sortContainer = document.getElementById('filter-sheet-sorts');
+  if (sortContainer) {
+    sortContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        sortContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        currentFilterSheetSort = chip.dataset.sort || 'popular';
+      });
+    });
+  }
+
+  // Обработка чипов рейтинга
+  const ratingContainer = document.getElementById('filter-sheet-ratings');
+  if (ratingContainer) {
+    ratingContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        ratingContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        currentFilterSheetRating = parseFloat(chip.dataset.rating) || 0;
+      });
+    });
+  }
+
+  // Обработка чипов года
+  const yearContainer = document.getElementById('filter-sheet-years');
+  if (yearContainer) {
+    yearContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        yearContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        currentFilterSheetYear = chip.dataset.year || 'all';
+      });
+    });
+  }
+
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      currentSort = currentFilterSheetSort;
+      currentRating = currentFilterSheetRating;
+      currentYear = currentFilterSheetYear;
+      currentGenre = currentFilterSheetGenre;
+      if (currentFilterSheetSource !== 'all') {
+        currentSource = currentFilterSheetSource;
+      }
+      
+      syncDesktopFilterLabels();
+      updateFilterBadge();
+      closeFilterSheet();
+      renderFilteredCatalog();
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      resetAllFilters();
+      closeFilterSheet();
+    });
+  }
+}
+
+function openFilterSheet() {
+  const modal = document.getElementById('filter-sheet-modal');
+  if (!modal) return;
+  populateFilterSheet();
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => {
+    modal.classList.add('is-open');
+  });
+}
+
+function closeFilterSheet() {
+  const modal = document.getElementById('filter-sheet-modal');
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.style.display = 'none';
+}
+
+function populateFilterSheet() {
+  currentFilterSheetSort = currentSort;
+  currentFilterSheetRating = currentRating;
+  currentFilterSheetYear = currentYear;
+  currentFilterSheetGenre = currentGenre;
+  currentFilterSheetSource = currentSource;
+
+  const sortContainer = document.getElementById('filter-sheet-sorts');
+  if (sortContainer) {
+    sortContainer.querySelectorAll('.filter-chip').forEach(c => {
+      c.classList.toggle('is-active', (c.dataset.sort || 'popular') === currentSort);
+    });
+  }
+
+  const ratingContainer = document.getElementById('filter-sheet-ratings');
+  if (ratingContainer) {
+    ratingContainer.querySelectorAll('.filter-chip').forEach(c => {
+      const r = parseFloat(c.dataset.rating) || 0;
+      c.classList.toggle('is-active', r === currentRating);
+    });
+  }
+
+  const yearContainer = document.getElementById('filter-sheet-years');
+  if (yearContainer) {
+    yearContainer.querySelectorAll('.filter-chip').forEach(c => {
+      c.classList.toggle('is-active', (c.dataset.year || 'all') === currentYear);
+    });
+  }
+
+  const sourcesContainer = document.getElementById('filter-sheet-sources');
+  if (sourcesContainer) {
+    const sources = [
+      { id: 'all', label: 'Все источники' },
+      { id: 'fanfilm4k', label: 'FanFilm4K' },
+      { id: 'anixart', label: 'AniXart' },
+      { id: 'shikimori', label: 'Shikimori' },
+      { id: 'collaps', label: 'Collaps' },
+      { id: 'alloha', label: 'Alloha' }
+    ];
+    sourcesContainer.innerHTML = sources.map(s => `
+      <button type="button" class="filter-chip ${currentFilterSheetSource === s.id ? 'is-active' : ''}" data-source="${s.id}">${s.label}</button>
+    `).join('');
+    sourcesContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        sourcesContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        currentFilterSheetSource = chip.dataset.source || 'all';
+      });
+    });
+  }
+
+  const genresContainer = document.getElementById('filter-sheet-genres');
+  if (genresContainer && rawCatalogItems && rawCatalogItems.length > 0) {
+    const genreCounts = new Map();
+    rawCatalogItems.forEach(item => {
+      if (Array.isArray(item.genres)) {
+        item.genres.forEach(g => {
+          if (typeof g === 'string') {
+            const name = g.trim();
+            if (name) genreCounts.set(name, (genreCounts.get(name) || 0) + 1);
+          }
+        });
+      } else if (typeof item.genres === 'string') {
+        item.genres.split(/[,/]/).forEach(g => {
+          const name = g.trim();
+          if (name) genreCounts.set(name, (genreCounts.get(name) || 0) + 1);
+        });
+      }
+    });
+
+    const topGenres = Array.from(genreCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 18)
+      .map(([name]) => name);
+
+    genresContainer.innerHTML = [
+      `<button type="button" class="filter-chip ${currentGenre === 'all' ? 'is-active' : ''}" data-genre="all">Все жанры</button>`,
+      ...topGenres.map(g => `
+        <button type="button" class="filter-chip ${currentGenre.toLowerCase() === g.toLowerCase() ? 'is-active' : ''}" data-genre="${g.toLowerCase()}">${g.charAt(0).toUpperCase() + g.slice(1)}</button>
+      `)
+    ].join('');
+
+    genresContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        genresContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        currentFilterSheetGenre = chip.dataset.genre || 'all';
+      });
+    });
+  }
+}
+
+function syncDesktopFilterLabels() {
+  const genreLabel = document.getElementById('filter-genre-label');
+  if (genreLabel) {
+    genreLabel.textContent = currentGenre === 'all' ? t('filter_genre_all') : currentGenre.charAt(0).toUpperCase() + currentGenre.slice(1);
+  }
+  const yearLabel = document.getElementById('filter-year-label');
+  if (yearLabel) {
+    yearLabel.textContent = currentYear === 'all' ? t('filter_year_all') : currentYear;
+  }
+  const ratingLabel = document.getElementById('filter-rating-label');
+  if (ratingLabel) {
+    ratingLabel.textContent = currentRating > 0 ? `★ ${currentRating}+` : t('filter_rating_all');
+  }
+  const sortLabel = document.getElementById('filter-sort-label');
+  if (sortLabel) {
+    const sortMap = {
+      popular: t('sort_popular'),
+      newest: t('sort_newest'),
+      rating: t('sort_rating'),
+      title: t('sort_title')
+    };
+    sortLabel.textContent = sortMap[currentSort] || t('sort_popular');
+  }
+
+  // Обновляем визуальный активный класс в выпадающих списках десктопа
+  document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === currentGenre);
+  });
+  document.querySelectorAll('#filter-year-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === currentYear);
+  });
+  document.querySelectorAll('#filter-rating-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === String(currentRating));
+  });
+  document.querySelectorAll('#filter-sort-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === currentSort);
+  });
+}
+
+function updateFilterBadge() {
+  const badge = document.getElementById('mobile-filter-count');
+  if (!badge) return;
+  let count = 0;
+  if (currentGenre !== 'all') count++;
+  if (currentCountry !== 'all') count++;
+  if (currentYear !== 'all') count++;
+  if (currentRating > 0) count++;
+  if (currentSort !== 'popular') count++;
+
+  if (count > 0) {
+    badge.textContent = String(count);
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// -------------------------------------------------------------
+// КОНТЕКСТНОЕ МЕНЮ КАРТОЧКИ (CARD ACTION SHEET)
+// -------------------------------------------------------------
+let currentActionItem = null;
+
+function initCardActionSheet() {
+  const modal = document.getElementById('card-action-sheet-modal');
+  const closeBtn = document.getElementById('action-sheet-close-btn');
+  const playBtn = document.getElementById('action-sheet-play-btn');
+  const statusBtn = document.getElementById('action-sheet-status-btn');
+  const roomBtn = document.getElementById('action-sheet-room-btn');
+  const offlineBtn = document.getElementById('action-sheet-offline-btn');
+
+  if (!modal) return;
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => closeCardActionSheet());
+  }
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeCardActionSheet();
+  });
+
+  if (playBtn) {
+    playBtn.addEventListener('click', () => {
+      if (currentActionItem) {
+        closeCardActionSheet();
+        openPlayerModal(currentActionItem);
+      }
+    });
+  }
+
+  if (statusBtn) {
+    statusBtn.addEventListener('click', async () => {
+      if (currentActionItem) {
+        const nextStatus = currentActionItem.user_status === 'watching' ? 'completed' :
+                           currentActionItem.user_status === 'completed' ? 'favorite' :
+                           currentActionItem.user_status === 'favorite' ? 'plan' : 'watching';
+        currentActionItem.user_status = nextStatus;
+        await saveBookmarkStatus(currentActionItem, nextStatus);
+        showActionSheetToast(`Статус изменён: ${getStatusLabel(nextStatus)}`);
+        closeCardActionSheet();
+        renderFilteredCatalog();
+      }
+    });
+  }
+
+  if (roomBtn) {
+    roomBtn.addEventListener('click', async () => {
+      if (currentActionItem) {
+        closeCardActionSheet();
+        await createWatchRoom(currentActionItem);
+      }
+    });
+  }
+
+  if (offlineBtn) {
+    offlineBtn.addEventListener('click', () => {
+      if (currentActionItem) {
+        closeCardActionSheet();
+        showActionSheetToast('Загрузка в кеш для офлайн-просмотра начата');
+      }
+    });
+  }
+}
+
+function openCardActionSheet(item) {
+  currentActionItem = item;
+  const modal = document.getElementById('card-action-sheet-modal');
+  if (!modal || !item) return;
+
+  const posterImg = document.getElementById('action-sheet-poster');
+  const titleEl = document.getElementById('action-sheet-title');
+  const subEl = document.getElementById('action-sheet-sub');
+
+  const formattedTitle = formatMediaTitle(item);
+  const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+
+  if (posterImg) {
+    posterImg.src = item.poster || 'assets/favicon.svg';
+    posterImg.alt = formattedTitle;
+  }
+  if (titleEl) {
+    titleEl.textContent = formattedTitle;
+  }
+  if (subEl) {
+    const metaParts = [
+      item.year || '',
+      isReal4K ? '4K UHD' : '',
+      item.rating ? `★ ${item.rating}` : '',
+      getSourceName(item)
+    ].filter(Boolean);
+    subEl.textContent = metaParts.join(' • ');
+  }
+
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => {
+    modal.classList.add('is-open');
+  });
+}
+
+function closeCardActionSheet() {
+  const modal = document.getElementById('card-action-sheet-modal');
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.style.display = 'none';
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeFilterSheet();
+    closeCardActionSheet();
+  }
+});
+
+function showActionSheetToast(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'storm-action-toast';
+  toast.style.position = 'fixed';
+  toast.style.bottom = '80px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.background = 'var(--bg-secondary)';
+  toast.style.color = 'var(--text-primary)';
+  toast.style.border = '1px solid var(--accent)';
+  toast.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
+  toast.style.borderRadius = '10px';
+  toast.style.padding = '10px 18px';
+  toast.style.zIndex = '9999';
+  toast.style.fontSize = '13.5px';
+  toast.style.fontWeight = '600';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.3s ease';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 2200);
 }
 
 const clientTabCache = new Map();
@@ -419,6 +875,322 @@ function deduplicateMediaList(items) {
 }
 
 // -------------------------------------------------------------
+// ВИТРИНА HERO SHOWCASE (EMBY & PLEX КИНЕМАТОГРАФИЧНЫЙ БАННЕР)
+// -------------------------------------------------------------
+function renderHeroShowcase(item) {
+  const container = document.getElementById('hero-showcase-container');
+  if (!container) return;
+
+  if (!item) {
+    container.style.display = 'none';
+    return;
+  }
+
+  const formattedTitle = formatMediaTitle(item);
+  const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+  const backdrop = item.backdrop || item.backdrop_path || item.poster || 'assets/favicon.svg';
+
+  let genres = [];
+  if (Array.isArray(item.genres)) genres = item.genres;
+  else if (typeof item.genres === 'string') genres = item.genres.split(/[,/]/).map(g => g.trim()).filter(Boolean);
+
+  const genresHtml = genres.slice(0, 3).map(g => `<span class="hero-genre-pill">${g}</span>`).join('');
+
+  container.innerHTML = `
+    <div class="hero-showcase" style="background-image: url('${backdrop}');">
+      <div class="hero-showcase-overlay"></div>
+      <div class="hero-showcase-content">
+        <div class="hero-badges-row">
+          ${isReal4K ? '<span class="hero-badge-tag hero-badge-4k">4K UHD</span>' : ''}
+          ${item.rating ? `<span class="hero-badge-tag hero-badge-rating">★ ${item.rating}</span>` : ''}
+          <span class="hero-badge-tag" style="background:var(--bg-tertiary);color:var(--text-secondary);">${getSourceName(item)}</span>
+        </div>
+        <h1 class="hero-title">${formattedTitle}</h1>
+        <div class="hero-meta-row">
+          <span>${item.year || '2026'}</span>
+          ${genresHtml ? `<span>•</span><div class="hero-genres-chips">${genresHtml}</div>` : ''}
+        </div>
+        <p class="hero-desc">${item.description || 'Высочайшее качество видео и звука в формате 4K Ultra HD. Смотрите онлайн в любое удобное время на STORM MULTIMEDIA.'}</p>
+        <div class="hero-actions">
+          <button type="button" class="storm-btn storm-btn-primary hero-btn-play" id="hero-watch-btn">
+            <span>▶</span>
+            <span data-i18n="hero_watch_now">${t('hero_watch_now')}</span>
+          </button>
+          <button type="button" class="hero-btn-bookmark" id="hero-bookmark-btn">
+            <span>🔖</span>
+            <span data-i18n="hero_add_bookmark">${t('hero_add_bookmark')}</span>
+          </button>
+          <button type="button" class="hero-btn-trailer" id="hero-trailer-btn">
+            <span>👥</span>
+            <span data-i18n="card_menu_watch_together">${t('card_menu_watch_together')}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  container.style.display = 'block';
+
+  const watchBtn = document.getElementById('hero-watch-btn');
+  if (watchBtn) watchBtn.onclick = () => openPlayerModal(item);
+
+  const bookmarkBtn = document.getElementById('hero-bookmark-btn');
+  if (bookmarkBtn) {
+    bookmarkBtn.onclick = async () => {
+      const nextStatus = item.user_status === 'favorite' ? 'plan' : 'favorite';
+      item.user_status = nextStatus;
+      await saveBookmarkStatus(item, nextStatus);
+      showActionSheetToast(`Добавлено в закладки: ${getStatusLabel(nextStatus)}`);
+    };
+  }
+
+  const trailerBtn = document.getElementById('hero-trailer-btn');
+  if (trailerBtn) trailerBtn.onclick = () => createWatchRoom(item);
+}
+
+// -------------------------------------------------------------
+// ГОРИЗОНТАЛЬНЫЕ КАРУСЕЛИ РЕЙЛОВ (EMBY & PLEX HOME VIEW)
+// -------------------------------------------------------------
+function createRailCardHtml(item, idx, isWide = false) {
+  const poster = item.poster || 'assets/favicon.svg';
+  const formattedTitle = formatMediaTitle(item);
+  const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+
+  return `
+    <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
+      <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
+        <div class="media-card-poster">
+          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          <div class="media-card-badges">
+            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${getSourceBadge(item)}
+          </div>
+          ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
+          ${item.user_status ? getStatusBadge(item.user_status) : ''}
+          <button type="button" class="media-card-menu-btn" title="Опции">⋮</button>
+          <div class="media-card-overlay">
+            <div class="media-play-icon">▶</div>
+          </div>
+          ${item.progress_percent > 0 ? `
+            <div class="media-card-progress storm-progress-container">
+              <div class="storm-progress-bar" style="width: ${item.progress_percent}%"></div>
+            </div>
+          ` : ''}
+        </div>
+        <div class="media-card-content">
+          <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
+          <div class="media-card-meta">
+            <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' || item.source === 'anilibria' ? 'Аниме' : 'Фильм')}</span>
+            ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHomeView(items) {
+  const container = document.getElementById('media-render-container');
+  if (!container) return;
+
+  hideCardHoverPreview();
+  clearTimeout(hoverPreviewTimer);
+  clearTimeout(hoverCloseTimer);
+
+  items = deduplicateMediaList(items);
+
+  // Витринный фильм для баннера Hero Showcase
+  const featured = items.find(i => (i.is4K || (i.quality && i.quality.includes('4K'))) && i.rating && parseFloat(i.rating) >= 7.5) || items[0];
+  renderHeroShowcase(featured);
+
+  // Рейл 1: Продолжить просмотр
+  const continueItems = items.filter(i => (i.progress_percent > 0 || i.user_status === 'watching')).slice(0, 10);
+
+  // Рейл 2: Горячие премьеры 2026/2025
+  const trendingItems = items.filter(i => {
+    const yr = parseInt(i.year, 10);
+    return yr >= 2025;
+  }).slice(0, 16);
+
+  // Рейл 3: Популярные фильмы
+  const movieItems = items.filter(i => {
+    if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
+    if (i.category === 'series' || i.type === 'series' || i.seasons) return false;
+    return true;
+  }).slice(0, 16);
+
+  // Рейл 4: Лучшие сериалы
+  const seriesItems = items.filter(i => {
+    if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
+    return (i.category === 'series' || i.type === 'series' || i.seasons);
+  }).slice(0, 16);
+
+  // Рейл 5: Топ аниме
+  const animeItems = items.filter(i => {
+    return i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria' ||
+           (typeof i.genres === 'string' && i.genres.toLowerCase().includes('аниме')) ||
+           (Array.isArray(i.genres) && i.genres.some(g => String(g).toLowerCase().includes('аниме')));
+  }).slice(0, 16);
+
+  // Рейл 6: Шедевры с высоким рейтингом
+  const topRatedItems = [...items].sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0)).slice(0, 16);
+
+  const rails = [];
+
+  if (continueItems.length > 0) {
+    rails.push({
+      id: 'rail-continue',
+      icon: '⏱️',
+      title: t('rail_continue_watching'),
+      category: 'bookmarks',
+      isWide: true,
+      items: continueItems
+    });
+  }
+
+  if (trendingItems.length > 0) {
+    rails.push({
+      id: 'rail-trending',
+      icon: '🔥',
+      title: t('rail_trending'),
+      category: 'new',
+      isWide: false,
+      items: trendingItems
+    });
+  }
+
+  if (movieItems.length > 0) {
+    rails.push({
+      id: 'rail-movies',
+      icon: '🎬',
+      title: t('rail_movies'),
+      category: 'movies',
+      isWide: false,
+      items: movieItems
+    });
+  }
+
+  if (seriesItems.length > 0) {
+    rails.push({
+      id: 'rail-series',
+      icon: '📺',
+      title: t('rail_series'),
+      category: 'series',
+      isWide: false,
+      items: seriesItems
+    });
+  }
+
+  if (animeItems.length > 0) {
+    rails.push({
+      id: 'rail-anime',
+      icon: '⛩️',
+      title: t('rail_anime'),
+      category: 'anime-series',
+      isWide: false,
+      items: animeItems
+    });
+  }
+
+  if (topRatedItems.length > 0) {
+    rails.push({
+      id: 'rail-top-rated',
+      icon: '⭐',
+      title: 'Шедевры мирового кино',
+      category: 'movies',
+      isWide: false,
+      items: topRatedItems
+    });
+  }
+
+  container.innerHTML = `
+    <div class="storm-rails-container">
+      ${rails.map(rail => `
+        <section class="storm-media-rail" data-rail="${rail.id}">
+          <div class="rail-header">
+            <div class="rail-title-wrap">
+              <span class="rail-icon">${rail.icon}</span>
+              <h3 class="rail-title">${rail.title}</h3>
+            </div>
+            <button type="button" class="rail-see-all-btn" data-category="${rail.category}">${t('rail_see_all')} →</button>
+          </div>
+          <div class="rail-carousel-wrap">
+            <button type="button" class="rail-nav-btn rail-nav-prev" aria-label="Назад">❮</button>
+            <div class="rail-carousel">
+              ${rail.items.map((item, idx) => createRailCardHtml(item, idx, rail.isWide)).join('')}
+            </div>
+            <button type="button" class="rail-nav-btn rail-nav-next" aria-label="Вперёд">❯</button>
+          </div>
+        </section>
+      `).join('')}
+    </div>
+  `;
+
+  // Подключение обработчиков для каждого рейла
+  container.querySelectorAll('.storm-media-rail').forEach((railEl, rIdx) => {
+    const railData = rails[rIdx];
+    if (!railData) return;
+
+    // Кнопка перехода ко всей категории
+    const seeAllBtn = railEl.querySelector('.rail-see-all-btn');
+    if (seeAllBtn) {
+      seeAllBtn.onclick = () => {
+        switchTab(railData.category);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+    }
+
+    // Стрелки прокрутки на десктопе
+    const carousel = railEl.querySelector('.rail-carousel');
+    const prevBtn = railEl.querySelector('.rail-nav-prev');
+    const nextBtn = railEl.querySelector('.rail-nav-next');
+
+    if (carousel && prevBtn && nextBtn) {
+      prevBtn.onclick = () => {
+        carousel.scrollBy({ left: -500, behavior: 'smooth' });
+      };
+      nextBtn.onclick = () => {
+        carousel.scrollBy({ left: 500, behavior: 'smooth' });
+      };
+    }
+
+    // Карточки внутри рейла
+    railEl.querySelectorAll('.media-card').forEach((card, cIdx) => {
+      const item = railData.items[cIdx];
+      if (!item) return;
+
+      card.onclick = () => openPlayerModal(item);
+
+      const menuBtn = card.querySelector('.media-card-menu-btn');
+      if (menuBtn) {
+        menuBtn.onclick = (e) => {
+          e.stopPropagation();
+          openCardActionSheet(item);
+        };
+      }
+
+      // Видеопревью при наведении курсора на десктопе
+      card.onmouseenter = () => {
+        clearTimeout(hoverCloseTimer);
+        clearTimeout(hoverPreviewTimer);
+        hoverPreviewTimer = setTimeout(() => {
+          if (card.matches(':hover') && card.isConnected) {
+            showCardHoverPreview(card, item);
+          }
+        }, 2000);
+      };
+
+      card.onmouseleave = () => {
+        clearTimeout(hoverPreviewTimer);
+        hoverCloseTimer = setTimeout(() => {
+          hideCardHoverPreview();
+        }, 280);
+      };
+    });
+  });
+}
+
+// -------------------------------------------------------------
 // РЕНДЕРИНГ ЭЛЕМЕНТОВ В 4 РЕЖИМАХ ОТОБРАЖЕНИЯ
 // -------------------------------------------------------------
 function renderMediaItems(items) {
@@ -460,7 +1232,7 @@ function renderMediaItems(items) {
 
   // 1 и 2. Сетка и компактная сетка
   if (currentViewMode === 'grid' || currentViewMode === 'compact-grid') {
-    container.innerHTML = items.map(item => {
+    container.innerHTML = items.map((item, idx) => {
       const poster = item.poster || 'assets/favicon.svg';
       const formattedTitle = formatMediaTitle(item);
       const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
@@ -475,6 +1247,7 @@ function renderMediaItems(items) {
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? getStatusBadge(item.user_status) : ''}
+          <button type="button" class="media-card-menu-btn" title="Опции" data-idx="${idx}">⋮</button>
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
@@ -497,6 +1270,14 @@ function renderMediaItems(items) {
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
+
+      const menuBtn = card.querySelector('.media-card-menu-btn');
+      if (menuBtn) {
+        menuBtn.onclick = (e) => {
+          e.stopPropagation();
+          openCardActionSheet(items[idx]);
+        };
+      }
 
       // Видеопревью при наведении курсора (Video Hover Preview) с задержкой 2 секунды
       card.onmouseenter = () => {
@@ -560,7 +1341,10 @@ function renderMediaItems(items) {
           ` : ''}
           <div class="media-detailed-footer">
             <span style="font-size:12px;color:var(--text-muted);">${item.year || ''} • ${sourceName}</span>
-            <button class="storm-btn storm-btn-primary storm-btn-sm play-btn">▶ Смотреть</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm play-btn">▶ Смотреть</button>
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm card-options-btn" title="Опции">⋮</button>
+            </div>
           </div>
         </div>
       </div>
@@ -569,6 +1353,13 @@ function renderMediaItems(items) {
 
     container.querySelectorAll('.media-detailed-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
+      const optBtn = card.querySelector('.card-options-btn');
+      if (optBtn) {
+        optBtn.onclick = (e) => {
+          e.stopPropagation();
+          openCardActionSheet(items[idx]);
+        };
+      }
     });
     return;
   }
@@ -609,7 +1400,10 @@ function renderMediaItems(items) {
                   </div>
                 ` : '<span style="color:var(--text-muted);font-size:11px;">0%</span>'}
               </td>
-              <td class="td-center"><button class="storm-btn storm-btn-primary storm-btn-sm">▶ Плеер</button></td>
+              <td class="td-center">
+                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm table-play-btn">▶ Плеер</button>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm table-opt-btn" title="Опции" style="margin-left:4px;">⋮</button>
+              </td>
             </tr>
           `;
           }).join('')}
@@ -619,6 +1413,13 @@ function renderMediaItems(items) {
 
     container.querySelectorAll('tbody tr').forEach((row, idx) => {
       row.onclick = () => openPlayerModal(items[idx]);
+      const optBtn = row.querySelector('.table-opt-btn');
+      if (optBtn) {
+        optBtn.onclick = (e) => {
+          e.stopPropagation();
+          openCardActionSheet(items[idx]);
+        };
+      }
     });
   }
 }
@@ -1142,6 +1943,11 @@ export function resetAllFilters() {
   currentRating = 0;
   currentStatusFilter = 'all';
   currentSort = 'popular';
+  currentFilterSheetGenre = 'all';
+  currentFilterSheetYear = 'all';
+  currentFilterSheetRating = 0;
+  currentFilterSheetSort = 'popular';
+  currentFilterSheetSource = 'all';
 
   const genreLabel = document.getElementById('filter-genre-label');
   if (genreLabel) genreLabel.textContent = 'Все жанры';
@@ -1177,6 +1983,7 @@ export function resetAllFilters() {
     el.classList.toggle('is-active', el.dataset.value === 'popular');
   });
 
+  updateFilterBadge();
   renderFilteredCatalog();
 }
 
@@ -1186,6 +1993,7 @@ export function renderFilteredCatalog() {
   if (resetBtn) {
     resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
   }
+  updateFilterBadge();
 
   let items = [...rawCatalogItems];
 
@@ -1307,7 +2115,16 @@ export function renderFilteredCatalog() {
   }
 
   currentItems = items;
-  renderMediaItems(currentItems);
+
+  const heroContainer = document.getElementById('hero-showcase-container');
+
+  // Если мы на вкладке Главная и нет фильтрации/поиска - отображаем кинематографичный вид Emby/Plex
+  if (currentTab === 'home' && !isFiltered && (!searchQuery || !searchQuery.trim())) {
+    renderHomeView(currentItems);
+  } else {
+    if (heroContainer) heroContainer.style.display = 'none';
+    renderMediaItems(currentItems);
+  }
 }
 
 export async function applyGenreFilter(genre) {

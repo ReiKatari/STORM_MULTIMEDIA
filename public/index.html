@@ -217,6 +217,13 @@
       <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="reset-filters-btn" style="display: none; padding: 8px 12px;" title="Сбросить все фильтры и сортировку">
         <span>✕ Сброс</span>
       </button>
+
+      <!-- Мобильная кнопка вызова шторки фильтров (Filter Bottom Sheet) -->
+      <button type="button" class="storm-btn storm-btn-secondary mobile-filter-sheet-trigger" id="mobile-filter-sheet-trigger" title="Фильтры и сортировка">
+        <span>⚡</span>
+        <span data-i18n="filters_toggle">Фильтры</span>
+        <span class="filter-count-badge" id="mobile-filter-count" style="display: none;">0</span>
+      </button>
     </div>
 
     <div class="storm-toolbar-right">
@@ -233,6 +240,9 @@
 
   <!-- Основной динамический контейнер медиа-каталога -->
   <main class="storm-main-container">
+    <!-- Hero Showcase: Кинематографичная витрина топового релиза (Emby и Plex) -->
+    <div id="hero-showcase-container" class="hero-showcase-container" style="display: none;"></div>
+
     <div class="media-container view-grid" id="media-render-container">
       <div style="grid-column: 1 / -1; text-align: center; padding: 100px 20px; color: var(--text-muted);">
         <div style="font-size: 38px; margin-bottom: 16px; animation: spin 1.5s linear infinite;">⏳</div>
@@ -252,30 +262,6 @@
       </div>
     </div>
   </footer>
-
-  <!-- Мобильная нижняя панель навигации (Bottom Bar) -->
-  <div class="storm-mobile-bottom-bar">
-    <button class="storm-mobile-nav-item active" data-tab="home">
-      <span>🏠</span>
-      <span data-i18n="tab_home">Главная</span>
-    </button>
-    <button class="storm-mobile-nav-item" data-tab="movies">
-      <span>🎬</span>
-      <span data-i18n="tab_movies">Фильмы</span>
-    </button>
-    <button class="storm-mobile-nav-item" data-tab="series">
-      <span>📺</span>
-      <span data-i18n="tab_series">Сериалы</span>
-    </button>
-    <button class="storm-mobile-nav-item" data-tab="anime-series">
-      <span>⛩️</span>
-      <span>Аниме</span>
-    </button>
-    <button class="storm-mobile-nav-item" data-tab="bookmarks">
-      <span>🔖</span>
-      <span data-i18n="mobile_tab_bookmarks">Закладки</span>
-    </button>
-  </div>
 
   <!-- =============================================================
        МОДАЛЬНЫЕ ОКНА
@@ -879,6 +865,143 @@
             </select>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Мобильная нижняя панель навигации (Emby и Plex Bottom Navigation Dock) -->
+  <nav class="storm-bottom-nav" id="storm-bottom-nav">
+    <button type="button" class="storm-bottom-nav-item active" data-bottom-tab="home" id="bnav-home">
+      <span class="storm-bottom-nav-icon">🏠</span>
+      <span class="storm-bottom-nav-label" data-i18n="bottom_nav_home">Главная</span>
+    </button>
+    <button type="button" class="storm-bottom-nav-item" data-bottom-tab="catalog" id="bnav-catalog">
+      <span class="storm-bottom-nav-icon">🎬</span>
+      <span class="storm-bottom-nav-label" data-i18n="bottom_nav_catalog">Каталог</span>
+    </button>
+    <button type="button" class="storm-bottom-nav-item" data-bottom-tab="search" id="bnav-search">
+      <span class="storm-bottom-nav-icon">🔍</span>
+      <span class="storm-bottom-nav-label" data-i18n="bottom_nav_search">Поиск</span>
+    </button>
+    <button type="button" class="storm-bottom-nav-item" data-bottom-tab="bookmarks" id="bnav-bookmarks">
+      <span class="storm-bottom-nav-icon">📑</span>
+      <span class="storm-bottom-nav-label" data-i18n="bottom_nav_bookmarks">Закладки</span>
+    </button>
+    <button type="button" class="storm-bottom-nav-item" data-bottom-tab="more" id="bnav-more">
+      <span class="storm-bottom-nav-icon">⚙️</span>
+      <span class="storm-bottom-nav-label" data-i18n="bottom_nav_more">Ещё</span>
+    </button>
+  </nav>
+
+  <!-- Мобильная шторка фильтров и сортировки (Filter Bottom Sheet) -->
+  <div class="storm-modal-backdrop filter-sheet-backdrop" id="filter-sheet-modal" style="display: none;">
+    <div class="filter-sheet-container">
+      <div class="filter-sheet-header">
+        <div class="filter-sheet-drag-handle"></div>
+        <div class="filter-sheet-title-row">
+          <h3 class="filter-sheet-title" data-i18n="filter_sheet_title">Фильтры и сортировка</h3>
+          <button type="button" class="storm-modal-close" id="filter-sheet-close-btn">✕</button>
+        </div>
+      </div>
+      <div class="filter-sheet-body">
+        <!-- Блок Источники -->
+        <div class="filter-sheet-section">
+          <div class="filter-sheet-section-title">🌐 Источник медиа</div>
+          <div class="filter-chips-grid" id="filter-sheet-sources"></div>
+        </div>
+
+        <!-- Блок Сортировка -->
+        <div class="filter-sheet-section">
+          <div class="filter-sheet-section-title">⚡ Сортировка</div>
+          <div class="filter-chips-grid" id="filter-sheet-sorts">
+            <button type="button" class="filter-chip is-active" data-sort="popular">По популярности</button>
+            <button type="button" class="filter-chip" data-sort="rating">По рейтингу</button>
+            <button type="button" class="filter-chip" data-sort="newest">По дате</button>
+            <button type="button" class="filter-chip" data-sort="title">По названию</button>
+          </div>
+        </div>
+
+        <!-- Блок Рейтинг -->
+        <div class="filter-sheet-section">
+          <div class="filter-sheet-section-title">★ Минимальный рейтинг</div>
+          <div class="filter-chips-grid" id="filter-sheet-ratings">
+            <button type="button" class="filter-chip is-active" data-rating="0">Любой</button>
+            <button type="button" class="filter-chip" data-rating="6">6.0+</button>
+            <button type="button" class="filter-chip" data-rating="7">7.0+</button>
+            <button type="button" class="filter-chip" data-rating="8">8.0+</button>
+            <button type="button" class="filter-chip" data-rating="9">9.0+</button>
+          </div>
+        </div>
+
+        <!-- Блок Годы -->
+        <div class="filter-sheet-section">
+          <div class="filter-sheet-section-title">📅 Год выпуска</div>
+          <div class="filter-chips-grid" id="filter-sheet-years">
+            <button type="button" class="filter-chip is-active" data-year="all">Все года</button>
+            <button type="button" class="filter-chip" data-year="2026">2026</button>
+            <button type="button" class="filter-chip" data-year="2025">2025</button>
+            <button type="button" class="filter-chip" data-year="2024">2024</button>
+            <button type="button" class="filter-chip" data-year="2020-2023">2020–2023</button>
+            <button type="button" class="filter-chip" data-year="2010-2019">2010–2019</button>
+            <button type="button" class="filter-chip" data-year="2000-2009">2000–2009</button>
+            <button type="button" class="filter-chip" data-year="2000_down">До 2000</button>
+          </div>
+        </div>
+
+        <!-- Блок Жанры -->
+        <div class="filter-sheet-section">
+          <div class="filter-sheet-section-title">🎭 Жанры</div>
+          <div class="filter-chips-grid" id="filter-sheet-genres"></div>
+        </div>
+      </div>
+      <div class="filter-sheet-footer">
+        <button type="button" class="storm-btn storm-btn-secondary" id="filter-sheet-reset-btn" data-i18n="filter_sheet_reset" style="flex:1;">Сбросить всё</button>
+        <button type="button" class="storm-btn storm-btn-primary" id="filter-sheet-apply-btn" data-i18n="filter_sheet_apply" style="flex:2;">Применить фильтры</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Контекстное меню карточки медиа (Card Action Sheet) -->
+  <div class="storm-modal-backdrop action-sheet-backdrop" id="card-action-sheet-modal" style="display: none;">
+    <div class="action-sheet-container">
+      <div class="action-sheet-drag-handle"></div>
+      <div class="action-sheet-media-header" id="action-sheet-media-header">
+        <img src="assets/favicon.svg" alt="Poster" class="action-sheet-poster" id="action-sheet-poster">
+        <div class="action-sheet-info">
+          <div class="action-sheet-title" id="action-sheet-title">Название фильма</div>
+          <div class="action-sheet-sub" id="action-sheet-sub">2026 • 4K UHD • TMDB</div>
+        </div>
+        <button type="button" class="storm-modal-close" id="action-sheet-close-btn" style="position:static; margin-left:auto;">✕</button>
+      </div>
+      <div class="action-sheet-actions">
+        <button type="button" class="action-sheet-btn" id="action-sheet-play-btn">
+          <span class="action-sheet-btn-icon">▶</span>
+          <div class="action-sheet-btn-text">
+            <span class="action-sheet-btn-title" data-i18n="card_menu_play">Смотреть онлайн</span>
+            <span class="action-sheet-btn-desc">Запустить в кинотеатре</span>
+          </div>
+        </button>
+        <button type="button" class="action-sheet-btn" id="action-sheet-status-btn">
+          <span class="action-sheet-btn-icon">📑</span>
+          <div class="action-sheet-btn-text">
+            <span class="action-sheet-btn-title" data-i18n="card_menu_bookmark">Статус закладки</span>
+            <span class="action-sheet-btn-desc">Смотрю, в планах, любимое</span>
+          </div>
+        </button>
+        <button type="button" class="action-sheet-btn" id="action-sheet-room-btn">
+          <span class="action-sheet-btn-icon">👥</span>
+          <div class="action-sheet-btn-text">
+            <span class="action-sheet-btn-title" data-i18n="card_menu_watch_together">Смотреть вместе</span>
+            <span class="action-sheet-btn-desc">Создать кинокомнату для друзей</span>
+          </div>
+        </button>
+        <button type="button" class="action-sheet-btn" id="action-sheet-offline-btn">
+          <span class="action-sheet-btn-icon">📥</span>
+          <div class="action-sheet-btn-text">
+            <span class="action-sheet-btn-title" data-i18n="card_menu_offline">Офлайн-просмотр</span>
+            <span class="action-sheet-btn-desc">Сохранить для просмотра без сети</span>
+          </div>
+        </button>
       </div>
     </div>
   </div>
