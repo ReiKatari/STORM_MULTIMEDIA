@@ -951,6 +951,24 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
+.player-video-box:fullscreen,
+.player-video-box:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.player-video-box:fullscreen .cinema-player-iframe,
+.player-video-box:-webkit-full-screen .cinema-player-iframe {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
 /* Переключатель плееров (опущен вниз, объемные 3D-кнопки) */
 .player-sources-bar {
   display: flex;
