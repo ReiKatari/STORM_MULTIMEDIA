@@ -68,7 +68,7 @@ npm start
 
 После запуска откройте в браузере адрес:
 ```text
-http://localhost:3000
+http://localhost:3900
 ```
 
 ---

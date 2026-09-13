@@ -87,7 +87,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3900;
 
 // Хранилище комнат совместного просмотра в памяти
 const watchRooms = new Map();
