@@ -1,6 +1,6 @@
 /* ==========================================================================
-   STORM MULTIMEDIA - КАЛЕНДАРЬ РЕЛИЗОВ И УВЕДОМЛЕНИЯ О СЕРИЯХ
-   Интерактивное расписание выхода эпизодов по дням недели
+   STORM MULTIMEDIA - КАЛЕНДАРЬ РЕЛИЗОВ И РАСПИСАНИЕ СЕРИЙ
+   Интерактивное расписание выхода эпизодов по дням недели с показом сезонов и серий
    ========================================================================== */
 
 import { showToast } from './auth.js';
@@ -23,15 +23,18 @@ export async function openReleaseCalendarModal() {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'release-calendar-modal';
     modal.innerHTML = `
-      <div class="storm-modal" style="max-width: 900px; width: 95%;">
-        <div class="storm-modal-header">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 20px;">📅</span>
-            <h3 style="margin: 0;">Календарь релизов и расписание серий</h3>
+      <div class="storm-modal release-calendar-modal-dialog">
+        <div class="storm-modal-header" style="justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 24px;">📅</span>
+            <div>
+              <h3 style="margin: 0; font-size: 17px;">Календарь релизов и расписание серий</h3>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Выход новых эпизодов в оригинале и студийном дубляже</div>
+            </div>
           </div>
-          <button type="button" class="storm-modal-close" id="calendar-modal-close-btn">✕</button>
+          <button type="button" class="storm-modal-close" id="calendar-modal-close-btn" title="Закрыть">✕</button>
         </div>
-        <div class="storm-modal-body" id="release-calendar-body"></div>
+        <div class="storm-modal-body" id="release-calendar-body" style="padding: 16px 20px 24px;"></div>
       </div>
     `;
     document.body.appendChild(modal);
@@ -45,17 +48,87 @@ export async function openReleaseCalendarModal() {
   renderCalendarContent(document.getElementById('release-calendar-body'));
 }
 
+// Детерминированное вычисление сезона, серии и времени выхода для каждого тайтла
+function getReleaseEpisodeInfo(item, dayId, currentDayIndex) {
+  const str = `${item.id || ''}_${item.title || ''}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const absHash = Math.abs(hash);
+
+  // Сезон и серия
+  let season = (absHash % 4) + 1;
+  let episode = ((absHash >> 3) % 12) + 1;
+
+  // Проверяем, есть ли сохраненный просмотр в localStorage
+  try {
+    for (let s = 1; s <= 5; s++) {
+      const watched = JSON.parse(localStorage.getItem(`storm_watched_eps_${item.id}_s${s}`) || '[]');
+      if (Array.isArray(watched) && watched.length > 0) {
+        season = s;
+        episode = Math.max(...watched) + 1;
+        break;
+      }
+    }
+  } catch {}
+
+  const isFinal = episode >= 10 && (absHash % 3 === 0);
+  const isPremiere = episode === 1;
+
+  // Время выхода
+  const hours = 17 + (absHash % 5);
+  const minutes = (absHash % 2 === 0) ? '00' : '30';
+  const timeStr = `${hours}:${minutes} МСК`;
+
+  // Статус
+  let statusText = '';
+  let statusClass = 'upcoming';
+
+  if (dayId === currentDayIndex) {
+    statusText = `🔴 Сегодня в ${timeStr}`;
+    statusClass = 'today';
+  } else {
+    // Дни недели: 1=ПН, 2=ВТ, ..., 0=ВС
+    const normalizedDay = dayId === 0 ? 7 : dayId;
+    const normalizedCurrent = currentDayIndex === 0 ? 7 : currentDayIndex;
+
+    if (normalizedDay < normalizedCurrent) {
+      statusText = `✅ Вышла на этой неделе`;
+      statusClass = 'released';
+    } else {
+      statusText = `📅 В ${timeStr}`;
+      statusClass = 'upcoming';
+    }
+  }
+
+  let epLabel = `Сезон ${season}, Серия ${episode}`;
+  if (isPremiere) epLabel += ' (Премьера)';
+  else if (isFinal) epLabel += ' (Финал)';
+
+  return {
+    season,
+    episode,
+    timeStr,
+    statusText,
+    statusClass,
+    epLabel,
+    badgeText: `S${season} • E${episode}`
+  };
+}
+
 async function renderCalendarContent(container) {
   if (!container) return;
 
   const currentDayIndex = new Date().getDay();
 
-  // Загружаем популярные релизы для расписания
+  // Загружаем каталог сериалов
   let scheduleItems = [];
   try {
     const res = await fetch('/api/media/catalog?category=series&page=1&source=all');
     const data = await res.json();
-    scheduleItems = data.items || [];
+    scheduleItems = (data.items || []).filter(it => it.title);
   } catch {
     scheduleItems = [];
   }
@@ -70,70 +143,115 @@ async function renderCalendarContent(container) {
   });
 
   container.innerHTML = `
-    <!-- Переключатель дней недели -->
-    <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px; scrollbar-width: thin;">
-      ${DAYS_OF_WEEK.map(d => `
-        <button type="button" class="storm-btn ${d.id === currentDayIndex ? 'storm-btn-primary' : 'storm-btn-secondary'} storm-btn-sm calendar-day-tab" data-day="${d.id}" style="white-space: nowrap; flex: 1; min-width: 90px; justify-content: center;">
-          ${d.name} ${d.id === currentDayIndex ? '• Сегодня' : ''}
-        </button>
-      `).join('')}
+    <!-- Навигационная панель дней недели без обрезания -->
+    <div class="cal-days-navbar" id="cal-days-navbar">
+      ${DAYS_OF_WEEK.map(d => {
+        const isToday = d.id === currentDayIndex;
+        const count = dayGroups[d.id]?.length || 0;
+        return `
+          <button type="button" class="cal-day-pill ${isToday ? 'active is-today' : ''}" data-day="${d.id}">
+            <div class="cal-day-pill-content">
+              <span class="cal-day-full-name">${d.name}</span>
+              <span class="cal-day-short-name">${d.short}</span>
+              <span class="cal-day-count-badge">${count}</span>
+            </div>
+            ${isToday ? '<span class="cal-day-today-tag">Сегодня</span>' : ''}
+          </button>
+        `;
+      }).join('')}
     </div>
 
-    <div id="calendar-day-items-grid"></div>
+    <!-- Контейнер карточек эпизодов -->
+    <div id="calendar-day-items-grid" class="cal-items-grid"></div>
   `;
 
+  let activeDay = currentDayIndex;
+
   const renderDayItems = (dayId) => {
+    activeDay = dayId;
     const grid = container.querySelector('#calendar-day-items-grid');
     if (!grid) return;
 
     const items = dayGroups[dayId] || [];
     if (items.length === 0) {
-      grid.innerHTML = '<div style="text-align: center; padding: 30px; color: var(--text-muted);">В этот день новых эпизодов не запланировано</div>';
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 48px 20px; color: var(--text-muted);">
+          <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
+          <div style="font-size: 14px; font-weight: 600;">В этот день новых серий не запланировано</div>
+          <div style="font-size: 12px; margin-top: 4px;">Выберите другой день недели для просмотра расписания</div>
+        </div>
+      `;
       return;
     }
 
-    grid.innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;">
-        ${items.map(it => `
-          <div class="storm-card" style="display: flex; gap: 12px; padding: 10px; border-radius: 10px; cursor: pointer;" data-id="${it.id}">
-            <img src="${it.poster || 'assets/favicon.svg'}" style="width: 60px; height: 90px; object-fit: cover; border-radius: 6px;" onerror="this.src='assets/favicon.svg'">
-            <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
-              <div>
-                <div style="font-weight: 700; font-size: 13px; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${it.title}</div>
-                <div style="font-size: 11px; color: var(--accent); margin-bottom: 4px;">Серия выйдет в 19:00 МСК</div>
-                <div style="font-size: 11px; color: var(--text-muted);">${it.year || ''} • ${it.source?.toUpperCase() || 'HD'}</div>
-              </div>
-              <div style="display: flex; gap: 6px; margin-top: 6px;">
-                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm play-cal-btn" style="padding: 4px 8px; font-size: 11px;">▶ Смотреть</button>
-                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm notify-btn" style="padding: 4px 8px; font-size: 11px;" title="Уведомлять о выходе">🔔</button>
+    grid.innerHTML = items.map(it => {
+      const epInfo = getReleaseEpisodeInfo(it, dayId, currentDayIndex);
+      const is4K = Boolean(it.is4K || it.quality?.includes('4K'));
+
+      return `
+        <div class="cal-card storm-card" data-id="${it.id}">
+          <!-- Постер с бейджем серии -->
+          <div class="cal-poster-wrap">
+            <img src="${it.poster || 'assets/favicon.svg'}" class="cal-poster-img" alt="${it.title}" onerror="this.src='assets/favicon.svg'">
+            <span class="cal-poster-ep-badge">${epInfo.badgeText}</span>
+            ${is4K ? '<span class="cal-poster-4k-badge">4K</span>' : ''}
+          </div>
+
+          <!-- Информация об эпизоде -->
+          <div class="cal-info-wrap">
+            <div class="cal-header-zone">
+              <h4 class="cal-card-title" title="${it.title}">${it.title}</h4>
+              <div class="cal-ep-indicator ${epInfo.statusClass}">
+                <span class="cal-ep-name">${epInfo.epLabel}</span>
+                <span class="cal-time-pill">${epInfo.statusText}</span>
               </div>
             </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
 
-    grid.querySelectorAll('.storm-card').forEach((card, idx) => {
+            <div class="cal-meta-row">
+              <span class="cal-meta-chip">${it.year || '2026'}</span>
+              <span class="cal-meta-chip source">${(it.source || 'HD').toUpperCase()}</span>
+              ${it.rating ? `<span class="cal-meta-chip rating">★ ${it.rating}</span>` : ''}
+              <span class="cal-meta-chip quality">${is4K ? '4K UHD' : '1080p FHD'}</span>
+            </div>
+
+            <!-- Кнопки действий -->
+            <div class="cal-actions-row">
+              <button type="button" class="cal-play-btn storm-btn storm-btn-primary storm-btn-sm" data-season="${epInfo.season}" data-episode="${epInfo.episode}">
+                ▶ Смотреть S${epInfo.season}:E${epInfo.episode}
+              </button>
+              <button type="button" class="cal-notify-btn storm-btn storm-btn-secondary storm-btn-sm" title="Напомнить о серии">
+                🔔
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Слушатели кликов по карточкам
+    grid.querySelectorAll('.cal-card').forEach((card, idx) => {
       card.onclick = (e) => {
-        if (e.target.closest('.notify-btn')) {
+        if (e.target.closest('.cal-notify-btn')) {
           e.stopPropagation();
           requestNotificationPermission(items[idx].title);
           return;
         }
+
+        const playBtn = e.target.closest('.cal-play-btn');
+        const s = playBtn ? parseInt(playBtn.dataset.season, 10) : undefined;
+        const ep = playBtn ? parseInt(playBtn.dataset.episode, 10) : undefined;
+
         document.getElementById('release-calendar-modal')?.classList.remove('is-open');
-        openPlayerModal(items[idx]);
+        openPlayerModal(items[idx], { initialSeason: s, initialEpisode: ep });
       };
     });
   };
 
-  container.querySelectorAll('.calendar-day-tab').forEach(btn => {
+  // Переключение дней недели
+  container.querySelectorAll('.cal-day-pill').forEach(btn => {
     btn.onclick = () => {
-      container.querySelectorAll('.calendar-day-tab').forEach(b => {
-        b.classList.remove('storm-btn-primary');
-        b.classList.add('storm-btn-secondary');
-      });
-      btn.classList.add('storm-btn-primary');
-      btn.classList.remove('storm-btn-secondary');
+      container.querySelectorAll('.cal-day-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
       renderDayItems(parseInt(btn.dataset.day, 10));
     };
   });
@@ -150,10 +268,12 @@ function requestNotificationPermission(title) {
   Notification.requestPermission().then(permission => {
     if (permission === 'granted') {
       showToast(`🔔 Вы подписались на уведомления о сериале «${title}»`, 'success');
-      new Notification('STORM MULTIMEDIA', {
-        body: `Вы подписались на уведомления о выходе новых серий: ${title}`,
-        icon: 'assets/favicon.svg'
-      });
+      try {
+        new Notification('STORM MULTIMEDIA', {
+          body: `Вы подписались на уведомления о выходе новых серий: ${title}`,
+          icon: 'assets/favicon.svg'
+        });
+      } catch {}
     } else {
       showToast('Доступ к системным уведомлениям отклонен', 'info');
     }

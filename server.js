@@ -980,7 +980,7 @@ app.get('/api/media/item', async (req, res) => {
       }
     } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
       const cleanTmdbId = String(id || '').replace('tmdb_', '');
-      mediaDetails = await getTmdbItemDetails(cleanTmdbId, req.query.media_type);
+      mediaDetails = await getTmdbItemDetails(cleanTmdbId, req.query.media_type, req.query.title, req.query.year);
 
       if (!mediaDetails) {
         mediaDetails = {
@@ -995,6 +995,31 @@ app.get('/api/media/item', async (req, res) => {
           media_type: req.query.media_type || 'movie',
           players: []
         };
+      }
+
+      if (req.query.fanfilm_4k_url) {
+        mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url;
+        mediaDetails.is4K = true;
+        mediaDetails.quality = '4K Ultra HD';
+      }
+
+      // Если 4K поток еще не прикреплен — выполняем поиск в FanFilm4K для бесшовного 4K воспроизведения
+      if (!mediaDetails.fanfilm_4k_url && mediaDetails.title) {
+        try {
+          const ffResults = await searchFanFilm(mediaDetails.title);
+          if (ffResults && ffResults.length > 0) {
+            const normTitle = mediaDetails.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+            const match = ffResults.find(f => {
+              const fNorm = f.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+              return fNorm === normTitle || fNorm.includes(normTitle) || normTitle.includes(fNorm);
+            }) || ffResults[0];
+            if (match) {
+              mediaDetails.fanfilm_4k_url = match.link || match.url;
+              mediaDetails.is4K = true;
+              mediaDetails.quality = '4K Ultra HD';
+            }
+          }
+        } catch {}
       }
     } else {
       try {
@@ -1113,7 +1138,7 @@ app.get('/api/media/item', async (req, res) => {
       media_type: mediaDetails.media_type,
       genres: mediaDetails.genres,
       source: mediaDetails.source || source,
-      fanfilm_4k_url: mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd')?.url,
+      fanfilm_4k_url: mediaDetails.fanfilm_4k_url || mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url,
       trailer_url: mediaDetails.trailer_url,
       is_upcoming: mediaDetails.is_upcoming
     });

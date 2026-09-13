@@ -1849,7 +1849,7 @@ function initNewCyberFeatures() {
     });
   }
 
-  // 5. ИИ-советник (STORM Neural Recommender)
+  // 5. ИИ-советник (STORM NEURAL RECOMMENDER)
   const recBtn = document.getElementById('header-recommender-btn');
   if (recBtn) {
     recBtn.onclick = () => openNeuralRecommenderModal();
@@ -1861,7 +1861,7 @@ function initNewCyberFeatures() {
     calBtn.onclick = () => openReleaseCalendarModal();
   }
 
-  // 7. STORM Remote (пульт со смартфона)
+  // 7. STORM REMOTE (пульт со смартфона)
   const remBtn = document.getElementById('header-remote-btn');
   if (remBtn) {
     remBtn.onclick = () => openRemoteQrModal();

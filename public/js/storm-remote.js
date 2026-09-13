@@ -27,7 +27,7 @@ export function openRemoteQrModal() {
         <div class="storm-modal-header" style="justify-content: space-between;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 20px;">📱</span>
-            <h3 style="margin: 0;">STORM Remote (Пульт со смартфона)</h3>
+            <h3 style="margin: 0;">STORM REMOTE (Пульт со смартфона)</h3>
           </div>
           <button type="button" class="storm-modal-close" id="remote-modal-close-btn">✕</button>
         </div>
