@@ -535,29 +535,54 @@ app.get('/api/auth/stats', requireAuth, (req, res) => {
 
 const animeCoverCache = new Map();
 
+function isPlaceholderImage(url) {
+  if (!url || typeof url !== 'string') return true;
+  const lower = url.toLowerCase();
+  return lower.includes('missing') || lower.includes('404') || lower.includes('placeholder') || lower.includes('default') || lower.includes('favicon.svg');
+}
+
 async function resolveAnimePoster(title, orig) {
-  const cleanTitle = (title || '').replace(/\s*\(\d{4}\)\s*$/, '').trim();
-  const cleanOrig = (orig || '').replace(/\s*\(\d{4}\)\s*$/, '').trim();
+  function cleanStr(s) {
+    return (s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[«»"']/g, '')
+      .replace(/\s*\(\d{4}\)\s*$/, '')
+      .trim();
+  }
+
+  const cleanTitle = cleanStr(title);
+  const cleanOrig = cleanStr(orig);
   const cacheKey = `${cleanTitle}:::${cleanOrig}`;
 
   if (animeCoverCache.has(cacheKey)) {
-    return animeCoverCache.get(cacheKey);
+    const cached = animeCoverCache.get(cacheKey);
+    if (!isPlaceholderImage(cached)) return cached;
   }
 
-  const searchTerms = [cleanOrig, cleanTitle].filter(t => t && t.length >= 2);
+  // Извлекаем названия без суффиксов сезонов (например, "2nd Season", "2", "TV-2")
+  const titleNoSeason = cleanTitle.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '').trim();
+  const origNoSeason = cleanOrig.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '').trim();
+
+  const searchTerms = [...new Set([
+    cleanOrig,
+    origNoSeason,
+    cleanTitle,
+    titleNoSeason
+  ].filter(t => t && t.length >= 2))];
 
   // 1. Поиск через открытый GraphQL AniList
+  const q = `
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        coverImage { large }
+      }
+    }
+  `;
+
   for (const term of searchTerms) {
     try {
-      const q = `
-        query ($search: String) {
-          Media(search: $search, type: ANIME) {
-            coverImage { large }
-          }
-        }
-      `;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+      const timeout = setTimeout(() => controller.abort(), 3500);
       const res = await fetch('https://graphql.anilist.co', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -568,7 +593,7 @@ async function resolveAnimePoster(title, orig) {
       if (res.ok) {
         const data = await res.json();
         const img = data?.data?.Media?.coverImage?.large;
-        if (img) {
+        if (img && !isPlaceholderImage(img)) {
           if (animeCoverCache.size > 2000) animeCoverCache.clear();
           animeCoverCache.set(cacheKey, img);
           return img;
@@ -577,11 +602,11 @@ async function resolveAnimePoster(title, orig) {
     } catch {}
   }
 
-  // 2. Поиск через Shikimori API
+  // 2. Поиск через Shikimori API (с обязательной фильтрацией missing_original.jpg)
   for (const term of searchTerms) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+      const timeout = setTimeout(() => controller.abort(), 3500);
       const res = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(term)}&limit=1`, {
         headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' },
         signal: controller.signal
@@ -591,7 +616,7 @@ async function resolveAnimePoster(title, orig) {
         const list = await res.json();
         if (list && list[0]?.image) {
           const imgPath = list[0].image.original || list[0].image.preview;
-          if (imgPath) {
+          if (imgPath && !isPlaceholderImage(imgPath)) {
             const fullUrl = `https://shikimori.one${imgPath}`;
             if (animeCoverCache.size > 2000) animeCoverCache.clear();
             animeCoverCache.set(cacheKey, fullUrl);
@@ -606,7 +631,7 @@ async function resolveAnimePoster(title, orig) {
   for (const term of searchTerms) {
     try {
       const tmdbRes = await searchTmdb(term);
-      if (tmdbRes?.items?.[0]?.poster && !tmdbRes.items[0].poster.includes('favicon.svg')) {
+      if (tmdbRes?.items?.[0]?.poster && !isPlaceholderImage(tmdbRes.items[0].poster)) {
         const img = tmdbRes.items[0].poster;
         if (animeCoverCache.size > 2000) animeCoverCache.clear();
         animeCoverCache.set(cacheKey, img);

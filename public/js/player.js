@@ -100,6 +100,80 @@ function getSourceName(item) {
   return map[item?.source] || (item?.source || 'STORM').toUpperCase();
 }
 
+export function toggleCinemaFullscreen() {
+  const videoBox = document.querySelector('.player-video-box');
+  const modal = document.getElementById('cinema-modal');
+  const target = videoBox || modal;
+  if (!target) return;
+
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+  if (isFs) {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    }
+  } else {
+    const req = target.requestFullscreen || target.webkitRequestFullscreen || target.mozRequestFullScreen || target.msRequestFullscreen;
+    if (req) {
+      req.call(target).catch(() => {
+        if (modal && modal !== target) {
+          const mReq = modal.requestFullscreen || modal.webkitRequestFullscreen || modal.mozRequestFullScreen;
+          if (mReq) mReq.call(modal).catch(() => {});
+        }
+      });
+    }
+  }
+}
+
+let fullscreenInitialized = false;
+function initFullscreenControls() {
+  const fsBtn = document.getElementById('cinema-header-fullscreen-btn');
+  if (fsBtn && !fsBtn.dataset.hasFsListener) {
+    fsBtn.dataset.hasFsListener = 'true';
+    fsBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleCinemaFullscreen();
+    };
+  }
+
+  if (fullscreenInitialized) return;
+  fullscreenInitialized = true;
+
+  const updateFsIcon = () => {
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+    const btn = document.getElementById('cinema-header-fullscreen-btn');
+    if (btn) {
+      btn.textContent = isFs ? '🗗' : '⛶';
+      btn.title = isFs ? 'Выйти из полноэкранного режима (F / Esc)' : 'Развернуть на весь экран (F)';
+    }
+    const actionBtn = document.getElementById('toggle-fullscreen-action-btn');
+    if (actionBtn) {
+      actionBtn.querySelector('span').textContent = isFs ? '🗗 Окно' : '⛶ Экран';
+    }
+  };
+
+  document.addEventListener('fullscreenchange', updateFsIcon);
+  document.addEventListener('webkitfullscreenchange', updateFsIcon);
+  document.addEventListener('mozfullscreenchange', updateFsIcon);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        return;
+      }
+      const modal = document.getElementById('cinema-modal');
+      if (modal && modal.classList.contains('is-open')) {
+        e.preventDefault();
+        toggleCinemaFullscreen();
+      }
+    }
+  });
+}
+
 export async function openPlayerModal(mediaItem, options = {}) {
   currentMedia = mediaItem;
   const modal = document.getElementById('cinema-modal');
@@ -130,6 +204,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   if (progressLabel) progressLabel.textContent = `${savedPercent}%`;
 
   initProgressSlider();
+  initFullscreenControls();
 
   // Обновляем URL для глубокого связывания (Deep Linking)
   updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
@@ -197,8 +272,10 @@ export async function openPlayerModal(mediaItem, options = {}) {
     // Отображаем подробную информацию в боковой колонке (даты, рейтинги, режиссеры, актеры)
     renderDetailedMediaInfo(currentMedia);
 
-    // Отображаем селектор сезонов и серий для сериалов
-    renderSeriesSeasons(currentMedia, options.initialSeason, options.initialEpisode);
+    // Отображаем селектор сезонов и серий для сериалов (для аниме настраивается ниже)
+    if (mediaItem.source !== 'anilibria' && mediaItem.source !== 'anixart') {
+      renderSeriesSeasons(currentMedia, options.initialSeason, options.initialEpisode);
+    }
 
     // Добавляем P2P WebTorrent в список плееров (для вышедших релизов)
     if (!currentMedia.is_upcoming) {
@@ -221,11 +298,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
     // Загружаем таймкоды пропуска заставок
     loadSkipTimes(mediaItem.id, 1);
 
-    // Для AniLibria и AniXart отображаем озвучки и серии
+    // Для AniLibria и AniXart отображаем озвучки и серии через единую систему
     if (mediaItem.source === 'anilibria' && details.episodes && details.episodes.length > 0) {
-      renderAniLibriaControls(details);
+      renderAniLibriaControls(details, options);
     } else if (mediaItem.source === 'anixart') {
-      renderAnixartControls(details);
+      renderAnixartControls(details, options);
     } else {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
@@ -781,6 +858,27 @@ function setupQuickBarOutsideListeners() {
 }
 
 function updateQuickIframeSrc() {
+  if (quickBarSeriesData?.isAnime) {
+    if (quickBarSeriesData.animeSource === 'anilibria') {
+      const eps = currentMedia?.episodes || [];
+      const epObj = eps.find(e => (e.ordinal || 1) === quickBarActiveEpisode) || eps[quickBarActiveEpisode - 1];
+      if (epObj) {
+        currentEpisodeIndex = quickBarActiveEpisode;
+        const streamUrl = epObj.hls_1080 || epObj.hls_720 || epObj.hls_480;
+        if (streamUrl) playStreamUrl(streamUrl);
+        loadSkipTimes(currentMedia?.id, quickBarActiveEpisode);
+      }
+    } else if (quickBarSeriesData.animeSource === 'anixart') {
+      const epObj = (currentEpisodes || []).find(e => (e.position || 1) === quickBarActiveEpisode) || currentEpisodes?.[quickBarActiveEpisode - 1];
+      if (epObj) {
+        currentEpisodeIndex = quickBarActiveEpisode;
+        playAnixartEpisode(epObj);
+        loadSkipTimes(currentMedia?.id, quickBarActiveEpisode);
+      }
+    }
+    return;
+  }
+
   const iframe = document.querySelector('.cinema-player-iframe');
   if (!iframe || !quickBarBaseUrl) return;
 
@@ -794,6 +892,10 @@ function highlightActiveEpisodeInGrid(episodeNum) {
   gridEl.querySelectorAll('.series-episode-card').forEach(card => {
     const isAct = parseInt(card.dataset.epNum, 10) === episodeNum;
     card.classList.toggle('active', isAct);
+    if (isAct) {
+      card.classList.add('watched');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   });
 }
 
@@ -834,16 +936,58 @@ function selectQuickEpisode(episodeNum) {
   highlightActiveEpisodeInGrid(episodeNum);
 }
 
-function selectQuickVoiceover(translationId) {
-  if (quickBarActiveTranslationId === translationId) return;
+async function switchAnixartVoiceover(voiceoverId) {
+  const host = document.getElementById('cinema-player-wrapper');
+  if (host) {
+    host.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;gap:10px;color:var(--text-muted);"><div class="storm-spinner"></div><span>Смена озвучки AniXart...</span></div>';
+  }
+  try {
+    const res = await fetch(`/api/anixart/episodes/${currentMedia.id}/${voiceoverId}`);
+    const rawEpisodes = await res.json();
+    currentEpisodes = (rawEpisodes || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+
+    if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons[0]) {
+      quickBarSeriesData.seasons[0].episodes = currentEpisodes.map(ep => ({
+        episode: ep.position || 1,
+        name: ep.name_ru || ep.name || `${ep.position || 1} серия`
+      }));
+      quickBarSeriesData.seasons[0].episodes_count = currentEpisodes.length;
+      quickBarSeriesData.active.id_translation = voiceoverId;
+    }
+
+    renderQuickBarDropdowns();
+    renderSeriesSeasons(currentMedia, 1, quickBarActiveEpisode);
+
+    const chosenEp = currentEpisodes.find(e => (e.position || 1) === quickBarActiveEpisode) || currentEpisodes[0];
+    if (chosenEp) {
+      playAnixartEpisode(chosenEp);
+    }
+    const vName = currentMedia?.voiceovers?.find(v => String(v.id) === String(voiceoverId))?.name || 'AniXart';
+    showToast(`🎙️ Выбрана озвучка: ${vName}`, 'info');
+  } catch (err) {
+    console.warn('Ошибка смены озвучки AniXart:', err);
+    showToast(`Ошибка смены озвучки: ${err.message}`, 'error');
+  }
+}
+
+async function selectQuickVoiceover(translationId) {
+  if (String(quickBarActiveTranslationId) === String(translationId)) return;
   quickBarActiveTranslationId = translationId;
+
+  if (quickBarSeriesData?.isAnime && quickBarSeriesData.animeSource === 'anixart') {
+    currentVoiceoverId = translationId;
+    localStorage.setItem(`storm_fav_voiceover_${currentMedia?.id}`, String(translationId));
+    await switchAnixartVoiceover(translationId);
+    return;
+  }
+
   renderQuickBarDropdowns();
   updateQuickIframeSrc();
 
   let voiceName = 'Озвучка обновлена';
   const sObj = quickBarSeriesData?.seasons?.find(s => s.season === quickBarActiveSeason);
   const epObj = sObj?.episodes?.find(e => e.episode === quickBarActiveEpisode);
-  const transObj = epObj?.translations?.find(t => t.id === translationId);
+  const transObj = epObj?.translations?.find(t => String(t.id) === String(translationId));
   if (transObj) {
     voiceName = `🎙️ ${transObj.name}${transObj.is_uhd ? ' (4K UHD)' : ''}`;
     if (transObj.is_uhd) {
@@ -875,7 +1019,9 @@ function playStreamUrl(url) {
 
   if (url.includes('.m3u8')) {
     const quickBar = document.getElementById('player-series-quick-bar');
-    if (quickBar) quickBar.style.display = 'none';
+    if (quickBar && (!quickBarSeriesData || !quickBarSeriesData.seasons || quickBarSeriesData.seasons.length === 0)) {
+      quickBar.style.display = 'none';
+    }
 
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
@@ -921,7 +1067,7 @@ function playStreamUrl(url) {
   if (isFanfilmOrStravers) {
     streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation`;
     initSeriesQuickBar(url);
-  } else {
+  } else if (!quickBarSeriesData?.isAnime) {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
   }
@@ -929,7 +1075,7 @@ function playStreamUrl(url) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -2182,6 +2328,9 @@ function renderPlayerUtilityButtons() {
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Режим «Картинка в картинке»">
             <span>🖼️ PiP</span>
           </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-fullscreen-action-btn" title="Развернуть видео на весь экран (F)">
+            <span>⛶ Экран</span>
+          </button>
           <label class="studio-autoskip-toggle" title="Автоматический пропуск опенингов и титров">
             <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
             <span class="studio-autoskip-indicator"></span>
@@ -2440,6 +2589,11 @@ function renderPlayerUtilityButtons() {
     pipBtn.onclick = toggleAdvancedPiP;
   }
 
+  const fsBtn = container.querySelector('#toggle-fullscreen-action-btn');
+  if (fsBtn) {
+    fsBtn.onclick = () => toggleCinemaFullscreen();
+  }
+
   const autoSkipCheck = container.querySelector('#toggle-autoskip');
   if (autoSkipCheck) {
     autoSkipCheck.onchange = (e) => {
@@ -2611,10 +2765,9 @@ function getVoiceoverStats(name, index = 0) {
   return { pop: fallbackPop, views: fallbackViews, isTop: false };
 }
 
-function renderAniLibriaControls(details) {
+function renderAniLibriaControls(details, options = {}) {
   const container = document.getElementById('anixart-controls-container');
-  if (!container) return;
-  container.style.display = 'block';
+  if (container) container.style.display = 'none';
 
   const playerObj = {
     id: 'anilibria_hls',
@@ -2626,267 +2779,149 @@ function renderAniLibriaControls(details) {
   currentActivePlayer = playerObj;
   updatePlayerTriggerInfo(playerObj);
 
-  const voiceoversHost = document.getElementById('voiceovers-pills') || container.querySelector('.voiceovers-pills');
-  if (voiceoversHost) {
-    voiceoversHost.innerHTML = `
-      <div class="voiceover-dropdown-trigger" style="cursor: default; pointer-events: none;">
-        <div class="voiceover-trigger-left">
-          <span class="voiceover-trigger-icon">🎙️</span>
-          <span class="voiceover-trigger-name">Официальный дубляж AniLibria</span>
-          <span class="voiceover-trigger-badge">1080p FHD</span>
-        </div>
-        <div class="voiceover-trigger-right">
-          <span class="voiceover-pop-tag">🔥 99% популярность</span>
-          <span class="voiceover-views-tag">👁️ 54.8K просмотров</span>
-        </div>
-      </div>
-    `;
-  }
-
-  const grid = document.getElementById('episodes-grid');
-  grid.innerHTML = '';
-
   const episodes = (details.episodes || []).slice().sort((a, b) => (a.ordinal || 0) - (b.ordinal || 0));
-  if (episodes.length === 0) {
-    grid.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px;">Серии не найдены</div>';
-    return;
-  }
+  if (episodes.length === 0) return;
 
-  const mediaId = currentMedia?.id || details.id;
-  const watchedSet = getWatchedEpisodes(mediaId);
+  currentMedia.episodes = episodes;
+  currentMedia.seasons = [{
+    season_number: 1,
+    name: currentMedia.title_ru || currentMedia.title || '1 сезон',
+    episode_count: episodes.length,
+    overview: currentMedia.description || 'Официальный Full HD релиз AniLibria.'
+  }];
+  currentMedia.media_type = 'anime-series';
 
-  episodes.forEach((ep, idx) => {
-    const pos = ep.ordinal || (idx + 1);
-    const isWatched = watchedSet.has(pos);
-    const isFirst = idx === 0;
+  const targetEpNum = options.initialEpisode ? parseInt(options.initialEpisode, 10) : (episodes[0]?.ordinal || 1);
+  quickBarActiveSeason = 1;
+  quickBarActiveEpisode = targetEpNum;
+  quickBarActiveTranslationId = 'anilibria';
 
-    const epBtn = document.createElement('button');
-    epBtn.className = `episode-btn ${isFirst ? 'active' : ''} ${isWatched ? 'watched' : ''}`;
-    epBtn.textContent = `${pos}`;
-    epBtn.title = isWatched
-      ? `Серия ${pos}: ${ep.name || ''} • Просмотрено (100%)`
-      : `Серия ${pos}: ${ep.name || ''} • Нажмите для воспроизведения`;
-
-    epBtn.onclick = () => {
-      grid.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'));
-      epBtn.classList.add('active');
-      epBtn.classList.add('watched');
-      markEpisodeWatched(mediaId, pos);
-      epBtn.title = `Серия ${pos}: ${ep.name || ''} • Просмотрено (100%)`;
-
-      currentEpisodeIndex = pos;
-      const streamUrl = ep.hls_1080 || ep.hls_720 || ep.hls_480;
-      if (streamUrl) playStreamUrl(streamUrl);
-      loadSkipTimes(mediaId, currentEpisodeIndex);
-    };
-    grid.appendChild(epBtn);
-  });
-
-  // ВСЕГДА начинаем с первой серии релиза (не с последней!)
-  if (episodes.length > 0) {
-    const firstUrl = episodes[0].hls_1080 || episodes[0].hls_720 || episodes[0].hls_480;
-    if (firstUrl) {
-      currentEpisodeIndex = episodes[0].ordinal || 1;
-      playStreamUrl(firstUrl);
+  quickBarSeriesData = {
+    type: 'serial',
+    isAnime: true,
+    animeSource: 'anilibria',
+    seasons: [{
+      season: 1,
+      name: currentMedia.title_ru || currentMedia.title || '1 сезон',
+      episodes_count: episodes.length,
+      episodes: episodes.map(ep => ({
+        episode: ep.ordinal || 1,
+        name: ep.name ? `${ep.ordinal || 1} серия: ${ep.name}` : `${ep.ordinal || 1} серия`,
+        translations: [{ id: 'anilibria', name: 'Официальный дубляж AniLibria (1080p FHD)' }]
+      }))
+    }],
+    active: {
+      season: 1,
+      episode: targetEpNum,
+      id_translation: 'anilibria'
     }
+  };
+
+  const quickBar = document.getElementById('player-series-quick-bar');
+  if (quickBar) quickBar.style.display = 'flex';
+  renderQuickBarDropdowns();
+  setupQuickBarOutsideListeners();
+
+  renderSeriesSeasons(currentMedia, 1, targetEpNum);
+
+  const initialEp = episodes.find(e => (e.ordinal || 1) === targetEpNum) || episodes[0];
+  if (initialEp) {
+    currentEpisodeIndex = targetEpNum;
+    const streamUrl = initialEp.hls_1080 || initialEp.hls_720 || initialEp.hls_480;
+    if (streamUrl) playStreamUrl(streamUrl);
+    loadSkipTimes(currentMedia.id, targetEpNum);
   }
 }
 
-async function renderAnixartControls(details) {
+async function renderAnixartControls(details, options = {}) {
   const container = document.getElementById('anixart-controls-container');
-  if (!container) return;
-  container.style.display = 'block';
+  if (container) container.style.display = 'none';
 
   const voiceovers = details.voiceovers || [];
-  if (voiceovers.length === 0) {
-    const host = document.getElementById('voiceovers-pills');
-    if (host) host.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Озвучки загружаются...</span>';
-    return;
-  }
+  if (voiceovers.length === 0) return;
 
-  // 1. Полноценный стилизованный 3D выпадающий список студий озвучки
-  const voiceoversHost = document.getElementById('voiceovers-pills');
-  if (voiceoversHost) {
-    const preferredId = localStorage.getItem(`storm_fav_voiceover_${details.id}`) || voiceovers[0].id;
-    let activeVoiceover = voiceovers.find(v => String(v.id) === String(preferredId)) || voiceovers[0];
-    let activeStats = getVoiceoverStats(activeVoiceover.name, 0);
+  const preferredId = localStorage.getItem(`storm_fav_voiceover_${details.id}`) || voiceovers[0].id;
+  let activeVoiceover = voiceovers.find(v => String(v.id) === String(preferredId)) || voiceovers[0];
+  currentVoiceoverId = activeVoiceover.id;
 
-    voiceoversHost.innerHTML = `
-      <div class="voiceover-selector-block">
-        <div class="voiceover-dropdown" id="voiceover-dropdown-root">
-          <button type="button" class="voiceover-dropdown-trigger" id="voiceover-trigger-btn" title="Нажмите, чтобы сменить студию озвучки">
-            <div class="voiceover-trigger-left">
-              <span class="voiceover-trigger-icon">🎙️</span>
-              <span class="voiceover-trigger-name" id="selected-voiceover-name">${activeVoiceover.name}</span>
-              <span class="voiceover-trigger-badge" id="selected-voiceover-eps">${activeVoiceover.episodes_count} серий</span>
-            </div>
-            <div class="voiceover-trigger-right">
-              <span class="voiceover-pop-tag" id="selected-voiceover-pop">🔥 ${activeStats.pop}% популярность</span>
-              <span class="voiceover-views-tag" id="selected-voiceover-views">👁️ ${activeStats.views}</span>
-              <span class="voiceover-arrow-icon">▼</span>
-            </div>
-          </button>
-          <div class="voiceover-dropdown-menu" id="voiceover-menu-list">
-            ${voiceovers.map((v, idx) => {
-              const stats = getVoiceoverStats(v.name, idx);
-              const isActive = String(v.id) === String(activeVoiceover.id);
-              return `
-                <div class="voiceover-option-item ${isActive ? 'active' : ''}" data-voiceover-id="${v.id}">
-                  <div class="voiceover-option-left">
-                    <span style="font-size: 14px;">${stats.isTop ? '⭐' : '🎙️'}</span>
-                    <span class="voiceover-option-name">${v.name}</span>
-                    <span class="voiceover-option-eps">(${v.episodes_count} серий)</span>
-                  </div>
-                  <div class="voiceover-option-right">
-                    <span class="voiceover-pop-tag">🔥 ${stats.pop}%</span>
-                    <span class="voiceover-views-tag">👁️ ${stats.views}</span>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      </div>
-    `;
-
-    const triggerBtn = voiceoversHost.querySelector('#voiceover-trigger-btn');
-    const dropdownRoot = voiceoversHost.querySelector('#voiceover-dropdown-root');
-    const menuList = voiceoversHost.querySelector('#voiceover-menu-list');
-
-    if (triggerBtn && dropdownRoot) {
-      triggerBtn.onclick = (e) => {
-        e.stopPropagation();
-        dropdownRoot.classList.toggle('is-open');
-      };
-
-      document.addEventListener('click', (e) => {
-        if (!dropdownRoot.contains(e.target)) {
-          dropdownRoot.classList.remove('is-open');
-        }
-      });
-    }
-
-    if (menuList) {
-      menuList.querySelectorAll('.voiceover-option-item').forEach(item => {
-        item.onclick = (e) => {
-          e.stopPropagation();
-          const chosenId = item.dataset.voiceoverId;
-          const chosen = voiceovers.find(v => String(v.id) === String(chosenId));
-          if (!chosen) return;
-
-          activeVoiceover = chosen;
-          activeStats = getVoiceoverStats(chosen.name);
-          localStorage.setItem(`storm_fav_voiceover_${details.id}`, String(chosen.id));
-
-          dropdownRoot.classList.remove('is-open');
-          menuList.querySelectorAll('.voiceover-option-item').forEach(i => i.classList.remove('active'));
-          item.classList.add('active');
-
-          const nameEl = voiceoversHost.querySelector('#selected-voiceover-name');
-          const epsEl = voiceoversHost.querySelector('#selected-voiceover-eps');
-          const popEl = voiceoversHost.querySelector('#selected-voiceover-pop');
-          const viewsEl = voiceoversHost.querySelector('#selected-voiceover-views');
-
-          if (nameEl) nameEl.textContent = chosen.name;
-          if (epsEl) epsEl.textContent = `${chosen.episodes_count} серий`;
-          if (popEl) popEl.textContent = `🔥 ${activeStats.pop}% популярность`;
-          if (viewsEl) viewsEl.textContent = `👁️ ${activeStats.views}`;
-
-          showToast(`Выбрана озвучка: ${chosen.name} (${activeStats.pop}% популярность)`, 'info');
-          loadAnixartEpisodes(details.id, chosen.id);
-        };
-      });
-    }
-
-    // Загружаем серии выбранной озвучки (по умолчанию с 1-й серии!)
-    loadAnixartEpisodes(details.id, activeVoiceover.id);
-  }
-}
-
-async function loadAnixartEpisodes(releaseId, typeId) {
-  currentVoiceoverId = typeId;
-  const grid = document.getElementById('episodes-grid');
-  grid.innerHTML = `
-    <div style="grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); font-size: 12px; padding: 12px;">
-      <div class="storm-spinner" style="width: 18px; height: 18px; border-width: 2px;"></div>
-      <span>Загрузка серий релиза...</span>
-    </div>
-  `;
+  const playerObj = {
+    id: `anixart_${activeVoiceover.id}`,
+    name: `AniXart (${activeVoiceover.name})`,
+    badge: 'ANIXART',
+    quality: '1080p FHD',
+    status_label: '🟢 Онлайн'
+  };
+  currentActivePlayer = playerObj;
+  updatePlayerTriggerInfo(playerObj);
 
   try {
-    const res = await fetch(`/api/anixart/episodes/${releaseId}/${typeId}`);
+    const res = await fetch(`/api/anixart/episodes/${details.id}/${activeVoiceover.id}`);
     const rawEpisodes = await res.json();
+    currentEpisodes = (rawEpisodes || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
 
-    // Сортируем серии строго по возрастанию: 1, 2, 3... 12
-    currentEpisodes = (rawEpisodes || []).slice().sort((a, b) => {
-      const posA = a.position !== undefined ? a.position : 0;
-      const posB = b.position !== undefined ? b.position : 0;
-      return posA - posB;
-    });
+    const mediaId = currentMedia?.id || details.id;
+    const watchedSet = getWatchedEpisodes(mediaId, 1);
 
-    grid.innerHTML = '';
-    if (currentEpisodes.length === 0) {
-      grid.innerHTML = '<div style="grid-column: 1 / -1; color:var(--text-muted);font-size:12px;padding:8px;text-align:center;">Серии не найдены</div>';
-      return;
+    let targetEpNum = 1;
+    if (options.initialEpisode) {
+      targetEpNum = parseInt(options.initialEpisode, 10);
+    } else if (watchedSet.size > 0 && watchedSet.size < currentEpisodes.length) {
+      const unwatched = currentEpisodes.find(ep => !watchedSet.has(ep.position || 1));
+      if (unwatched) targetEpNum = unwatched.position || 1;
     }
 
-    const mediaId = currentMedia?.id || releaseId;
-    const watchedSet = getWatchedEpisodes(mediaId);
+    currentMedia.seasons = [{
+      season_number: 1,
+      name: currentMedia.title_ru || currentMedia.title || '1 сезон',
+      episode_count: currentEpisodes.length || activeVoiceover.episodes_count || 12,
+      overview: currentMedia.description || `Официальный релиз AniXart в озвучке «${activeVoiceover.name}».`
+    }];
+    currentMedia.media_type = 'anime-series';
 
-    // Определяем начальную серию: строго 1 серия (или следующая непросмотренная при наличии истории)
-    let targetIdx = 0;
-    if (watchedSet.size > 0 && watchedSet.size < currentEpisodes.length) {
-      const unwatchedIdx = currentEpisodes.findIndex(ep => !watchedSet.has(ep.position || 1));
-      if (unwatchedIdx !== -1) {
-        targetIdx = unwatchedIdx;
+    quickBarActiveSeason = 1;
+    quickBarActiveEpisode = targetEpNum;
+    quickBarActiveTranslationId = activeVoiceover.id;
+
+    quickBarSeriesData = {
+      type: 'serial',
+      isAnime: true,
+      animeSource: 'anixart',
+      seasons: [{
+        season: 1,
+        name: currentMedia.title_ru || currentMedia.title || '1 сезон',
+        episodes_count: currentEpisodes.length,
+        episodes: currentEpisodes.map(ep => ({
+          episode: ep.position || 1,
+          name: ep.name_ru || ep.name || `${ep.position || 1} серия`,
+          translations: voiceovers.map(v => ({
+            id: v.id,
+            name: v.name,
+            episodes_count: v.episodes_count
+          }))
+        }))
+      }],
+      active: {
+        season: 1,
+        episode: targetEpNum,
+        id_translation: activeVoiceover.id
       }
-    }
+    };
 
-    currentEpisodes.forEach((ep, idx) => {
-      const pos = ep.position || (idx + 1);
-      const isWatched = watchedSet.has(pos);
-      const isTarget = idx === targetIdx;
-      const isNextUp = !isWatched && idx === targetIdx;
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar) quickBar.style.display = 'flex';
+    renderQuickBarDropdowns();
+    setupQuickBarOutsideListeners();
 
-      const epBtn = document.createElement('button');
-      epBtn.className = `episode-btn ${isTarget ? 'active' : ''} ${isWatched ? 'watched' : ''} ${isNextUp ? 'next-up' : ''}`;
-      epBtn.textContent = `${pos}`;
-      epBtn.dataset.position = pos;
+    renderSeriesSeasons(currentMedia, 1, targetEpNum);
 
-      // Контекстные подсказки (тултипы)
-      if (isWatched) {
-        epBtn.title = `Серия ${pos} • Просмотрено (100%) ✓`;
-      } else if (isNextUp) {
-        epBtn.title = `Серия ${pos} • Следующая серия к просмотру ▶`;
-      } else {
-        epBtn.title = `Серия ${pos} • Не просмотрено • Нажмите для воспроизведения`;
-      }
-
-      epBtn.onclick = () => {
-        grid.querySelectorAll('.episode-btn').forEach(b => {
-          b.classList.remove('active');
-          b.classList.remove('next-up');
-        });
-        epBtn.classList.add('active');
-        epBtn.classList.add('watched');
-        markEpisodeWatched(mediaId, pos);
-        epBtn.title = `Серия ${pos} • Просмотрено (100%) ✓`;
-
-        currentEpisodeIndex = pos;
-        playAnixartEpisode(ep);
-        loadSkipTimes(releaseId, currentEpisodeIndex);
-      };
-      grid.appendChild(epBtn);
-    });
-
-    // Автоматический старт с первой серии (или целевой)
-    if (currentEpisodes.length > 0) {
-      const chosenEp = currentEpisodes[targetIdx] || currentEpisodes[0];
-      currentEpisodeIndex = chosenEp.position || 1;
+    const chosenEp = currentEpisodes.find(e => (e.position || 1) === targetEpNum) || currentEpisodes[0];
+    if (chosenEp) {
+      currentEpisodeIndex = targetEpNum;
       playAnixartEpisode(chosenEp);
+      loadSkipTimes(details.id, targetEpNum);
     }
   } catch (err) {
-    grid.innerHTML = `<div style="grid-column: 1 / -1; color:var(--color-red);font-size:12px;padding:8px;text-align:center;">Ошибка загрузки серий: ${err.message}</div>`;
+    console.error('Ошибка загрузки серий AniXart:', err);
   }
 }
 
@@ -2914,14 +2949,18 @@ function playAnixartEpisode(episode) {
 
   // Отмечаем серию как просмотренную в хранилище
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, pos);
+    markEpisodeWatched(currentMedia.id, 1, pos, true);
   }
+
+  quickBarActiveEpisode = pos;
+  renderQuickBarDropdowns();
+  highlightActiveEpisodeInGrid(pos);
 
   if (episode.url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${episode.url}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${episode.url}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 
@@ -3636,7 +3675,14 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   const container = document.getElementById('series-seasons-container');
   if (!container) return;
 
-  const isSeries = mediaDetails.media_type === 'series' || mediaDetails.category === 'Сериал' || mediaDetails.media_type === 'cartoon-series' || mediaDetails.media_type === 'anime-series';
+  const isSeries = mediaDetails.media_type === 'series' || 
+                   mediaDetails.category === 'Сериал' || 
+                   mediaDetails.media_type === 'cartoon-series' || 
+                   mediaDetails.media_type === 'anime-series' ||
+                   mediaDetails.source === 'anilibria' ||
+                   mediaDetails.source === 'anixart' ||
+                   (mediaDetails.seasons && mediaDetails.seasons.length > 0) ||
+                   (mediaDetails.episodes && mediaDetails.episodes.length > 0);
   const seasons = mediaDetails.seasons || [];
 
   if (!isSeries || seasons.length === 0) {
@@ -3645,6 +3691,20 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   }
 
   container.style.display = 'block';
+
+  // Инициализация кнопки сворачивания/разворачивания блока
+  const collapseBtn = document.getElementById('series-collapse-btn');
+  const collapseIcon = document.getElementById('series-collapse-icon');
+  const collapseText = document.getElementById('series-collapse-text');
+  if (collapseBtn && !collapseBtn.dataset.hasCollapseListener) {
+    collapseBtn.dataset.hasCollapseListener = 'true';
+    collapseBtn.onclick = () => {
+      const isCollapsed = container.classList.toggle('is-collapsed');
+      if (collapseIcon) collapseIcon.textContent = isCollapsed ? '▼' : '▲';
+      if (collapseText) collapseText.textContent = isCollapsed ? 'Развернуть' : 'Свернуть';
+      collapseBtn.title = isCollapsed ? 'Развернуть блок серий' : 'Свернуть блок серий';
+    };
+  }
 
   const tabsContainer = document.getElementById('series-seasons-tabs');
   const infoBox = document.getElementById('series-season-info-box');
@@ -3666,13 +3726,13 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
     const epOverview = ep.overview || 'Смотрите серию онлайн в высоком качестве.';
     modalDesc.innerHTML = `
       <div style="background: rgba(0, 210, 255, 0.08); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
-        <div style="font-weight: 800; color: var(--text-primary); font-size: 13px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+        <div style="font-weight: 800; color: #ffffff; font-size: 13.5px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
           <span>${epTitle}</span>
-          ${ep.air_date ? `<span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">Дата выхода: ${ep.air_date}</span>` : ''}
+          ${ep.air_date ? `<span style="font-size: 11px; font-weight: 600; color: var(--accent);">Дата выхода: ${ep.air_date}</span>` : ''}
         </div>
-        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">${epOverview}</div>
+        <div style="font-size: 12.5px; color: #f1f5f9; margin-top: 4px; line-height: 1.55;">${epOverview}</div>
       </div>
-      <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45;">${mediaDetails.description || ''}</div>
+      <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">${mediaDetails.description || ''}</div>
     `;
   }
 
@@ -3683,7 +3743,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       return `
         <button type="button" class="series-season-tab ${isAct ? 'active' : ''}" data-season-num="${s.season_number}">
           <span>${s.name || `Сезон ${s.season_number}`}</span>
-          <span class="season-status-chip ${sStatus.status}" style="font-size: 9px; padding: 1px 5px; margin-left: 4px;">${sStatus.label}</span>
+          <span class="season-status-chip ${sStatus.status}" style="font-size: 9.5px; padding: 2px 6px; margin-left: 5px;">${sStatus.label}</span>
         </button>
       `;
     }).join('');
@@ -3695,7 +3755,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         activeEpisodeNum = 1;
         renderSeasonTabs();
         loadSeasonEpisodes(sNum, 1);
-        updatePlayerUrl(mediaDetails, sNum, 1, currentActivePlayer);
+        if (mediaDetails.source !== 'anilibria' && mediaDetails.source !== 'anixart') {
+          updatePlayerUrl(mediaDetails, sNum, 1, currentActivePlayer);
+        }
       };
     });
   }
@@ -3711,18 +3773,44 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
     `;
 
     try {
-      const tvId = mediaDetails.tmdb_id || String(mediaDetails.id).replace('tmdb_', '');
-      const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}`);
-      if (!res.ok) throw new Error('Не удалось загрузить серии');
-      const data = await res.json();
-      const episodes = data.episodes || [];
+      let episodes = [];
+      let seasonOverview = '';
+
+      if (mediaDetails.source === 'anilibria' && mediaDetails.episodes && mediaDetails.episodes.length > 0) {
+        episodes = mediaDetails.episodes.map(ep => ({
+          episode_number: ep.ordinal || 1,
+          name: ep.name ? `${ep.ordinal || 1} серия: ${ep.name}` : `Серия ${ep.ordinal || 1}`,
+          still: ep.still || ep.preview || mediaDetails.poster,
+          duration: ep.duration || '24 мин.',
+          air_date: ep.air_date || '',
+          overview: ep.overview || ep.description || mediaDetails.description || 'Официальная серия AniLibria в Full HD качестве.'
+        }));
+        seasonOverview = mediaDetails.description || `Официальный релиз AniLibria • ${episodes.length} серий в Full HD качестве.`;
+      } else if (mediaDetails.source === 'anixart' && currentEpisodes && currentEpisodes.length > 0) {
+        const vName = currentMedia?.voiceovers?.find(v => String(v.id) === String(currentVoiceoverId))?.name || 'AniXart';
+        episodes = currentEpisodes.map(ep => ({
+          episode_number: ep.position || 1,
+          name: ep.name_ru || ep.name || `Серия ${ep.position || 1}`,
+          still: ep.still || ep.preview || mediaDetails.poster,
+          duration: '24 мин.',
+          air_date: '',
+          overview: ep.overview || ep.description || mediaDetails.description || `Серия онлайн в студийной озвучке «${vName}».`
+        }));
+        seasonOverview = mediaDetails.description || `Релиз AniXart в озвучке «${vName}» • ${episodes.length} серий.`;
+      } else {
+        const tvId = mediaDetails.tmdb_id || String(mediaDetails.id).replace('tmdb_', '');
+        const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}`);
+        if (!res.ok) throw new Error('Не удалось загрузить серии');
+        const data = await res.json();
+        episodes = data.episodes || [];
+        seasonOverview = data.overview || season.overview || `${season.name || `Сезон ${seasonNum}`}: официальный сезон из ${episodes.length} серий в высоком разрешении.`;
+      }
 
       if (episodes.length === 0) {
         gridEl.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted);">Серии не найдены</div>`;
         return;
       }
 
-      const seasonOverview = data.overview || season.overview || `${season.name || `Сезон ${seasonNum}`}: официальный сезон из ${episodes.length} серий в высоком разрешении.`;
       const sStatus = getSeasonStatusInfo(mediaDetails.id, seasonNum, episodes.length);
       const isSeasonAllWatched = sStatus.status === 'completed';
 
@@ -3730,7 +3818,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         infoBox.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <strong style="font-size: 13px; color: var(--text-primary);">${season.name || `Сезон ${seasonNum}`}</strong>
+              <strong style="font-size: 13.5px; color: #ffffff;">${season.name || `Сезон ${seasonNum}`}</strong>
               <span class="season-status-chip ${sStatus.status}">${sStatus.label}</span>
             </div>
             <button type="button" class="storm-btn storm-btn-sm ${isSeasonAllWatched ? 'storm-btn-secondary' : 'storm-btn-primary'}" id="toggle-season-btn" style="font-size: 11px; padding: 4px 10px;">
@@ -3747,6 +3835,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
             showToast(marked ? `Сезон ${seasonNum} отмечен как просмотренный` : `Отметка снята с сезона ${seasonNum}`, 'info');
             renderSeasonTabs();
             await syncOverallSeriesProgress(mediaDetails);
+            renderQuickBarDropdowns();
             loadSeasonEpisodes(seasonNum, activeEpisodeNum || 1);
           };
         }
@@ -3801,6 +3890,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
             showToast(nowWatched ? `Серия ${epNum} отмечена как просмотренная` : `Отметка снята с серии ${epNum}`, 'info');
             renderSeasonTabs();
             await syncOverallSeriesProgress(mediaDetails);
+            renderQuickBarDropdowns();
             loadSeasonEpisodes(seasonNum, activeEpisodeNum);
             return;
           }
@@ -3817,7 +3907,30 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           updateProgressState(epNum, episodes.length);
           renderSeasonTabs();
           await syncOverallSeriesProgress(mediaDetails);
-          updatePlayerUrl(mediaDetails, seasonNum, epNum, currentActivePlayer);
+
+          // Обновляем быструю панель
+          quickBarActiveSeason = seasonNum;
+          quickBarActiveEpisode = epNum;
+          renderQuickBarDropdowns();
+
+          if (mediaDetails.source === 'anilibria') {
+            const rawEp = (mediaDetails.episodes || []).find(e => (e.ordinal || 1) === epNum) || mediaDetails.episodes?.[epNum - 1];
+            if (rawEp) {
+              currentEpisodeIndex = epNum;
+              const streamUrl = rawEp.hls_1080 || rawEp.hls_720 || rawEp.hls_480;
+              if (streamUrl) playStreamUrl(streamUrl);
+              loadSkipTimes(mediaDetails.id, epNum);
+            }
+          } else if (mediaDetails.source === 'anixart') {
+            const rawEp = (currentEpisodes || []).find(e => (e.position || 1) === epNum) || currentEpisodes?.[epNum - 1];
+            if (rawEp) {
+              currentEpisodeIndex = epNum;
+              playAnixartEpisode(rawEp);
+              loadSkipTimes(mediaDetails.id, epNum);
+            }
+          } else {
+            updatePlayerUrl(mediaDetails, seasonNum, epNum, currentActivePlayer);
+          }
         };
       });
 
