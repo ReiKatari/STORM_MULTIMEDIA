@@ -1231,45 +1231,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 
     const finalUrl = urlObj.toString();
 
-    const upstreamRes = await fetch(finalUrl, {
-      headers: {
-        'Referer': 'https://v17.fanfilm4k.media/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
-
-    if (!upstreamRes.ok) {
-      return res.status(upstreamRes.status).send('Ошибка загрузки потока плеера');
-    }
-
-    let html = await upstreamRes.text();
-    const baseDomain = `${urlObj.protocol}//${urlObj.host}/`;
-
-    // Удаляем Subresource Integrity (SRI) и crossorigin, блокирующие загрузку стилей и JS-скриптов плеера браузером
-    html = html.replace(/\s+integrity=["'][^"']*["']/gi, '');
-    html = html.replace(/\s+crossorigin(=["'][^"']*["'])?/gi, '');
-
-    const injectedHead = `
-  <base href="${baseDomain}">
-  <style>
-    .select, div[data-select], [data-select], .trailer, .ui.btn.trailer, a.trailer, a.btn.trailer, .selectType1, [data-select-list],
-    .error-form, .error_player_msg, #error-report-modal, [data-modal="error"] {
-      display: none !important;
-      opacity: 0 !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-      width: 0 !important;
-      height: 0 !important;
-    }
-  </style>
-`;
-    html = html.replace('<head>', `<head>${injectedHead}`);
-    html = html.replace(/selector:\s*1\s*,/, 'selector: 0,');
-    html = html.replace(/<a[^>]*class="[^"]*trailer[^"]*"[^>]*>[\s\S]*?<\/a>/gi, '');
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.send(html);
+    return res.redirect(finalUrl);
   } catch (err) {
     console.error('Ошибка прокси плеера:', err.message);
     res.status(500).send('Ошибка проксирования видеопотока');

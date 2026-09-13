@@ -525,6 +525,7 @@ function renderQuickBarDropdowns() {
 
   const currentEpisodeObj = currentSeasonObj.episodes.find(e => e.episode === quickBarActiveEpisode) || currentSeasonObj.episodes[0];
   const translations = currentEpisodeObj?.translations || [];
+  const curMediaId = currentMedia?.id;
 
   // 1. Сезон
   const seasonVal = document.getElementById('quick-season-val');
@@ -533,14 +534,52 @@ function renderQuickBarDropdowns() {
   const seasonTrigger = document.getElementById('quick-season-trigger');
   const seasonMenu = document.getElementById('quick-season-menu');
 
-  if (seasonVal) seasonVal.textContent = currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`;
+  // Расчет статуса активного сезона для кнопки-триггера
+  const watchedInCurSeason = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).size : 0;
+  const totalInCurSeason = currentSeasonObj.episodes_count || (currentSeasonObj.episodes ? currentSeasonObj.episodes.length : 0);
+  let curSeasonIcon = '📺';
+  if (totalInCurSeason > 0 && watchedInCurSeason >= totalInCurSeason) {
+    curSeasonIcon = '✅';
+  } else if (watchedInCurSeason > 0) {
+    curSeasonIcon = '⏳';
+  }
+
+  if (seasonVal) {
+    seasonVal.innerHTML = `<span style="margin-right:6px;">${curSeasonIcon}</span><span>${currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`}</span>`;
+  }
+
   if (seasonList) {
-    seasonList.innerHTML = quickBarSeriesData.seasons.map(s => `
-      <div class="quick-dropdown-item ${s.season === quickBarActiveSeason ? 'active' : ''}" data-season="${s.season}">
-        <span>${s.name}</span>
-        <span class="fhd-pill">${s.episodes_count} сер.</span>
-      </div>
-    `).join('');
+    seasonList.innerHTML = quickBarSeriesData.seasons.map(s => {
+      const isAct = s.season === quickBarActiveSeason;
+      const totalEp = s.episodes_count || (s.episodes ? s.episodes.length : 0);
+      const watchedSet = curMediaId ? getWatchedEpisodes(curMediaId, s.season) : new Set();
+      const watchedCount = watchedSet.size;
+
+      let statusIcon = '⚪';
+      let statusBadge = '';
+      if (totalEp > 0 && watchedCount >= totalEp) {
+        statusIcon = '✅';
+        statusBadge = `<span class="quick-status-pill pill-watched">✓ Просмотрен (${watchedCount}/${totalEp})</span>`;
+      } else if (watchedCount > 0) {
+        statusIcon = '⏳';
+        statusBadge = `<span class="quick-status-pill pill-progress">⏳ ${watchedCount}/${totalEp} сер.</span>`;
+      } else {
+        statusIcon = '⚪';
+        statusBadge = `<span class="quick-status-pill pill-new">⚪ ${totalEp} сер.</span>`;
+      }
+
+      return `
+        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-season="${s.season}">
+          <div class="quick-item-left">
+            <span class="quick-item-icon">${statusIcon}</span>
+            <span class="quick-item-title">${s.name}</span>
+          </div>
+          <div class="quick-item-right">
+            ${statusBadge}
+          </div>
+        </div>
+      `;
+    }).join('');
 
     seasonList.querySelectorAll('.quick-dropdown-item').forEach(item => {
       item.onclick = (e) => {
@@ -573,16 +612,43 @@ function renderQuickBarDropdowns() {
   const epTrigger = document.getElementById('quick-episode-trigger');
   const epMenu = document.getElementById('quick-episode-menu');
 
-  if (epVal) epVal.textContent = currentEpisodeObj ? currentEpisodeObj.name : `${quickBarActiveEpisode} серия`;
+  const curEpWatched = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).has(quickBarActiveEpisode) : false;
+  if (epVal) {
+    epVal.innerHTML = `<span style="margin-right:6px;">${curEpWatched ? '✅' : '🎬'}</span><span>${currentEpisodeObj ? currentEpisodeObj.name : `${quickBarActiveEpisode} серия`}</span>`;
+  }
+
   if (epList) {
-    const watchedEpisodes = currentMedia ? getWatchedEpisodes(currentMedia.id, quickBarActiveSeason) : new Set();
+    const watchedEpisodes = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason) : new Set();
 
     epList.innerHTML = currentSeasonObj.episodes.map(ep => {
       const isWatched = watchedEpisodes.has(ep.episode);
+      const isAct = ep.episode === quickBarActiveEpisode;
+
+      let statusIcon = '⚪';
+      let statusBadge = '';
+      if (isAct) {
+        statusIcon = isWatched ? '✅' : '▶️';
+        statusBadge = `<span class="quick-status-pill pill-current">▶ Текущая</span>${isWatched ? ' <span class="quick-status-pill pill-watched">✓</span>' : ''}`;
+      } else if (isWatched) {
+        statusIcon = '✅';
+        statusBadge = `<span class="quick-status-pill pill-watched">✓ Просмотрено</span>`;
+      } else {
+        statusIcon = '⚪';
+        statusBadge = `<span class="quick-status-pill pill-unwatched">⚪ Не начата</span>`;
+      }
+
       return `
-        <div class="quick-dropdown-item ${ep.episode === quickBarActiveEpisode ? 'active' : ''}" data-episode="${ep.episode}">
-          <span>${ep.name}</span>
-          ${isWatched ? '<span class="watched-pill">✓ Просмотрено</span>' : ''}
+        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-episode="${ep.episode}">
+          <div class="quick-item-left">
+            <span class="quick-item-icon">${statusIcon}</span>
+            <span class="quick-item-title">${ep.name}</span>
+          </div>
+          <div class="quick-item-right">
+            ${statusBadge}
+            <button type="button" class="quick-ep-watch-toggle" data-toggle-ep="${ep.episode}" title="${isWatched ? 'Отметить непросмотренной' : 'Отметить просмотренной'}">
+              ${isWatched ? '✖' : '✓'}
+            </button>
+          </div>
         </div>
       `;
     }).join('');
@@ -595,6 +661,18 @@ function renderQuickBarDropdowns() {
         if (epMenu) epMenu.style.display = 'none';
         if (epDropdown) epDropdown.classList.remove('is-open');
         closeOtherQuickDropdowns(null);
+      };
+    });
+
+    epList.querySelectorAll('.quick-ep-watch-toggle').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const epNum = parseInt(btn.dataset.toggleEp, 10);
+        if (curMediaId) {
+          toggleEpisodeWatched(curMediaId, quickBarActiveSeason, epNum);
+          renderQuickBarDropdowns();
+          showToast(`Серия ${epNum}: статус обновлен`, 'info');
+        }
       };
     });
   }

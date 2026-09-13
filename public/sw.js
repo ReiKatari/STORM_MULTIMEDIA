@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v2.4';
+const CACHE_NAME = 'storm-multimedia-v2.5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -64,6 +64,11 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Не перехватываем сторонние кросс-доменные запросы (видеостримы, внешние CDN)
+  if (url.origin !== self.location.origin) {
+    return;
+  }
 
   // Для API-запросов: Network-First с fallback
   if (url.pathname.startsWith('/api/')) {
