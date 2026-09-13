@@ -4,6 +4,7 @@
 # ========================================================
 
 export PATH=$PATH:/usr/local/bin:/var/packages/Node.js_v20/target/usr/local/bin:/var/packages/Node.js_v18/target/usr/local/bin
+export PORT=3900
 
 PROJECT_DIR="/volume1/WEBSITES/STORM MULTIMEDIA"
 cd "$PROJECT_DIR" || exit 1

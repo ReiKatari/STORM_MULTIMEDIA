@@ -7,15 +7,15 @@ services:
     container_name: storm-multimedia
     restart: always
     ports:
-      - "3000:3000"
+      - "3900:3900"
     volumes:
       - ./storm_multimedia.db:/app/storm_multimedia.db
       - ./public/avatars:/app/public/avatars
     environment:
-      - PORT=3000
+      - PORT=3900
       - NODE_ENV=production
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/profiles"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3900/api/profiles"]
       interval: 30s
       timeout: 5s
       retries: 3
