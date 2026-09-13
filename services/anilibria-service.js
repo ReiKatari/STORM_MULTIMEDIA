@@ -143,7 +143,7 @@ export async function searchAniLibria(query) {
   if (cached) return cached;
 
   try {
-    const url = `${ANILIBRIA_BASE}/anime/catalog/releases?search=${encodeURIComponent(query)}&limit=25`;
+    const url = `${ANILIBRIA_BASE}/anime/catalog/releases?f[search]=${encodeURIComponent(query)}&limit=25`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`AniLibria search error: ${res.status}`);
 

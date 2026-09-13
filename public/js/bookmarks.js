@@ -34,6 +34,10 @@ export async function saveBookmarkStatus(mediaData, status) {
     return null;
   }
 
+  if (!status || status === 'none') {
+    return await deleteBookmark(mediaData.id, mediaData.source);
+  }
+
   try {
     const res = await fetch('/api/bookmarks/set', {
       method: 'POST',
@@ -65,7 +69,7 @@ export async function saveBookmarkStatus(mediaData, status) {
 
 export async function deleteBookmark(mediaId, source) {
   const token = getToken();
-  if (!token) return;
+  if (!token) return false;
 
   try {
     const res = await fetch('/api/bookmarks/remove', {
@@ -79,9 +83,12 @@ export async function deleteBookmark(mediaId, source) {
     if (res.ok) {
       showToast('Удалено из закладок', 'info');
       window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, deleted: true } }));
+      return { success: true, deleted: true };
     }
+    return false;
   } catch (err) {
     showToast('Ошибка удаления закладки', 'error');
+    return false;
   }
 }
 

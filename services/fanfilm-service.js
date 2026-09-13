@@ -52,6 +52,13 @@ function parseMediaList(html) {
     }
     if (!title) return;
 
+    // Очистка от "постер 4К", "постер", "4K"
+    title = title
+      .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
+      .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
+      .replace(/\s*\(?(?:фильм|сериал)\)?\s*$/i, '')
+      .trim();
+
     // Картинка постера
     let poster = el.find('img').first().attr('data-src') || el.find('img').first().attr('src') || '';
     if (poster && poster.startsWith('/')) poster = `${BASE_URL}${poster}`;
@@ -232,7 +239,14 @@ export async function getFanFilmDetails(idOrUrl) {
         name: '4K Ultra HD Плеер (FanFilm4K)',
         type: 'iframe',
         quality: '4K UHD',
-        url: player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe
+        badge: 'FANFILM 4K',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Многоканальный звук Dolby Digital',
+        speed: '⚡ Сверхскоростной CDN',
+        url: player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe,
+        is_recommended: true,
+        recommended_badge: '🔥 Рекомендуемый'
       });
     }
 

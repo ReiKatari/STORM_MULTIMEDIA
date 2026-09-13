@@ -140,8 +140,8 @@ export async function searchAnixart(query, page = 0) {
   if (cached) return cached;
 
   try {
-    const res = await client.endpoints.search.releaseSearch({ query: cleanQuery, page: pageNum });
-    const rawList = res?.content || res?.releases || [];
+    const res = await client.endpoints.search.releaseSearch(pageNum, { query: cleanQuery });
+    const rawList = res?.releases || res?.content || [];
     const items = rawList.map(formatAnimeRelease).filter(Boolean);
 
     const result = {
