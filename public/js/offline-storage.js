@@ -92,32 +92,34 @@ export async function renderOfflineLibrary(container) {
 
   if (items.length === 0) {
     container.innerHTML = `
-      <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-        <div style="font-size: 38px; margin-bottom: 12px;">💾</div>
-        <h4>Офлайн-медиатека пуста</h4>
-        <p>Вы можете скачать любой фильм или серию в память браузера для просмотра без интернета.</p>
+      <div style="grid-column: 1 / -1; width: 100%; max-width: 580px; margin: 50px auto; padding: 36px 28px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4); text-align: center;">
+        <div style="font-size: 44px; margin-bottom: 14px; filter: drop-shadow(0 0 12px var(--accent-glow));">💾</div>
+        <h3 style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px 0;">Офлайн-медиатека пуста</h3>
+        <p style="font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin: 0; word-break: normal; overflow-wrap: break-word;">Вы можете скачать любой фильм или серию в память браузера для комфортного просмотра без подключения к интернету.</p>
       </div>
     `;
     return;
   }
 
   container.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-      <span style="font-size: 13px; color: var(--text-muted);">Сохранено релизов: <b>${items.length}</b></span>
-      <span style="font-size: 12px; color: var(--accent);">Офлайн-режим PWA активен</span>
-    </div>
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px;">
-      ${items.map(item => `
-        <div class="storm-card" style="padding: 10px; border-radius: 10px;">
-          <img src="${item.poster || 'assets/favicon.svg'}" style="width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 8px;" onerror="this.src='assets/favicon.svg'">
-          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.title}</div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">${item.year || ''} • Доступно офлайн</div>
-          <div style="display: flex; gap: 6px;">
-            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm play-offline-btn" data-id="${item.id}" style="flex: 1;">▶ Смотреть</button>
-            <button type="button" class="storm-btn storm-btn-danger storm-btn-sm del-offline-btn" data-id="${item.id}" title="Удалить">🗑️</button>
+    <div style="grid-column: 1 / -1; width: 100%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 0 4px;">
+        <span style="font-size: 13px; color: var(--text-muted);">Сохранено релизов: <b>${items.length}</b></span>
+        <span style="font-size: 12px; color: var(--accent); font-weight: 600;">⚡ Офлайн-режим PWA активен</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+        ${items.map(item => `
+          <div class="storm-card" style="padding: 12px; border-radius: 12px;">
+            <img src="${item.poster || 'assets/favicon.svg'}" style="width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;" onerror="this.src='assets/favicon.svg'">
+            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.title}</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">${item.year || ''} • Доступно офлайн</div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm play-offline-btn" data-id="${item.id}" style="flex: 1;">▶ Смотреть</button>
+              <button type="button" class="storm-btn storm-btn-danger storm-btn-sm del-offline-btn" data-id="${item.id}" title="Удалить">🗑️</button>
+            </div>
           </div>
-        </div>
-      `).join('')}
+        `).join('')}
+      </div>
     </div>
   `;
 

@@ -289,32 +289,42 @@ const ROOM_WALLPAPERS = [
 
 let currentRoomWallpaper = localStorage.getItem('storm_room_wallpaper') || 'room-bg-cyberpunk';
 
-// Расширенные наборы эмодзи по категориям (100+ эмодзи)
+// Расширенные наборы эмодзи по категориям (180+ эмодзи)
 const CHAT_EMOJI_CATEGORIES = {
   top: {
     icon: '🌟',
     title: 'Популярные',
-    list: ['😂', '🔥', '🍿', '❤️', '👏', '😱', '🚀', '💀', '🤩', '🎉', '🎬', '👀', '💯', '⚡', '🤖', '🎮', '🪐', '🍕', '🍷', '✨']
+    list: ['😂', '🔥', '🍿', '❤️', '👏', '😱', '🚀', '💀', '🤩', '🎉', '🎬', '👀', '💯', '⚡', '🤖', '🎮', '🪐', '🍕', '🍷', '✨', '🗿', '💎', '🦄', '😎']
   },
   smiles: {
     icon: '😊',
     title: 'Смайлы',
-    list: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😭', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕']
+    list: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😭', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🥶', '🥵', '😵', '🥳', '😎', '🤓', '🧐']
   },
   cinema: {
     icon: '🍿',
     title: 'Кино и еда',
-    list: ['🍿', '🎬', '🎞️', '📽️', '🎥', '📺', '📻', '🎟️', '🎫', '🏆', '🥇', '🍕', '🍔', '🍟', '🌭', '🥪', '🌮', '🍣', '🍫', '🍦', '🍩', '🍪', '☕', '🧃', '🥤', '🍺', '🍷', '🥂', '🍾']
+    list: ['🍿', '🎬', '🎞️', '📽️', '🎥', '📺', '📻', '🎟️', '🎫', '🏆', '🥇', '🍕', '🍔', '🍟', '🌭', '🥪', '🌮', '🍣', '🍫', '🍦', '🍩', '🍪', '☕', '🧃', '🥤', '🍺', '🍷', '🥂', '🍾', '🥞', '🥨', '🍰']
   },
   gestures: {
     icon: '👋',
     title: 'Жесты',
-    list: ['👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✌️', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '💪']
+    list: ['👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✌️', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '💪', '🫡', '🤝']
   },
   hearts: {
     icon: '💖',
     title: 'Сердца и магия',
-    list: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '🌟', '⭐', '✨', '⚡', '🔥', '💥', '🌈', '🎉', '🎊']
+    list: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '🌟', '⭐', '✨', '⚡', '🔥', '💥', '🌈', '🎉', '🎊', '🎇', '🎆']
+  },
+  anime: {
+    icon: '⛩️',
+    title: 'Аниме и манга',
+    list: ['🌸', '⛩️', '👺', '👹', '🍙', '🍣', '🍥', '🍜', '🍱', '🍡', '🍵', '⚔️', '🗡️', '🪄', '🔮', '🎭', '🎐', '🏮', '🐲', '🐉', '✨', '⚡', '💫']
+  },
+  games: {
+    icon: '🎮',
+    title: 'Игры и кибер',
+    list: ['🎮', '🕹️', '👾', '🎲', '♟️', '🎯', '🎰', '🎳', '🏆', '🥇', '🥈', '🥉', '👑', '💎', '🛡️', '⚔️', '💣', '⚡', '🚀', '🛸']
   }
 };
 
@@ -324,21 +334,32 @@ const CHAT_STICKER_PACKS = {
     { icon: '🐸🕶️', label: 'Крутой Пепе' },
     { icon: '🐸🍷', label: 'Пепе с бокалом' },
     { icon: '🐸❤️', label: 'Влюбленный Пепе' },
-    { icon: '🐸👍', label: 'Одобряющий Пепе' }
+    { icon: '🐸👍', label: 'Одобряющий Пепе' },
+    { icon: '🐸😭', label: 'Плачущий Пепе' }
   ],
   cats: [
     { icon: '🐱🍿', label: 'Кот киноман' },
     { icon: '😼✨', label: 'Довольный кот' },
     { icon: '🙀💥', label: 'Шокированный кот' },
     { icon: '😻💖', label: 'Кот в восторге' },
-    { icon: '😹🔥', label: 'Ржущий кот' }
+    { icon: '😹🔥', label: 'Ржущий кот' },
+    { icon: '😽💤', label: 'Спящий кот' }
   ],
   popcorn: [
     { icon: '🍿🥤', label: 'Кино-сет' },
     { icon: '🎬🎟️', label: 'Билет в кино' },
     { icon: '🎞️📽️', label: 'Пленка' },
     { icon: '⭐🏆', label: 'Оскар' },
-    { icon: '🔥🚀', label: 'Шедевр' }
+    { icon: '🔥🚀', label: 'Шедевр' },
+    { icon: '🍕🥤', label: 'Пицца-сет' }
+  ],
+  memes: [
+    { icon: '🗿🍷', label: 'Сигма' },
+    { icon: '🤡🎪', label: 'Клоунада' },
+    { icon: '💀📉', label: 'Смерть' },
+    { icon: '🔥📈', label: 'Хайп' },
+    { icon: '👀🍿', label: 'Наблюдаю' },
+    { icon: '💯👑', label: 'База' }
   ]
 };
 
@@ -443,9 +464,12 @@ export function renderRoomUi(room) {
         <button type="button" class="stickers-tab-btn" data-tab="cinema" title="Кино и еда">🍿</button>
         <button type="button" class="stickers-tab-btn" data-tab="gestures" title="Жесты">👋</button>
         <button type="button" class="stickers-tab-btn" data-tab="hearts" title="Сердца">💖</button>
+        <button type="button" class="stickers-tab-btn" data-tab="anime" title="Аниме">⛩️</button>
+        <button type="button" class="stickers-tab-btn" data-tab="games" title="Игры">🎮</button>
         <button type="button" class="stickers-tab-btn" data-tab="pepe" title="Пепе">🐸</button>
         <button type="button" class="stickers-tab-btn" data-tab="cats" title="Котики">🐱</button>
         <button type="button" class="stickers-tab-btn" data-tab="popcorn" title="Попкорн">🥤</button>
+        <button type="button" class="stickers-tab-btn" data-tab="memes" title="Мемы">🗿</button>
       </div>
       <div class="stickers-grid" id="stickers-grid-content"></div>
     </div>
@@ -808,7 +832,6 @@ export function sendLiveReaction(emoji) {
     emoji,
     user: user ? user.username : 'Гость'
   }));
-  renderFloatingReaction(emoji, user ? user.username : 'Вы');
 }
 
 export function renderFloatingReaction(emoji, username = '') {

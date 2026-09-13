@@ -377,7 +377,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Раздача статических файлов
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 
 // Middleware для извлечения пользователя
 function authMiddleware(req, res, next) {
@@ -651,8 +657,8 @@ app.get('/api/media/catalog', async (req, res) => {
       items = aLibRes.items;
       totalItems = aLibRes.total_items;
     }
-    // 3. Стриминговые провайдеры (Kodik, HDRezka, Collaps, Alloha, Videocdn, Ashdi, Kinobox)
-    else if (['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+    // 3. Стриминговые и торрент провайдеры
+    else if (['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox', 'vidsrc', 'kinobaza', 'kinogo', 'webtorrent', 'rutracker', 'nnmclub', 'rutor', 'lostfilm', 'redheadsound', 'animevost'].includes(source)) {
       const tmdbRes = await getTmdbCatalog(category, page);
       items = tmdbRes.items.map(i => ({
         ...i,
