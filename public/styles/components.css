@@ -3670,7 +3670,8 @@ input[type="checkbox"]::after {
 }
 
 .pro-eq-slider {
-  -webkit-appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
   width: 18px;
   height: 110px;
   background: transparent;

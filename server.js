@@ -957,20 +957,21 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails = await getAnixartReleaseDetails(cleanAnixId);
     } else if (source === 'anilibria' || String(id || '').startsWith('libria_')) {
       const cleanLibriaId = String(id || '').replace('libria_', '');
-      const aLibRes = await getAniLibriaCatalog('popular', 1);
-      const found = aLibRes.items.find(i => String(i.id) === String(id) || String(i.id) === cleanLibriaId);
-      if (found) {
+      const details = await getAniLibriaDetails(cleanLibriaId);
+      if (details) {
         mediaDetails = {
-          ...found,
+          ...details,
           players: [
             {
               id: 'anilibria_hls',
               name: 'AniLibria HLS (Официальный поток)',
-              url: found.link || '',
+              url: details.episodes?.[0]?.hls_1080 || details.episodes?.[0]?.hls_720 || '',
               quality: '1080p FHD',
               badge: 'ANILIBRIA',
               status: 'working',
-              status_label: '🟢 Онлайн'
+              status_label: '🟢 Онлайн',
+              is_recommended: true,
+              recommended_badge: '🔥 Рекомендуемый'
             }
           ]
         };
