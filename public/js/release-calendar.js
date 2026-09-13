@@ -48,41 +48,12 @@ export async function openReleaseCalendarModal() {
   renderCalendarContent(document.getElementById('release-calendar-body'));
 }
 
-// Детерминированное вычисление сезона, серии и времени выхода для каждого тайтла
+// Получение информации о серии и времени выхода
 function getReleaseEpisodeInfo(item, dayId, currentDayIndex) {
-  const str = `${item.id || ''}_${item.title || ''}`;
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  const absHash = Math.abs(hash);
+  const season = item.season || 1;
+  const episode = item.episode || 1;
+  const timeStr = item.air_time || '20:00 МСК';
 
-  // Сезон и серия
-  let season = (absHash % 4) + 1;
-  let episode = ((absHash >> 3) % 12) + 1;
-
-  // Проверяем, есть ли сохраненный просмотр в localStorage
-  try {
-    for (let s = 1; s <= 5; s++) {
-      const watched = JSON.parse(localStorage.getItem(`storm_watched_eps_${item.id}_s${s}`) || '[]');
-      if (Array.isArray(watched) && watched.length > 0) {
-        season = s;
-        episode = Math.max(...watched) + 1;
-        break;
-      }
-    }
-  } catch {}
-
-  const isFinal = episode >= 10 && (absHash % 3 === 0);
-  const isPremiere = episode === 1;
-
-  // Время выхода
-  const hours = 17 + (absHash % 5);
-  const minutes = (absHash % 2 === 0) ? '00' : '30';
-  const timeStr = `${hours}:${minutes} МСК`;
-
-  // Статус
   let statusText = '';
   let statusClass = 'upcoming';
 
@@ -104,8 +75,9 @@ function getReleaseEpisodeInfo(item, dayId, currentDayIndex) {
   }
 
   let epLabel = `Сезон ${season}, Серия ${episode}`;
-  if (isPremiere) epLabel += ' (Премьера)';
-  else if (isFinal) epLabel += ' (Финал)';
+  if (item.episode_title) {
+    epLabel += ` • «${item.episode_title}»`;
+  }
 
   return {
     season,
@@ -123,22 +95,32 @@ async function renderCalendarContent(container) {
 
   const currentDayIndex = new Date().getDay();
 
-  // Загружаем каталог сериалов
+  // Индикатор загрузки
+  container.innerHTML = `
+    <div style="text-align: center; padding: 60px 20px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 12px;">
+      <div class="storm-spinner"></div>
+      <span style="font-size: 14px;">Загрузка актуального расписания LostFilm, AniLibria и Red Head Sound...</span>
+    </div>
+  `;
+
+  // Загружаем актуальный сводный календарь
   let scheduleItems = [];
   try {
-    const res = await fetch('/api/media/catalog?category=series&page=1&source=all');
-    const data = await res.json();
-    scheduleItems = (data.items || []).filter(it => it.title);
-  } catch {
-    scheduleItems = [];
+    const res = await fetch('/api/media/schedule');
+    if (res.ok) {
+      const data = await res.json();
+      scheduleItems = data.items || [];
+    }
+  } catch (err) {
+    console.warn('Ошибка загрузки расписания:', err);
   }
 
   // Распределяем релизы по дням недели
   const dayGroups = {};
   DAYS_OF_WEEK.forEach(d => { dayGroups[d.id] = []; });
 
-  scheduleItems.forEach((it, idx) => {
-    const dayId = (idx % 7);
+  scheduleItems.forEach(it => {
+    const dayId = (typeof it.day_of_week === 'number') ? it.day_of_week : 1;
     if (dayGroups[dayId]) dayGroups[dayId].push(it);
   });
 
@@ -208,8 +190,8 @@ async function renderCalendarContent(container) {
             </div>
 
             <div class="cal-meta-row">
-              <span class="cal-meta-chip">${it.year || '2026'}</span>
-              <span class="cal-meta-chip source">${(it.source || 'HD').toUpperCase()}</span>
+              <span class="cal-meta-chip">${it.year || '2024'}</span>
+              <span class="cal-meta-chip studio" style="font-weight: 800; background: rgba(0, 210, 255, 0.15); color: var(--accent); border: 1px solid rgba(0, 210, 255, 0.35);">🎙️ ${it.studio || 'LostFilm'}</span>
               ${it.rating ? `<span class="cal-meta-chip rating">★ ${it.rating}</span>` : ''}
               <span class="cal-meta-chip quality">${is4K ? '4K UHD' : '1080p FHD'}</span>
             </div>

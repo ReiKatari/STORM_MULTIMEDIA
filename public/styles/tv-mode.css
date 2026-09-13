@@ -10,10 +10,27 @@ body.tv-mode {
 
 body.tv-mode .storm-sticky-header-container {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  overflow: visible !important;
 }
 
 body.tv-mode .storm-navbar {
-  padding: 16px 36px;
+  padding: 14px 28px;
+}
+
+body.tv-mode .storm-navbar-inner {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  gap: 24px !important;
+}
+
+body.tv-mode .storm-brand {
+  margin-right: auto !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
 }
 
 body.tv-mode .storm-brand-logo {
@@ -22,18 +39,21 @@ body.tv-mode .storm-brand-logo {
 }
 
 body.tv-mode .storm-brand-title {
-  font-size: 26px;
+  font-size: 24px;
   letter-spacing: 0.8px;
 }
 
 body.tv-mode .storm-search-box {
-  max-width: 580px;
+  flex: 1 !important;
+  max-width: 680px !important;
+  margin: 0 20px !important;
 }
 
 body.tv-mode .storm-search-input {
   font-size: 16px;
   padding: 12px 84px 12px 46px;
   border-radius: 28px;
+  width: 100%;
 }
 
 body.tv-mode .storm-search-icon {
@@ -41,31 +61,51 @@ body.tv-mode .storm-search-icon {
   left: 18px;
 }
 
+body.tv-mode .storm-nav-actions {
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
 body.tv-mode .storm-tabs-bar {
-  padding: 12px 32px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
+  padding: 14px 28px 10px;
+  overflow: visible !important;
 }
 
 body.tv-mode .storm-tabs-inner {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 14px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
-  padding: 6px 4px;
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: 10px 12px !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  padding: 10px 4px 6px !important;
 }
 
 body.tv-mode .storm-tab-btn {
   flex-shrink: 0;
-  padding: 12px 24px;
-  font-size: 16px;
+  padding: 10px 14px;
+  font-size: 14.5px;
   font-weight: 700;
   border-radius: 12px;
   white-space: nowrap;
+  text-align: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+body.tv-mode .storm-tab-btn[data-tab="bookmarks"] {
+  grid-column: span 2 !important;
+}
+
+body.tv-mode .storm-tab-btn.active,
+body.tv-mode .storm-tab-btn:focus {
+  outline: 3px solid var(--accent) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 24px var(--accent-glow), 0 8px 20px rgba(0, 0, 0, 0.75) !important;
+  transform: scale(1.04) translateY(-2px) !important;
+  z-index: 50 !important;
 }
 
 body.tv-mode .storm-toolbar {

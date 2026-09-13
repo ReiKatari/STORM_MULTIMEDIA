@@ -9,7 +9,7 @@ import { getUser, showToast } from './auth.js';
 import { t } from './i18n.js';
 import { trackClientAction } from './achievements.js';
 import { renderReviewsSection } from './reviews.js';
-import { attachPlayerToRoom, createWatchRoom, getActiveRoom } from './watch-together.js';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js';
 import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js';
 import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js';
 import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js';
@@ -239,7 +239,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
   modal.classList.add('is-open');
 
   // Немедленно инициализируем селекторы и кнопки, чтобы они были интерактивны СРАЗУ
-  renderStatusButtons(mediaItem.user_status);
+  const cachedStatus = mediaItem.user_status || localStorage.getItem(`storm_status_${mediaItem.id}`) || null;
+  renderStatusButtons(cachedStatus);
   renderCustomListsSelector();
   renderPlayerUtilityButtons();
 
@@ -263,7 +264,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
     
     let details = null;
     try {
-      const res = await fetch(itemUrl, { signal: controller.signal });
+      const headers = {};
+      const token = localStorage.getItem('storm_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(itemUrl, { headers, signal: controller.signal });
       clearTimeout(fetchTimeout);
       if (res.ok) {
         details = await res.json();
@@ -317,7 +322,12 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
 
     renderPlayerSources(currentPlayers);
-    renderStatusButtons(details.user_bookmark?.status || mediaItem.user_status);
+    const effectiveStatus = details?.user_bookmark?.status || currentMedia.user_status || cachedStatus || null;
+    if (effectiveStatus) {
+      currentMedia.user_status = effectiveStatus;
+      localStorage.setItem(`storm_status_${mediaItem.id}`, effectiveStatus);
+    }
+    renderStatusButtons(effectiveStatus);
     renderCustomListsSelector();
     renderPlayerUtilityButtons();
 
@@ -2708,9 +2718,6 @@ function renderPlayerUtilityButtons() {
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Ночной режим звука (компрессор динамического диапазона)">
             <span>🌙 Ночь</span>
           </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Режим «Картинка в картинке»">
-            <span>🖼️ PiP</span>
-          </button>
           <label class="studio-autoskip-toggle" title="Автоматический пропуск опенингов и титров">
             <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
             <span class="studio-autoskip-indicator"></span>
@@ -2923,18 +2930,46 @@ function renderPlayerUtilityButtons() {
     tabRoom.onclick = () => {
       openDrawerTab('room', '👥', 'Кинокомната и синхронный просмотр с друзьями', (body) => {
         body.innerHTML = `
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--bg-card); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border-subtle);">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="background: var(--bg-card); padding: 14px 18px; border-radius: 12px; border: 1px solid var(--border-subtle);">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                <div>
+                  <div style="font-weight: 800; font-size: 13.5px; color: var(--text-primary);">Синхронный просмотр с друзьями</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">Сквозная синхронизация таймкода, онлайн-чат, стикеры и реакции</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="drawer-create-room-btn">
+                    👥 Создать кинокомнату
+                  </button>
+                  <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-share-media-btn">
+                    🔗 Поделиться ссылкой
+                  </button>
+                </div>
+              </div>
+
+              <!-- Форма входа по коду комнаты -->
+              <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
+                  <input type="text" class="storm-input" id="drawer-join-room-input" placeholder="Введите код комнаты (например, STORM-JTNY)" style="width: 100%; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; padding: 7px 12px; font-size: 13px;">
+                </div>
+                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="drawer-join-room-btn" style="white-space: nowrap; padding: 7px 16px;">
+                  🔑 Войти по коду
+                </button>
+              </div>
+            </div>
+
+            <!-- Плашка активной комнаты (если подключен) -->
+            <div id="drawer-active-room-card" style="display: none; background: rgba(0, 210, 255, 0.08); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
               <div>
-                <div style="font-weight: 800; font-size: 13px; color: var(--text-primary);">Синхронный просмотр с друзьями</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Создайте персональную кинокомнату со сквозным чатом и голосовой связью</div>
+                <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--accent); letter-spacing: 1px;">🟢 Вы в кинокомнате</div>
+                <div style="font-size: 14px; font-weight: 800; color: #fff; margin-top: 2px;">Код: <span id="drawer-active-room-code" style="color: var(--accent);"></span></div>
               </div>
               <div style="display: flex; gap: 8px;">
-                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="drawer-create-room-btn">
-                  👥 Создать кинокомнату
+                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="drawer-open-chat-btn">
+                  💬 Чат комнаты
                 </button>
-                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-share-media-btn">
-                  🔗 Поделиться ссылкой
+                <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="drawer-leave-room-btn">
+                  ✕ Выйти
                 </button>
               </div>
             </div>
@@ -2942,16 +2977,67 @@ function renderPlayerUtilityButtons() {
         `;
 
         const roomBtn = body.querySelector('#drawer-create-room-btn');
+        const joinInput = body.querySelector('#drawer-join-room-input');
+        const joinBtn = body.querySelector('#drawer-join-room-btn');
+        const shareBtn = body.querySelector('#drawer-share-media-btn');
+        const activeCard = body.querySelector('#drawer-active-room-card');
+        const activeCodeEl = body.querySelector('#drawer-active-room-code');
+        const openChatBtn = body.querySelector('#drawer-open-chat-btn');
+        const leaveBtn = body.querySelector('#drawer-leave-room-btn');
+
+        const updateActiveRoomDisplay = () => {
+          const room = getActiveRoom();
+          if (room && activeCard && activeCodeEl) {
+            activeCard.style.display = 'flex';
+            activeCodeEl.textContent = room.code;
+          } else if (activeCard) {
+            activeCard.style.display = 'none';
+          }
+        };
+
+        updateActiveRoomDisplay();
+
         if (roomBtn) {
           roomBtn.onclick = async () => {
             const code = await createWatchRoom(currentMedia);
             if (code) {
               showToast(`Кинокомната создана! Код: ${code}`, 'success');
+              updateActiveRoomDisplay();
             }
           };
         }
 
-        const shareBtn = body.querySelector('#drawer-share-media-btn');
+        const doJoin = () => {
+          const code = (joinInput?.value || '').trim().toUpperCase();
+          if (!code) {
+            showToast('Введите код комнаты', 'warning');
+            return;
+          }
+          joinWatchRoom(code, currentMedia);
+          setTimeout(updateActiveRoomDisplay, 600);
+        };
+
+        if (joinBtn) joinBtn.onclick = doJoin;
+        if (joinInput) {
+          joinInput.onkeydown = (e) => {
+            if (e.key === 'Enter') doJoin();
+          };
+        }
+
+        if (openChatBtn) {
+          openChatBtn.onclick = () => {
+            const room = getActiveRoom();
+            if (room) renderRoomUi(room);
+          };
+        }
+
+        if (leaveBtn) {
+          leaveBtn.onclick = () => {
+            leaveWatchRoom();
+            updateActiveRoomDisplay();
+          };
+        }
+
         if (shareBtn) {
           shareBtn.onclick = () => copyMediaShareLink();
         }
@@ -2963,11 +3049,6 @@ function renderPlayerUtilityButtons() {
   const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
   if (nightAudioBtn) {
     nightAudioBtn.onclick = () => toggleNightModeAudio();
-  }
-
-  const pipBtn = container.querySelector('#toggle-pip-btn');
-  if (pipBtn) {
-    pipBtn.onclick = toggleAdvancedPiP;
   }
 
   const autoSkipCheck = container.querySelector('#toggle-autoskip');
@@ -3403,14 +3484,14 @@ function renderStatusButtons(currentStatus) {
         // Повторный клик: отменяем статус и удаляем закладку
         await deleteBookmark(currentMedia.id, currentMedia.source, currentMedia.title);
         if (currentMedia) currentMedia.user_status = null;
+        if (currentMedia?.id) localStorage.removeItem(`storm_status_${currentMedia.id}`);
         renderStatusButtons(null);
         showToast('Статус просмотра снят', 'info');
       } else {
-        const updated = await saveBookmarkStatus(currentMedia, s.id);
-        if (updated) {
-          if (currentMedia) currentMedia.user_status = s.id;
-          renderStatusButtons(s.id);
-        }
+        if (currentMedia) currentMedia.user_status = s.id;
+        if (currentMedia?.id) localStorage.setItem(`storm_status_${currentMedia.id}`, s.id);
+        renderStatusButtons(s.id);
+        await saveBookmarkStatus(currentMedia, s.id);
       }
     };
     statusContainer.appendChild(btn);
@@ -4105,17 +4186,34 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       return;
     }
     const epTitle = ep.name || `Серия ${ep.episode_number}`;
-    const epOverview = ep.overview || 'Смотрите серию онлайн в высоком качестве.';
-    modalDesc.innerHTML = `
-      <div style="background: rgba(0, 210, 255, 0.08); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
-        <div style="font-weight: 800; color: #ffffff; font-size: 13.5px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-          <span>${epTitle}</span>
+    const cleanMediaDesc = (mediaDetails.description || '').trim();
+    const cleanEpOverview = (ep.overview || '').trim();
+
+    // Проверяем, дублирует ли синопсис серии общее описание сериала
+    const isOverviewDuplicate = !cleanEpOverview ||
+      cleanEpOverview === cleanMediaDesc ||
+      (cleanMediaDesc.length > 30 && cleanEpOverview.startsWith(cleanMediaDesc.substring(0, 40)));
+
+    if (isOverviewDuplicate) {
+      modalDesc.innerHTML = `
+        <div style="background: rgba(0, 210, 255, 0.08); border-left: 3px solid var(--accent); padding: 8px 14px; border-radius: 6px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+          <div style="font-weight: 800; color: #ffffff; font-size: 13.5px;">${epTitle}</div>
           ${ep.air_date ? `<span style="font-size: 11px; font-weight: 600; color: var(--accent);">Дата выхода: ${ep.air_date}</span>` : ''}
         </div>
-        <div style="font-size: 12.5px; color: #f1f5f9; margin-top: 4px; line-height: 1.55;">${epOverview}</div>
-      </div>
-      <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">${mediaDetails.description || ''}</div>
-    `;
+        <div style="font-size: 12.5px; color: #cbd5e1; line-height: 1.55;">${cleanMediaDesc}</div>
+      `;
+    } else {
+      modalDesc.innerHTML = `
+        <div style="background: rgba(0, 210, 255, 0.08); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
+          <div style="font-weight: 800; color: #ffffff; font-size: 13.5px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+            <span>${epTitle}</span>
+            ${ep.air_date ? `<span style="font-size: 11px; font-weight: 600; color: var(--accent);">Дата выхода: ${ep.air_date}</span>` : ''}
+          </div>
+          <div style="font-size: 12.5px; color: #f1f5f9; margin-top: 4px; line-height: 1.55;">${cleanEpOverview}</div>
+        </div>
+        ${cleanMediaDesc && cleanMediaDesc !== cleanEpOverview ? `<div style="font-size: 12px; color: #94a3b8; line-height: 1.5;">${cleanMediaDesc}</div>` : ''}
+      `;
+    }
   }
 
   function renderSeasonTabs() {
@@ -4165,9 +4263,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           still: ep.still || ep.preview || mediaDetails.poster,
           duration: ep.duration || '24 мин.',
           air_date: ep.air_date || '',
-          overview: ep.overview || ep.description || mediaDetails.description || 'Официальная серия AniLibria в Full HD качестве.'
+          overview: (ep.overview && ep.overview !== mediaDetails.description) ? ep.overview : ''
         }));
-        seasonOverview = mediaDetails.description || `Официальный релиз AniLibria • ${episodes.length} серий в Full HD качестве.`;
+        seasonOverview = `Официальный релиз AniLibria • ${episodes.length} серий в Full HD качестве.`;
       } else if (mediaDetails.source === 'anixart' && currentEpisodes && currentEpisodes.length > 0) {
         const vName = currentMedia?.voiceovers?.find(v => String(v.id) === String(currentVoiceoverId))?.name || 'AniXart';
         episodes = currentEpisodes.map(ep => ({
@@ -4176,16 +4274,17 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           still: ep.still || ep.preview || mediaDetails.poster,
           duration: '24 мин.',
           air_date: '',
-          overview: ep.overview || ep.description || mediaDetails.description || `Серия онлайн в студийной озвучке «${vName}».`
+          overview: (ep.overview && ep.overview !== mediaDetails.description) ? ep.overview : ''
         }));
-        seasonOverview = mediaDetails.description || `Релиз AniXart в озвучке «${vName}» • ${episodes.length} серий.`;
+        seasonOverview = `Релиз AniXart в озвучке «${vName}» • ${episodes.length} серий.`;
       } else {
         const tvId = mediaDetails.tmdb_id || String(mediaDetails.id).replace('tmdb_', '');
         const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}`);
         if (!res.ok) throw new Error('Не удалось загрузить серии');
         const data = await res.json();
         episodes = data.episodes || [];
-        seasonOverview = data.overview || season.overview || `${season.name || `Сезон ${seasonNum}`}: официальный сезон из ${episodes.length} серий в высоком разрешении.`;
+        const isTmdbSeasonOverviewDup = data.overview && mediaDetails.description && data.overview.trim() === mediaDetails.description.trim();
+        seasonOverview = (!isTmdbSeasonOverviewDup && data.overview) || season.overview || `${season.name || `Сезон ${seasonNum}`} • ${episodes.length} серий.`;
       }
 
       if (episodes.length === 0) {
@@ -4195,6 +4294,15 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
 
       const sStatus = getSeasonStatusInfo(mediaDetails.id, seasonNum, episodes.length);
       const isSeasonAllWatched = sStatus.status === 'completed';
+
+      // Проверяем, не дублирует ли seasonOverview общее описание сериала
+      const isSeasonOverviewDuplicate = !seasonOverview || 
+        (mediaDetails.description && seasonOverview.trim() === mediaDetails.description.trim()) ||
+        (mediaDetails.description && seasonOverview.startsWith(mediaDetails.description.substring(0, 40)));
+
+      const finalSeasonDesc = isSeasonOverviewDuplicate 
+        ? `${season.name || `Сезон ${seasonNum}`} • ${episodes.length} серий в высоком разрешении.` 
+        : seasonOverview;
 
       if (infoBox) {
         infoBox.innerHTML = `
@@ -4207,7 +4315,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
               ${isSeasonAllWatched ? '✕ Снять отметку' : '✓ Отметить весь сезон'}
             </button>
           </div>
-          <div class="series-season-desc" id="series-season-desc">${seasonOverview}</div>
+          <div class="series-season-desc" id="series-season-desc">${finalSeasonDesc}</div>
         `;
 
         const toggleBtn = infoBox.querySelector('#toggle-season-btn');

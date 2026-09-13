@@ -578,6 +578,9 @@ body {
   display: flex;
   flex-direction: column;
   cursor: pointer;
+  contain: content;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .media-card-poster {
