@@ -143,9 +143,110 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS watch_rooms (
+    room_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    host_id INTEGER,
+    host_name TEXT NOT NULL,
+    current_media_json TEXT,
+    is_playing INTEGER DEFAULT 0,
+    current_time REAL DEFAULT 0.0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_reviews_media ON reviews(media_id, source);
   CREATE INDEX IF NOT EXISTS idx_achievements_user ON user_achievements(user_id, unlocked);
+  CREATE INDEX IF NOT EXISTS idx_watch_rooms_updated ON watch_rooms(updated_at);
 `);
+
+// Очистка и усечение WAL лога SQLite
+export function checkpointWal() {
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch (err) {
+    console.warn('SQLite WAL checkpoint notice:', err.message);
+  }
+}
+checkpointWal();
+
+// Функции постоянного хранения комнат совместного просмотра в SQLite
+export function saveWatchRoomDb(room) {
+  try {
+    const now = Date.now();
+    const currentMediaJson = room.currentMedia ? JSON.stringify(room.currentMedia) : null;
+    const stmt = db.prepare(`
+      INSERT INTO watch_rooms (room_id, name, host_id, host_name, current_media_json, is_playing, current_time, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(room_id) DO UPDATE SET
+        name = excluded.name,
+        host_id = excluded.host_id,
+        host_name = excluded.host_name,
+        current_media_json = excluded.current_media_json,
+        is_playing = excluded.is_playing,
+        current_time = excluded.current_time,
+        updated_at = excluded.updated_at
+    `);
+    stmt.run(
+      room.id,
+      room.name,
+      room.hostId || null,
+      room.hostName || 'Гость',
+      currentMediaJson,
+      room.isPlaying ? 1 : 0,
+      room.currentTime || 0,
+      room.createdAt || now,
+      now
+    );
+  } catch (e) {
+    console.error('Ошибка сохранения watch_room в SQLite:', e.message);
+  }
+}
+
+export function getWatchRoomDb(roomId) {
+  try {
+    const row = db.prepare('SELECT * FROM watch_rooms WHERE room_id = ?').get(roomId);
+    if (!row) return null;
+    return {
+      id: row.room_id,
+      name: row.name,
+      hostId: row.host_id,
+      hostName: row.host_name,
+      currentMedia: row.current_media_json ? JSON.parse(row.current_media_json) : null,
+      isPlaying: Boolean(row.is_playing),
+      currentTime: row.current_time,
+      createdAt: row.created_at,
+      updated_at: row.updated_at
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+export function getAllWatchRoomsDb() {
+  try {
+    const rows = db.prepare('SELECT * FROM watch_rooms ORDER BY updated_at DESC').all();
+    return rows.map(row => ({
+      id: row.room_id,
+      name: row.name,
+      hostId: row.host_id,
+      hostName: row.host_name,
+      currentMedia: row.current_media_json ? JSON.parse(row.current_media_json) : null,
+      isPlaying: Boolean(row.is_playing),
+      currentTime: row.current_time,
+      createdAt: row.created_at,
+      updated_at: row.updated_at
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+export function deleteWatchRoomDb(roomId) {
+  try {
+    db.prepare('DELETE FROM watch_rooms WHERE room_id = ?').run(roomId);
+  } catch (e) {}
+}
 
 // Хеширование пароля через pbkdf2
 export function hashPassword(password) {
