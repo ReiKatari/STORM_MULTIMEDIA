@@ -3138,9 +3138,779 @@ body {
     display: none !important;
   }
 
-  .storm-mobile-bottom-bar {
+  .storm-mobile-bottom-bar,
+  .storm-bottom-nav {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   ФЛАГМАНСКИЙ ДИЗАЙН EMBY И PLEX: HERO SHOWCASE, RAILS, DOCK & BOTTOM SHEETS
+   ========================================================================== */
+
+/* 1. HERO SHOWCASE (КИНЕМАТОГРАФИЧНАЯ ВИТРИНА ТОП-РЕЛИЗА) */
+.hero-showcase-container {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto 28px auto;
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.hero-showcase {
+  position: relative;
+  min-height: 480px;
+  display: flex;
+  align-items: flex-end;
+  padding: 44px 48px;
+  background-size: cover;
+  background-position: center 25%;
+  background-repeat: no-repeat;
+  transition: background-image 0.5s ease-in-out;
+}
+
+.hero-showcase-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, var(--bg-primary) 0%, rgba(10, 11, 16, 0.85) 45%, rgba(10, 11, 16, 0.3) 100%),
+              linear-gradient(90deg, var(--bg-primary) 0%, rgba(10, 11, 16, 0.78) 40%, transparent 100%);
+  z-index: 1;
+}
+
+[data-theme="STORM DAY"] .hero-showcase-overlay {
+  background: linear-gradient(0deg, #f8fafc 0%, rgba(248, 250, 252, 0.88) 50%, rgba(248, 250, 252, 0.4) 100%),
+              linear-gradient(90deg, #f8fafc 0%, rgba(248, 250, 252, 0.78) 40%, transparent 100%);
+}
+
+.hero-showcase-content {
+  position: relative;
+  z-index: 2;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hero-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-badge-tag {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hero-badge-4k {
+  background: linear-gradient(135deg, #e50914, #ff2a44);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(229, 9, 20, 0.5);
+}
+
+.hero-badge-rating {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-weight: 800;
+}
+
+.hero-title {
+  font-size: 38px;
+  font-weight: 900;
+  line-height: 1.15;
+  color: var(--text-primary);
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.7);
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.hero-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.hero-genres-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hero-genre-pill {
+  padding: 3px 10px;
+  border-radius: 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.hero-desc {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.hero-btn-play {
+  padding: 12px 28px !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 20px var(--accent-glow) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+  cursor: pointer;
+}
+
+.hero-btn-play:hover {
+  transform: translateY(-2px) scale(1.02) !important;
+  box-shadow: 0 8px 26px var(--accent-glow) !important;
+}
+
+.hero-btn-play:active {
+  transform: translateY(1.5px) scale(0.98) !important;
+}
+
+.hero-btn-bookmark,
+.hero-btn-trailer {
+  padding: 12px 20px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid var(--border-subtle) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  cursor: pointer;
+}
+
+/* 2. ГОРИЗОНТАЛЬНЫЕ КАРУСЕЛИ КОНТЕНТА (EMBY & PLEX RAILS) */
+.storm-rails-container {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  grid-column: 1 / -1;
+}
+
+.storm-media-rail {
+  position: relative;
+  width: 100%;
+}
+
+.rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.rail-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rail-icon {
+  font-size: 20px;
+}
+
+.rail-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.rail-see-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.rail-see-all-btn:hover {
+  opacity: 0.85;
+  transform: translateX(3px);
+}
+
+.rail-carousel-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.rail-carousel {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 6px 4px 14px 4px;
+  scroll-behavior: smooth;
+}
+
+.rail-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-item {
+  flex: 0 0 185px;
+  scroll-snap-align: start;
+}
+
+.rail-item .media-card {
+  height: 100%;
+  margin: 0;
+}
+
+/* Широкие карточки 16:9 для «Продолжить просмотр» */
+.rail-item-wide {
+  flex: 0 0 290px;
+}
+
+.rail-item-wide .media-card-poster {
+  aspect-ratio: 16 / 9 !important;
+}
+
+/* Кнопки навигации стрелками на десктопе */
+.rail-nav-btn {
+  position: absolute;
+  top: calc(50% - 10px);
+  transform: translateY(-50%);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(10, 11, 16, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  color: #ffffff;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.15s ease;
+}
+
+.storm-media-rail:hover .rail-nav-btn {
+  opacity: 1;
+}
+
+.rail-nav-btn:hover {
+  background: var(--accent);
+  color: #000000;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.rail-nav-prev {
+  left: -12px;
+}
+
+.rail-nav-next {
+  right: -12px;
+}
+
+/* 3. КНОПКА БЫСТРОГО МЕНЮ «⋮» НА КАРТОЧКЕ */
+.media-card {
+  position: relative;
+}
+
+.media-card-menu-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(10, 11, 16, 0.72);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  transition: all 0.15s ease;
+  opacity: 0.85;
+}
+
+.media-card-menu-btn:hover,
+.media-card-menu-btn:active {
+  transform: scale(1.12);
+  background: var(--accent);
+  color: #000000;
+  opacity: 1;
+}
+
+/* 4. EMBY И PLEX BOTTOM NAVIGATION DOCK ДЛЯ МОБИЛЬНЫХ */
+.storm-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Нижний отступ для страницы, чтобы контент не перекрывался доком */
+  body {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .storm-bottom-nav {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 60px !important;
+    padding-bottom: env(safe-area-inset-bottom) !important;
+    background: rgba(10, 11, 16, 0.88) !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+    border-top: 1px solid var(--border-subtle) !important;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.65) !important;
+    z-index: 1200 !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+  }
+
+  [data-theme="STORM DAY"] .storm-bottom-nav {
+    background: rgba(255, 255, 255, 0.94) !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  .storm-bottom-nav-item {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 100% !important;
+    padding: 6px 0 !important;
+    background: transparent !important;
+    border: none !important;
+    color: var(--text-muted) !important;
+    cursor: pointer !important;
+    transition: transform 0.12s ease, color 0.15s ease !important;
+    position: relative !important;
+    outline: none !important;
+    user-select: none !important;
+  }
+
+  .storm-bottom-nav-item:active {
+    transform: scale(0.9) !important;
+  }
+
+  .storm-bottom-nav-icon {
+    font-size: 20px !important;
+    line-height: 1 !important;
+    margin-bottom: 3px !important;
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), filter 0.18s ease !important;
+  }
+
+  .storm-bottom-nav-label {
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.2px !important;
+    line-height: 1.1 !important;
+    color: inherit !important;
+  }
+
+  .storm-bottom-nav-item.active {
+    color: var(--accent) !important;
+  }
+
+  .storm-bottom-nav-item.active .storm-bottom-nav-icon {
+    transform: translateY(-2px) scale(1.12) !important;
+    filter: drop-shadow(0 2px 8px var(--accent-glow)) !important;
+  }
+
+  .storm-bottom-nav-item.active::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 25% !important;
+    right: 25% !important;
+    height: 2.5px !important;
+    border-radius: 0 0 3px 3px !important;
+    background: var(--accent) !important;
+    box-shadow: 0 0 10px var(--accent) !important;
+  }
+
+  /* Адаптив Hero Showcase для мобильных */
+  .hero-showcase-container {
+    margin: 0 -10px 18px -10px !important;
+    border-radius: 0 0 18px 18px !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+  }
+
+  .hero-showcase {
+    min-height: 380px !important;
+    padding: 24px 16px 20px 16px !important;
+  }
+
+  .hero-title {
+    font-size: 24px !important;
+  }
+
+  .hero-desc {
+    -webkit-line-clamp: 2 !important;
+    font-size: 12.5px !important;
+  }
+
+  .hero-actions {
+    gap: 8px !important;
+  }
+
+  .hero-btn-play {
+    padding: 10px 18px !important;
+    font-size: 13.5px !important;
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+
+  .hero-btn-bookmark,
+  .hero-btn-trailer {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+
+  /* Адаптив каруселей Rails для мобильных */
+  .rail-title {
+    font-size: 16px !important;
+  }
+
+  .rail-nav-btn {
+    display: none !important;
+  }
+
+  .rail-item {
+    flex: 0 0 135px !important;
+  }
+
+  .rail-item-wide {
+    flex: 0 0 220px !important;
+  }
+
+  .rail-carousel {
+    gap: 10px !important;
+    padding: 4px 0 10px 0 !important;
+  }
+
+  /* Мобильная кнопка вызова шторки фильтров */
+  .mobile-filter-sheet-trigger {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    border-radius: 16px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Скрытие горизонтальных выпадающих списков фильтров в пользу шторки */
+  .storm-toolbar-left .storm-custom-dropdown {
+    display: none !important;
+  }
+}
+
+/* 5. FILTER BOTTOM SHEET MODAL */
+.filter-sheet-backdrop {
+  align-items: flex-end !important;
+  padding: 0 !important;
+  z-index: 2000 !important;
+}
+
+.filter-sheet-container {
+  width: 100vw !important;
+  max-width: 600px !important;
+  max-height: 85vh !important;
+  margin: 0 auto !important;
+  background: var(--bg-secondary) !important;
+  border-radius: 22px 22px 0 0 !important;
+  border-top: 1px solid var(--accent) !important;
+  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.85) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  animation: stormSheetSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes stormSheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.filter-sheet-header {
+  padding: 8px 18px 12px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.filter-sheet-drag-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 4px auto 10px auto;
+}
+
+.filter-sheet-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.filter-sheet-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.filter-sheet-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.filter-sheet-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.filter-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-chip {
+  padding: 7px 14px;
+  border-radius: 18px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.filter-chip:active {
+  transform: scale(0.95);
+}
+
+.filter-chip.is-active {
+  background: var(--accent);
+  color: #000000;
+  border-color: var(--accent);
+  font-weight: 800;
+  box-shadow: 0 2px 10px var(--accent-glow);
+}
+
+.filter-sheet-footer {
+  padding: 12px 18px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 10px;
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.filter-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #000000;
+  font-size: 10.5px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  padding: 0 5px;
+  margin-left: 4px;
+}
+
+/* 6. CARD CONTEXT ACTION SHEET */
+.action-sheet-backdrop {
+  align-items: flex-end !important;
+  padding: 0 !important;
+  z-index: 2100 !important;
+}
+
+.action-sheet-container {
+  width: 100vw !important;
+  max-width: 520px !important;
+  margin: 0 auto !important;
+  background: var(--bg-secondary) !important;
+  border-radius: 22px 22px 0 0 !important;
+  border-top: 1px solid var(--border-subtle) !important;
+  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.85) !important;
+  padding: 8px 16px 24px 16px !important;
+  padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+  animation: stormSheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.action-sheet-drag-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 4px auto 14px auto;
+}
+
+.action-sheet-media-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 10px;
+}
+
+.action-sheet-poster {
+  width: 48px;
+  height: 68px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.action-sheet-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.action-sheet-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action-sheet-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.action-sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.action-sheet-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.action-sheet-btn:hover,
+.action-sheet-btn:active {
+  background: var(--bg-tertiary);
+  border-color: var(--border-subtle);
+  transform: translateX(3px);
+}
+
+.action-sheet-btn-icon {
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.action-sheet-btn-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action-sheet-btn-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.action-sheet-btn-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 
 

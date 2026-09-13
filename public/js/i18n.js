@@ -134,7 +134,31 @@ export const translations = {
     sync_backup: "Синхронизация",
     pwa_install: "Установить",
     achievements_tab: "Достижения",
-    reviews_tab: "Рецензии"
+    reviews_tab: "Рецензии",
+
+    // Новая мобильная навигация и витрина (Emby и Plex)
+    bottom_nav_home: "Главная",
+    bottom_nav_catalog: "Каталог",
+    bottom_nav_search: "Поиск",
+    bottom_nav_bookmarks: "Закладки",
+    bottom_nav_more: "Ещё",
+    hero_watch_now: "Смотреть сейчас",
+    hero_add_bookmark: "В закладки",
+    hero_trailer: "Трейлер",
+    rail_continue_watching: "Продолжить просмотр",
+    rail_trending: "Горячие премьеры",
+    rail_movies: "Популярные фильмы",
+    rail_series: "Лучшие сериалы",
+    rail_anime: "Топ аниме",
+    rail_see_all: "Все",
+    filter_sheet_title: "Фильтры и сортировка",
+    filter_sheet_apply: "Применить фильтры",
+    filter_sheet_reset: "Сбросить всё",
+    card_menu_play: "Смотреть онлайн",
+    card_menu_bookmark: "Статус закладки",
+    card_menu_watch_together: "Смотреть вместе",
+    card_menu_offline: "Офлайн-просмотр",
+    card_menu_details: "Подробнее"
   },
 
   en: {
@@ -257,7 +281,31 @@ export const translations = {
     sync_backup: "Sync and backup",
     pwa_install: "Install app",
     achievements_tab: "Achievements",
-    reviews_tab: "Reviews"
+    reviews_tab: "Reviews",
+
+    // New mobile navigation and showcase (Emby and Plex)
+    bottom_nav_home: "Home",
+    bottom_nav_catalog: "Browse",
+    bottom_nav_search: "Search",
+    bottom_nav_bookmarks: "Watchlist",
+    bottom_nav_more: "More",
+    hero_watch_now: "Watch now",
+    hero_add_bookmark: "Add to list",
+    hero_trailer: "Trailer",
+    rail_continue_watching: "Continue watching",
+    rail_trending: "Trending releases",
+    rail_movies: "Popular movies",
+    rail_series: "Top TV series",
+    rail_anime: "Top anime",
+    rail_see_all: "See all",
+    filter_sheet_title: "Filters and sorting",
+    filter_sheet_apply: "Apply filters",
+    filter_sheet_reset: "Reset all",
+    card_menu_play: "Watch online",
+    card_menu_bookmark: "Bookmark status",
+    card_menu_watch_together: "Watch together",
+    card_menu_offline: "Offline viewing",
+    card_menu_details: "Details"
   },
 
   de: {
@@ -380,7 +428,31 @@ export const translations = {
     sync_backup: "Synchronisation",
     pwa_install: "App installieren",
     achievements_tab: "Erfolge",
-    reviews_tab: "Bewertungen"
+    reviews_tab: "Bewertungen",
+
+    // Neue mobile Navigation und Showcase (Emby und Plex)
+    bottom_nav_home: "Startseite",
+    bottom_nav_catalog: "Katalog",
+    bottom_nav_search: "Suche",
+    bottom_nav_bookmarks: "Merkliste",
+    bottom_nav_more: "Mehr",
+    hero_watch_now: "Jetzt ansehen",
+    hero_add_bookmark: "Zur Merkliste",
+    hero_trailer: "Trailer",
+    rail_continue_watching: "Weiterschauen",
+    rail_trending: "Heiße Premieren",
+    rail_movies: "Beliebte Filme",
+    rail_series: "Top-Serien",
+    rail_anime: "Top-Anime",
+    rail_see_all: "Alle anzeigen",
+    filter_sheet_title: "Filter und Sortierung",
+    filter_sheet_apply: "Filter anwenden",
+    filter_sheet_reset: "Alles zurücksetzen",
+    card_menu_play: "Online ansehen",
+    card_menu_bookmark: "Lesezeichen-Status",
+    card_menu_watch_together: "Zusammen schauen",
+    card_menu_offline: "Offline-Wiedergabe",
+    card_menu_details: "Details"
   },
 
   fr: {
@@ -503,7 +575,31 @@ export const translations = {
     sync_backup: "Synchronisation",
     pwa_install: "Installer",
     achievements_tab: "Succès",
-    reviews_tab: "Critiques"
+    reviews_tab: "Critiques",
+
+    // Nouvelle navigation mobile et vitrine (Emby et Plex)
+    bottom_nav_home: "Accueil",
+    bottom_nav_catalog: "Catalogue",
+    bottom_nav_search: "Recherche",
+    bottom_nav_bookmarks: "Favoris",
+    bottom_nav_more: "Plus",
+    hero_watch_now: "Regarder maintenant",
+    hero_add_bookmark: "Ajouter à la liste",
+    hero_trailer: "Bande-annonce",
+    rail_continue_watching: "Reprendre la lecture",
+    rail_trending: "Nouveautés brûlantes",
+    rail_movies: "Films populaires",
+    rail_series: "Meilleures séries",
+    rail_anime: "Meilleur anime",
+    rail_see_all: "Tout voir",
+    filter_sheet_title: "Filtres et tri",
+    filter_sheet_apply: "Appliquer les filtres",
+    filter_sheet_reset: "Tout réinitialiser",
+    card_menu_play: "Regarder en ligne",
+    card_menu_bookmark: "Statut du favori",
+    card_menu_watch_together: "Regarder ensemble",
+    card_menu_offline: "Lecture hors-ligne",
+    card_menu_details: "Détails"
   },
 
   zh: {
@@ -626,7 +722,31 @@ export const translations = {
     sync_backup: "同步与备份",
     pwa_install: "安装应用",
     achievements_tab: "成就",
-    reviews_tab: "影评"
+    reviews_tab: "影评",
+
+    // 新移动端导航与精选展区 (Emby与Plex风格)
+    bottom_nav_home: "首页",
+    bottom_nav_catalog: "目录",
+    bottom_nav_search: "搜索",
+    bottom_nav_bookmarks: "收藏",
+    bottom_nav_more: "更多",
+    hero_watch_now: "立即观看",
+    hero_add_bookmark: "加入收藏",
+    hero_trailer: "预告片",
+    rail_continue_watching: "继续观看",
+    rail_trending: "热门首映",
+    rail_movies: "热门电影",
+    rail_series: "顶级剧集",
+    rail_anime: "顶级动漫",
+    rail_see_all: "查看全部",
+    filter_sheet_title: "筛选和排序",
+    filter_sheet_apply: "应用筛选",
+    filter_sheet_reset: "全部重置",
+    card_menu_play: "在线播放",
+    card_menu_bookmark: "收藏状态",
+    card_menu_watch_together: "一起观看",
+    card_menu_offline: "离线观看",
+    card_menu_details: "详细信息"
   },
 
   ja: {
@@ -749,7 +869,31 @@ export const translations = {
     sync_backup: "同期とバックアップ",
     pwa_install: "インストール",
     achievements_tab: "実績",
-    reviews_tab: "レビュー"
+    reviews_tab: "レビュー",
+
+    // 新モバイルナビゲーション＆注目作品 (Emby & Plexスタイル)
+    bottom_nav_home: "ホーム",
+    bottom_nav_catalog: "カタログ",
+    bottom_nav_search: "検索",
+    bottom_nav_bookmarks: "ブックマーク",
+    bottom_nav_more: "その他",
+    hero_watch_now: "今すぐ見る",
+    hero_add_bookmark: "リストに追加",
+    hero_trailer: "予告編",
+    rail_continue_watching: "続きを見る",
+    rail_trending: "トレンド作品",
+    rail_movies: "人気映画",
+    rail_series: "人気ドラマ",
+    rail_anime: "人気アニメ",
+    rail_see_all: "すべて見る",
+    filter_sheet_title: "フィルターと並べ替え",
+    filter_sheet_apply: "フィルターを適用",
+    filter_sheet_reset: "すべてリセット",
+    card_menu_play: "オンライン再生",
+    card_menu_bookmark: "ステータス",
+    card_menu_watch_together: "一緒に見る",
+    card_menu_offline: "オフライン再生",
+    card_menu_details: "詳細情報"
   }
 };
 
