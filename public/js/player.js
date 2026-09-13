@@ -378,20 +378,32 @@ function renderPlayerSources(players) {
 
   if (!dropdown || !list) return;
 
-  const validPlayers = (players || []).filter(p => {
+  let validPlayers = (players || []).filter(p => {
     if (!p || !p.url) return false;
-    if (p.is_trailer || p.id === 'official_trailer') return false;
-    const lowerName = (p.name || '').toLowerCase();
-    const lowerBadge = (p.badge || '').toLowerCase();
-    const lowerId = (p.id || '').toLowerCase();
-    if (lowerName.includes('трейлер') || lowerName.includes('trailer') ||
-        lowerBadge.includes('трейлер') || lowerBadge.includes('trailer') ||
-        lowerId.includes('trailer')) {
-      return false;
-    }
     if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
     return true;
   });
+
+  // Если список плееров пуст, гарантируем доступный промо-трейлер (YouTube)
+  if (validPlayers.length === 0 && currentMedia?.title) {
+    const cleanSearchTitle = cleanVideoTitle(currentMedia.title);
+    const safeSearch = encodeURIComponent(`${cleanSearchTitle} официальный русский трейлер`);
+    validPlayers.push({
+      id: 'official_trailer_fallback',
+      name: 'Официальный трейлер и промо (HD)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'ТРЕЙЛЕР',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальное промо релиза',
+      speed: '⚡ YouTube',
+      url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
+      is_trailer: true,
+      is_recommended: true,
+      recommended_badge: '🔥 Рекомендуемый'
+    });
+  }
 
   currentPlayers = validPlayers;
 
@@ -532,8 +544,8 @@ function selectPlayer(player) {
     return;
   }
 
-  // Защита не вышедших фильмов от показа случайных чужих видео
-  if (player.is_upcoming || !player.url) {
+  // Если ссылки нет, отображаем статус ожидаемой премьеры
+  if (!player.url) {
     if (player.upcoming_notice || currentMedia?.is_upcoming) {
       const notice = player.upcoming_notice || `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`;
       container.innerHTML = `
@@ -2718,12 +2730,6 @@ async function syncOverallSeriesProgress(mediaDetails) {
       mediaDetails.user_status = 'completed';
       await saveBookmarkStatus(mediaDetails, 'completed');
       renderStatusButtons('completed');
-    }
-  } else if (totalWatched > 0) {
-    if (mediaDetails.user_status !== 'watching' && mediaDetails.user_status !== 'completed') {
-      mediaDetails.user_status = 'watching';
-      await saveBookmarkStatus(mediaDetails, 'watching');
-      renderStatusButtons('watching');
     }
   }
 }

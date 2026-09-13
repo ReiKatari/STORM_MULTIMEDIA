@@ -625,7 +625,10 @@ export function logWatchProgress(userId, data) {
     now
   );
 
-  // Синхронизируем прогресс с закладкой
+  // Синхронизируем прогресс с закладкой:
+  // ПРАВИЛО: В «Мои списки и закладки» попадает ТОЛЬКО то, где пользователь САМ проставил статус.
+  // При обычном просмотре статус 'watching' НЕ проставляется автоматически.
+  // Автоматически статус проставляется/меняется ТОЛЬКО после полного просмотра (>= 95%) на 'completed' (Просмотрено).
   const existingBookmark = getBookmark(userId, String(media_id), source);
   const episodesWatched = episode;
   let overallPercent = progressPercent;
@@ -634,20 +637,38 @@ export function logWatchProgress(userId, data) {
     overallPercent = Math.min(100.0, Math.round(((episode - 1 + (progressPercent / 100)) / total_episodes) * 1000) / 10);
   }
 
-  const status = overallPercent >= 95 ? 'completed' : (existingBookmark?.status || 'watching');
+  const isFullyWatched = overallPercent >= 95.0 || (total_episodes > 0 && episodesWatched >= total_episodes && progressPercent >= 90.0);
 
-  setBookmark(userId, {
-    media_id,
-    source,
-    title,
-    poster_url: poster_url || existingBookmark?.poster_url,
-    media_type,
-    status,
-    episodes_watched: episodesWatched,
-    total_episodes: total_episodes || existingBookmark?.total_episodes || 1,
-    progress_percent: overallPercent,
-    last_time_seconds: time_seconds
-  });
+  if (existingBookmark) {
+    const finalStatus = isFullyWatched ? 'completed' : existingBookmark.status;
+    const finalPercent = isFullyWatched ? 100.0 : overallPercent;
+
+    setBookmark(userId, {
+      media_id,
+      source,
+      title: title || existingBookmark.title,
+      poster_url: poster_url || existingBookmark.poster_url,
+      media_type: media_type || existingBookmark.media_type,
+      status: finalStatus,
+      episodes_watched: isFullyWatched ? (total_episodes || episodesWatched) : episodesWatched,
+      total_episodes: total_episodes || existingBookmark.total_episodes || 1,
+      progress_percent: finalPercent,
+      last_time_seconds: time_seconds
+    });
+  } else if (isFullyWatched) {
+    setBookmark(userId, {
+      media_id,
+      source,
+      title,
+      poster_url,
+      media_type,
+      status: 'completed',
+      episodes_watched: total_episodes || episodesWatched,
+      total_episodes: total_episodes || 1,
+      progress_percent: 100.0,
+      last_time_seconds: time_seconds
+    });
+  }
 
   return {
     media_id,
@@ -655,7 +676,7 @@ export function logWatchProgress(userId, data) {
     episode,
     time_seconds,
     progress_percent: overallPercent,
-    status
+    status: isFullyWatched ? 'completed' : (existingBookmark?.status || null)
   };
 }
 

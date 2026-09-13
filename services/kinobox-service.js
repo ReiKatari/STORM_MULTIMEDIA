@@ -61,9 +61,6 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const yearParam = releaseYear ? `&year=${releaseYear}&strict=1` : '&strict=1';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
-  if (isUpcoming) {
-    return [];
-  }
 
   // 2. FanFilm 4K Ultra HD (если доступен — высший приоритет)
   if (fanfilm_4k_url) {
@@ -238,6 +235,25 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       audio_info: 'Студийный дубляж и фандаб озвучки',
       speed: '⚡ Быстрый поток',
       url: baseKodikUrl
+    });
+  }
+
+  // 5. Официальный трейлер / промо (гарантированное воспроизведение видео)
+  if (trailer_url) {
+    players.push({
+      id: 'official_trailer',
+      name: 'Официальный трейлер (4K / FHD)',
+      type: 'iframe',
+      quality: '4K UHD / 1080p',
+      badge: 'ТРЕЙЛЕР',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный промо-трейлер в высоком качестве',
+      speed: '⚡ YouTube 4K',
+      url: trailer_url,
+      is_trailer: true,
+      is_recommended: isUpcoming && !fanfilm_4k_url,
+      recommended_badge: isUpcoming && !fanfilm_4k_url ? '🔥 Трейлер' : undefined
     });
   }
 
