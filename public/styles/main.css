@@ -867,6 +867,7 @@ body {
   aspect-ratio: 16 / 9;
   background: #000000;
   position: relative;
+  z-index: 1;
   border-radius: 12px;
   overflow: visible;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);

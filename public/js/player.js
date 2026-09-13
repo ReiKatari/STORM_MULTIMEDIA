@@ -275,6 +275,8 @@ export function closePlayerModal() {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
 
+    document.body.classList.remove('player-dropdown-active', 'quick-dropdown-active');
+
     if (torrentClient) {
       try {
         torrentClient.destroy();
@@ -366,18 +368,48 @@ function renderPlayerSources(players) {
         updatePlayerTriggerInfo(player);
         menu.style.display = 'none';
         dropdown.classList.remove('is-open');
+        document.body.classList.remove('player-dropdown-active');
         selectPlayer(player);
       }
     };
   });
 
-  // Открытие / закрытие выпадающего списка
+  // Открытие / закрытие выпадающего списка выбора плеера
   if (trigger) {
     trigger.onclick = (e) => {
       e.stopPropagation();
       const isOpen = menu.style.display === 'block';
-      menu.style.display = isOpen ? 'none' : 'block';
-      dropdown.classList.toggle('is-open', !isOpen);
+      if (!isOpen) {
+        closeOtherQuickDropdowns(null);
+
+        // Динамический расчет направления: по умолчанию вверх над видео, если не влезает — от верхнего края вниз
+        const triggerRect = trigger.getBoundingClientRect();
+        const spaceAbove = triggerRect.top;
+        const spaceBelow = window.innerHeight - triggerRect.bottom;
+
+        // Показываем вверх, если сверху достаточно места (>= 180px) или больше чем снизу
+        if (spaceAbove >= 180 || spaceAbove >= spaceBelow) {
+          menu.classList.remove('open-down');
+          menu.classList.add('open-up');
+          menu.style.top = 'auto';
+          menu.style.bottom = 'calc(100% + 8px)';
+          menu.style.maxHeight = `${Math.min(460, Math.max(160, spaceAbove - 24))}px`;
+        } else {
+          menu.classList.remove('open-up');
+          menu.classList.add('open-down');
+          menu.style.bottom = 'auto';
+          menu.style.top = 'calc(100% + 8px)';
+          menu.style.maxHeight = `${Math.min(460, Math.max(160, spaceBelow - 24))}px`;
+        }
+
+        menu.style.display = 'block';
+        dropdown.classList.add('is-open');
+        document.body.classList.add('player-dropdown-active');
+      } else {
+        menu.style.display = 'none';
+        dropdown.classList.remove('is-open');
+        document.body.classList.remove('player-dropdown-active');
+      }
     };
   }
 
@@ -388,6 +420,7 @@ function renderPlayerSources(players) {
       if (!dropdown.contains(e.target)) {
         menu.style.display = 'none';
         dropdown.classList.remove('is-open');
+        document.body.classList.remove('player-dropdown-active');
       }
     });
   }
@@ -516,6 +549,7 @@ function renderQuickBarDropdowns() {
         selectQuickSeason(sNum);
         if (seasonMenu) seasonMenu.style.display = 'none';
         if (seasonDropdown) seasonDropdown.classList.remove('is-open');
+        closeOtherQuickDropdowns(null);
       };
     });
   }
@@ -528,6 +562,7 @@ function renderQuickBarDropdowns() {
       const isOpen = seasonMenu.style.display === 'block';
       seasonMenu.style.display = isOpen ? 'none' : 'block';
       seasonDropdown.classList.toggle('is-open', !isOpen);
+      document.body.classList.toggle('quick-dropdown-active', !isOpen);
     };
   }
 
@@ -559,6 +594,7 @@ function renderQuickBarDropdowns() {
         selectQuickEpisode(epNum);
         if (epMenu) epMenu.style.display = 'none';
         if (epDropdown) epDropdown.classList.remove('is-open');
+        closeOtherQuickDropdowns(null);
       };
     });
   }
@@ -571,6 +607,7 @@ function renderQuickBarDropdowns() {
       const isOpen = epMenu.style.display === 'block';
       epMenu.style.display = isOpen ? 'none' : 'block';
       epDropdown.classList.toggle('is-open', !isOpen);
+      document.body.classList.toggle('quick-dropdown-active', !isOpen);
     };
   }
 
@@ -610,6 +647,7 @@ function renderQuickBarDropdowns() {
         selectQuickVoiceover(tId);
         if (voiceMenu) voiceMenu.style.display = 'none';
         if (voiceDropdown) voiceDropdown.classList.remove('is-open');
+        closeOtherQuickDropdowns(null);
       };
     });
   }
@@ -622,6 +660,7 @@ function renderQuickBarDropdowns() {
       const isOpen = voiceMenu.style.display === 'block';
       voiceMenu.style.display = isOpen ? 'none' : 'block';
       voiceDropdown.classList.toggle('is-open', !isOpen);
+      document.body.classList.toggle('quick-dropdown-active', !isOpen);
     };
   }
 }
@@ -638,6 +677,9 @@ function closeOtherQuickDropdowns(activeDropdownId) {
       }
     }
   });
+  if (!activeDropdownId) {
+    document.body.classList.remove('quick-dropdown-active');
+  }
 }
 
 function setupQuickBarOutsideListeners() {
@@ -788,7 +830,7 @@ function playStreamUrl(url) {
   }
 
   let streamUrl = url;
-  const isFanfilmOrStravers = url.includes('stravers.live') || url.includes('fanfilm4k') || currentMedia?.source === 'fanfilm4k';
+  const isFanfilmOrStravers = typeof url === 'string' && (url.includes('stravers.live') || url.includes('fanfilm4k') || url.includes('fanfilm'));
 
   if (isFanfilmOrStravers) {
     streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}`;

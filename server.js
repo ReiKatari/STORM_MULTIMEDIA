@@ -1205,7 +1205,8 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     }
 
     if (!targetUrl.includes('stravers.live') && !targetUrl.includes('fanfilm4k')) {
-      return res.status(403).send('Недопустимый домен плеера');
+      // Для сторонних плееров (Kodik, HDRezka и др.) делаем безопасный редирект, исключая 403 Forbidden
+      return res.redirect(targetUrl);
     }
 
     let directIframe = targetUrl;
@@ -1244,10 +1245,15 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     let html = await upstreamRes.text();
     const baseDomain = `${urlObj.protocol}//${urlObj.host}/`;
 
+    // Удаляем Subresource Integrity (SRI) и crossorigin, блокирующие загрузку стилей и JS-скриптов плеера браузером
+    html = html.replace(/\s+integrity=["'][^"']*["']/gi, '');
+    html = html.replace(/\s+crossorigin(=["'][^"']*["'])?/gi, '');
+
     const injectedHead = `
   <base href="${baseDomain}">
   <style>
-    .select, div[data-select], [data-select], .trailer, .ui.btn.trailer, a.trailer, a.btn.trailer, .selectType1, [data-select-list] {
+    .select, div[data-select], [data-select], .trailer, .ui.btn.trailer, a.trailer, a.btn.trailer, .selectType1, [data-select-list],
+    .error-form, .error_player_msg, #error-report-modal, [data-modal="error"] {
       display: none !important;
       opacity: 0 !important;
       visibility: hidden !important;
