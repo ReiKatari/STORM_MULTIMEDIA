@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'node:http';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -39,7 +40,9 @@ import {
   importUserData,
   getOrCreateDefaultUserSession,
   getUserFamilyProfiles,
-  saveUserFamilyProfiles
+  saveUserFamilyProfiles,
+  getCache,
+  setCache
 } from './db.js';
 
 import {
@@ -565,7 +568,15 @@ app.post('/api/profiles/save', (req, res) => {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОБЛОЖЕК И ПРОКСИ
 // ==========================================
 
-const animeCoverCache = new Map();
+const imageBinaryCache = new Map();
+
+let faviconBuffer = null;
+try {
+  const faviconPath = path.join(__dirname, 'public', 'assets', 'favicon.svg');
+  if (fs.existsSync(faviconPath)) {
+    faviconBuffer = fs.readFileSync(faviconPath);
+  }
+} catch {}
 
 function isPlaceholderImage(url) {
   if (!url || typeof url !== 'string') return true;
@@ -573,7 +584,65 @@ function isPlaceholderImage(url) {
   return lower.includes('missing') || lower.includes('404') || lower.includes('placeholder') || lower.includes('default') || lower.includes('favicon.svg');
 }
 
-async function resolveAnimePoster(title, orig) {
+function normalizeImageUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  let clean = url.trim();
+  if (clean.startsWith('//')) clean = `https:${clean}`;
+
+  // Автоматическое перенаправление устаревших / заблокированных CDN AniXart на официальный быстрый CDN static.anixart.tv
+  const anixMatch = clean.match(/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
+  if (anixMatch) {
+    const code = anixMatch[1].replace(/\.jpg$/i, '');
+    return `https://static.anixart.tv/posters/${code}.jpg`;
+  }
+  return clean;
+}
+
+async function fetchImageBuffer(url, timeoutMs = 5000) {
+  if (!url || isPlaceholderImage(url)) return null;
+
+  const normalized = normalizeImageUrl(url);
+  if (imageBinaryCache.has(normalized)) {
+    return imageBinaryCache.get(normalized);
+  }
+
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+  };
+  if (normalized.includes('anixart') || normalized.includes('anixmirai')) {
+    headers['User-Agent'] = 'AnixartApp/8.2.1';
+    headers['Referer'] = 'https://anixart.tv/';
+  } else if (normalized.includes('shikimori')) {
+    headers['User-Agent'] = 'STORM-MULTIMEDIA/1.0';
+    headers['Referer'] = 'https://shikimori.one/';
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(normalized, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const rawType = res.headers.get('content-type') || 'image/jpeg';
+      if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        if (buffer.length > 800) {
+          const item = { buffer, contentType: rawType.startsWith('image/') ? rawType : 'image/jpeg' };
+          if (imageBinaryCache.size > 1000) {
+            const keysToDelete = Array.from(imageBinaryCache.keys()).slice(0, 150);
+            keysToDelete.forEach(k => imageBinaryCache.delete(k));
+          }
+          imageBinaryCache.set(normalized, item);
+          return item;
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function resolveAnimePosterBuffer(title, orig) {
   function cleanStr(s) {
     return (s || '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -584,57 +653,52 @@ async function resolveAnimePoster(title, orig) {
 
   const cleanTitle = cleanStr(title);
   const cleanOrig = cleanStr(orig);
-  const cacheKey = `${cleanTitle}:::${cleanOrig}`;
+  if (!cleanTitle && !cleanOrig) return null;
 
-  if (animeCoverCache.has(cacheKey)) {
-    const cached = animeCoverCache.get(cacheKey);
-    if (!isPlaceholderImage(cached)) return cached;
+  const cacheKey = `anime_cover_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+
+  // 1. Проверка сохранённого в SQLite URL обложки
+  const cachedUrl = getCache('anime_covers', cacheKey);
+  if (cachedUrl && !isPlaceholderImage(cachedUrl)) {
+    const img = await fetchImageBuffer(cachedUrl, 4000);
+    if (img) return img;
   }
 
-  // Извлекаем названия без суффиксов сезонов (например, "2nd Season", "2", "TV-2")
   const titleNoSeason = cleanTitle.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '').trim();
   const origNoSeason = cleanOrig.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '').trim();
 
   const searchTerms = [...new Set([
-    cleanOrig,
-    origNoSeason,
     cleanTitle,
-    titleNoSeason
+    titleNoSeason,
+    cleanOrig,
+    origNoSeason
   ].filter(t => t && t.length >= 2))];
 
-  // 1. Поиск через открытый GraphQL AniList
-  const q = `
-    query ($search: String) {
-      Media(search: $search, type: ANIME) {
-        coverImage { large }
-      }
-    }
-  `;
-
-  for (const term of searchTerms) {
+  // Каскад 1: Поиск в AniXart (прямой официальный постер релиза на static.anixart.tv)
+  for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch('https://graphql.anilist.co', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ query: q, variables: { search: term } }),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        const img = data?.data?.Media?.coverImage?.large;
-        if (img && !isPlaceholderImage(img)) {
-          if (animeCoverCache.size > 2000) animeCoverCache.clear();
-          animeCoverCache.set(cacheKey, img);
-          return img;
+      const searchRes = await searchAnixart(term, 0);
+      if (searchRes?.items?.length > 0) {
+        for (const it of searchRes.items.slice(0, 3)) {
+          let pUrl = '';
+          if (it.poster) {
+            const m = it.poster.match(/url=([^&]+)/);
+            pUrl = m ? decodeURIComponent(m[1]) : it.poster;
+          }
+          pUrl = normalizeImageUrl(pUrl);
+          if (pUrl && !isPlaceholderImage(pUrl)) {
+            const img = await fetchImageBuffer(pUrl, 4000);
+            if (img) {
+              setCache('anime_covers', cacheKey, pUrl, 86400 * 30);
+              return img;
+            }
+          }
         }
       }
     } catch {}
   }
 
-  // 2. Поиск через Shikimori API (с обязательной фильтрацией missing_original.jpg)
+  // Каскад 2: Поиск через Shikimori API (быстрый доступный в РФ CDN)
   for (const term of searchTerms) {
     try {
       const controller = new AbortController();
@@ -649,74 +713,137 @@ async function resolveAnimePoster(title, orig) {
         if (list && list[0]?.image) {
           const imgPath = list[0].image.original || list[0].image.preview;
           if (imgPath && !isPlaceholderImage(imgPath)) {
-            const fullUrl = `https://shikimori.one${imgPath}`;
-            if (animeCoverCache.size > 2000) animeCoverCache.clear();
-            animeCoverCache.set(cacheKey, fullUrl);
-            return fullUrl;
+            const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.one${imgPath}`;
+            const img = await fetchImageBuffer(fullUrl, 4000);
+            if (img) {
+              setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
+              return img;
+            }
           }
         }
       }
     } catch {}
   }
 
-  // 3. Поиск через TMDB
-  for (const term of searchTerms) {
+  // Каскад 3: Поиск через Kitsu API (официальные постеры высокого разрешения)
+  for (const term of [cleanOrig, cleanTitle].filter(Boolean)) {
     try {
-      const tmdbRes = await searchTmdb(term);
-      if (tmdbRes?.items?.[0]?.poster && !isPlaceholderImage(tmdbRes.items[0].poster)) {
-        const img = tmdbRes.items[0].poster;
-        if (animeCoverCache.size > 2000) animeCoverCache.clear();
-        animeCoverCache.set(cacheKey, img);
-        return img;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(`https://kitsu.io/api/edge/anime?filter[text]=${encodeURIComponent(term)}&page[limit]=1`, {
+        headers: { 'Accept': 'application/vnd.api+json' },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const posterImg = data?.data?.[0]?.attributes?.posterImage;
+        const imgUrl = posterImg?.medium || posterImg?.original;
+        if (imgUrl && !isPlaceholderImage(imgUrl)) {
+          const img = await fetchImageBuffer(imgUrl, 4000);
+          if (img) {
+            setCache('anime_covers', cacheKey, imgUrl, 86400 * 30);
+            return img;
+          }
+        }
       }
     } catch {}
   }
 
-  return '/assets/favicon.svg';
+  // Каскад 4: Поиск через TMDB
+  for (const term of searchTerms) {
+    try {
+      const tmdbRes = await searchTmdb(term);
+      if (tmdbRes?.items?.[0]?.poster && !isPlaceholderImage(tmdbRes.items[0].poster)) {
+        const fullUrl = tmdbRes.items[0].poster;
+        const img = await fetchImageBuffer(fullUrl, 4000);
+        if (img) {
+          setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
+          return img;
+        }
+      }
+    } catch {}
+  }
+
+  // Каскад 5: AniList GraphQL (загружаем буфер через сервер, обходя блокировки браузера)
+  const q = `
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        coverImage { large }
+      }
+    }
+  `;
+  for (const term of searchTerms) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ query: q, variables: { search: term } }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const imgUrl = data?.data?.Media?.coverImage?.large;
+        if (imgUrl && !isPlaceholderImage(imgUrl)) {
+          const img = await fetchImageBuffer(imgUrl, 4000);
+          if (img) {
+            setCache('anime_covers', cacheKey, imgUrl, 86400 * 30);
+            return img;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return null;
 }
 
 app.get('/api/media/image-proxy', async (req, res) => {
   try {
-    const imageUrl = req.query.url || '';
+    const rawUrl = req.query.url || '';
     const title = req.query.title || '';
     const orig = req.query.orig || '';
 
-    // Если это прямая валидная ссылка на сторонний быстрый CDN (не anixmirai и не заглушка 404) — сразу 302 редирект
-    if (imageUrl && !imageUrl.includes('anixmirai.com') && !imageUrl.includes('anixapi') && !isPlaceholderImage(imageUrl)) {
-      const target = imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
-      res.set('Cache-Control', 'public, max-age=604800, immutable');
-      return res.redirect(302, target);
+    const normalizedUrl = normalizeImageUrl(rawUrl);
+
+    // 1. Если передана прямая ссылка (включая static.anixart.tv / tmdb / kinopoisk / shikimori):
+    // Сервер загружает бинарный буфер и отдаёт браузеру напрямую с долгосрочным кэшем (без опасных 302 редиректов к заблокированным доменам)
+    if (normalizedUrl && !isPlaceholderImage(normalizedUrl)) {
+      const img = await fetchImageBuffer(normalizedUrl, 5000);
+      if (img) {
+        res.set('Content-Type', img.contentType);
+        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+        return res.send(img.buffer);
+      }
     }
 
-    // Для AniXart постеров — сначала пытаемся получить качественную обложку из AniList / Shikimori / TMDB
-    const resolvedUrl = await resolveAnimePoster(title, orig);
-    if (resolvedUrl && !resolvedUrl.includes('favicon.svg')) {
-      res.set('Cache-Control', 'public, max-age=604800, immutable');
-      return res.redirect(302, resolvedUrl);
+    // 2. Если по переданной ссылке получить обложку не удалось — подключаем многоуровневый интеллектуальный каскад
+    if (title || orig) {
+      const resolvedImg = await resolveAnimePosterBuffer(title, orig);
+      if (resolvedImg) {
+        res.set('Content-Type', resolvedImg.contentType);
+        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+        return res.send(resolvedImg.buffer);
+      }
     }
 
-    // Если сторонний источник не нашел, пробуем запросить anixmirai напрямую
-    if (imageUrl) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
-        const imgRes = await fetch(imageUrl, {
-          headers: { 'User-Agent': 'AnixartApp/8.2.1', 'Referer': 'https://anixart.tv/' },
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-        if (imgRes.ok) {
-          const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-          const buffer = Buffer.from(await imgRes.arrayBuffer());
-          res.set('Content-Type', contentType);
-          res.set('Cache-Control', 'public, max-age=2592000, immutable');
-          return res.send(buffer);
-        }
-      } catch {}
+    // 3. Крайний фолбэк: отдаём заглушку favicon.svg БЕЗ долгосрочного кэширования, чтобы браузер повторил попытку
+    if (faviconBuffer) {
+      res.set('Content-Type', 'image/svg+xml');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.send(faviconBuffer);
     }
 
     return res.redirect(302, '/assets/favicon.svg');
   } catch {
+    if (faviconBuffer) {
+      res.set('Content-Type', 'image/svg+xml');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.send(faviconBuffer);
+    }
     return res.redirect(302, '/assets/favicon.svg');
   }
 });
