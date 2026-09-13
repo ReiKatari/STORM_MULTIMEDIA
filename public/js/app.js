@@ -163,6 +163,15 @@ export function switchTab(tab) {
   currentTab = tab;
   currentPage = 1;
 
+  // Очищаем активный поисковый запрос при переключении категорий
+  const searchInput = document.getElementById('global-search-input');
+  if (searchInput && searchInput.value) {
+    searchInput.value = '';
+    searchQuery = '';
+    const clearBtn = document.getElementById('search-clear-btn');
+    if (clearBtn) clearBtn.classList.remove('is-visible');
+  }
+
   document.querySelectorAll('.storm-tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
@@ -281,7 +290,7 @@ async function loadCurrentTab() {
   if (currentTab === 'home') category = 'popular';
   const cacheKey = `${category}_${currentPage}_${currentSource}`;
 
-  if (clientTabCache.has(cacheKey)) {
+  if (clientTabCache.has(cacheKey) && Array.isArray(clientTabCache.get(cacheKey)) && clientTabCache.get(cacheKey).length > 0) {
     rawCatalogItems = clientTabCache.get(cacheKey);
     renderFilteredCatalog();
   } else {
@@ -296,12 +305,29 @@ async function loadCurrentTab() {
     const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`, { headers });
     const data = await res.json();
     const fetchedItems = data.items || [];
-    rawCatalogItems = deduplicateMediaList(fetchedItems);
-    clientTabCache.set(cacheKey, rawCatalogItems);
-    renderFilteredCatalog();
+    if (fetchedItems.length > 0) {
+      rawCatalogItems = deduplicateMediaList(fetchedItems);
+      clientTabCache.set(cacheKey, rawCatalogItems);
+      renderFilteredCatalog();
+    } else {
+      // Если по текущему источнику 0 элементов, пробуем сводный каталог
+      try {
+        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all`, { headers });
+        const retryData = await retryRes.json();
+        if (retryData.items && retryData.items.length > 0) {
+          rawCatalogItems = deduplicateMediaList(retryData.items);
+          clientTabCache.set(cacheKey, rawCatalogItems);
+          renderFilteredCatalog();
+          return;
+        }
+      } catch {}
+      rawCatalogItems = [];
+      renderFilteredCatalog();
+    }
   } catch (err) {
-    if (!clientTabCache.has(cacheKey)) {
-      container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-red);">Ошибка загрузки: ${err.message}</div>`;
+    if (!clientTabCache.has(cacheKey) || clientTabCache.get(cacheKey)?.length === 0) {
+      rawCatalogItems = [];
+      renderFilteredCatalog();
     }
   }
 }
@@ -396,12 +422,22 @@ function renderMediaItems(items) {
         <div style="font-size: 42px; margin-bottom: 12px;">📂</div>
         <h3>Ничего не найдено</h3>
         <p>${isFiltered ? 'Попробуйте изменить параметры фильтрации или сбросить активные фильтры' : 'Попробуйте изменить категорию или поисковый запрос'}</p>
-        ${isFiltered ? '<button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="empty-reset-filters-btn" style="margin-top: 14px;">✕ Сбросить фильтры</button>' : ''}
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap;">
+          ${isFiltered ? '<button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="empty-reset-filters-btn">✕ Сбросить фильтры</button>' : ''}
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="empty-retry-btn">🔄 Обновить каталог</button>
+        </div>
       </div>
     `;
     const emptyResetBtn = document.getElementById('empty-reset-filters-btn');
     if (emptyResetBtn) {
       emptyResetBtn.onclick = () => resetAllFilters();
+    }
+    const emptyRetryBtn = document.getElementById('empty-retry-btn');
+    if (emptyRetryBtn) {
+      emptyRetryBtn.onclick = () => {
+        clientTabCache.clear();
+        loadCurrentTab();
+      };
     }
     return;
   }
@@ -2051,3 +2087,8 @@ export function updateMobileDrawerUser() {
     }
   }
 }
+
+window.stormRefreshCatalog = () => {
+  clientTabCache.clear();
+  loadCurrentTab();
+};
