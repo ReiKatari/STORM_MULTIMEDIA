@@ -477,11 +477,17 @@ async function fetchLostFilmSchedule() {
       const hours = String(pubDate.getHours()).padStart(2, '0');
       const mins = String(pubDate.getMinutes()).padStart(2, '0');
 
+      let matchedPoster = 'https://image.tmdb.org/t/p/w500/vbpA5L3n6z720aGSm5U1QZ2VqXG.jpg';
+      const existing = VERIFIED_SCHEDULE_ITEMS.find(v => v.title.toLowerCase().includes(title.toLowerCase()) || title.toLowerCase().includes(v.title.toLowerCase()));
+      if (existing && existing.poster) {
+        matchedPoster = existing.poster;
+      }
+
       items.push({
         id: `lostfilm_${season}_${episode}_${title.toLowerCase().replace(/[^a-zа-я0-9]/gi, '_')}`,
         title,
         original_title: origTitle,
-        poster: 'https://image.tmdb.org/t/p/w500/vbpA5L3n6z720aGSm5U1QZ2VqXG.jpg',
+        poster: matchedPoster,
         year: String(pubDate.getFullYear() || 2026),
         season,
         episode,
@@ -565,9 +571,9 @@ async function fetchAniLibriaSchedule() {
 }
 
 export async function getAggregatedSchedule() {
-  const cacheKey = 'aggregated_schedule_v3';
+  const cacheKey = 'aggregated_schedule_v4';
   const cached = getCache('schedule', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
     const [liveLostFilm, liveAniLibria] = await Promise.allSettled([
@@ -578,35 +584,35 @@ export async function getAggregatedSchedule() {
     const lfItems = liveLostFilm.status === 'fulfilled' ? liveLostFilm.value : [];
     const aniItems = liveAniLibria.status === 'fulfilled' ? liveAniLibria.value : [];
 
-    let combined = [];
+    // Гарантированная основа — проверенные сериалы с качественными постерами на все 7 дней недели
+    let combined = [...VERIFIED_SCHEDULE_ITEMS];
 
     // Добавляем свежие релизы LostFilm
     if (lfItems.length > 0) {
-      combined.push(...lfItems);
+      combined.unshift(...lfItems);
     }
 
     // Добавляем актуальные серии AniLibria
     if (aniItems.length > 0) {
-      combined.push(...aniItems.slice(0, 30));
+      combined.push(...aniItems.slice(0, 35));
     }
 
-    // Если внешние сети недоступны или данных мало — подмешиваем верифицированный каталог
-    if (combined.length < 10) {
-      combined.push(...VERIFIED_SCHEDULE_ITEMS);
-    }
-
-    // Дедупликация по ID / названию
+    // Дедупликация по нормализованному названию и дню
     const seen = new Set();
     const uniqueItems = [];
     for (const it of combined) {
-      const key = `${it.title.toLowerCase()}_${it.day_of_week}`;
+      if (!it || !it.title) continue;
+      const cleanT = it.title.toLowerCase().replace(/[^a-zа-я0-9]/gi, '');
+      const dayVal = (typeof it.day_of_week === 'number') ? it.day_of_week : parseInt(it.day_of_week, 10) || 1;
+      const key = `${cleanT}_${dayVal}`;
       if (!seen.has(key)) {
         seen.add(key);
+        it.day_of_week = dayVal;
         uniqueItems.push(it);
       }
     }
 
-    // Сортировка по дню недели (1..6, 0)
+    // Сортировка по дню недели (1=ПН, 2=ВТ, ..., 6=СБ, 0=ВС)
     uniqueItems.sort((a, b) => {
       const dayA = a.day_of_week === 0 ? 7 : a.day_of_week;
       const dayB = b.day_of_week === 0 ? 7 : b.day_of_week;

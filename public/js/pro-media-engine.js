@@ -267,7 +267,6 @@ export function applyProVideoSettings(target = null) {
 // 4. ПРИМЕНЕНИЕ АУДИО-НАСТРОЕК (WEB AUDIO API)
 // ==========================================
 export function initProAudioEngine(video = document.getElementById('storm-video-player')) {
-  if (!video) return;
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
@@ -277,105 +276,127 @@ export function initProAudioEngine(video = document.getElementById('storm-video-
     }
 
     if (proAudioCtx.state === 'suspended') {
-      proAudioCtx.resume();
+      proAudioCtx.resume().catch(() => {});
     }
 
-    if (!proSourceNode || attachedMediaElement !== video) {
-      if (proSourceNode) {
-        try { proSourceNode.disconnect(); } catch {}
-      }
-      if (!video._stormAudioSource) {
-        try {
-          video._stormAudioSource = proAudioCtx.createMediaElementSource(video);
-        } catch (e) {
-          // Игнорируем повторное подключение, если элемент уже имеет узел источника
+    // Слушатель пользовательских жестов для мгновенного пробуждения AudioContext
+    if (!window._stormAudioContextGestureHooked) {
+      window._stormAudioContextGestureHooked = true;
+      const resumeAudio = () => {
+        if (proAudioCtx && proAudioCtx.state === 'suspended') {
+          proAudioCtx.resume().catch(() => {});
         }
-      }
-      proSourceNode = video._stormAudioSource || proSourceNode;
-      attachedMediaElement = video;
+      };
+      window.addEventListener('click', resumeAudio, { passive: true });
+      window.addEventListener('keydown', resumeAudio, { passive: true });
+      window.addEventListener('touchstart', resumeAudio, { passive: true });
+    }
 
-      // 1. Фильтр усиления баса (Low-shelf 80Hz)
-      proBassFilter = proAudioCtx.createBiquadFilter();
-      proBassFilter.type = 'lowshelf';
-      proBassFilter.frequency.setValueAtTime(80, proAudioCtx.currentTime);
-
-      // 2. Фильтр выделения речи (Peaking 2500Hz, Q=1.2)
-      proVoiceFilter = proAudioCtx.createBiquadFilter();
-      proVoiceFilter.type = 'peaking';
-      proVoiceFilter.frequency.setValueAtTime(2500, proAudioCtx.currentTime);
-      proVoiceFilter.Q.setValueAtTime(1.2, proAudioCtx.currentTime);
-
-      // 3. 10-полосный эквалайзер
-      proEqFilters = EQ_FREQUENCIES.map(freq => {
-        const f = proAudioCtx.createBiquadFilter();
-        if (freq <= 32) {
-          f.type = 'lowshelf';
-        } else if (freq >= 16000) {
-          f.type = 'highshelf';
-        } else {
-          f.type = 'peaking';
-          f.Q.setValueAtTime(1.4, proAudioCtx.currentTime);
+    if (video) {
+      video.addEventListener('play', () => {
+        if (proAudioCtx && proAudioCtx.state === 'suspended') {
+          proAudioCtx.resume().catch(() => {});
         }
-        f.frequency.setValueAtTime(freq, proAudioCtx.currentTime);
-        return f;
+      });
+      video.addEventListener('playing', () => {
+        if (proAudioCtx && proAudioCtx.state === 'suspended') {
+          proAudioCtx.resume().catch(() => {});
+        }
       });
 
-      // 4. Компрессор динамического диапазона (Ночной режим)
-      proCompressor = proAudioCtx.createDynamicsCompressor();
-      proCompressor.threshold.setValueAtTime(-24, proAudioCtx.currentTime);
-      proCompressor.knee.setValueAtTime(30, proAudioCtx.currentTime);
-      proCompressor.ratio.setValueAtTime(12, proAudioCtx.currentTime);
-      proCompressor.attack.setValueAtTime(0.003, proAudioCtx.currentTime);
-      proCompressor.release.setValueAtTime(0.25, proAudioCtx.currentTime);
+      if (!proSourceNode || attachedMediaElement !== video) {
+        if (proSourceNode) {
+          try { proSourceNode.disconnect(); } catch {}
+        }
+        if (!video._stormAudioSource) {
+          try {
+            video._stormAudioSource = proAudioCtx.createMediaElementSource(video);
+          } catch (e) {
+            // Игнорируем повторное подключение, если элемент уже имеет узел источника
+          }
+        }
+        proSourceNode = video._stormAudioSource || proSourceNode;
+        attachedMediaElement = video;
 
-      // 5. Задержка звука (Audio Sync Offset)
-      proDelayNode = proAudioCtx.createDelay(2.0);
-      proDelayNode.delayTime.setValueAtTime(0, proAudioCtx.currentTime);
+        if (proSourceNode) {
+          // 1. Фильтр усиления баса (Low-shelf 80Hz)
+          proBassFilter = proAudioCtx.createBiquadFilter();
+          proBassFilter.type = 'lowshelf';
+          proBassFilter.frequency.setValueAtTime(80, proAudioCtx.currentTime);
 
-      // 6. Сверточный ревербератор для Dolby Atmos 3D акустики кинозала
-      proConvolver = proAudioCtx.createConvolver();
-      proConvolver.buffer = createCinematicImpulseBuffer(proAudioCtx, 1.4, 2.2);
+          // 2. Фильтр выделения речи (Peaking 2500Hz, Q=1.2)
+          proVoiceFilter = proAudioCtx.createBiquadFilter();
+          proVoiceFilter.type = 'peaking';
+          proVoiceFilter.frequency.setValueAtTime(2500, proAudioCtx.currentTime);
+          proVoiceFilter.Q.setValueAtTime(1.2, proAudioCtx.currentTime);
 
-      proWetGain = proAudioCtx.createGain();
-      proDryGain = proAudioCtx.createGain();
-      proMasterGain = proAudioCtx.createGain();
+          // 3. 10-полосный эквалайзер
+          proEqFilters = EQ_FREQUENCIES.map(freq => {
+            const f = proAudioCtx.createBiquadFilter();
+            if (freq <= 32) {
+              f.type = 'lowshelf';
+            } else if (freq >= 16000) {
+              f.type = 'highshelf';
+            } else {
+              f.type = 'peaking';
+              f.Q.setValueAtTime(1.4, proAudioCtx.currentTime);
+            }
+            f.frequency.setValueAtTime(freq, proAudioCtx.currentTime);
+            return f;
+          });
 
-      // Собираем звуковой тракт:
-      // Source -> Delay -> Bass -> Voice -> EQ[0..9] -> Split:
-      //                                                -> DryGain -> MasterGain
-      //                                                -> Convolver -> WetGain -> MasterGain
-      //                                                (optional Compressor) -> Destination
-      let lastNode = proSourceNode;
-      lastNode.connect(proDelayNode);
-      lastNode = proDelayNode;
+          // 4. Компрессор динамического диапазона (Ночной режим)
+          proCompressor = proAudioCtx.createDynamicsCompressor();
+          proCompressor.threshold.setValueAtTime(-24, proAudioCtx.currentTime);
+          proCompressor.knee.setValueAtTime(30, proAudioCtx.currentTime);
+          proCompressor.ratio.setValueAtTime(12, proAudioCtx.currentTime);
+          proCompressor.attack.setValueAtTime(0.003, proAudioCtx.currentTime);
+          proCompressor.release.setValueAtTime(0.25, proAudioCtx.currentTime);
 
-      lastNode.connect(proBassFilter);
-      lastNode = proBassFilter;
+          // 5. Задержка звука (Audio Sync Offset)
+          proDelayNode = proAudioCtx.createDelay(2.0);
+          proDelayNode.delayTime.setValueAtTime(0, proAudioCtx.currentTime);
 
-      lastNode.connect(proVoiceFilter);
-      lastNode = proVoiceFilter;
+          // 6. Сверточный ревербератор для Dolby Atmos 3D акустики кинозала
+          proConvolver = proAudioCtx.createConvolver();
+          proConvolver.buffer = createCinematicImpulseBuffer(proAudioCtx, 1.4, 2.2);
 
-      for (const eqNode of proEqFilters) {
-        lastNode.connect(eqNode);
-        lastNode = eqNode;
+          proWetGain = proAudioCtx.createGain();
+          proDryGain = proAudioCtx.createGain();
+          proMasterGain = proAudioCtx.createGain();
+
+          let lastNode = proSourceNode;
+          lastNode.connect(proDelayNode);
+          lastNode = delayNode = proDelayNode;
+
+          lastNode.connect(proBassFilter);
+          lastNode = proBassFilter;
+
+          lastNode.connect(proVoiceFilter);
+          lastNode = proVoiceFilter;
+
+          for (const eqNode of proEqFilters) {
+            lastNode.connect(eqNode);
+            lastNode = eqNode;
+          }
+
+          // Разветвление на сухой и пространственный сигнал (Dolby Atmos)
+          lastNode.connect(proDryGain);
+          lastNode.connect(proConvolver);
+          proConvolver.connect(proWetGain);
+
+          proDryGain.connect(proMasterGain);
+          proWetGain.connect(proMasterGain);
+
+          // Мастер-выход через ночной компрессор или напрямую
+          proMasterGain.connect(proCompressor);
+          proCompressor.connect(proAudioCtx.destination);
+        }
       }
-
-      // Разветвление на сухой и пространственный сигнал (Dolby Atmos)
-      lastNode.connect(proDryGain);
-      lastNode.connect(proConvolver);
-      proConvolver.connect(proWetGain);
-
-      proDryGain.connect(proMasterGain);
-      proWetGain.connect(proMasterGain);
-
-      // Мастер-выход через ночной компрессор или напрямую
-      proMasterGain.connect(proCompressor);
-      proCompressor.connect(proAudioCtx.destination);
     }
 
     applyProAudioSettings();
   } catch (err) {
-    // В случае CORS или если браузер блокирует захват аудио
     console.warn('ProAudioEngine init note:', err.message);
   }
 }
@@ -402,71 +423,95 @@ function createCinematicImpulseBuffer(ctx, duration = 1.2, decay = 2.0) {
 }
 
 export function applyProAudioSettings() {
-  if (!proAudioCtx) return;
+  const video = document.getElementById('storm-video-player');
+  if (video && (!proAudioCtx || !proSourceNode)) {
+    initProAudioEngine(video);
+  }
+
+  if (proAudioCtx && proAudioCtx.state === 'suspended') {
+    proAudioCtx.resume().catch(() => {});
+  }
+
   const s = proAudioSettings;
-  const now = proAudioCtx.currentTime;
 
-  // 1. Усиление баса
-  if (proBassFilter) {
-    const bassGains = { off: 0, cinema: 4.5, ultra: 8.5 };
-    const gain = bassGains[s.bassBoost] || 0;
-    proBassFilter.gain.setTargetAtTime(gain, now, 0.05);
-  }
+  if (proAudioCtx) {
+    const now = proAudioCtx.currentTime;
 
-  // 2. Интеллектуальное выделение речи (AI Voice Boost)
-  if (proVoiceFilter) {
-    const voiceGains = { off: 0, mild: 3.5, strong: 6.5 };
-    const gain = voiceGains[s.voiceBoost] || 0;
-    proVoiceFilter.gain.setTargetAtTime(gain, now, 0.05);
-  }
+    // 1. Усиление баса
+    if (proBassFilter) {
+      const bassGains = { off: 0, cinema: 5.0, ultra: 9.0 };
+      const gain = bassGains[s.bassBoost] || 0;
+      proBassFilter.gain.setTargetAtTime(gain, now, 0.05);
+    }
 
-  // 3. Эквалайзер 10 полос
-  if (proEqFilters.length === 10) {
-    for (let i = 0; i < 10; i++) {
-      const val = s.eqBands[i] !== undefined ? s.eqBands[i] : 0;
-      proEqFilters[i].gain.setTargetAtTime(val, now, 0.05);
+    // 2. Интеллектуальное выделение речи (AI Voice Boost)
+    if (proVoiceFilter) {
+      const voiceGains = { off: 0, mild: 4.0, strong: 7.5 };
+      const gain = voiceGains[s.voiceBoost] || 0;
+      proVoiceFilter.gain.setTargetAtTime(gain, now, 0.05);
+    }
+
+    // 3. Эквалайзер 10 полос
+    if (proEqFilters.length === 10) {
+      for (let i = 0; i < 10; i++) {
+        const val = s.eqBands[i] !== undefined ? s.eqBands[i] : 0;
+        proEqFilters[i].gain.setTargetAtTime(val, now, 0.05);
+      }
+    }
+
+    // 4. Пространственный звук (Dolby Atmos & DTS:X 3D)
+    if (proWetGain && proDryGain) {
+      if (s.spatialMode === 'atmos') {
+        proDryGain.gain.setTargetAtTime(0.82, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.42, now, 0.05);
+      } else if (s.spatialMode === 'dtsx') {
+        proDryGain.gain.setTargetAtTime(0.88, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.32, now, 0.05);
+      } else if (s.spatialMode === 'headphones') {
+        proDryGain.gain.setTargetAtTime(0.80, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.38, now, 0.05);
+      } else {
+        // Стерео прямое
+        proDryGain.gain.setTargetAtTime(1.0, now, 0.05);
+        proWetGain.gain.setTargetAtTime(0.0, now, 0.05);
+      }
+    }
+
+    // 5. Ночной компрессор
+    if (proCompressor) {
+      if (s.nightMode) {
+        proCompressor.threshold.setTargetAtTime(-28, now, 0.05);
+        proCompressor.ratio.setTargetAtTime(16, now, 0.05);
+      } else {
+        proCompressor.threshold.setTargetAtTime(-10, now, 0.05);
+        proCompressor.ratio.setTargetAtTime(2, now, 0.05);
+      }
+    }
+
+    // 6. Мастер-громкость / Preamp
+    if (proMasterGain) {
+      proMasterGain.gain.setTargetAtTime(s.preampGain || 1.0, now, 0.05);
+    }
+
+    // 7. Синхронизация задержки
+    if (proDelayNode) {
+      const delaySec = Math.max(0, Math.min(1.5, (s.audioDelayMs || 0) / 1000));
+      proDelayNode.delayTime.setTargetAtTime(delaySec, now, 0.05);
     }
   }
 
-  // 4. Пространственный звук (Dolby Atmos & DTS:X 3D)
-  if (proWetGain && proDryGain) {
-    if (s.spatialMode === 'atmos') {
-      proDryGain.gain.setTargetAtTime(0.85, now, 0.05);
-      proWetGain.gain.setTargetAtTime(0.35, now, 0.05);
-    } else if (s.spatialMode === 'dtsx') {
-      proDryGain.gain.setTargetAtTime(0.9, now, 0.05);
-      proWetGain.gain.setTargetAtTime(0.25, now, 0.05);
-    } else if (s.spatialMode === 'headphones') {
-      proDryGain.gain.setTargetAtTime(0.8, now, 0.05);
-      proWetGain.gain.setTargetAtTime(0.3, now, 0.05);
-    } else {
-      // Стерео прямое
-      proDryGain.gain.setTargetAtTime(1.0, now, 0.05);
-      proWetGain.gain.setTargetAtTime(0.0, now, 0.05);
-    }
-  }
-
-  // 5. Ночной компрессор
-  if (proCompressor) {
-    if (s.nightMode) {
-      proCompressor.threshold.setTargetAtTime(-28, now, 0.05);
-      proCompressor.ratio.setTargetAtTime(16, now, 0.05);
-    } else {
-      proCompressor.threshold.setTargetAtTime(-10, now, 0.05);
-      proCompressor.ratio.setTargetAtTime(2, now, 0.05);
-    }
-  }
-
-  // 6. Мастер-громкость
-  if (proMasterGain) {
-    proMasterGain.gain.setTargetAtTime(s.preampGain || 1.0, now, 0.05);
-  }
-
-  // 7. Синхронизация задержки
-  if (proDelayNode) {
-    const delaySec = Math.max(0, Math.min(1.5, (s.audioDelayMs || 0) / 1000));
-    proDelayNode.delayTime.setTargetAtTime(delaySec, now, 0.05);
-  }
+  // Трансляция настроек во все активные iframe (FanFilm4K, Stravers)
+  const iframes = document.querySelectorAll('.cinema-player-iframe');
+  iframes.forEach(iframe => {
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: 'STORM_PRO_AUDIO',
+          settings: s
+        }, '*');
+      }
+    } catch {}
+  });
 
   try {
     localStorage.setItem('storm_pro_audio_settings', JSON.stringify(proAudioSettings));
@@ -778,8 +823,37 @@ export function renderProAudioPanel(hostElement) {
         </div>
       </div>
 
-      <!-- Секция 4: Синхронизация звука и видео (Audio Sync Offset) -->
-      <div class="pro-engine-section" style="margin-bottom: 0;">
+      <!-- Секция 4: Ночной режим звука (Dynamic Range Compressor) -->
+      <div class="pro-engine-section">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div class="pro-section-title" style="margin-bottom: 2px;">Ночной режим звука (Dynamic Range)</div>
+            <div style="font-size: 11px; color: var(--text-muted);">Сглаживает громкие взрывы и выстрелы, делает шепот четким и разборчивым</div>
+          </div>
+          <button type="button" class="storm-btn ${s.nightMode ? 'storm-btn-primary' : 'storm-btn-secondary'} storm-btn-sm" id="pro-night-mode-toggle-btn">
+            ${s.nightMode ? '🌙 Ночной режим включен' : '🌑 Включить ночной режим'}
+          </button>
+        </div>
+      </div>
+
+      <!-- Секция 5: Усиление громкости (Preamp Boost) -->
+      <div class="pro-engine-section">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div class="pro-section-title" style="margin-bottom: 2px;">Усиление громкости (Preamp Boost)</div>
+            <div style="font-size: 11px; color: var(--text-muted);">Увеличение громкости для тихих дорожек и дубляжей</div>
+          </div>
+          <div class="pro-pill-group" style="margin: 0;">
+            <button type="button" class="pro-pill-btn ${(!s.preampGain || s.preampGain === 1.0) ? 'active' : ''}" data-preamp="1.0">100%</button>
+            <button type="button" class="pro-pill-btn ${s.preampGain === 1.25 ? 'active' : ''}" data-preamp="1.25">125%</button>
+            <button type="button" class="pro-pill-btn ${s.preampGain === 1.5 ? 'active' : ''}" data-preamp="1.5">150%</button>
+            <button type="button" class="pro-pill-btn ${s.preampGain === 2.0 ? 'active' : ''}" data-preamp="2.0">200%</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Секция 6: Синхронизация звука и видео (Audio Sync Offset) -->
+      <div class="pro-engine-section" style="margin-bottom: 12px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div>
             <div class="pro-section-title" style="margin-bottom: 2px;">Синхронизация звука и видео (Audio Offset)</div>
@@ -795,8 +869,35 @@ export function renderProAudioPanel(hostElement) {
           </div>
         </div>
       </div>
+
+      <!-- Кнопка сброса настроек -->
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="reset-pro-audio-btn">
+          ↺ Сбросить настройки звука
+        </button>
+      </div>
     </div>
   `;
+
+  // Ночной режим
+  const nightToggleBtn = hostElement.querySelector('#pro-night-mode-toggle-btn');
+  if (nightToggleBtn) {
+    nightToggleBtn.onclick = () => {
+      proAudioSettings.nightMode = !proAudioSettings.nightMode;
+      setProAudioNightMode(proAudioSettings.nightMode);
+      renderProAudioPanel(hostElement);
+    };
+  }
+
+  // Preamp громкость
+  hostElement.querySelectorAll('[data-preamp]').forEach(btn => {
+    btn.onclick = () => {
+      hostElement.querySelectorAll('[data-preamp]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      proAudioSettings.preampGain = parseFloat(btn.dataset.preamp);
+      applyProAudioSettings();
+    };
+  });
 
   // Пространственный звук
   hostElement.querySelectorAll('[data-spatial]').forEach(btn => {
@@ -901,6 +1002,16 @@ export function renderProAudioPanel(hostElement) {
     };
   }
 
+  // Сброс всех настроек звука
+  const resetAudioBtn = hostElement.querySelector('#reset-pro-audio-btn');
+  if (resetAudioBtn) {
+    resetAudioBtn.onclick = () => {
+      proAudioSettings = { ...DEFAULT_AUDIO_SETTINGS, eqBands: [...EQ_PRESETS.cinema] };
+      applyProAudioSettings();
+      renderProAudioPanel(hostElement);
+    };
+  }
+
   // Закрытие
   const closeBtn = hostElement.querySelector('#close-pro-audio-btn');
   if (closeBtn) {
@@ -908,4 +1019,7 @@ export function renderProAudioPanel(hostElement) {
       hostElement.style.display = 'none';
     };
   }
+
+  // Немедленно активируем настройки звука при рендере
+  applyProAudioSettings();
 }
