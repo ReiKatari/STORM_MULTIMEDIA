@@ -59,6 +59,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const isSeries = media_type === 'series' || media_type === 'cartoon-series' || media_type === 'anime-series';
   const typeFilter = isSeries ? '&types=foreign-serial,russian-serial,anime-serial' : '&types=foreign-movie,russian-movie,anime';
   const yearParam = releaseYear ? `&year=${releaseYear}&strict=1` : '&strict=1';
+  const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
   // 1. Если фильм еще не вышел в цифровой прокат — доступен только официальный трейлер!
   const resolvedTrailer = trailer_url || `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent((cleanTitle || rawTitle) + ' русский трейлер 4K')}`;
@@ -114,7 +115,9 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       status_label: '🟢 Онлайн',
       audio_info: 'Студийный перевод HDRezka Studio',
       speed: '⚡ Высокая скорость',
-      url: rezkaUrl
+      url: rezkaUrl,
+      is_recommended: !fanfilm_4k_url,
+      recommended_badge: !fanfilm_4k_url ? '🔥 Рекомендуемый' : undefined
     });
 
     // Collaps Плеер
@@ -153,8 +156,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
 
     // Kodik Плеер
     const baseKodikUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
     players.push({
       id: 'kodik_direct',
       name: 'Kodik Плеер (сериалы и озвучки)',
@@ -170,8 +173,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
 
     // Red Head Sound (Дубляж RHS)
     const rhsUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&voice=rhs${typeFilter}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&voice=rhs${typeFilter}`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&voice=rhs${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&voice=rhs${typeFilter}${episodeParam}`;
     players.push({
       id: 'rhs_player',
       name: 'Red Head Sound (Дубляж RHS)',
@@ -202,29 +205,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
     }
   } else {
     // 4. Плееры специально для Аниме
-    // AniLibria Official
-    const anilibriaUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=anilibria`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=anilibria`;
-    players.push({
-      id: 'anilibria_stream',
-      name: 'AniLibria Stream (Официальный релиз)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'ANILIBRIA',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальная русская озвучка AniLibria',
-      speed: '⚡ Студийный поток',
-      url: anilibriaUrl,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
-    });
-
-    // AniXart Stream
+    // AniXart Stream - проверенный скоростной плеер со всеми студиями озвучки
     const anixartUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&types=anime-serial,anime`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&types=anime-serial,anime`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&types=anime-serial,anime${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&types=anime-serial,anime${episodeParam}`;
     players.push({
       id: 'anixart_stream',
       name: 'AniXart Stream (Аниме-релизы)',
@@ -235,13 +219,15 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       status_label: '🟢 Онлайн',
       audio_info: 'Тысячи озвучек от фандаб-сообщества',
       speed: '⚡ Скоростной поток',
-      url: anixartUrl
+      url: anixartUrl,
+      is_recommended: true,
+      recommended_badge: '🔥 Рекомендуемый'
     });
 
     // Shikimori и AnimeGO
     const shikimoriUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&source=shikimori`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&source=shikimori`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&source=shikimori${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&source=shikimori${episodeParam}`;
     players.push({
       id: 'shikimori_stream',
       name: 'Shikimori и AnimeGO Плеер',
@@ -250,15 +236,15 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       badge: 'SHIKIMORI',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Японский оригинал и субтитры',
+      audio_info: 'Оригинальные субтитры и студийный дубляж',
       speed: '⚡ Быстрый поток',
       url: shikimoriUrl
     });
 
     // Kodik Anime
     const baseKodikUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&types=anime-serial,anime`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&types=anime-serial,anime`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&types=anime-serial,anime${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&types=anime-serial,anime${episodeParam}`;
     players.push({
       id: 'kodik_direct',
       name: 'Kodik Аниме Плеер',

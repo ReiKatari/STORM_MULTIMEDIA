@@ -265,7 +265,14 @@ export function initProAudioEngine(video = document.getElementById('storm-video-
       if (proSourceNode) {
         try { proSourceNode.disconnect(); } catch {}
       }
-      proSourceNode = proAudioCtx.createMediaElementSource(video);
+      if (!video._stormAudioSource) {
+        try {
+          video._stormAudioSource = proAudioCtx.createMediaElementSource(video);
+        } catch (e) {
+          // Игнорируем повторное подключение, если элемент уже имеет узел источника
+        }
+      }
+      proSourceNode = video._stormAudioSource || proSourceNode;
       attachedMediaElement = video;
 
       // 1. Фильтр усиления баса (Low-shelf 80Hz)
