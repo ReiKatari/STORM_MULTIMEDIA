@@ -285,7 +285,10 @@
           <h3 class="storm-modal-title" id="cinema-modal-title">Название фильма</h3>
           <span style="font-size: 12px; color: var(--text-muted);" id="cinema-modal-year">2026</span>
         </div>
-        <button type="button" class="storm-modal-close" title="Закрыть плеер">✕</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="storm-modal-fullscreen-btn" id="cinema-header-fullscreen-btn" title="Развернуть на весь экран (F)">⛶</button>
+          <button type="button" class="storm-modal-close" title="Закрыть плеер">✕</button>
+        </div>
       </div>
 
       <div class="storm-modal-body">
@@ -361,19 +364,25 @@
             <div id="player-utility-actions" style="margin-top: 10px;"></div>
             <div id="ambilight-settings-panel-host"></div>
 
-            <!-- Селектор сезонов и серий для сериалов (с описаниями каждого сезона и серии на русском языке) -->
+            <!-- Селектор сезонов и серий для сериалов и аниме (сворачиваемый блок с подробной информацией) -->
             <div class="series-seasons-container" id="series-seasons-container" style="display: none;">
               <div class="series-seasons-header">
-                <div style="font-size: 13px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-                  <span>📺</span>
-                  <span>Сезоны и серии</span>
+                <div class="series-seasons-header-left">
+                  <span class="series-seasons-header-icon">📺</span>
+                  <span class="series-seasons-header-title">Сезоны и серии</span>
+                  <button type="button" class="series-collapse-btn" id="series-collapse-btn" title="Свернуть или развернуть блок серий">
+                    <span id="series-collapse-icon">▲</span>
+                    <span id="series-collapse-text">Свернуть</span>
+                  </button>
                 </div>
                 <div class="series-seasons-tabs" id="series-seasons-tabs"></div>
               </div>
-              <div class="series-season-info-box" id="series-season-info-box">
-                <div class="series-season-desc" id="series-season-desc"></div>
+              <div class="series-seasons-collapsible-body" id="series-seasons-collapsible-body">
+                <div class="series-season-info-box" id="series-season-info-box">
+                  <div class="series-season-desc" id="series-season-desc"></div>
+                </div>
+                <div class="series-episodes-grid" id="series-episodes-grid"></div>
               </div>
-              <div class="series-episodes-grid" id="series-episodes-grid"></div>
             </div>
 
             <!-- Специфичные элементы AniXart (озвучки и серии) -->
@@ -439,8 +448,8 @@
                 </div>
               </div>
 
-              <!-- Описание фильма / аниме -->
-              <p id="cinema-modal-desc" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px;"></p>
+              <!-- Описание фильма / сериала / аниме -->
+              <p id="cinema-modal-desc" class="cinema-modal-desc" style="font-size: 14px; color: #ffffff; line-height: 1.6; margin-top: 10px;"></p>
 
               <!-- Галерея скриншотов и кадров -->
               <div id="cinema-modal-screenshots-container" style="margin-top: 14px; display: none;">
