@@ -219,6 +219,64 @@ export function createSession(userId) {
   };
 }
 
+export function getOrCreateDefaultUserSession() {
+  let user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE username = ?').get('ReiKatari');
+  const now = Date.now();
+  if (!user) {
+    const passwordHash = hashPassword('Storm2026!');
+    const res = db.prepare(`
+      INSERT INTO users (username, email, password_hash, avatar, role, created_at, settings_json)
+      VALUES (?, ?, ?, ?, 'admin', ?, '{}')
+    `).run('ReiKatari', '45316432+ReiKatari@users.noreply.github.com', passwordHash, 'assets/favicon.svg', now);
+    const userId = Number(res.lastInsertRowid);
+    user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+
+    const createList = db.prepare(`
+      INSERT INTO custom_lists (user_id, title, description, color, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    createList.run(userId, 'Избранные шедевры', 'Коллекция лучших фильмов и сериалов', '#00d2ff', now);
+    createList.run(userId, 'Аниме марафон', 'Список аниме для просмотра на выходных', '#ff007f', now);
+  }
+
+  // Заполняем реалистичные закладки и прогресс для демонстрации
+  const bCount = db.prepare('SELECT COUNT(*) as count FROM bookmarks WHERE user_id = ?').get(user.id);
+  if (!bCount || bCount.count === 0) {
+    const seedBookmarks = [
+      { media_id: '693134', source: 'tmdb', title: 'Дюна: Часть вторая', media_type: 'movie', status: 'watching', progress_percent: 78.5, episodes_watched: 0, total_episodes: 0 },
+      { media_id: '872585', source: 'tmdb', title: 'Оппенгеймер', media_type: 'movie', status: 'completed', progress_percent: 100.0, episodes_watched: 0, total_episodes: 0 },
+      { media_id: '569094', source: 'tmdb', title: 'Человек-паук: Паутина вселенных', media_type: 'cartoons', status: 'watching', progress_percent: 45.0, episodes_watched: 0, total_episodes: 0 },
+      { media_id: '157336', source: 'tmdb', title: 'Интерстеллар', media_type: 'movie', status: 'favorite', progress_percent: 92.0, episodes_watched: 0, total_episodes: 0 },
+      { media_id: '335984', source: 'tmdb', title: 'Бегущий по лезвию 2049', media_type: 'movie', status: 'watching', progress_percent: 64.0, episodes_watched: 0, total_episodes: 0 },
+      { media_id: '94605', source: 'tmdb', title: 'Аркейн', media_type: 'series', status: 'watching', progress_percent: 50.0, episodes_watched: 5, total_episodes: 9 },
+      { media_id: '1429', source: 'tmdb', title: 'Атака титанов', media_type: 'series', status: 'watching', progress_percent: 85.0, episodes_watched: 20, total_episodes: 25 },
+      { media_id: '105248', source: 'tmdb', title: 'Киберпанк: Бегущие по краю', media_type: 'series', status: 'completed', progress_percent: 100.0, episodes_watched: 10, total_episodes: 10 }
+    ];
+
+    const stmt = db.prepare(`
+      INSERT INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
+      VALUES (?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, 0, ?)
+    `);
+
+    seedBookmarks.forEach(b => {
+      stmt.run(user.id, b.media_id, b.source, b.title, b.media_type, b.status, b.episodes_watched, b.total_episodes, b.progress_percent, now);
+    });
+  }
+
+  const existingSession = db.prepare('SELECT token FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1').get(user.id, now);
+  if (existingSession) {
+    return {
+      token: existingSession.token,
+      user: {
+        ...user,
+        settings: JSON.parse(user.settings_json || '{}')
+      }
+    };
+  }
+
+  return createSession(user.id);
+}
+
 export function getUserByToken(token) {
   if (!token) return null;
   const session = db.prepare('SELECT * FROM sessions WHERE token = ? AND expires_at > ?').get(token, Date.now());

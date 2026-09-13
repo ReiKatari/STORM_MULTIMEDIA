@@ -69,7 +69,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await checkAuth();
   loadCurrentTab();
+  initDeepLinking();
 });
+
+async function initDeepLinking() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const mediaId = params.get('media');
+    if (!mediaId) return;
+
+    const source = params.get('source') || 'tmdb';
+    const season = params.get('season');
+    const episode = params.get('episode');
+    const player = params.get('player');
+
+    const headers = {};
+    const token = localStorage.getItem('storm_token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/media/item?id=${encodeURIComponent(mediaId)}&source=${encodeURIComponent(source)}`, { headers });
+    if (res.ok) {
+      const item = await res.json();
+      if (item && item.id) {
+        openPlayerModal(item, { initialSeason: season, initialEpisode: episode, initialPlayer: player });
+      }
+    }
+  } catch (err) {
+    console.warn('Deep link initialization error:', err);
+  }
+}
 
 // -------------------------------------------------------------
 // ИНИЦИАЛИЗАЦИЯ РЕЖИМОВ ОТОБРАЖЕНИЯ (VIEW MODES)
@@ -152,13 +180,19 @@ function renderSkeletonGrid() {
   container.innerHTML = html;
 }
 
+export function cleanVideoTitle(str) {
+  if (!str) return '';
+  let s = String(str).trim();
+  s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
+  s = s.replace(/\s*[\(\[]?\s*(?:Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\s*[\)\]]?/gi, '');
+  s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '');
+  s = s.replace(/[-–—/]\s*$/, '').trim();
+  return s.replace(/\s{2,}/g, ' ').trim();
+}
+
 export function formatMediaTitle(item) {
   if (!item) return '';
-  let rawTitle = (item.title || item.original_title || '').trim();
-
-  // Удаляем из названия технические теги качества и разрешений
-  rawTitle = rawTitle.replace(/\s*[\(\[]?\b(4K|UHD|2160p|1080p|720p|480p|HDR|HDR10|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\b[\)\]]?/gi, '').trim();
-  rawTitle = rawTitle.replace(/[-–—/]\s*$/, '').trim();
+  let rawTitle = cleanVideoTitle(item.title || item.original_title || '');
 
   const year = item.year ? String(item.year).trim() : '';
   const hasYear = year && rawTitle.includes(year);
@@ -237,7 +271,11 @@ async function loadCurrentTab() {
   }
 
   try {
-    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`);
+    const headers = {};
+    const token = localStorage.getItem('storm_token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`, { headers });
     const data = await res.json();
     const fetchedItems = data.items || [];
     rawCatalogItems = deduplicateMediaList(fetchedItems);
@@ -364,8 +402,8 @@ function renderMediaItems(items) {
       <div class="media-detailed-card" data-idx="${idx}">
         <div class="media-detailed-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
-          ${isReal4K ? '<span class="storm-badge storm-badge-4k" style="position:absolute;top:6px;left:6px;">4K UHD</span>' : ''}
-          <div style="position:absolute;top:6px;right:6px;">
+          <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
+            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
             ${getSourceBadge(item)}
           </div>
         </div>
@@ -413,14 +451,14 @@ function renderMediaItems(items) {
       <table class="media-table-table">
         <thead>
           <tr>
-            <th>Постер</th>
+            <th class="th-center" style="width: 64px;">Постер</th>
             <th>Название</th>
-            <th>Источник</th>
-            <th>Год</th>
-            <th>Рейтинг</th>
-            <th>Статус</th>
-            <th>Прогресс</th>
-            <th>Действия</th>
+            <th class="th-center">Источник</th>
+            <th class="th-center">Год</th>
+            <th class="th-center">Рейтинг</th>
+            <th class="th-center">Статус</th>
+            <th class="th-center">Прогресс</th>
+            <th class="th-center">Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -429,21 +467,21 @@ function renderMediaItems(items) {
             const formattedTitle = formatMediaTitle(item);
             return `
             <tr data-idx="${idx}" style="cursor:pointer;">
-              <td><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
+              <td class="td-center"><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
               <td><strong>${formattedTitle}</strong></td>
-              <td>${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
-              <td>${item.year || '—'}</td>
-              <td>${item.rating ? `★ ${item.rating}` : '—'}</td>
-              <td>${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : '—'}</td>
-              <td style="min-width:100px;">
+              <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
+              <td class="td-center">${item.year || '—'}</td>
+              <td class="td-center" style="font-weight: 700; color: var(--color-amber);">${item.rating ? `★ ${item.rating}` : '—'}</td>
+              <td class="td-center">${item.user_status ? `<span class="storm-badge storm-badge-${item.user_status}">${getStatusLabel(item.user_status)}</span>` : '—'}</td>
+              <td class="td-center" style="min-width:110px;">
                 ${item.progress_percent > 0 ? `
-                  <div style="font-size:11px;margin-bottom:2px;">${item.progress_percent}%</div>
+                  <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:2px;">${item.progress_percent}%</div>
                   <div class="storm-progress-container">
                     <div class="storm-progress-bar" style="width: ${item.progress_percent}%"></div>
                   </div>
-                ` : '0%'}
+                ` : '<span style="color:var(--text-muted);font-size:11px;">0%</span>'}
               </td>
-              <td><button class="storm-btn storm-btn-primary storm-btn-sm">▶ Плеер</button></td>
+              <td class="td-center"><button class="storm-btn storm-btn-primary storm-btn-sm">▶ Плеер</button></td>
             </tr>
           `;
           }).join('')}

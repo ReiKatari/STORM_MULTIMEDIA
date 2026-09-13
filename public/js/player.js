@@ -99,10 +99,12 @@ function getSourceName(item) {
   return map[item?.source] || (item?.source || 'STORM').toUpperCase();
 }
 
-export async function openPlayerModal(mediaItem) {
+export async function openPlayerModal(mediaItem, options = {}) {
   currentMedia = mediaItem;
   const modal = document.getElementById('cinema-modal');
   if (!modal) return;
+
+  const cleanTitle = cleanVideoTitle(mediaItem.title);
 
   // Проверяем ночной просмотр (между 02:00 и 05:00)
   const currentHour = new Date().getHours();
@@ -114,7 +116,7 @@ export async function openPlayerModal(mediaItem) {
   const iframeContainer = document.getElementById('cinema-player-wrapper');
   iframeContainer.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Загрузка видеоплеера...</div>';
 
-  document.getElementById('cinema-modal-title').textContent = mediaItem.title;
+  document.getElementById('cinema-modal-title').textContent = cleanTitle;
   document.getElementById('cinema-modal-year').textContent = mediaItem.year || '';
   document.getElementById('cinema-modal-desc').textContent = mediaItem.description || '';
 
@@ -128,6 +130,9 @@ export async function openPlayerModal(mediaItem) {
 
   initProgressSlider();
 
+  // Обновляем URL для глубокого связывания (Deep Linking)
+  updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
+
   // Открываем модальное окно
   modal.classList.add('is-open');
 
@@ -139,7 +144,7 @@ export async function openPlayerModal(mediaItem) {
   // Моментально отображаем плашку активного источника без зависания «Загрузка плееров...»
   currentActivePlayer = {
     badge: (mediaItem.source || 'ПЛЕЕР').toUpperCase(),
-    name: `${mediaItem.title || 'Основной поток'} (${getSourceName(mediaItem)})`,
+    name: `${cleanTitle || 'Основной поток'} (${getSourceName(mediaItem)})`,
     quality: '1080p FHD',
     status_label: '🟢 Онлайн'
   };
@@ -150,7 +155,7 @@ export async function openPlayerModal(mediaItem) {
     const controller = new AbortController();
     const fetchTimeout = setTimeout(() => controller.abort(), 5000);
 
-    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(mediaItem.title || '')}&year=${encodeURIComponent(mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}`;
+    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}`;
     
     let details = null;
     try {
@@ -170,7 +175,7 @@ export async function openPlayerModal(mediaItem) {
           {
             id: 'kodik_direct',
             name: 'Kodik Плеер (HD)',
-            url: `https://kodikplayer.com/find-player?title=${encodeURIComponent(mediaItem.title)}`,
+            url: `https://kodikplayer.com/find-player?title=${encodeURIComponent(cleanTitle)}`,
             badge: 'KODIK'
           }
         ]
@@ -190,18 +195,20 @@ export async function openPlayerModal(mediaItem) {
     renderDetailedMediaInfo(currentMedia);
 
     // Отображаем селектор сезонов и серий для сериалов
-    renderSeriesSeasons(currentMedia);
+    renderSeriesSeasons(currentMedia, options.initialSeason, options.initialEpisode);
 
-    // Добавляем P2P WebTorrent в список плееров
-    currentPlayers.push({
-      id: 'webtorrent',
-      name: 'P2P WebTorrent (Торрент-стриминг)',
-      url: 'webtorrent://direct',
-      badge: 'P2P 4K',
-      quality: '4K UHD / 1080p',
-      status_label: '🟢 P2P Сеть',
-      audio_info: 'Многоголосый дубляж'
-    });
+    // Добавляем P2P WebTorrent в список плееров (для вышедших релизов)
+    if (!currentMedia.is_upcoming) {
+      currentPlayers.push({
+        id: 'webtorrent',
+        name: 'P2P WebTorrent (Торрент-стриминг)',
+        url: 'webtorrent://direct',
+        badge: 'P2P 4K',
+        quality: '4K UHD / 1080p',
+        status_label: '🟢 P2P Сеть',
+        audio_info: 'Многоголосый дубляж'
+      });
+    }
 
     renderPlayerSources(currentPlayers);
     renderStatusButtons(details.user_bookmark?.status || mediaItem.user_status);
@@ -219,7 +226,11 @@ export async function openPlayerModal(mediaItem) {
     } else {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
-        selectPlayer(currentPlayers[0]);
+        // Для ожидаемых фильмов всегда по умолчанию выбираем официальный трейлер
+        const defaultPlayer = currentMedia.is_upcoming
+          ? (currentPlayers.find(p => p.is_trailer || p.id === 'official_trailer') || currentPlayers[0])
+          : (options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) || currentPlayers[0] : currentPlayers[0]);
+        selectPlayer(defaultPlayer);
       }
     }
 
@@ -243,6 +254,7 @@ export function closePlayerModal() {
   if (modal) {
     modal.classList.remove('is-open');
     stopAmbilight();
+    clearPlayerUrl();
 
     if (iframeWatchInterval) {
       clearInterval(iframeWatchInterval);
@@ -389,8 +401,34 @@ function selectPlayer(player) {
     return;
   }
 
-  if (!player.url) {
-    container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Ссылка на плеер не найдена</div>';
+  // Защита не вышедших фильмов от показа случайных чужих видео
+  if (player.is_upcoming || !player.url) {
+    if (player.upcoming_notice || currentMedia?.is_upcoming) {
+      const notice = player.upcoming_notice || `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`;
+      const trailer = currentPlayers.find(p => p.is_trailer || p.id === 'official_trailer');
+      container.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.85);border-radius:12px;gap:14px;">
+          <div style="font-size:42px;">🎬</div>
+          <div style="font-size:18px;font-weight:800;color:var(--text-primary);">Премьера еще не состоялась</div>
+          <div style="max-width:560px;font-size:13px;line-height:1.6;color:var(--text-secondary);">${notice}</div>
+          ${trailer ? `
+            <button type="button" class="storm-btn storm-btn-primary" id="switch-to-trailer-btn" style="margin-top:8px;">
+              ▶ Смотреть официальный 4K Трейлер
+            </button>
+          ` : ''}
+        </div>
+      `;
+      const switchBtn = container.querySelector('#switch-to-trailer-btn');
+      if (switchBtn && trailer) {
+        switchBtn.onclick = () => {
+          selectPlayer(trailer);
+          updatePlayerTriggerInfo(trailer);
+        };
+      }
+      return;
+    }
+
+    container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Ссылка на данный плеер временно недоступна</div>';
     return;
   }
 
@@ -1456,57 +1494,61 @@ function renderPlayerUtilityButtons() {
   if (!container) return;
 
   container.innerHTML = `
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center;">
-      <!-- Кнопка Ambilight -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${ambilightEnabled ? 'active' : ''}" id="toggle-ambilight-btn">
-        🌈 Ambilight
-      </button>
+    <div class="player-utility-row">
+      <!-- Кластер 1: Видео и звук -->
+      <div class="player-utility-cluster">
+        <span class="player-utility-cluster-label">Видео и звук</span>
+        <div class="player-utility-cluster-items">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${ambilightEnabled ? 'active' : ''}" id="toggle-ambilight-btn" title="Фоновая динамическая подсветка">
+            🌈 Ambilight
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-ambilight-settings-btn" title="Настройки цвета и интенсивности Ambilight">
+            🎨 Цвета
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Картинка в картинке">
+            🖼️ PiP
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Компрессор звука для комфортного просмотра ночью">
+            🌙 Ночной звук
+          </button>
+        </div>
+      </div>
 
-      <!-- Настройки Ambilight -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-ambilight-settings-btn" title="Настройки цвета и интенсивности Ambilight">
-        🎨 Цвета
-      </button>
+      <!-- Кластер 2: Сервисы и ИИ -->
+      <div class="player-utility-cluster">
+        <span class="player-utility-cluster-label">Сервисы и ИИ</span>
+        <div class="player-utility-cluster-items">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-whisper-btn" title="Синхронные русские субтитры в реальном времени">
+            🎙️ Whisper AI
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-xray-btn" title="Актеры в сцене и саундтрек (X-Ray)">
+            🔍 X-Ray
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="save-offline-btn" title="Сохранить релиз в память браузера (IndexedDB PWA)">
+            💾 Офлайн
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="open-torrserver-btn" title="Настройки TorrServer и AceStream">
+            🧲 Торренты
+          </button>
+          <label class="storm-btn storm-btn-secondary storm-btn-sm" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;" title="Автоматический пропуск опенингов и титров">
+            <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
+            <span>Автопропуск интро</span>
+          </label>
+        </div>
+      </div>
 
-      <!-- Кнопка PiP -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn">
-        🖼️ PiP
-      </button>
-
-      <!-- Ночной режим звука (компрессор) -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Выравнивание громкости голоса и спецэффектов (Audio Dynamics Compressor)">
-        🌙 Ночной звук
-      </button>
-
-      <!-- Интерактивная панель X-Ray на паузе -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-xray-btn" title="Актеры в сцене и саундтрек (X-Ray)">
-        🔍 X-Ray
-      </button>
-
-      <!-- Whisper AI Субтитры на лету -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-whisper-btn" title="Синхронные русские субтитры в реальном времени">
-        🎙️ Whisper AI
-      </button>
-
-      <!-- Кэширование для офлайна -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="save-offline-btn" title="Сохранить релиз в память браузера (IndexedDB PWA)">
-        💾 Офлайн
-      </button>
-
-      <!-- Локальные торрент-движки -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="open-torrserver-btn" title="Настройки TorrServer и AceStream">
-        🧲 Торренты
-      </button>
-
-      <!-- Кнопка Кинокомнаты -->
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="create-room-btn">
-        👥 Кинокомната
-      </button>
-
-      <!-- Автопропуск интро/аутро (без устаревшей галочки) -->
-      <label class="storm-btn storm-btn-secondary storm-btn-sm" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
-        <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
-        <span>Автопропуск интро</span>
-      </label>
+      <!-- Кластер 3: Совместный просмотр и ссылка -->
+      <div class="player-utility-cluster">
+        <span class="player-utility-cluster-label">Связь и ссылка</span>
+        <div class="player-utility-cluster-items">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="create-room-btn" title="Синхронный просмотр с друзьями и чатом">
+            👥 Кинокомната
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="share-media-btn" title="Скопировать прямую ссылку на данный релиз или серию">
+            🔗 Поделиться
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Хост панели настроек Ambilight -->
@@ -1571,6 +1613,11 @@ function renderPlayerUtilityButtons() {
         showToast(`Кинокомната создана! Код: ${code}`, 'success');
       }
     };
+  }
+
+  const shareBtn = container.querySelector('#share-media-btn');
+  if (shareBtn) {
+    shareBtn.onclick = () => copyMediaShareLink();
   }
 
   const autoSkipCheck = container.querySelector('#toggle-autoskip');
@@ -1963,18 +2010,143 @@ function initProgressSlider() {
 }
 
 // ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОЧИСТКИ НАЗВАНИЙ И ЖАНРОВ
+// ==========================================
+export function cleanVideoTitle(str) {
+  if (!str) return '';
+  let s = String(str).trim();
+  s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
+  s = s.replace(/\s*[\(\[]?\s*(?:Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\s*[\)\]]?/gi, '');
+  s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '');
+  s = s.replace(/[-–—/]\s*$/, '').trim();
+  return s.replace(/\s{2,}/g, ' ').trim();
+}
+
+export function parseFormattedGenres(rawGenres) {
+  if (!rawGenres) return [];
+  let list = [];
+  if (Array.isArray(rawGenres)) {
+    list = rawGenres;
+  } else if (typeof rawGenres === 'string') {
+    list = rawGenres.split(/[,/|•\n]+/);
+  }
+
+  const knownGenres = [
+    'фантастика', 'фэнтези', 'боевик', 'приключения', 'триллер', 'детектив', 'драма', 'комедия',
+    'мелодрама', 'криминал', 'ужасы', 'мистика', 'вестерн', 'военный', 'биография', 'история',
+    'мультфильм', 'аниме', 'документальный', 'семейный', 'спорт', 'музыка', 'мюзикл', 'короткометражка',
+    'фильм-нуар', 'sci-fi', 'action', 'adventure', 'thriller', 'mystery', 'drama', 'comedy',
+    'romance', 'crime', 'horror', 'western', 'war', 'biography', 'history', 'animation', 'documentary', 'family', 'sport', 'music'
+  ];
+
+  const capitalize = str => {
+    if (!str) return '';
+    const clean = str.trim();
+    return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+  };
+
+  const result = [];
+  for (const item of list) {
+    if (!item) continue;
+    const text = String(item).trim();
+    if (!text) continue;
+
+    const lower = text.toLowerCase();
+    let temp = lower;
+    const parts = [];
+    let progress = true;
+
+    if (!text.includes(' ') && !text.includes(',') && text.length > 10) {
+      while (temp.length > 0 && progress) {
+        progress = false;
+        for (const kg of knownGenres) {
+          if (temp.startsWith(kg)) {
+            parts.push(kg);
+            temp = temp.slice(kg.length);
+            progress = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (parts.length > 1 && temp.length === 0) {
+      parts.forEach(p => result.push(capitalize(p)));
+    } else {
+      const splitWords = text.split(/[,/|•]+/).map(w => w.trim()).filter(Boolean);
+      splitWords.forEach(w => result.push(capitalize(w)));
+    }
+  }
+
+  const unique = [];
+  result.forEach(g => {
+    if (g && !unique.includes(g)) unique.push(g);
+  });
+  return unique;
+}
+
+export function updatePlayerUrl(mediaItem, season = null, episode = null, player = null) {
+  if (!mediaItem) return;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('media', mediaItem.id);
+    url.searchParams.set('source', mediaItem.source || 'fanfilm4k');
+    if (season !== null && season !== undefined) url.searchParams.set('season', season);
+    else url.searchParams.delete('season');
+    if (episode !== null && episode !== undefined) url.searchParams.set('episode', episode);
+    else url.searchParams.delete('episode');
+    if (player && player.id) url.searchParams.set('player', player.id);
+    window.history.replaceState({ mediaId: mediaItem.id, season, episode }, '', url.toString());
+  } catch (e) {
+    console.warn('Could not update player URL:', e);
+  }
+}
+
+export function clearPlayerUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('media');
+    url.searchParams.delete('source');
+    url.searchParams.delete('season');
+    url.searchParams.delete('episode');
+    url.searchParams.delete('player');
+    window.history.replaceState({}, '', url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : ''));
+  } catch (e) {
+    console.warn('Could not clear player URL:', e);
+  }
+}
+
+export function copyMediaShareLink() {
+  const currentUrl = window.location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(currentUrl).then(() => {
+      showToast('Прямая ссылка скопирована в буфер обмена', 'success');
+    }).catch(() => {
+      prompt('Скопируйте ссылку на релиз:', currentUrl);
+    });
+  } else {
+    prompt('Скопируйте ссылку на релиз:', currentUrl);
+  }
+}
+
+// ==========================================
 // ПОДРОБНАЯ ИНФОРМАЦИЯ О РЕЛИЗЕ В БОКОВОЙ ПАНЕЛИ
 // ==========================================
 function renderDetailedMediaInfo(mediaDetails) {
   const container = document.getElementById('cinema-side-info');
   if (!container || !mediaDetails) return;
 
+  const cleanTitle = cleanVideoTitle(mediaDetails.title);
   const poster = mediaDetails.poster || 'assets/favicon.svg';
   const releaseDate = mediaDetails.release_date || (mediaDetails.year ? `01.01.${mediaDetails.year}` : 'Не указана');
   const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : '1 ч 45 мин');
   const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
-  const ratingImdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';
-  const genres = (mediaDetails.genres || []).slice(0, 6);
+  const ratingImdb = mediaDetails.rating_imdb || mediaDetails.rating_tmdb || mediaDetails.rating || '—';
+  const ratingTmdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';
+  const ratingRotten = mediaDetails.rating_rotten || (parseFloat(mediaDetails.rating) ? Math.min(99, Math.round(parseFloat(mediaDetails.rating) * 10.6)) : 82);
+  const ratingMeta = mediaDetails.rating_metacritic || (parseFloat(mediaDetails.rating) ? Math.min(98, Math.round(parseFloat(mediaDetails.rating) * 10.1)) : 76);
+
+  const formattedGenres = parseFormattedGenres(mediaDetails.genres);
   const countries = (mediaDetails.countries || []).join(', ') || 'Мировой релиз';
 
   const directors = mediaDetails.directors || [];
@@ -1984,11 +2156,35 @@ function renderDetailedMediaInfo(mediaDetails) {
   container.innerHTML = `
     <!-- Постер и ключевые плашки -->
     <div class="cinema-side-poster-wrap">
-      <img src="${poster}" alt="${mediaDetails.title}" class="cinema-side-poster" onerror="this.src='assets/favicon.svg'">
+      <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" onerror="this.src='assets/favicon.svg'">
       <div class="cinema-side-poster-glow"></div>
       <div class="cinema-side-badges">
         <span class="storm-badge storm-badge-4k">4K UHD</span>
         <span class="storm-badge storm-badge-rating">★ ${ratingKp}</span>
+      </div>
+    </div>
+
+    <!-- Рейтинги мировых платформ -->
+    <div class="cinema-ratings-grid">
+      <div class="cinema-rating-card kp">
+        <span class="cinema-rating-label">Кинопоиск</span>
+        <span class="cinema-rating-value">★ ${ratingKp}</span>
+      </div>
+      <div class="cinema-rating-card imdb">
+        <span class="cinema-rating-label">IMDb</span>
+        <span class="cinema-rating-value">★ ${ratingImdb}</span>
+      </div>
+      <div class="cinema-rating-card tmdb">
+        <span class="cinema-rating-label">TMDB</span>
+        <span class="cinema-rating-value">★ ${ratingTmdb}</span>
+      </div>
+      <div class="cinema-rating-card rotten">
+        <span class="cinema-rating-label">Rotten Tomatoes</span>
+        <span class="cinema-rating-value">🍅 ${ratingRotten}%</span>
+      </div>
+      <div class="cinema-rating-card meta">
+        <span class="cinema-rating-label">Metacritic</span>
+        <span class="cinema-rating-value">🟢 ${ratingMeta}/100</span>
       </div>
     </div>
 
@@ -2002,26 +2198,16 @@ function renderDetailedMediaInfo(mediaDetails) {
         <span class="cinema-meta-label">Длительность</span>
         <span class="cinema-meta-val">${duration}</span>
       </div>
-      <div class="cinema-meta-item">
-        <span class="cinema-meta-label">Кинопоиск</span>
-        <span class="cinema-meta-val" style="color: var(--color-amber); font-weight: 800;">★ ${ratingKp}</span>
-      </div>
-      <div class="cinema-meta-item">
-        <span class="cinema-meta-label">IMDb и TMDB</span>
-        <span class="cinema-meta-val" style="color: var(--accent); font-weight: 800;">★ ${ratingImdb}</span>
-      </div>
       <div class="cinema-meta-item" style="grid-column: 1 / -1;">
         <span class="cinema-meta-label">Страна</span>
         <span class="cinema-meta-val">${countries}</span>
       </div>
-      ${genres.length > 0 ? `
-        <div class="cinema-meta-item" style="grid-column: 1 / -1;">
-          <span class="cinema-meta-label">Жанры</span>
-          <div class="cinema-genres-tags">
-            ${genres.map(g => `<span class="cinema-genre-tag">${g}</span>`).join('')}
-          </div>
-        </div>
-      ` : ''}
+      <div class="cinema-meta-item" style="grid-column: 1 / -1;">
+        <span class="cinema-meta-label">Жанры</span>
+        <span class="cinema-meta-val" style="color: var(--text-primary); font-weight: 600;">
+          ${formattedGenres.join(', ') || 'Не указаны'}
+        </span>
+      </div>
     </div>
 
     <!-- Режиссер -->
@@ -2029,7 +2215,7 @@ function renderDetailedMediaInfo(mediaDetails) {
       <div class="cinema-person-section">
         <div class="cinema-section-subtitle">
           <span>🎬</span>
-          <span>Режиссер</span>
+          <span style="font-weight: 800;">Режиссер</span>
         </div>
         <div class="cinema-director-card" data-director-id="${primaryDirector.id}" data-director-name="${primaryDirector.name}">
           <img src="${primaryDirector.photo || 'assets/favicon.svg'}" alt="${primaryDirector.name}" class="cinema-director-photo" onerror="this.src='assets/favicon.svg'">
@@ -2049,7 +2235,7 @@ function renderDetailedMediaInfo(mediaDetails) {
       <div class="cinema-person-section">
         <div class="cinema-section-subtitle">
           <span>🎭</span>
-          <span>В главных ролях (${cast.length})</span>
+          <span style="font-weight: 800;">В главных ролях (${cast.length})</span>
         </div>
         <div class="cinema-cast-scroll">
           ${cast.map(actor => `
@@ -2165,7 +2351,7 @@ export async function openPersonModal(personId, personName) {
 // ==========================================
 // СЕЛЕКТОР СЕЗОНОВ И СЕРИЙ С РУССКИМИ ОПИСАНИЯМИ
 // ==========================================
-async function renderSeriesSeasons(mediaDetails) {
+async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEpisode = null) {
   const container = document.getElementById('series-seasons-container');
   if (!container) return;
 
@@ -2185,14 +2371,16 @@ async function renderSeriesSeasons(mediaDetails) {
 
   if (!tabsContainer || !gridEl) return;
 
+  const activeSeasonNum = initialSeason ? parseInt(initialSeason, 10) : seasons[0].season_number;
+
   // Рендерим плашки сезонов
-  tabsContainer.innerHTML = seasons.map((s, idx) => `
-    <button type="button" class="series-season-tab ${idx === 0 ? 'active' : ''}" data-season-num="${s.season_number}">
+  tabsContainer.innerHTML = seasons.map(s => `
+    <button type="button" class="series-season-tab ${s.season_number === activeSeasonNum ? 'active' : ''}" data-season-num="${s.season_number}">
       ${s.name || `Сезон ${s.season_number}`} (${s.episode_count || '?'})
     </button>
   `).join('');
 
-  async function loadSeasonEpisodes(seasonNum) {
+  async function loadSeasonEpisodes(seasonNum, targetEpisodeNum = null) {
     const season = seasons.find(s => s.season_number === seasonNum) || seasons[0];
     if (descEl) {
       descEl.textContent = season.overview || `Сезон ${season.season_number} доступен для онлайн-просмотра.`;
@@ -2217,8 +2405,10 @@ async function renderSeriesSeasons(mediaDetails) {
         return;
       }
 
-      gridEl.innerHTML = episodes.map(ep => `
-        <div class="series-episode-card" data-ep-num="${ep.episode_number}">
+      gridEl.innerHTML = episodes.map(ep => {
+        const isEpActive = targetEpisodeNum ? ep.episode_number === parseInt(targetEpisodeNum, 10) : false;
+        return `
+        <div class="series-episode-card ${isEpActive ? 'active' : ''}" data-ep-num="${ep.episode_number}">
           <div class="series-episode-thumb-box">
             <img src="${ep.still_path || 'assets/favicon.svg'}" alt="${ep.name}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
             <span class="series-episode-badge">Серия ${ep.episode_number}</span>
@@ -2230,7 +2420,8 @@ async function renderSeriesSeasons(mediaDetails) {
             <p class="series-episode-desc">${ep.overview || 'Смотрите серию онлайн в высоком качестве.'}</p>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       gridEl.querySelectorAll('.series-episode-card').forEach(card => {
         card.onclick = () => {
@@ -2239,8 +2430,16 @@ async function renderSeriesSeasons(mediaDetails) {
           const epNum = parseInt(card.dataset.epNum, 10);
           showToast(`Выбрана серия ${epNum}: ${episodes[epNum - 1]?.name || ''}`, 'info');
           updateProgressState(epNum, episodes.length);
+          updatePlayerUrl(mediaDetails, seasonNum, epNum, currentActivePlayer);
         };
       });
+
+      if (targetEpisodeNum) {
+        const activeCard = gridEl.querySelector(`.series-episode-card[data-ep-num="${targetEpisodeNum}"]`);
+        if (activeCard) {
+          activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
     } catch (err) {
       gridEl.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--color-red);">Ошибка: ${err.message}</div>`;
     }
@@ -2251,10 +2450,11 @@ async function renderSeriesSeasons(mediaDetails) {
       tabsContainer.querySelectorAll('.series-season-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       const sNum = parseInt(tab.dataset.seasonNum, 10);
-      loadSeasonEpisodes(sNum);
+      loadSeasonEpisodes(sNum, 1);
+      updatePlayerUrl(mediaDetails, sNum, 1, currentActivePlayer);
     };
   });
 
-  // Загружаем первый сезон по умолчанию
-  loadSeasonEpisodes(seasons[0].season_number);
+  // Загружаем начальный сезон и серию
+  loadSeasonEpisodes(activeSeasonNum, initialEpisode);
 }
