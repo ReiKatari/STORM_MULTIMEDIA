@@ -19,6 +19,7 @@ export const translations = {
     tab_anime_series: "Аниме-сериалы",
     tab_continue: "Продолжить просмотр",
     tab_bookmarks: "Мои списки и закладки",
+    tab_offline: "Офлайн-просмотр",
     
     // Источники и виды
     source_all: "Все источники",
@@ -149,6 +150,7 @@ export const translations = {
     tab_anime_series: "Anime series",
     tab_continue: "Continue watching",
     tab_bookmarks: "My lists and bookmarks",
+    tab_offline: "Offline viewing",
     
     source_all: "All sources",
     source_fanfilm: "FanFilm4K (4K Ultra HD)",
@@ -270,6 +272,7 @@ export const translations = {
     tab_anime_series: "Anime-Serien",
     tab_continue: "Weiterschauen",
     tab_bookmarks: "Meine Listen und Lesezeichen",
+    tab_offline: "Offline-Wiedergabe",
     
     source_all: "Alle Quellen",
     source_fanfilm: "FanFilm4K (4K Ultra HD)",
@@ -391,6 +394,7 @@ export const translations = {
     tab_anime_series: "Séries d'animation",
     tab_continue: "Reprendre la lecture",
     tab_bookmarks: "Mes listes et favoris",
+    tab_offline: "Visionnage hors-ligne",
     
     source_all: "Toutes les sources",
     source_fanfilm: "FanFilm4K (4K Ultra HD)",
@@ -512,6 +516,7 @@ export const translations = {
     tab_anime_series: "日本动画剧集",
     tab_continue: "继续观看",
     tab_bookmarks: "我的列表与收藏",
+    tab_offline: "离线播放",
     
     source_all: "所有片源",
     source_fanfilm: "FanFilm4K (4K超高清)",
@@ -633,6 +638,7 @@ export const translations = {
     tab_anime_series: "アニメTVシリーズ",
     tab_continue: "続きを見る",
     tab_bookmarks: "リストとブックマーク",
+    tab_offline: "オフライン再生",
     
     source_all: "すべてのソース",
     source_fanfilm: "FanFilm4K (4K Ultra HD)",
