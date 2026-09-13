@@ -2427,32 +2427,49 @@ input[type="checkbox"]::after {
   text-overflow: ellipsis;
 }
 
-/* Группировка кнопок панели плеера */
-.player-utility-cluster {
+/* Объемные 3D блоки панели управления плеера */
+.player-utility-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 14px 0 12px 0;
+  width: 100%;
+}
+
+.player-utility-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 10px;
+  justify-content: flex-start;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.player-utility-row {
+.player-utility-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.player-utility-card-title {
+  font-size: 12.5px;
+  font-weight: 800 !important;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  gap: 7px;
+  text-transform: none;
 }
 
-.player-utility-group-title {
-  font-size: 10.5px;
-  font-weight: 800;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-right: 4px;
+.player-utility-card-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ==========================================================================
@@ -2908,20 +2925,25 @@ input[type="checkbox"]::after {
 }
 
 /* ==========================================================================
-   ИНТЕРАКТИВНАЯ ПАНЕЛЬ X-RAY MODE (АКТЕРЫ И САУНДТРЕК НА ПАУЗЕ)
+   ИНТЕРАКТИВНАЯ ПАНЕЛЬ X-RAY MODE (АКТЕРЫ, САУНДТРЕК, ФАКТЫ И СОЗДАТЕЛИ)
    ========================================================================== */
 .player-xray-panel {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, rgba(10, 11, 16, 0.96) 0%, rgba(10, 11, 16, 0.85) 75%, transparent 100%);
-  backdrop-filter: blur(12px);
-  padding: 24px 20px 16px;
+  background: linear-gradient(to top, rgba(10, 11, 16, 0.98) 0%, rgba(10, 11, 16, 0.92) 85%, transparent 100%);
+  backdrop-filter: blur(16px);
+  padding: 20px 24px 16px;
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
   z-index: 35;
   animation: slideUpXray 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 380px;
+  overflow-y: auto;
 }
 
 @keyframes slideUpXray {
@@ -2939,53 +2961,461 @@ input[type="checkbox"]::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.xray-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .xray-title {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800 !important;
   color: var(--accent);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
+.xray-scene-music {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-subtle);
+}
+
+.xray-tabs-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-tertiary);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.xray-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.xray-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.xray-tab-btn.active {
+  background: var(--bg-card);
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.xray-tab-content {
+  display: none;
+}
+
+.xray-tab-content.active {
+  display: block;
+}
+
 .xray-cast-row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  padding: 4px 2px 8px;
   scrollbar-width: thin;
 }
 
 .xray-actor-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.05);
+  gap: 10px;
+  background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 6px 10px;
-  min-width: 160px;
+  padding: 6px 12px;
+  min-width: 170px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.xray-actor-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .xray-actor-img {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid var(--accent);
 }
 
 .xray-actor-name {
   font-size: 12px;
-  font-weight: 700;
-  color: #fff;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .xray-actor-role {
   font-size: 10px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Треклист саундтреков X-Ray */
+.xray-tracks-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.xray-track-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.xray-track-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.xray-track-num {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  min-width: 18px;
+}
+
+.xray-track-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.xray-track-scene {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.xray-track-dur {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Факты о фильме (Trivia) */
+.xray-trivia-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.xray-trivia-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.xray-trivia-label {
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
+  min-width: 140px;
+}
+
+.xray-trivia-content {
+  color: var(--text-primary);
+}
+
+/* Создатели (Crew) */
+.xray-crew-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.xray-crew-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.xray-crew-img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid var(--accent);
+}
+
+.xray-crew-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.xray-crew-role {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   ПРОФЕССИОНАЛЬНЫЕ ПАНЕЛИ PRO MEDIA ENGINE (ВИДЕО И ЗВУК)
+   ========================================================================== */
+.pro-engine-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin: 12px 0;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: fadeInPro 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@keyframes fadeInPro {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pro-engine-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pro-engine-title {
+  font-size: 14px;
+  font-weight: 800 !important;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pro-engine-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pro-section-title {
+  font-size: 11.5px;
+  font-weight: 800 !important;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.pro-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.pro-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+}
+
+.pro-card-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.pro-card-btn.active {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(0, 240, 255, 0.1) 0%, rgba(0, 240, 255, 0.02) 100%);
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+
+.pro-card-icon {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.pro-card-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.pro-card-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.25;
+}
+
+.pro-engine-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.pro-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pro-pill-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pro-pill-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pro-pill-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 800;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.pro-sliders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.pro-slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pro-slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+/* 10-полосный эквалайзер */
+.pro-eq-bars-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 16px 14px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+
+.pro-eq-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.pro-eq-val {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent);
+  min-height: 14px;
+}
+
+.pro-eq-track {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pro-eq-slider {
+  -webkit-appearance: slider-vertical;
+  width: 18px;
+  height: 110px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pro-eq-freq {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 700;
 }
 
 /* ==========================================================================

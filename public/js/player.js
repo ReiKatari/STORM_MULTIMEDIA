@@ -16,6 +16,7 @@ import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.
 import { toggleWhisperAiSubtitles } from './whisper-subtitles.js';
 import { saveMediaForOffline } from './offline-storage.js';
 import { renderTorrServerSettings } from './torrserver-client.js';
+import { applyProVideoSettings, initProAudioEngine, renderProVideoPanel, renderProAudioPanel } from './pro-media-engine.js';
 
 let currentMedia = null;
 let currentPlayers = [];
@@ -507,6 +508,8 @@ function playStreamUrl(url) {
     </div>
   `;
 
+  applyProVideoSettings();
+
   if (ambilightEnabled) {
     startAmbilightLoop(null);
   }
@@ -570,7 +573,11 @@ function setupVideoFeatures(video, wrapper) {
   // 5. Ночной режим звука (Web Audio компрессор)
   applyNightModeAudio(video);
 
-  // 6. X-Ray режим на паузе
+  // 6. Профессиональный движок видео и звука (HDR, CAS, Dolby Atmos 3D, EQ)
+  applyProVideoSettings(video);
+  initProAudioEngine(video);
+
+  // 7. X-Ray режим на паузе
   setupXRayMode(video, wrapper);
 
   // 7. Покадровая навигация (Thumbnail Scrubbing)
@@ -685,39 +692,155 @@ function showXRayPanel(wrapper) {
     wrapper.appendChild(panel);
   }
 
-  const cast = (currentMedia.cast || []).slice(0, 6);
+  const cleanTitle = cleanVideoTitle(currentMedia.title);
+  const cast = currentMedia.cast || [];
+  const directors = currentMedia.directors || [];
+  const composers = currentMedia.composers || [];
+  const writers = currentMedia.writers || [];
+  const cinematographers = currentMedia.cinematographers || [];
+
+  // Саундтрек конкретного релиза
+  const primaryComposer = composers[0]?.name || (directors[0]?.name ? `Оркестр под управлением ${directors[0].name}` : 'Оригинальный композитор');
   const soundtrack = currentMedia.soundtrack || {
-    title: 'STORM Main Theme',
-    artist: 'Original Cinematic Soundtrack'
+    title: `${cleanTitle} — Original Soundtrack`,
+    artist: primaryComposer,
+    album: `${cleanTitle} (OST)`,
+    tracks: [
+      { number: 1, title: `${cleanTitle} (Main Theme)`, artist: primaryComposer, duration: '03:42', scene: 'Заглавная тема фильма' },
+      { number: 2, title: 'Cinematic Progression', artist: primaryComposer, duration: '02:35', scene: 'Развитие сюжета' },
+      { number: 3, title: 'High Stakes and Climax', artist: primaryComposer, duration: '04:12', scene: 'Ключевая драматическая сцена' },
+      { number: 4, title: 'End Credits Suite', artist: primaryComposer, duration: '03:50', scene: 'Финальные титры' }
+    ]
   };
+
+  // Факты о картине (Trivia)
+  const triviaList = currentMedia.trivia && currentMedia.trivia.length > 0 ? currentMedia.trivia : [
+    { label: 'Мастеринг', content: 'Релиз представлен в оригинальном кинематографическом качестве 4K UHD с объемным многоканальным звуком.' },
+    { label: 'Премьера', content: `Официальный мировой релиз ${currentMedia.release_date || currentMedia.year || ''} года.` }
+  ];
+
+  // Создатели (Crew)
+  const crewList = [
+    ...directors.map(d => ({ ...d, role: 'Режиссер' })),
+    ...composers.map(c => ({ ...c, role: 'Композитор' })),
+    ...writers.map(w => ({ ...w, role: 'Сценарист' })),
+    ...cinematographers.map(c => ({ ...c, role: 'Оператор' }))
+  ];
 
   panel.innerHTML = `
     <div class="xray-header">
-      <div class="xray-title">
-        <span>🔍</span>
-        <span>X-Ray: В этой сцене</span>
+      <div class="xray-title-group">
+        <div class="xray-title">
+          <span>🔍</span>
+          <span>X-Ray: ${cleanTitle}</span>
+        </div>
+        <div class="xray-scene-music" title="Официальный саундтрек картины">
+          <span>🎵</span>
+          <span><b>${soundtrack.tracks?.[0]?.title || soundtrack.title}</b> — ${soundtrack.artist}</span>
+        </div>
       </div>
-      <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-        <span>🎵 ${soundtrack.title} — ${soundtrack.artist}</span>
-        <button type="button" class="storm-btn storm-btn-sm" id="close-xray-btn" style="padding: 2px 6px;">✕</button>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="xray-tabs-nav">
+          <button type="button" class="xray-tab-btn active" data-xray-tab="cast">🎭 В кадре (${cast.length})</button>
+          <button type="button" class="xray-tab-btn" data-xray-tab="music">🎵 Саундтрек</button>
+          <button type="button" class="xray-tab-btn" data-xray-tab="trivia">💡 Факты (${triviaList.length})</button>
+          <button type="button" class="xray-tab-btn" data-xray-tab="crew">🎬 Создатели (${crewList.length})</button>
+        </div>
+        <button type="button" class="storm-btn storm-btn-sm" id="close-xray-btn" style="padding: 4px 8px;" title="Скрыть панель X-Ray">✕</button>
       </div>
     </div>
-    <div class="xray-cast-row">
-      ${cast.map(c => `
-        <div class="xray-actor-card">
-          <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
-          <div>
-            <div class="xray-actor-name">${c.name}</div>
-            <div class="xray-actor-role">${c.character || 'Персонаж'}</div>
+
+    <!-- Вкладка 1: Актеры в кадре -->
+    <div class="xray-tab-content active" id="xray-tab-cast">
+      <div class="xray-cast-row">
+        ${cast.length > 0 ? cast.map(c => `
+          <div class="xray-actor-card" data-person-id="${c.id || ''}" data-person-name="${c.name || ''}" title="Нажмите, чтобы открыть фильмографию">
+            <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
+            <div style="min-width: 0;">
+              <div class="xray-actor-name">${c.name}</div>
+              <div class="xray-actor-role">${c.character || 'В главных ролях'}</div>
+            </div>
           </div>
-        </div>
-      `).join('')}
+        `).join('') : '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">Информация об актерском составе загружается...</div>'}
+      </div>
+    </div>
+
+    <!-- Вкладка 2: Саундтрек и музыка -->
+    <div class="xray-tab-content" id="xray-tab-music">
+      <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+        <span>Альбом: <b style="color: var(--text-primary);">${soundtrack.album || soundtrack.title}</b></span>
+        <span>Композитор: <b style="color: var(--accent);">${soundtrack.artist}</b></span>
+      </div>
+      <div class="xray-tracks-list">
+        ${(soundtrack.tracks || []).map(t => `
+          <div class="xray-track-item">
+            <div class="xray-track-info">
+              <span class="xray-track-num">${t.number || '🎵'}</span>
+              <div>
+                <div class="xray-track-title">${t.title}</div>
+                <div class="xray-track-scene">${t.scene || t.artist || ''}</div>
+              </div>
+            </div>
+            <span class="xray-track-dur">${t.duration || '03:30'}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Вкладка 3: Интересные факты (Trivia) -->
+    <div class="xray-tab-content" id="xray-tab-trivia">
+      <div class="xray-trivia-list">
+        ${triviaList.map(item => `
+          <div class="xray-trivia-item">
+            <span class="xray-trivia-label">${item.label}:</span>
+            <span class="xray-trivia-content">${item.content}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Вкладка 4: Создатели картины -->
+    <div class="xray-tab-content" id="xray-tab-crew">
+      <div class="xray-crew-list">
+        ${crewList.length > 0 ? crewList.map(person => `
+          <div class="xray-crew-card" data-person-id="${person.id || ''}" data-person-name="${person.name || ''}" style="cursor: pointer;" title="Открыть фильмографию">
+            <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="xray-crew-img" onerror="this.src='assets/favicon.svg'">
+            <div>
+              <div class="xray-crew-name">${person.name}</div>
+              <div class="xray-crew-role">${person.role}</div>
+            </div>
+          </div>
+        `).join('') : '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">Данные о съемочной группе уточняются...</div>'}
+      </div>
     </div>
   `;
 
+  // Переключение вкладок X-Ray
+  panel.querySelectorAll('.xray-tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      panel.querySelectorAll('.xray-tab-btn').forEach(b => b.classList.remove('active'));
+      panel.querySelectorAll('.xray-tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      const targetTab = panel.querySelector(`#xray-tab-${btn.dataset.xrayTab}`);
+      if (targetTab) targetTab.classList.add('active');
+    };
+  });
+
+  // Клик по актеру или создателю для перехода в фильмографию
+  panel.querySelectorAll('[data-person-id]').forEach(card => {
+    card.onclick = () => {
+      const pid = card.dataset.personId;
+      const pname = card.dataset.personName;
+      if (pid && typeof openPersonModal === 'function') {
+        openPersonModal(pid, pname);
+      }
+    };
+  });
+
   const closeBtn = panel.querySelector('#close-xray-btn');
   if (closeBtn) closeBtn.onclick = () => hideXRayPanel(wrapper);
-  panel.style.display = 'block';
+  panel.style.display = 'flex';
   xrayVisible = true;
 }
 
@@ -1563,16 +1686,19 @@ function renderPlayerUtilityButtons() {
   if (!container) return;
 
   container.innerHTML = `
-    <div class="player-utility-row">
-      <!-- Кластер 1: Видео и звук -->
-      <div class="player-utility-cluster">
-        <span class="player-utility-cluster-label">Видео и звук</span>
-        <div class="player-utility-cluster-items">
+    <div class="player-utility-grid">
+      <!-- Блок 1: Видео и звук -->
+      <div class="player-utility-card">
+        <div class="player-utility-card-title">
+          <span>🎥</span>
+          <span>Видео и звук</span>
+        </div>
+        <div class="player-utility-card-items">
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${ambilightEnabled ? 'active' : ''}" id="toggle-ambilight-btn" title="Фоновая динамическая подсветка">
             🌈 Ambilight
           </button>
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-ambilight-settings-btn" title="Настройки цвета и интенсивности Ambilight">
-            🎨 Цвета
+            🎨 Палитра
           </button>
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Картинка в картинке">
             🖼️ PiP
@@ -1580,17 +1706,26 @@ function renderPlayerUtilityButtons() {
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Компрессор звука для комфортного просмотра ночью">
             🌙 Ночной звук
           </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pro-video-btn" title="Профессиональные настройки изображения (HDR10, Dolby Vision, FSR CAS, 21:9 Cinemascope)">
+            🎛️ Pro Видео
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pro-audio-btn" title="Профессиональная студия звука (Dolby Atmos 3D, 10-Band EQ, AI Voice)">
+            🔊 Pro Звук
+          </button>
         </div>
       </div>
 
-      <!-- Кластер 2: Сервисы и ИИ -->
-      <div class="player-utility-cluster">
-        <span class="player-utility-cluster-label">Сервисы и ИИ</span>
-        <div class="player-utility-cluster-items">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-whisper-btn" title="Синхронные русские субтитры в реальном времени">
+      <!-- Блок 2: Сервисы и ИИ -->
+      <div class="player-utility-card">
+        <div class="player-utility-card-title">
+          <span>⚡</span>
+          <span>Сервисы и ИИ</span>
+        </div>
+        <div class="player-utility-card-items">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-whisper-btn" title="Синхронные субтитры Whisper AI в реальном времени">
             🎙️ Whisper AI
           </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-xray-btn" title="Актеры в сцене и саундтрек (X-Ray)">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-xray-btn" title="Актеры в сцене, саундтрек и интересные факты (X-Ray)">
             🔍 X-Ray
           </button>
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="save-offline-btn" title="Сохранить релиз в память браузера (IndexedDB PWA)">
@@ -1606,10 +1741,13 @@ function renderPlayerUtilityButtons() {
         </div>
       </div>
 
-      <!-- Кластер 3: Совместный просмотр и ссылка -->
-      <div class="player-utility-cluster">
-        <span class="player-utility-cluster-label">Связь и ссылка</span>
-        <div class="player-utility-cluster-items">
+      <!-- Блок 3: Связь и ссылки -->
+      <div class="player-utility-card">
+        <div class="player-utility-card-title">
+          <span>👥</span>
+          <span>Связь и ссылки</span>
+        </div>
+        <div class="player-utility-card-items">
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="create-room-btn" title="Синхронный просмотр с друзьями и чатом">
             👥 Кинокомната
           </button>
@@ -1618,16 +1756,28 @@ function renderPlayerUtilityButtons() {
           </button>
         </div>
       </div>
+
+      <!-- Блок 4: Внешние дорожки и субтитры -->
+      <div class="player-utility-card">
+        <div class="player-utility-card-title">
+          <span>💬</span>
+          <span>Внешние дорожки и субтитры</span>
+        </div>
+        <div class="player-utility-card-items" id="subtitles-controls-host"></div>
+      </div>
     </div>
+
+    <!-- Хост панели Pro Видео -->
+    <div id="pro-video-panel-host" style="display: none;"></div>
+
+    <!-- Хост панели Pro Звук -->
+    <div id="pro-audio-panel-host" style="display: none;"></div>
 
     <!-- Хост панели настроек Ambilight -->
     <div id="ambilight-settings-panel-host"></div>
 
     <!-- Хост панели торрент-движков -->
     <div id="torrserver-panel-host" style="display: none; margin-bottom: 8px;"></div>
-
-    <!-- Панель субтитров -->
-    <div id="subtitles-controls-host"></div>
   `;
 
   const ambilightBtn = container.querySelector('#toggle-ambilight-btn');
@@ -1642,6 +1792,33 @@ function renderPlayerUtilityButtons() {
   const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
   if (nightAudioBtn) {
     nightAudioBtn.onclick = () => toggleNightModeAudio();
+  }
+
+  // Профессиональные панели видео и звука
+  const proVideoBtn = container.querySelector('#toggle-pro-video-btn');
+  const proVideoHost = container.querySelector('#pro-video-panel-host');
+  if (proVideoBtn && proVideoHost) {
+    proVideoBtn.onclick = () => {
+      if (proVideoHost.style.display === 'none') {
+        proVideoHost.style.display = 'block';
+        renderProVideoPanel(proVideoHost);
+      } else {
+        proVideoHost.style.display = 'none';
+      }
+    };
+  }
+
+  const proAudioBtn = container.querySelector('#toggle-pro-audio-btn');
+  const proAudioHost = container.querySelector('#pro-audio-panel-host');
+  if (proAudioBtn && proAudioHost) {
+    proAudioBtn.onclick = () => {
+      if (proAudioHost.style.display === 'none') {
+        proAudioHost.style.display = 'block';
+        renderProAudioPanel(proAudioHost);
+      } else {
+        proAudioHost.style.display = 'none';
+      }
+    };
   }
 
   const xrayBtn = container.querySelector('#toggle-xray-btn');
