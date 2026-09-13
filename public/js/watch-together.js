@@ -455,9 +455,9 @@ export function renderRoomUi(room) {
     <div class="chat-format-toolbar">
       <button type="button" class="chat-format-btn" data-tag="bold" title="Жирный шрифт (**текст**)"><b>B</b></button>
       <button type="button" class="chat-format-btn" data-tag="italic" title="Курсив (*текст*)"><i>I</i></button>
-      <button type="button" class="chat-format-btn" data-tag="code" title="Код (`код`)"><code>&lt;/&gt;</code></button>
+      <button type="button" class="chat-format-btn" data-tag="code" title="Моноширинный код"><code>&lt;/&gt;</code></button>
       <button type="button" class="chat-format-btn" data-tag="strike" title="Зачеркнутый (~~текст~~)"><s>S</s></button>
-      <button type="button" class="chat-format-btn" data-tag="quote" title="Цитата (> цитата)">❝</button>
+      <button type="button" class="chat-format-btn" data-tag="quote" title="Цитата (&gt; цитата)">❝</button>
     </div>
 
     <!-- Форма отправки сообщения -->
