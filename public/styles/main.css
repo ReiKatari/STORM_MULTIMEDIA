@@ -2573,58 +2573,72 @@ body {
   transform: none !important;
 }
 
-/* Выдвижная шторка серий внутри плеера (работает и в Fullscreen!) */
+/* Выдвижная шторка серий внутри плеера: компактная, ультра-стильная и скрыта по умолчанию */
 .player-inplayer-episodes-sheet {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 360px;
-  max-width: 90vw;
+  width: 290px;
+  max-width: 85vw;
   height: 100%;
-  background: rgba(8, 11, 18, 0.96);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-left: 1px solid var(--accent);
-  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.95);
+  background: rgba(9, 13, 22, 0.94);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-left: 1px solid rgba(0, 210, 255, 0.35);
+  box-shadow: -12px 0 35px rgba(0, 0, 0, 0.88);
   z-index: 55;
-  display: flex;
+  display: none;
   flex-direction: column;
   transform: translateX(100%);
-  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: auto;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  pointer-events: none;
+  opacity: 0;
 }
 
 .player-inplayer-episodes-sheet.is-open {
+  display: flex !important;
   transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .inplayer-sheet-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 20, 32, 0.9);
+  background: rgba(14, 19, 31, 0.95);
 }
 
 .inplayer-sheet-title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 800;
   color: #ffffff;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+}
+
+.inplayer-sheet-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(0, 210, 255, 0.16);
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  color: var(--accent);
 }
 
 .inplayer-sheet-close-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2633,14 +2647,14 @@ body {
 }
 
 .inplayer-sheet-close-btn:hover {
-  background: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.35);
   border-color: #ef4444;
 }
 
 .inplayer-season-chips-bar {
   display: flex;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 5px;
+  padding: 8px 10px;
   overflow-x: auto;
   scrollbar-width: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -2652,12 +2666,12 @@ body {
 }
 
 .inplayer-season-chip {
-  padding: 5px 12px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.07);
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-secondary);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
@@ -2668,6 +2682,7 @@ body {
 .inplayer-season-chip:hover {
   color: #ffffff;
   border-color: var(--accent);
+  background: rgba(0, 210, 255, 0.12);
 }
 
 .inplayer-season-chip.active {
@@ -2680,46 +2695,61 @@ body {
 .inplayer-episodes-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 12px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 210, 255, 0.3) transparent;
 }
 
 .inplayer-ep-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   cursor: pointer;
   transition: all 0.15s ease;
-  gap: 8px;
+  gap: 7px;
 }
 
 .inplayer-ep-item:hover {
-  background: rgba(0, 210, 255, 0.1);
-  border-color: rgba(0, 210, 255, 0.35);
+  background: rgba(0, 210, 255, 0.12);
+  border-color: rgba(0, 210, 255, 0.4);
   transform: translateX(-2px);
 }
 
 .inplayer-ep-item.active {
-  background: rgba(0, 210, 255, 0.18);
+  background: rgba(0, 210, 255, 0.2);
   border-color: var(--accent);
-  box-shadow: 0 0 12px var(--accent-glow);
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 .inplayer-ep-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 210, 255, 0.14);
+  border: 1px solid rgba(0, 210, 255, 0.35);
   font-weight: 800;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--accent);
-  min-width: 24px;
+  flex-shrink: 0;
+}
+
+.inplayer-ep-item.active .inplayer-ep-num {
+  background: var(--accent);
+  color: #000000;
 }
 
 .inplayer-ep-name {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: #ffffff;
   overflow: hidden;

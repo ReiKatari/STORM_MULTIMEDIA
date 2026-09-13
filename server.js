@@ -1656,8 +1656,220 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     urlObj.searchParams.set('hidden', hidden || 'season,episode,translation');
 
     const finalUrl = urlObj.toString();
-
     res.setHeader('Permissions-Policy', 'fullscreen=*');
+
+    // Проксируем HTML плеера на тот же origin с внедрением студийного Pro Audio моста и управления скоростью
+    try {
+      const embedRes = await fetch(finalUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://v17.fanfilm4k.media/'
+        },
+        signal: AbortSignal.timeout(6000)
+      });
+
+      if (embedRes.ok) {
+        let html = await embedRes.text();
+        const baseOrigin = new URL(finalUrl).origin;
+        const proAudioInjection = `
+          <base href="${baseOrigin}/">
+          <script>
+          (function() {
+            let audioCtx = null;
+            let sourceNode = null;
+            let bassFilter = null;
+            let voiceFilter = null;
+            let eqFilters = [];
+            let compressor = null;
+            let convolver = null;
+            let wetGain = null;
+            let dryGain = null;
+            let masterGain = null;
+            let delayNode = null;
+            let currentSettings = null;
+            let currentSpeed = 1;
+
+            const EQ_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+
+            function createImpulse(ctx, duration = 1.2, decay = 2.0) {
+              const sampleRate = ctx.sampleRate;
+              const length = sampleRate * duration;
+              const buffer = ctx.createBuffer(2, length, sampleRate);
+              const left = buffer.getChannelData(0);
+              const right = buffer.getChannelData(1);
+              for (let i = 0; i < length; i++) {
+                const factor = Math.exp(-i / (sampleRate * (decay / 10)));
+                left[i] = (Math.random() * 2 - 1) * factor;
+                right[i] = (Math.random() * 2 - 1) * factor;
+              }
+              return buffer;
+            }
+
+            function initAudio(video) {
+              if (!video || sourceNode) return;
+              try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                audioCtx = new AudioContext();
+
+                sourceNode = audioCtx.createMediaElementSource(video);
+
+                delayNode = audioCtx.createDelay(2.0);
+                delayNode.delayTime.setValueAtTime(0, audioCtx.currentTime);
+
+                bassFilter = audioCtx.createBiquadFilter();
+                bassFilter.type = 'lowshelf';
+                bassFilter.frequency.setValueAtTime(80, audioCtx.currentTime);
+
+                voiceFilter = audioCtx.createBiquadFilter();
+                voiceFilter.type = 'peaking';
+                voiceFilter.frequency.setValueAtTime(2500, audioCtx.currentTime);
+                voiceFilter.Q.setValueAtTime(1.2, audioCtx.currentTime);
+
+                eqFilters = EQ_FREQS.map(freq => {
+                  const f = audioCtx.createBiquadFilter();
+                  if (freq <= 32) f.type = 'lowshelf';
+                  else if (freq >= 16000) f.type = 'highshelf';
+                  else {
+                    f.type = 'peaking';
+                    f.Q.setValueAtTime(1.4, audioCtx.currentTime);
+                  }
+                  f.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                  return f;
+                });
+
+                compressor = audioCtx.createDynamicsCompressor();
+                compressor.threshold.setValueAtTime(-10, audioCtx.currentTime);
+                compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+                compressor.ratio.setValueAtTime(2, audioCtx.currentTime);
+                compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+                compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+
+                convolver = audioCtx.createConvolver();
+                convolver.buffer = createImpulse(audioCtx, 1.4, 2.2);
+
+                wetGain = audioCtx.createGain();
+                dryGain = audioCtx.createGain();
+                masterGain = audioCtx.createGain();
+
+                let last = sourceNode;
+                last.connect(delayNode);
+                last = delayNode;
+                last.connect(bassFilter);
+                last = bassFilter;
+                last.connect(voiceFilter);
+                last = voiceFilter;
+                for (const eq of eqFilters) {
+                  last.connect(eq);
+                  last = eq;
+                }
+                last.connect(dryGain);
+                last.connect(convolver);
+                convolver.connect(wetGain);
+                dryGain.connect(masterGain);
+                wetGain.connect(masterGain);
+                masterGain.connect(compressor);
+                compressor.connect(audioCtx.destination);
+
+                if (currentSettings) applySettings(currentSettings);
+              } catch (e) {
+                console.warn('StormProAudioBridge init note:', e.message);
+              }
+            }
+
+            function applySettings(s) {
+              currentSettings = s;
+              const v = document.querySelector('video');
+              if (v && !sourceNode) initAudio(v);
+              if (!audioCtx) return;
+              if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+              const now = audioCtx.currentTime;
+
+              if (bassFilter) {
+                const gains = { off: 0, cinema: 5.0, ultra: 9.0 };
+                bassFilter.gain.setTargetAtTime(gains[s.bassBoost] || 0, now, 0.05);
+              }
+              if (voiceFilter) {
+                const gains = { off: 0, mild: 4.0, strong: 7.5 };
+                voiceFilter.gain.setTargetAtTime(gains[s.voiceBoost] || 0, now, 0.05);
+              }
+              if (eqFilters.length === 10 && s.eqBands) {
+                for (let i = 0; i < 10; i++) {
+                  eqFilters[i].gain.setTargetAtTime(s.eqBands[i] || 0, now, 0.05);
+                }
+              }
+              if (wetGain && dryGain) {
+                if (s.spatialMode === 'atmos') {
+                  dryGain.gain.setTargetAtTime(0.82, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.42, now, 0.05);
+                } else if (s.spatialMode === 'dtsx') {
+                  dryGain.gain.setTargetAtTime(0.88, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.32, now, 0.05);
+                } else if (s.spatialMode === 'headphones') {
+                  dryGain.gain.setTargetAtTime(0.80, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.38, now, 0.05);
+                } else {
+                  dryGain.gain.setTargetAtTime(1.0, now, 0.05);
+                  wetGain.gain.setTargetAtTime(0.0, now, 0.05);
+                }
+              }
+              if (compressor) {
+                if (s.nightMode) {
+                  compressor.threshold.setTargetAtTime(-28, now, 0.05);
+                  compressor.ratio.setTargetAtTime(16, now, 0.05);
+                } else {
+                  compressor.threshold.setTargetAtTime(-10, now, 0.05);
+                  compressor.ratio.setTargetAtTime(2, now, 0.05);
+                }
+              }
+              if (masterGain) {
+                masterGain.gain.setTargetAtTime(s.preampGain || 1.0, now, 0.05);
+              }
+              if (delayNode) {
+                const d = Math.max(0, Math.min(1.5, (s.audioDelayMs || 0) / 1000));
+                delayNode.delayTime.setTargetAtTime(d, now, 0.05);
+              }
+            }
+
+            setInterval(() => {
+              const v = document.querySelector('video');
+              if (v) {
+                if (currentSpeed && currentSpeed !== 1 && v.playbackRate !== currentSpeed) {
+                  v.playbackRate = currentSpeed;
+                }
+                v.addEventListener('play', () => {
+                  if (!sourceNode) initAudio(v);
+                  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                });
+                if (!sourceNode) initAudio(v);
+              }
+            }, 350);
+
+            window.addEventListener('message', (e) => {
+              if (!e.data) return;
+              if (e.data.type === 'STORM_PRO_AUDIO') {
+                applySettings(e.data.settings);
+              }
+              if (e.data.type === 'SET_SPEED' || e.data.event === 'speed') {
+                const sp = parseFloat(e.data.value || e.data.speed);
+                if (sp) {
+                  currentSpeed = sp;
+                  const v = document.querySelector('video');
+                  if (v) v.playbackRate = sp;
+                }
+              }
+            });
+          })();
+          </script>
+        `;
+        html = html.replace('<head>', '<head>' + proAudioInjection);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(html);
+      }
+    } catch (proxyErr) {
+      console.warn('Проксирование FanFilm iframe завершилось с ошибкой, выполняем редирект:', proxyErr.message);
+    }
+
     return res.redirect(finalUrl);
   } catch (err) {
     console.error('Ошибка прокси плеера:', err.message);

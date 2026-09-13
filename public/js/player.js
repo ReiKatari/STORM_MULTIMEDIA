@@ -18,6 +18,16 @@ import { saveMediaForOffline } from './offline-storage.js';
 import { renderTorrServerSettings } from './torrserver-client.js';
 import { applyProVideoSettings, initProAudioEngine, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js';
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let currentMedia = null;
 let currentPlayers = [];
 let currentActivePlayer = null;
@@ -202,6 +212,11 @@ function initFullscreenControls() {
 
 export async function openPlayerModal(mediaItem, options = {}) {
   currentMedia = mediaItem;
+  quickBarSeriesData = null;
+  currentEpisodes = [];
+  currentEpisodeIndex = 1;
+  toggleInPlayerEpisodesSheet(null, false);
+
   const modal = document.getElementById('cinema-modal');
   if (!modal) return;
 
@@ -392,6 +407,11 @@ export function closePlayerModal() {
 
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
+
+    quickBarSeriesData = null;
+    currentEpisodes = [];
+    currentEpisodeIndex = 1;
+    toggleInPlayerEpisodesSheet(null, false);
 
     document.body.classList.remove('player-dropdown-active', 'quick-dropdown-active');
 
@@ -1240,7 +1260,7 @@ function playStreamUrl(url) {
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
         <button type="button" class="player-overlay-fs-btn" id="html5-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
 
-        <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
+        <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
 
         <!-- Кнопки пропуска заставок -->
         <button type="button" class="storm-skip-btn" id="skip-intro-btn" style="display: none;">
@@ -2407,11 +2427,18 @@ export function toggleInPlayerEpisodesSheet(overlay, show) {
   const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
   if (!sheet) return;
 
+  if (!checkIfMediaIsSeries(currentMedia)) {
+    sheet.classList.remove('is-open');
+    sheet.style.display = 'none';
+    return;
+  }
+
   if (show === undefined) {
     show = !sheet.classList.contains('is-open');
   }
 
   if (show) {
+    sheet.style.display = 'flex';
     renderInPlayerEpisodesSheet(overlay);
     sheet.classList.add('is-open');
   } else {
@@ -2423,8 +2450,18 @@ export function renderInPlayerEpisodesSheet(overlay) {
   if (!overlay) overlay = document.getElementById('storm-inplayer-overlay');
   if (!overlay) return;
 
+  const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
+  if (!checkIfMediaIsSeries(currentMedia)) {
+    if (sheet) {
+      sheet.classList.remove('is-open');
+      sheet.style.display = 'none';
+    }
+    return;
+  }
+
   const chipsBar = overlay.querySelector('#inplayer-season-chips-bar');
   const epList = overlay.querySelector('#inplayer-episodes-list');
+  const countBadge = overlay.querySelector('#inplayer-sheet-count');
   if (!chipsBar || !epList) return;
 
   const curMediaId = currentMedia?.id;
@@ -2577,6 +2614,37 @@ export function renderInPlayerEpisodesSheet(overlay) {
   epList.innerHTML = '<div style="color:var(--text-muted);padding:14px;text-align:center;font-size:12px;">Список серий уточняется...</div>';
 }
 
+export function checkIfMediaIsSeries(media) {
+  if (!media) return false;
+  // Явные признаки фильма
+  if (media.media_type === 'movie' || media.type === 'movie' || media.category === 'Фильм' || media.category === 'фильм') {
+    return false;
+  }
+  // Явные сериалы, мультсериалы и аниме-сериалы
+  if (media.media_type === 'series' || 
+      media.media_type === 'tv' || 
+      media.media_type === 'cartoon-series' || 
+      media.media_type === 'anime-series' || 
+      media.category === 'Сериал' || 
+      media.category === 'Аниме-сериал' || 
+      media.category === 'Мультсериал') {
+    return true;
+  }
+  if (media.source === 'anilibria' || media.source === 'anixart') {
+    return true;
+  }
+  if (Array.isArray(media.seasons) && media.seasons.length > 0) {
+    return true;
+  }
+  if (Array.isArray(media.episodes) && media.episodes.length > 1) {
+    return true;
+  }
+  if (quickBarSeriesData && quickBarSeriesData.type !== 'movie' && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0) {
+    return true;
+  }
+  return false;
+}
+
 export function updateInPlayerEpisodeInfo() {
   const overlay = document.getElementById('storm-inplayer-overlay');
   if (!overlay) return;
@@ -2585,49 +2653,60 @@ export function updateInPlayerEpisodeInfo() {
   const name = overlay.querySelector('#inplayer-series-name');
   const epBtn = overlay.querySelector('#inplayer-episodes-btn');
   const bottomBar = overlay.querySelector('#inplayer-bottom-bar');
+  const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
   const prevBtn = overlay.querySelector('#inplayer-prev-ep-btn');
   const nextBtn = overlay.querySelector('#inplayer-next-ep-btn');
 
+  const isSeries = checkIfMediaIsSeries(currentMedia);
+
   let titleText = currentMedia?.title || '';
   let epText = '';
-  let isSeries = false;
   let hasPrev = false;
   let hasNext = false;
 
-  if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
-    isSeries = quickBarSeriesData.type !== 'movie';
-    const curSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
-    const totalEps = curSeasonObj?.episodes?.length || 0;
-    const curEpIdx = curSeasonObj?.episodes?.findIndex(e => e.episode === quickBarActiveEpisode) ?? -1;
+  if (isSeries) {
+    if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
+      const curSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
+      const totalEps = curSeasonObj?.episodes?.length || 0;
+      const curEpIdx = curSeasonObj?.episodes?.findIndex(e => e.episode === quickBarActiveEpisode) ?? -1;
 
-    epText = isSeries ? `📺 С${quickBarActiveSeason} • Э${quickBarActiveEpisode}` : '🎬 Фильм';
-    hasPrev = isSeries && (curEpIdx > 0 || quickBarActiveSeason > 1);
-    hasNext = isSeries && ((curEpIdx >= 0 && curEpIdx < totalEps - 1) || quickBarSeriesData.seasons.findIndex(s => s.season === quickBarActiveSeason) < quickBarSeriesData.seasons.length - 1);
-  } else if (currentEpisodes && currentEpisodes.length > 0) {
-    isSeries = true;
-    epText = `📺 Серия ${currentEpisodeIndex || 1}`;
-    const idx = currentEpisodes.findIndex(e => (e.position || 1) === currentEpisodeIndex);
-    hasPrev = idx > 0;
-    hasNext = idx >= 0 && idx < currentEpisodes.length - 1;
-  } else if (currentMedia?.episodes && currentMedia.episodes.length > 0) {
-    isSeries = true;
-    epText = `📺 Серия ${currentEpisodeIndex || 1}`;
-    const idx = currentMedia.episodes.findIndex(e => (e.ordinal || 1) === currentEpisodeIndex);
-    hasPrev = idx > 0;
-    hasNext = idx >= 0 && idx < currentMedia.episodes.length - 1;
+      epText = `📺 С${quickBarActiveSeason} • Э${quickBarActiveEpisode}`;
+      hasPrev = curEpIdx > 0 || quickBarActiveSeason > 1;
+      hasNext = (curEpIdx >= 0 && curEpIdx < totalEps - 1) || quickBarSeriesData.seasons.findIndex(s => s.season === quickBarActiveSeason) < quickBarSeriesData.seasons.length - 1;
+    } else if (currentEpisodes && currentEpisodes.length > 0) {
+      epText = `📺 Серия ${currentEpisodeIndex || 1}`;
+      const idx = currentEpisodes.findIndex(e => (e.position || 1) === currentEpisodeIndex);
+      hasPrev = idx > 0;
+      hasNext = idx >= 0 && idx < currentEpisodes.length - 1;
+    } else if (currentMedia?.episodes && currentMedia.episodes.length > 0) {
+      epText = `📺 Серия ${currentEpisodeIndex || 1}`;
+      const idx = currentMedia.episodes.findIndex(e => (e.ordinal || 1) === currentEpisodeIndex);
+      hasPrev = idx > 0;
+      hasNext = idx >= 0 && idx < currentMedia.episodes.length - 1;
+    } else {
+      epText = `📺 Серия 1`;
+    }
   } else {
-    epText = currentMedia?.quality || '4K UHD';
+    // ДЛЯ ФИЛЬМОВ
+    epText = currentMedia?.quality || '🎬 Фильм';
   }
 
   if (badge) badge.textContent = epText;
   if (name) name.textContent = titleText;
   if (epBtn) epBtn.style.display = isSeries ? 'inline-flex' : 'none';
   if (bottomBar) bottomBar.style.display = isSeries ? 'flex' : 'none';
+  if (sheet) {
+    if (!isSeries) {
+      sheet.classList.remove('is-open');
+      sheet.style.display = 'none';
+    } else {
+      sheet.style.display = '';
+    }
+  }
   if (prevBtn) prevBtn.disabled = !hasPrev;
   if (nextBtn) nextBtn.disabled = !hasNext;
 
-  const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
-  if (sheet && sheet.classList.contains('is-open')) {
+  if (isSeries && sheet && sheet.classList.contains('is-open')) {
     renderInPlayerEpisodesSheet(overlay);
   }
 }
@@ -2766,6 +2845,7 @@ export function playNextEpisode() {
 
 export function mountInPlayerOverlay(videoBox) {
   if (!videoBox) return;
+  const isSeries = checkIfMediaIsSeries(currentMedia);
   let overlay = videoBox.querySelector('.storm-inplayer-overlay');
   if (!overlay) {
     overlay = document.createElement('div');
@@ -2775,8 +2855,8 @@ export function mountInPlayerOverlay(videoBox) {
       <!-- Верхняя полоса управления -->
       <div class="inplayer-top-bar">
         <div class="inplayer-title-info">
-          <span class="inplayer-badge" id="inplayer-badge">📺 1 серия</span>
-          <span class="inplayer-series-name" id="inplayer-series-name"></span>
+          <span class="inplayer-badge" id="inplayer-badge">${isSeries ? '📺 Серия 1' : (currentMedia?.quality || '🎬 Фильм')}</span>
+          <span class="inplayer-series-name" id="inplayer-series-name">${escapeHtml(currentMedia?.title || '')}</span>
         </div>
         <div class="inplayer-top-actions">
           <button type="button" class="inplayer-ctrl-btn" id="inplayer-speed-btn" title="Скорость воспроизведения (нажмите для переключения)">
@@ -2791,7 +2871,7 @@ export function mountInPlayerOverlay(videoBox) {
             <div class="inplayer-speed-item" data-speed="1.75">1.75x</div>
             <div class="inplayer-speed-item" data-speed="2">2x</div>
           </div>
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-episodes-btn" title="Список серий">
+          <button type="button" class="inplayer-ctrl-btn" id="inplayer-episodes-btn" title="Список серий" style="${isSeries ? '' : 'display: none;'}">
             📋 Серии
           </button>
           <button type="button" class="inplayer-ctrl-btn inplayer-icon-btn" id="inplayer-fs-btn" title="Полноэкранный режим (F)">
@@ -2804,7 +2884,7 @@ export function mountInPlayerOverlay(videoBox) {
       </div>
 
       <!-- Нижняя полоса быстрого переключения серий: компактные парящие капсулы -->
-      <div class="inplayer-bottom-bar" id="inplayer-bottom-bar">
+      <div class="inplayer-bottom-bar" id="inplayer-bottom-bar" style="${isSeries ? '' : 'display: none;'}">
         <button type="button" class="inplayer-episode-nav-btn" id="inplayer-prev-ep-btn" title="Предыдущая серия">
           ⏮ <span>Пред. серия</span>
         </button>
@@ -2814,11 +2894,12 @@ export function mountInPlayerOverlay(videoBox) {
       </div>
 
       <!-- Выдвижная шторка выбора сезона и серии прямо в плеере -->
-      <div class="player-inplayer-episodes-sheet" id="player-inplayer-episodes-sheet">
+      <div class="player-inplayer-episodes-sheet" id="player-inplayer-episodes-sheet" style="${isSeries ? '' : 'display: none;'}">
         <div class="inplayer-sheet-header">
           <div class="inplayer-sheet-title">
             <span>📺</span>
             <span>Выбор серии</span>
+            <span class="inplayer-sheet-count" id="inplayer-sheet-count"></span>
           </div>
           <button type="button" class="inplayer-sheet-close-btn" id="inplayer-sheet-close-btn" title="Закрыть список">✕</button>
         </div>
@@ -3124,7 +3205,7 @@ function renderWebTorrentPlayer() {
       <!-- Основная область воспроизведения (сверху) -->
       <div id="torrent-playback-area" style="position: relative; width: 100%; flex: 1; min-height: 340px; background: #05070a; display: flex; align-items: center; justify-content: center; overflow: hidden;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <video id="storm-video-player" controls autoplay playsinline style="position: relative; z-index: 2; width: 100%; height: 100%; max-height: 520px; background: #000; object-fit: contain;"></video>
+        <video id="storm-video-player" controls autoplay playsinline crossorigin="anonymous" style="position: relative; z-index: 2; width: 100%; height: 100%; max-height: 520px; background: #000; object-fit: contain;"></video>
 
         <!-- Оверлей загрузки пиров и буферизации -->
         <div id="torrent-loader-overlay" style="position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 10, 15, 0.88); backdrop-filter: blur(8px); gap: 12px; padding: 20px; text-align: center;">
