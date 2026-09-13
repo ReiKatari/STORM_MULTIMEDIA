@@ -1199,7 +1199,7 @@ app.get('/api/media/series-episodes', async (req, res) => {
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
-    let { url: targetUrl, season, episode, translation } = req.query;
+    let { url: targetUrl, season, episode, translation, hidden } = req.query;
     if (!targetUrl) {
       return res.status(400).send('URL плеера не указан');
     }
@@ -1228,6 +1228,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     if (episode !== undefined && episode !== null) urlObj.searchParams.set('episode', episode);
     if (translation !== undefined && translation !== null) urlObj.searchParams.set('translation', translation);
     urlObj.searchParams.set('selector', '0');
+    urlObj.searchParams.set('hidden', hidden || 'season,episode,translation');
 
     const finalUrl = urlObj.toString();
 

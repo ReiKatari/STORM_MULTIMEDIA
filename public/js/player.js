@@ -544,8 +544,12 @@ function renderQuickBarDropdowns() {
     curSeasonIcon = '⏳';
   }
 
+  const seasonIconEl = seasonTrigger ? seasonTrigger.querySelector('.quick-dropdown-icon') : null;
+  if (seasonIconEl) {
+    seasonIconEl.textContent = curSeasonIcon;
+  }
   if (seasonVal) {
-    seasonVal.innerHTML = `<span style="margin-right:6px;">${curSeasonIcon}</span><span>${currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`}</span>`;
+    seasonVal.textContent = currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`;
   }
 
   if (seasonList) {
@@ -613,8 +617,12 @@ function renderQuickBarDropdowns() {
   const epMenu = document.getElementById('quick-episode-menu');
 
   const curEpWatched = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).has(quickBarActiveEpisode) : false;
+  const epIconEl = epTrigger ? epTrigger.querySelector('.quick-dropdown-icon') : null;
+  if (epIconEl) {
+    epIconEl.textContent = curEpWatched ? '✅' : '🎬';
+  }
   if (epVal) {
-    epVal.innerHTML = `<span style="margin-right:6px;">${curEpWatched ? '✅' : '🎬'}</span><span>${currentEpisodeObj ? currentEpisodeObj.name : `${quickBarActiveEpisode} серия`}</span>`;
+    epVal.textContent = currentEpisodeObj ? currentEpisodeObj.name : `${quickBarActiveEpisode} серия`;
   }
 
   if (epList) {
@@ -776,7 +784,7 @@ function updateQuickIframeSrc() {
   const iframe = document.querySelector('.cinema-player-iframe');
   if (!iframe || !quickBarBaseUrl) return;
 
-  const url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}&translation=${quickBarActiveTranslationId || ''}`;
+  const url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation`;
   iframe.src = url;
 }
 
@@ -911,7 +919,7 @@ function playStreamUrl(url) {
   const isFanfilmOrStravers = typeof url === 'string' && (url.includes('stravers.live') || url.includes('fanfilm4k') || url.includes('fanfilm'));
 
   if (isFanfilmOrStravers) {
-    streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}`;
+    streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation`;
     initSeriesQuickBar(url);
   } else {
     const quickBar = document.getElementById('player-series-quick-bar');
