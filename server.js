@@ -1382,6 +1382,63 @@ app.get('/api/player/series-options', async (req, res) => {
     const rawJson = fileListMatch[1].replace(/\\'/g, "'");
     const parsed = JSON.parse(rawJson);
 
+    if (parsed.type === 'movie' && parsed.all) {
+      const translations = [];
+      const seenTransIds = new Set();
+
+      const processCategory = (categoryObj) => {
+        if (!categoryObj || typeof categoryObj !== 'object') return;
+        for (const [tKey, qualityObj] of Object.entries(categoryObj)) {
+          if (!qualityObj || typeof qualityObj !== 'object') continue;
+          for (const [qKey, item] of Object.entries(qualityObj)) {
+            if (item && item.id_translation && !seenTransIds.has(item.id_translation)) {
+              seenTransIds.add(item.id_translation);
+              translations.push({
+                id: item.id_translation,
+                name: item.translation,
+                quality: item.quality || qKey || 'WEB-DL',
+                is_uhd: item.uhd === 1,
+                stream_id: item.id
+              });
+            }
+          }
+        }
+      };
+
+      if (parsed.all.theatrical) processCategory(parsed.all.theatrical);
+      if (parsed.all.directors) processCategory(parsed.all.directors);
+      processCategory(parsed.all);
+
+      translations.sort((a, b) => {
+        if (a.is_uhd && !b.is_uhd) return -1;
+        if (!a.is_uhd && b.is_uhd) return 1;
+        return a.name.localeCompare(b.name, 'ru');
+      });
+
+      return res.json({
+        success: true,
+        type: 'movie',
+        embed_base: iframeSrc,
+        active: {
+          season: 1,
+          episode: 1,
+          translation: parsed.active?.translation || '',
+          id_translation: parsed.active?.id_translation || null,
+          is_uhd: parsed.active?.uhd === 1
+        },
+        seasons: [{
+          season: 1,
+          name: 'Фильм',
+          episodes_count: 1,
+          episodes: [{
+            episode: 1,
+            name: 'Фильм',
+            translations
+          }]
+        }]
+      });
+    }
+
     if (parsed.type !== 'serial' || !parsed.all) {
       return res.json({
         success: true,

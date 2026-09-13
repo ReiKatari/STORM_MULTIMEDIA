@@ -566,7 +566,119 @@ function selectPlayer(player) {
 }
 
 /* ==========================================================================
-   СТИЛИЗОВАННАЯ ПАНЕЛЬ СЕРИАЛОВ (СЕЗОНЫ, СЕРИИ И СТУДИЙНАЯ ОЗВУЧКА 4K UHD)
+   УМНЫЙ ВЫБОР ОЗВУЧКИ (SMART VOICEOVER PREFERENCE & AUTO-MATCHING)
+   ========================================================================== */
+const KNOWN_STUDIO_ALIASES = [
+  { key: 'lostfilm', patterns: ['lostfilm', 'лостфильм', 'lost film'] },
+  { key: 'redheadsound', patterns: ['red head sound', 'redheadsound', 'ред хед саунд', 'редхедсаунд', 'rhs', 'рхс'] },
+  { key: 'hdrezka', patterns: ['hdrezka', 'rezka', 'хдрезка', 'резка', 'hd rezka'] },
+  { key: 'kubik', patterns: ['кубик в кубе', 'кубик', 'kubik v kube', 'kubik'] },
+  { key: 'anilibria', patterns: ['anilibria', 'анилибрия'] },
+  { key: 'studioband', patterns: ['studio band', 'studioband', 'студийная банда', 'студия банда'] },
+  { key: 'dreamcast', patterns: ['dream cast', 'dreamcast', 'дримкаст'] },
+  { key: 'aniplash', patterns: ['aniplash', 'аниплэш', 'аниплеш'] },
+  { key: 'shikimori', patterns: ['shikimori', 'шикимори'] },
+  { key: 'shiza', patterns: ['shiza project', 'shiza', 'шиза проджект', 'шиза'] },
+  { key: 'dubbing', patterns: ['дублированный', 'дубляж', 'полный дубляж', 'профессиональный дублированный', 'дублирование', 'dubbing'] },
+  { key: 'pifagor', patterns: ['пифагор', 'мостфильм', 'невафильм'] },
+  { key: 'tvshows', patterns: ['tvshows', 'твшоус', 'твшоу'] },
+  { key: 'newstudio', patterns: ['newstudio', 'ньюстудио'] },
+  { key: 'kuraj', patterns: ['кураж-бамбей', 'кураж бамбей', 'кураж', 'kuraj bambey'] },
+  { key: 'flarrow', patterns: ['flarrow films', 'flarrow', 'флэрроу', 'флэроу'] },
+  { key: 'coldfilm', patterns: ['coldfilm', 'колдфильм'] },
+  { key: 'baibako', patterns: ['baibako', 'байбако'] },
+  { key: 'alexfilm', patterns: ['alexfilm', 'алексфильм'] },
+  { key: 'profdub', patterns: ['профессиональный многоголосый', 'проф. многоголосый'] }
+];
+
+export function getPreferredVoiceover() {
+  try {
+    return localStorage.getItem('storm_smart_preferred_voiceover') || '';
+  } catch {
+    return '';
+  }
+}
+
+export function savePreferredVoiceover(name) {
+  if (!name || typeof name !== 'string') return;
+  const cleanName = name
+    .replace(/\s*[\(\[]?\s*(4[kк]|uhd|fhd|1080p|720p|серия|сезон|\d+)\s*[\)\]]?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleanName || cleanName.length < 2) return;
+
+  try {
+    localStorage.setItem('storm_smart_preferred_voiceover', cleanName);
+    localStorage.setItem('storm_smart_preferred_voiceover_raw', name);
+  } catch (err) {
+    console.warn('Не удалось сохранить умную озвучку:', err);
+  }
+}
+
+export function findPreferredVoiceoverMatch(translations) {
+  if (!Array.isArray(translations) || translations.length === 0) return null;
+  const preferred = getPreferredVoiceover();
+  if (!preferred) return null;
+
+  const cleanPref = preferred.toLowerCase().trim();
+  const prefNorm = cleanPref.replace(/[^a-zа-я0-9]/gi, '');
+
+  let matchedStudioKey = null;
+  for (const item of KNOWN_STUDIO_ALIASES) {
+    if (item.patterns.some(p => cleanPref.includes(p) || p.includes(cleanPref))) {
+      matchedStudioKey = item.key;
+      break;
+    }
+  }
+
+  const prefTokens = cleanPref
+    .split(/[\s,.\-\_\(\)\[\]\/\\]+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 4 && !['сезон', 'серия', 'серии', 'звук', 'дубляж'].includes(t));
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const trans of translations) {
+    const name = (trans.name || '').trim();
+    if (!name) continue;
+    const lowerName = name.toLowerCase();
+    const transNorm = lowerName.replace(/[^a-zа-я0-9]/gi, '');
+
+    let score = 0;
+
+    if (transNorm === prefNorm) {
+      score = 100;
+    } else if (matchedStudioKey) {
+      const studioObj = KNOWN_STUDIO_ALIASES.find(s => s.key === matchedStudioKey);
+      if (studioObj && studioObj.patterns.some(p => lowerName.includes(p))) {
+        score = 90;
+      }
+    }
+
+    if (score === 0) {
+      if (lowerName.includes(cleanPref) || cleanPref.includes(lowerName)) {
+        score = 80;
+      } else {
+        for (const token of prefTokens) {
+          if (lowerName.includes(token)) {
+            score = Math.max(score, 70);
+          }
+        }
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = trans;
+    }
+  }
+
+  return bestScore >= 70 ? bestMatch : null;
+}
+
+/* ==========================================================================
+   СТИЛИЗОВАННАЯ ПАНЕЛЬ СЕРИАЛОВ И ФИЛЬМОВ (СЕЗОНЫ, СЕРИИ И СТУДИЙНАЯ ОЗВУЧКА)
    ========================================================================== */
 let quickBarSeriesData = null;
 let quickBarActiveSeason = 1;
@@ -586,7 +698,7 @@ async function initSeriesQuickBar(playerUrl) {
       return;
     }
     const data = await res.json();
-    if (!data.success || data.type !== 'serial' || !data.seasons || data.seasons.length === 0) {
+    if (!data.success || !data.seasons || data.seasons.length === 0) {
       quickBar.style.display = 'none';
       return;
     }
@@ -598,8 +710,28 @@ async function initSeriesQuickBar(playerUrl) {
     quickBarActiveEpisode = data.active?.episode || 1;
     quickBarActiveTranslationId = data.active?.id_translation || null;
 
+    // Умный выбор озвучки: проверяем любимую студию пользователя
+    const currentSeasonObj = data.seasons.find(s => s.season === quickBarActiveSeason) || data.seasons[0];
+    const currentEpisodeObj = currentSeasonObj?.episodes?.find(e => e.episode === quickBarActiveEpisode) || currentSeasonObj?.episodes?.[0];
+    const availableTranslations = currentEpisodeObj?.translations || [];
+
+    const matchedTrans = findPreferredVoiceoverMatch(availableTranslations);
+    let autoVoiceMatched = false;
+    if (matchedTrans && String(matchedTrans.id) !== String(quickBarActiveTranslationId)) {
+      quickBarActiveTranslationId = matchedTrans.id;
+      if (data.active) data.active.id_translation = matchedTrans.id;
+      autoVoiceMatched = true;
+    }
+
     renderQuickBarDropdowns();
     setupQuickBarOutsideListeners();
+
+    if (autoVoiceMatched || quickBarActiveSeason > 1 || quickBarActiveEpisode > 1) {
+      updateQuickIframeSrc();
+    }
+    if (autoVoiceMatched && matchedTrans) {
+      showToast(`🎙️ Умный выбор озвучки: ${matchedTrans.name}`, 'info');
+    }
   } catch (err) {
     console.warn('Ошибка быстрой панели серий:', err);
     quickBar.style.display = 'none';
@@ -615,6 +747,7 @@ function renderQuickBarDropdowns() {
   const currentEpisodeObj = currentSeasonObj.episodes.find(e => e.episode === quickBarActiveEpisode) || currentSeasonObj.episodes[0];
   const translations = currentEpisodeObj?.translations || [];
   const curMediaId = currentMedia?.id;
+  const isMovie = quickBarSeriesData.type === 'movie';
 
   // 1. Сезон
   const seasonVal = document.getElementById('quick-season-val');
@@ -622,6 +755,10 @@ function renderQuickBarDropdowns() {
   const seasonDropdown = document.getElementById('quick-season-dropdown');
   const seasonTrigger = document.getElementById('quick-season-trigger');
   const seasonMenu = document.getElementById('quick-season-menu');
+
+  if (seasonDropdown) {
+    seasonDropdown.style.display = isMovie ? 'none' : '';
+  }
 
   // Расчет статуса активного сезона для кнопки-триггера
   const watchedInCurSeason = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).size : 0;
@@ -704,6 +841,10 @@ function renderQuickBarDropdowns() {
   const epDropdown = document.getElementById('quick-episode-dropdown');
   const epTrigger = document.getElementById('quick-episode-trigger');
   const epMenu = document.getElementById('quick-episode-menu');
+
+  if (epDropdown) {
+    epDropdown.style.display = isMovie ? 'none' : '';
+  }
 
   const curEpWatched = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).has(quickBarActiveEpisode) : false;
   const epIconEl = epTrigger ? epTrigger.querySelector('.quick-dropdown-icon') : null;
@@ -794,7 +935,15 @@ function renderQuickBarDropdowns() {
   const voiceTrigger = document.getElementById('quick-voiceover-trigger');
   const voiceMenu = document.getElementById('quick-voiceover-menu');
 
-  let activeTrans = translations.find(t => t.id === quickBarActiveTranslationId) || translations[0];
+  if (voiceDropdown) {
+    voiceDropdown.style.display = translations.length > 0 ? '' : 'none';
+  }
+
+  let activeTrans = translations.find(t => String(t.id) === String(quickBarActiveTranslationId));
+  if (!activeTrans && translations.length > 0) {
+    activeTrans = findPreferredVoiceoverMatch(translations) || translations[0];
+    if (activeTrans) quickBarActiveTranslationId = activeTrans.id;
+  }
   if (activeTrans) {
     quickBarActiveTranslationId = activeTrans.id;
     if (voiceVal) voiceVal.textContent = activeTrans.name;
@@ -894,7 +1043,10 @@ function updateQuickIframeSrc() {
   const iframe = document.querySelector('.cinema-player-iframe');
   if (!iframe || !quickBarBaseUrl) return;
 
-  const url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation`;
+  let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation`;
+  if (quickBarSeriesData?.type !== 'movie') {
+    url += `&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
+  }
   iframe.src = url;
 }
 
@@ -975,6 +1127,7 @@ async function switchAnixartVoiceover(voiceoverId) {
       playAnixartEpisode(chosenEp);
     }
     const vName = currentMedia?.voiceovers?.find(v => String(v.id) === String(voiceoverId))?.name || 'AniXart';
+    savePreferredVoiceover(vName);
     showToast(`🎙️ Выбрана озвучка: ${vName}`, 'info');
   } catch (err) {
     console.warn('Ошибка смены озвучки AniXart:', err);
@@ -989,6 +1142,8 @@ async function selectQuickVoiceover(translationId) {
   if (quickBarSeriesData?.isAnime && quickBarSeriesData.animeSource === 'anixart') {
     currentVoiceoverId = translationId;
     localStorage.setItem(`storm_fav_voiceover_${currentMedia?.id}`, String(translationId));
+    const vObj = currentMedia?.voiceovers?.find(v => String(v.id) === String(translationId));
+    if (vObj?.name) savePreferredVoiceover(vObj.name);
     await switchAnixartVoiceover(translationId);
     return;
   }
@@ -997,10 +1152,11 @@ async function selectQuickVoiceover(translationId) {
   updateQuickIframeSrc();
 
   let voiceName = 'Озвучка обновлена';
-  const sObj = quickBarSeriesData?.seasons?.find(s => s.season === quickBarActiveSeason);
-  const epObj = sObj?.episodes?.find(e => e.episode === quickBarActiveEpisode);
+  const sObj = quickBarSeriesData?.seasons?.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData?.seasons?.[0];
+  const epObj = sObj?.episodes?.find(e => e.episode === quickBarActiveEpisode) || sObj?.episodes?.[0];
   const transObj = epObj?.translations?.find(t => String(t.id) === String(translationId));
   if (transObj) {
+    savePreferredVoiceover(transObj.name);
     voiceName = `🎙️ ${transObj.name}${transObj.is_uhd ? ' (4K UHD)' : ''}`;
     if (transObj.is_uhd) {
       trackClientAction('use_4k');
@@ -2846,8 +3002,20 @@ async function renderAnixartControls(details, options = {}) {
   const voiceovers = details.voiceovers || [];
   if (voiceovers.length === 0) return;
 
-  const preferredId = localStorage.getItem(`storm_fav_voiceover_${details.id}`) || voiceovers[0].id;
-  let activeVoiceover = voiceovers.find(v => String(v.id) === String(preferredId)) || voiceovers[0];
+  const preferredId = localStorage.getItem(`storm_fav_voiceover_${details.id}`);
+  let activeVoiceover = null;
+  if (preferredId) {
+    activeVoiceover = voiceovers.find(v => String(v.id) === String(preferredId));
+  }
+  if (!activeVoiceover) {
+    activeVoiceover = findPreferredVoiceoverMatch(voiceovers);
+    if (activeVoiceover) {
+      showToast(`🎙️ Умный выбор озвучки: ${activeVoiceover.name}`, 'info');
+    }
+  }
+  if (!activeVoiceover) {
+    activeVoiceover = voiceovers[0];
+  }
   currentVoiceoverId = activeVoiceover.id;
 
   const playerObj = {

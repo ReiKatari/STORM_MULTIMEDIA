@@ -416,7 +416,20 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
     params.push(mediaType);
   }
 
-  query += ' ORDER BY updated_at DESC';
+  query += ` ORDER BY 
+    CASE status 
+      WHEN 'watching' THEN 1 
+      WHEN 'favorite' THEN 2 
+      WHEN 'planned' THEN 3 
+      WHEN 'plan' THEN 3 
+      WHEN 'completed' THEN 4 
+      WHEN 'on_hold' THEN 5 
+      WHEN 'hold' THEN 5 
+      WHEN 'dropped' THEN 6 
+      WHEN 'wont_watch' THEN 7 
+      ELSE 8 
+    END ASC, 
+    updated_at DESC`;
   const allRows = db.prepare(query).all(...params);
 
   // Каноническая дедупликация на уровне базы данных
@@ -439,7 +452,29 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
     }
   }
 
-  return Array.from(canonicalMap.values());
+  const statusRank = (st) => {
+    switch (st) {
+      case 'watching': return 1;
+      case 'favorite': return 2;
+      case 'plan':
+      case 'planned': return 3;
+      case 'completed': return 4;
+      case 'hold':
+      case 'on_hold': return 5;
+      case 'dropped': return 6;
+      case 'wont_watch': return 7;
+      default: return 8;
+    }
+  };
+
+  const results = Array.from(canonicalMap.values());
+  results.sort((a, b) => {
+    const diff = statusRank(a.status) - statusRank(b.status);
+    if (diff !== 0) return diff;
+    return (b.updated_at || 0) - (a.updated_at || 0);
+  });
+
+  return results;
 }
 
 export function getBookmark(userId, mediaId, source) {
