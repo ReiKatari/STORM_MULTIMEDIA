@@ -96,6 +96,11 @@
           <img src="assets/favicon.svg" alt="Avatar" class="user-avatar-img" id="user-avatar-img">
           <span id="user-name-label">Пользователь</span>
         </button>
+
+        <!-- Кнопка мобильного меню (Mobile Menu Button) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm storm-mobile-menu-btn" id="mobile-menu-toggle-btn" title="Меню экосистемы">
+          <span>☰</span>
+        </button>
       </div>
     </div>
   </header>
@@ -262,6 +267,10 @@
     <button class="storm-mobile-nav-item" data-tab="movies">
       <span>🎬</span>
       <span data-i18n="tab_movies">Фильмы</span>
+    </button>
+    <button class="storm-mobile-nav-item" data-tab="series">
+      <span>📺</span>
+      <span data-i18n="tab_series">Сериалы</span>
     </button>
     <button class="storm-mobile-nav-item" data-tab="anime-series">
       <span>⛩️</span>
@@ -762,6 +771,122 @@
 
   <!-- Контейнер всплывающих уведомлений (Toasts) -->
   <div class="storm-toast-container" id="toast-container"></div>
+
+  <!-- Мобильное выдвижное меню экосистемы (Mobile Drawer) -->
+  <div class="storm-drawer-backdrop" id="mobile-drawer-backdrop">
+    <div class="storm-mobile-drawer" id="storm-mobile-drawer">
+      <div class="mobile-drawer-header">
+        <div class="storm-brand">
+          <img src="assets/favicon.svg" alt="STORM" class="storm-brand-logo" style="width: 32px; height: 32px;">
+          <div class="storm-brand-text">
+            <span class="storm-brand-title" style="font-size: 16px;">STORM MULTIMEDIA</span>
+          </div>
+        </div>
+        <button type="button" class="storm-drawer-close" id="mobile-drawer-close-btn" title="Закрыть меню">✕</button>
+      </div>
+      <div class="mobile-drawer-body">
+        <!-- Блок профиля / входа -->
+        <div class="mobile-drawer-user-card" id="mobile-drawer-user-card">
+          <img src="assets/favicon.svg" alt="Avatar" class="mobile-drawer-avatar" id="mobile-drawer-avatar">
+          <div class="mobile-drawer-user-info">
+            <div class="mobile-drawer-user-name" id="mobile-drawer-username">Гость</div>
+            <div class="mobile-drawer-user-status" id="mobile-drawer-user-status">Авторизуйтесь для синхронизации</div>
+          </div>
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="mobile-drawer-auth-btn">Войти</button>
+        </div>
+
+        <!-- Раздел функций экосистемы -->
+        <div class="mobile-drawer-section-title">Сервисы и возможности</div>
+        <div class="mobile-drawer-nav-list">
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-recommender-btn">
+            <span class="mobile-nav-icon">🧠</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">ИИ-советник</span>
+              <span class="mobile-nav-desc">Персональный подбор на вечер</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-calendar-btn">
+            <span class="mobile-nav-icon">📅</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Календарь релизов</span>
+              <span class="mobile-nav-desc">График выхода свежих эпизодов</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-remote-btn">
+            <span class="mobile-nav-icon">📱</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Пульт управления</span>
+              <span class="mobile-nav-desc">Управление со смартфона</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-rooms-btn">
+            <span class="mobile-nav-icon">👥</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Кинозал</span>
+              <span class="mobile-nav-desc">Совместный просмотр и чат</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-family-btn">
+            <span class="mobile-nav-icon">👑</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Семейные профили</span>
+              <span class="mobile-nav-desc">Детский режим и профили семьи</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-sync-btn">
+            <span class="mobile-nav-icon">🔄</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Синхронизация</span>
+              <span class="mobile-nav-desc">Shikimori, MAL, резервные копии</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-tv-mode-btn">
+            <span class="mobile-nav-icon">📺</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">ТВ-режим</span>
+              <span class="mobile-nav-desc">Интерфейс для ТВ и геймпада</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-profile-settings-btn">
+            <span class="mobile-nav-icon">⚙️</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Настройки и профиль</span>
+              <span class="mobile-nav-desc">Темы, статистика и безопасность</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Раздел быстрой смены темы и языка -->
+        <div class="mobile-drawer-section-title">Оформление и язык</div>
+        <div class="mobile-drawer-quick-settings">
+          <div class="mobile-drawer-setting-row">
+            <span>🎨 Стиль темы</span>
+            <select class="storm-select" id="mobile-drawer-theme-select">
+              <option value="STORM DARK">STORM DARK</option>
+              <option value="STORM NIGHT">STORM NIGHT</option>
+              <option value="STORM MATRIX">STORM MATRIX</option>
+              <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
+              <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
+              <option value="STORM FANTASY">STORM FANTASY</option>
+              <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
+              <option value="STORM DAY">STORM DAY</option>
+            </select>
+          </div>
+          <div class="mobile-drawer-setting-row">
+            <span>🌐 Язык</span>
+            <select class="storm-select" id="mobile-drawer-lang-select">
+              <option value="ru">Русский (RU)</option>
+              <option value="en">English (EN)</option>
+              <option value="de">Deutsch (DE)</option>
+              <option value="fr">Français (FR)</option>
+              <option value="zh">中文 (ZH)</option>
+              <option value="ja">日本語 (JA)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Модуль приложения -->
   <script type="module" src="js/app.js?v=2.1.0"></script>

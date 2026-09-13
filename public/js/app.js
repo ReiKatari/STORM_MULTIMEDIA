@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   onAuthChanged(() => {
     updateFamilyProfileHeader();
+    updateMobileDrawerUser();
     if (currentTab === 'bookmarks' || currentTab === 'continue') {
       loadCurrentTab();
     }
@@ -1481,6 +1482,11 @@ function showCardHoverPreview(card, item) {
   clearTimeout(hoverCloseTimer);
   hideCardHoverPreview();
 
+  // На мобильных устройствах и сенсорных экранах десктопное превью строго отключено
+  if (window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches) {
+    return;
+  }
+
   if (!card || !card.isConnected || !card.matches(':hover')) {
     return;
   }
@@ -1722,6 +1728,8 @@ function hideCardHoverPreview() {
   }
 }
 
+window.addEventListener('touchstart', hideCardHoverPreview, { passive: true });
+
 // -------------------------------------------------------------
 // PWA И SERVICE WORKER
 // -------------------------------------------------------------
@@ -1895,6 +1903,9 @@ function initNewCyberFeatures() {
   if (famBtn) {
     famBtn.onclick = () => openProfileSwitcherModal();
   }
+
+  // 9. Мобильное выдвижное меню (Mobile Drawer)
+  initMobileDrawer();
 }
 
 export function updateFamilyProfileHeader() {
@@ -1910,5 +1921,111 @@ export function updateFamilyProfileHeader() {
   }
   if (labelEl && profile) {
     labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Семья';
+  }
+}
+
+// -------------------------------------------------------------
+// МОБИЛЬНОЕ ВЫДВИЖНОЕ МЕНЮ (MOBILE DRAWER)
+// -------------------------------------------------------------
+function initMobileDrawer() {
+  const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
+  const openBtn = document.getElementById('mobile-menu-toggle-btn');
+  const closeBtn = document.getElementById('mobile-drawer-close-btn');
+
+  if (!drawerBackdrop) return;
+
+  const openDrawer = () => {
+    drawerBackdrop.classList.add('is-open');
+    updateMobileDrawerUser();
+  };
+
+  const closeDrawer = () => {
+    drawerBackdrop.classList.remove('is-open');
+  };
+
+  if (openBtn) openBtn.onclick = openDrawer;
+  if (closeBtn) closeBtn.onclick = closeDrawer;
+  drawerBackdrop.addEventListener('click', (e) => {
+    if (e.target === drawerBackdrop) closeDrawer();
+  });
+
+  const bindDrawerItem = (id, targetAction) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.onclick = () => {
+        closeDrawer();
+        targetAction();
+      };
+    }
+  };
+
+  bindDrawerItem('drawer-recommender-btn', () => openNeuralRecommenderModal());
+  bindDrawerItem('drawer-calendar-btn', () => openReleaseCalendarModal());
+  bindDrawerItem('drawer-remote-btn', () => openRemoteQrModal());
+  bindDrawerItem('drawer-rooms-btn', () => {
+    const roomsModal = document.getElementById('rooms-modal');
+    if (roomsModal) roomsModal.classList.add('is-open');
+  });
+  bindDrawerItem('drawer-family-btn', () => openProfileSwitcherModal());
+  bindDrawerItem('drawer-sync-btn', () => {
+    const syncModal = document.getElementById('sync-modal');
+    if (syncModal) {
+      syncModal.classList.add('is-open');
+      renderSyncModalContent(document.getElementById('sync-modal-body'));
+    }
+  });
+  bindDrawerItem('drawer-tv-mode-btn', () => toggleTvMode());
+  bindDrawerItem('drawer-profile-settings-btn', () => openProfileModal());
+
+  const authBtn = document.getElementById('mobile-drawer-auth-btn');
+  if (authBtn) {
+    authBtn.onclick = () => {
+      closeDrawer();
+      const user = getUser();
+      if (user) {
+        openProfileModal();
+      } else {
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.classList.add('is-open');
+      }
+    };
+  }
+
+  const themeSelect = document.getElementById('mobile-drawer-theme-select');
+  if (themeSelect) {
+    themeSelect.value = localStorage.getItem('storm_theme') || 'STORM DARK';
+    themeSelect.onchange = (e) => {
+      setTheme(e.target.value);
+    };
+  }
+
+  const langSelect = document.getElementById('mobile-drawer-lang-select');
+  if (langSelect) {
+    langSelect.value = localStorage.getItem('storm_lang') || 'ru';
+    langSelect.onchange = (e) => {
+      setLanguage(e.target.value);
+    };
+  }
+}
+
+export function updateMobileDrawerUser() {
+  const user = getUser();
+  const usernameEl = document.getElementById('mobile-drawer-username');
+  const statusEl = document.getElementById('mobile-drawer-user-status');
+  const authBtn = document.getElementById('mobile-drawer-auth-btn');
+  const avatarEl = document.getElementById('mobile-drawer-avatar');
+
+  if (usernameEl && statusEl && authBtn) {
+    if (user) {
+      usernameEl.textContent = user.username || user.name || 'Пользователь';
+      statusEl.textContent = user.email || 'Аккаунт активен';
+      authBtn.textContent = 'Профиль';
+      if (avatarEl && user.avatar) avatarEl.src = user.avatar;
+    } else {
+      usernameEl.textContent = 'Гость';
+      statusEl.textContent = 'Авторизуйтесь для синхронизации';
+      authBtn.textContent = 'Войти';
+      if (avatarEl) avatarEl.src = 'assets/favicon.svg';
+    }
   }
 }
