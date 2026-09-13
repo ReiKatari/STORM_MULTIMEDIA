@@ -16,6 +16,7 @@ import { openNeuralRecommenderModal } from './neural-recommender.js';
 import { openReleaseCalendarModal } from './release-calendar.js';
 import { openRemoteQrModal } from './storm-remote.js';
 import { renderOfflineLibrary } from './offline-storage.js';
+import { getBaselineCatalog } from './catalog-baseline.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -81,8 +82,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  await checkAuth();
   loadCurrentTab();
+  checkAuth();
   initDeepLinking();
 });
 
@@ -294,7 +295,13 @@ async function loadCurrentTab() {
     rawCatalogItems = clientTabCache.get(cacheKey);
     renderFilteredCatalog();
   } else {
-    renderSkeletonGrid();
+    const baselineItems = getBaselineCatalog(category);
+    if (baselineItems && baselineItems.length > 0) {
+      rawCatalogItems = deduplicateMediaList(baselineItems);
+      renderFilteredCatalog();
+    } else {
+      renderSkeletonGrid();
+    }
   }
 
   try {
@@ -302,7 +309,10 @@ async function loadCurrentTab() {
     const token = localStorage.getItem('storm_token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`, { headers });
+    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`, {
+      headers,
+      signal: AbortSignal.timeout(2500)
+    });
     const data = await res.json();
     const fetchedItems = data.items || [];
     if (fetchedItems.length > 0) {
@@ -312,7 +322,10 @@ async function loadCurrentTab() {
     } else {
       // Если по текущему источнику 0 элементов, пробуем сводный каталог
       try {
-        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all`, { headers });
+        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all`, {
+          headers,
+          signal: AbortSignal.timeout(2000)
+        });
         const retryData = await retryRes.json();
         if (retryData.items && retryData.items.length > 0) {
           rawCatalogItems = deduplicateMediaList(retryData.items);
@@ -321,12 +334,15 @@ async function loadCurrentTab() {
           return;
         }
       } catch {}
-      rawCatalogItems = [];
-      renderFilteredCatalog();
+
+      if (!rawCatalogItems || rawCatalogItems.length === 0) {
+        rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
+        renderFilteredCatalog();
+      }
     }
   } catch (err) {
-    if (!clientTabCache.has(cacheKey) || clientTabCache.get(cacheKey)?.length === 0) {
-      rawCatalogItems = [];
+    if (!rawCatalogItems || rawCatalogItems.length === 0) {
+      rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
       renderFilteredCatalog();
     }
   }

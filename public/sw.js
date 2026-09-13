@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v2.5';
+const CACHE_NAME = 'storm-multimedia-v2.6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -11,6 +11,7 @@ const STATIC_ASSETS = [
   '/styles/components.css',
   '/styles/main.css',
   '/styles/tv-mode.css',
+  '/js/catalog-baseline.js',
   '/js/app.js',
   '/js/auth.js',
   '/js/bookmarks.js',
@@ -70,8 +71,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для API-запросов: Network-First с fallback
+  // Для API-запросов: Network-First с защитой от зависания и кэшированием каталога
   if (url.pathname.startsWith('/api/')) {
+    if (url.pathname === '/api/media/catalog') {
+      event.respondWith(
+        (async () => {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 2000);
+            const netRes = await fetch(event.request, { signal: controller.signal });
+            clearTimeout(timer);
+            if (netRes && netRes.status === 200) {
+              const cache = await caches.open(CACHE_NAME);
+              cache.put(event.request, netRes.clone());
+              return netRes;
+            }
+          } catch (e) {}
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          return new Response(JSON.stringify({ items: [], total_items: 0 }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })()
+      );
+      return;
+    }
+
     event.respondWith(
       fetch(event.request).catch(() => {
         return caches.match(event.request).then((cached) => {

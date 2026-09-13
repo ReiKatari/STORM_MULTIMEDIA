@@ -9,6 +9,18 @@ const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
+async function tmdbFetch(url, options = {}) {
+  const timeoutMs = options.timeout || 2500;
+  return await fetch(url, {
+    ...options,
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      'User-Agent': 'STORM-Multimedia/1.0',
+      ...(options.headers || {})
+    }
+  });
+}
+
 function formatTmdbItem(item, mediaTypeHint = null) {
   if (!item) return null;
 
@@ -80,11 +92,7 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
     const sep = endpoint.includes('?') ? '&' : '?';
     const url = `${TMDB_BASE}${endpoint}${sep}api_key=${TMDB_API_KEY}&language=ru-RU&page=${pageNum}`;
 
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'STORM-Multimedia/1.0'
-      }
-    });
+    const res = await tmdbFetch(url);
 
     if (!res.ok) {
       throw new Error(`TMDB error status: ${res.status}`);
@@ -121,7 +129,7 @@ export async function searchTmdb(query, page = 1) {
 
   try {
     const url = `${TMDB_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(query)}&page=${pageNum}`;
-    const res = await fetch(url);
+    const res = await tmdbFetch(url);
     if (!res.ok) throw new Error(`TMDB search error: ${res.status}`);
 
     const data = await res.json();
@@ -159,7 +167,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
     const type = tryEndpoints[i];
     try {
       const url = `${TMDB_BASE}/${type}/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids,keywords`;
-      const res = await fetch(url);
+      const res = await tmdbFetch(url);
       if (!res.ok) continue;
 
       const data = await res.json();
@@ -176,7 +184,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
           // Проверим, не является ли этот ID сериалом
           try {
             const tvUrl = `${TMDB_BASE}/tv/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids,keywords`;
-            const tvRes = await fetch(tvUrl);
+            const tvRes = await tmdbFetch(tvUrl);
             if (tvRes.ok) {
               const tvData = await tvRes.json();
               const tvTitle = (tvData.name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -294,7 +302,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = n
       let trailers = (data.videos?.results || []).filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
       if (trailers.length === 0) {
         try {
-          const globalVideosRes = await fetch(`${TMDB_BASE}/${type}/${cleanId}/videos?api_key=${TMDB_API_KEY}`);
+          const globalVideosRes = await tmdbFetch(`${TMDB_BASE}/${type}/${cleanId}/videos?api_key=${TMDB_API_KEY}`);
           if (globalVideosRes.ok) {
             const globalVideosData = await globalVideosRes.json();
             trailers = (globalVideosData.results || []).filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
@@ -451,7 +459,7 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
 
   try {
     const url = `${TMDB_BASE}/tv/${cleanId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=ru-RU`;
-    const res = await fetch(url);
+    const res = await tmdbFetch(url);
     if (!res.ok) throw new Error(`Season fetch error: ${res.status}`);
 
     const data = await res.json();
@@ -462,7 +470,7 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
     if (hasMissingOverviews) {
       try {
         const enUrl = `${TMDB_BASE}/tv/${cleanId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=en-US`;
-        const enRes = await fetch(enUrl);
+        const enRes = await tmdbFetch(enUrl);
         if (enRes.ok) {
           enData = await enRes.json();
         }
@@ -537,7 +545,7 @@ export async function getTmdbPersonMedia(personId) {
 
   try {
     const url = `${TMDB_BASE}/person/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
-    const res = await fetch(url);
+    const res = await tmdbFetch(url);
     if (!res.ok) throw new Error(`Person fetch error: ${res.status}`);
 
     const data = await res.json();
