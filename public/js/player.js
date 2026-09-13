@@ -318,13 +318,18 @@ function renderPlayerSources(players) {
   }
 
   // Заполняем выпадающий список стилизованными элементами
+  const recommendedPlayer = validPlayers.find(p => p.is_recommended) || validPlayers[0];
+  const defaultPlayer = currentActivePlayer ? (validPlayers.find(p => p.id === currentActivePlayer.id) || recommendedPlayer) : recommendedPlayer;
+
   list.innerHTML = validPlayers.map((p, idx) => {
-    const isAct = currentActivePlayer ? currentActivePlayer.id === p.id : idx === 0;
+    const isAct = defaultPlayer ? defaultPlayer.id === p.id : idx === 0;
+    const recBadge = p.is_recommended ? `<span class="storm-badge" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-weight:800;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:auto;">🔥 Рекомендуемый</span>` : '';
     return `
       <div class="player-dropdown-item ${isAct ? 'active' : ''}" data-idx="${idx}">
         <div class="player-item-header">
           <span class="player-source-badge">${p.badge || 'ПЛЕЕР'}</span>
           <span class="player-item-name">${p.name}</span>
+          ${recBadge}
         </div>
         <div class="player-item-details">
           <span class="player-item-quality">${p.quality || '1080p FHD'}</span>
@@ -336,8 +341,10 @@ function renderPlayerSources(players) {
   }).join('');
 
   // Обновляем плашку выбранного плеера
-  const defaultPlayer = currentActivePlayer || validPlayers[0];
   updatePlayerTriggerInfo(defaultPlayer);
+  if (!currentActivePlayer) {
+    selectPlayer(defaultPlayer);
+  }
 
   // Клик по пункту выпадающего списка
   list.querySelectorAll('.player-dropdown-item').forEach(itemEl => {
@@ -385,7 +392,13 @@ function updatePlayerTriggerInfo(player) {
   const curQuality = document.getElementById('player-current-quality');
   const curStatus = document.getElementById('player-current-status');
 
-  if (curBadge) curBadge.textContent = player.badge || 'ПЛЕЕР';
+  if (curBadge) {
+    if (player.is_recommended) {
+      curBadge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;">${player.badge || 'ПЛЕЕР'} <span style="background:linear-gradient(135deg,#f59e0b,#ef4444);padding:1px 5px;border-radius:3px;font-size:9px;color:#fff;font-weight:800;">🔥 ТОП</span></span>`;
+    } else {
+      curBadge.textContent = player.badge || 'ПЛЕЕР';
+    }
+  }
   if (curName) curName.textContent = player.name || 'Плеер';
   if (curQuality) curQuality.textContent = player.quality || '1080p FHD';
   if (curStatus) curStatus.textContent = player.status_label || '🟢 Онлайн';
@@ -1254,34 +1267,39 @@ export async function toggleAdvancedPiP() {
 // ==========================================
 // P2P WEBTORRENT СТРИМИНГ С ГОТОВЫМИ РАЗДАЧАМИ
 // ==========================================
+const WEBTORRENT_TRACKERS = [
+  'wss://tracker.webtorrent.dev',
+  'wss://tracker.files.fm:7073/announce',
+  'wss://tracker.openwebtorrent.com'
+];
+
 function renderWebTorrentPlayer() {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
-  const title = currentMedia?.title || 'Кинорелиз';
+  const title = cleanVideoTitle(currentMedia?.title || 'Кинорелиз');
   const isAnime = currentMedia?.source === 'anixart' || currentMedia?.source === 'anilibria' || currentMedia?.media_type?.includes('anime');
 
-  const demoMagnet = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com';
+  const trackerParams = WEBTORRENT_TRACKERS.map(t => '&tr=' + encodeURIComponent(t)).join('');
+  const demoMagnet = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel' + trackerParams;
 
   const releases = isAnime ? [
     {
       title: `${title} [1080p FHD / HEVC]`,
       quality: '1080p FHD',
       codec: 'HEVC H.265 • 10-bit',
-      dub: 'Официальный дубляж AniLibria (Original)',
+      dub: 'Официальный дубляж AniLibria',
       size: '3.4 ГБ',
       seeds: 215,
-      speed: '85 Мбит/с',
       magnet: demoMagnet
     },
     {
       title: `${title} [1080p BDRip / Multi-Audio]`,
       quality: '1080p BDRip',
       codec: 'AVC H.264 • High@L4.1',
-      dub: 'Дубляж Студийная Банда + Субтитры',
+      dub: 'Дубляж Студийная Банда',
       size: '2.8 ГБ',
       seeds: 184,
-      speed: '70 Мбит/с',
       magnet: demoMagnet
     },
     {
@@ -1291,7 +1309,6 @@ function renderWebTorrentPlayer() {
       dub: 'Многоголосый дубляж AniDUB',
       size: '1.4 ГБ',
       seeds: 142,
-      speed: '120 Мбит/с',
       magnet: demoMagnet
     }
   ] : [
@@ -1302,27 +1319,24 @@ function renderWebTorrentPlayer() {
       dub: 'Дубляж Red Head Sound (Dolby Atmos 7.1)',
       size: '18.4 ГБ',
       seeds: 286,
-      speed: '110 Мбит/с',
       magnet: demoMagnet
     },
     {
       title: `${title} [1080p FHD BDRip]`,
       quality: '1080p FHD',
       codec: 'AVC H.264 • High@L4.1',
-      dub: 'Дубляж HDRezka Studio (AC3 5.1, 640 kbps)',
+      dub: 'Дубляж HDRezka Studio (AC3 5.1)',
       size: '6.8 ГБ',
       seeds: 340,
-      speed: '95 Мбит/с',
       magnet: demoMagnet
     },
     {
       title: `${title} [1080p WEB-DL / Студийный]`,
       quality: '1080p WEB',
       codec: 'AVC • AAC 2.0',
-      dub: 'Профессиональный дубляж (Flarrow Films / LostFilm)',
+      dub: 'Профессиональный дубляж',
       size: '4.2 ГБ',
       seeds: 195,
-      speed: '80 Мбит/с',
       magnet: demoMagnet
     },
     {
@@ -1332,76 +1346,100 @@ function renderWebTorrentPlayer() {
       dub: 'Многоголосый закадровый перевод',
       size: '1.9 ГБ',
       seeds: 120,
-      speed: '140 Мбит/с',
       magnet: demoMagnet
     }
   ];
 
   container.innerHTML = `
-    <div class="webtorrent-container" style="padding: 16px; overflow-y: auto; max-height: 100%; box-sizing: border-box;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 26px;">🧲</span>
-          <div>
-            <h4 style="margin: 0; font-size: 15px; font-weight: 800;">P2P WebTorrent Стриминг</h4>
-            <div style="font-size: 11px; color: var(--text-muted);">Прямое воспроизведение раздач в высоком качестве без ожидания</div>
-          </div>
+    <div class="webtorrent-screen-wrap" style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; background: #000; border-radius: 12px; overflow: hidden;">
+      <!-- Основная область воспроизведения (сверху) -->
+      <div id="torrent-playback-area" style="position: relative; width: 100%; flex: 1; min-height: 340px; background: #05070a; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <video id="storm-video-player" controls autoplay playsinline style="position: relative; z-index: 2; width: 100%; height: 100%; max-height: 520px; background: #000; object-fit: contain;"></video>
+
+        <!-- Оверлей загрузки пиров и буферизации -->
+        <div id="torrent-loader-overlay" style="position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 10, 15, 0.88); backdrop-filter: blur(8px); gap: 12px; padding: 20px; text-align: center;">
+          <div class="storm-spinner" style="width: 44px; height: 44px; border-width: 3px;"></div>
+          <div style="font-size: 16px; font-weight: 800; color: var(--text-primary);" id="torrent-loader-title">Подключение к пиринговой сети P2P...</div>
+          <div style="font-size: 12px; color: var(--text-muted); max-width: 480px; line-height: 1.5;" id="torrent-loader-subtitle">Поиск сидов в сети WebSockets. Воспроизведение начнется мгновенно по мере буферизации.</div>
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="torrent-fallback-cdn-btn" style="margin-top: 8px;">
+            ⚡ Переключиться на быстрый онлайн плеер (CDN)
+          </button>
         </div>
-        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-custom-magnet-btn">
-          🔗 Ввести свою ссылку
-        </button>
       </div>
 
-      <!-- Пользовательский ввод ссылки (скрыт по умолчанию) -->
-      <div id="custom-magnet-panel" style="display: none; background: var(--bg-tertiary); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid var(--border-subtle);">
+      <!-- Нижняя панель управления и HUD -->
+      <div class="webtorrent-control-bar" style="background: var(--bg-secondary); border-top: 1px solid var(--border-subtle); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; z-index: 5;">
+        <!-- Live P2P HUD -->
+        <div class="torrent-stats-hud" style="display: flex; gap: 14px; align-items: center; font-size: 12px; font-weight: 700;">
+          <span style="color: var(--color-green);">👥 Пиров: <b id="torrent-peers">0</b></span>
+          <span style="color: var(--accent);">⬇️ <b id="torrent-speed">0.0 MB/s</b></span>
+          <span style="color: var(--color-amber);">📊 <b id="torrent-progress">0%</b></span>
+        </div>
+
+        <!-- Кнопки выбора качества -->
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Качество:</span>
+          ${releases.map((rel, idx) => `
+            <button type="button" class="storm-btn storm-btn-sm webtorrent-quality-btn ${idx === 0 ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-index="${idx}">
+              ${rel.quality}
+            </button>
+          `).join('')}
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-custom-magnet-btn" title="Ввести свою magnet-ссылку">
+            🔗 Своя ссылка
+          </button>
+        </div>
+      </div>
+
+      <!-- Выдвижная панель ввода magnet-ссылки или .torrent файла -->
+      <div id="custom-magnet-panel" style="display: none; background: var(--bg-tertiary); padding: 12px 16px; border-top: 1px solid var(--border-subtle); z-index: 5;">
         <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-          <input type="text" class="storm-input" id="torrent-magnet-input" placeholder="Вставьте magnet:?xt=urn:btih:... ссылку">
-          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="start-custom-torrent-btn">Старт</button>
+          <input type="text" class="storm-input" id="torrent-magnet-input" placeholder="Вставьте magnet:?xt=urn:btih:... ссылку" style="flex: 1;">
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="start-custom-torrent-btn">Запустить</button>
         </div>
         <label class="storm-btn storm-btn-secondary storm-btn-sm" style="cursor: pointer; margin: 0; display: inline-flex;">
           📁 Открыть локальный .torrent файл
           <input type="file" id="torrent-file-input" accept=".torrent" style="display: none;">
         </label>
       </div>
-
-      <!-- Готовые стилизованные карточки релизов -->
-      <div style="font-size: 12px; font-weight: 800; margin-bottom: 8px; color: var(--accent);">Доступные готовые раздачи (авто-стриминг):</div>
-      <div class="torrent-releases-grid">
-        ${releases.map((rel, idx) => `
-          <div class="torrent-release-card">
-            <div class="torrent-card-header">
-              <span class="torrent-card-title">${rel.title}</span>
-              <span class="storm-badge storm-badge-4k" style="font-size: 10px; padding: 2px 6px;">${rel.quality}</span>
-            </div>
-            <div class="torrent-card-meta">
-              <span class="torrent-meta-pill">💿 ${rel.codec}</span>
-              <span class="torrent-meta-pill">🎙️ ${rel.dub}</span>
-              <span class="torrent-meta-pill">📦 ${rel.size}</span>
-            </div>
-            <div class="torrent-card-footer">
-              <span style="font-size: 11px; font-weight: 700; color: var(--color-green);">🟢 ${rel.seeds} сидов</span>
-              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm launch-release-btn" data-index="${idx}">
-                ▶ Запустить стрим
-              </button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-
-      <!-- Контейнер воспроизведения и HUD пиров -->
-      <div id="torrent-playback-area" style="display: none; width: 100%; height: 380px; position: relative; margin-top: 14px;">
-        <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <video id="storm-video-player" controls autoplay style="position:relative;z-index:2;width:100%;height:100%;background:#000;border-radius:12px;"></video>
-        <div class="torrent-stats-hud" id="torrent-stats-hud" style="position:absolute;bottom:12px;left:12px;z-index:5;background:rgba(0,0,0,0.75);padding:6px 12px;border-radius:8px;font-size:11px;display:flex;gap:12px;">
-          <span>👥 Пиров: <b id="torrent-peers">0</b></span>
-          <span>⬇️ Скорость: <b id="torrent-speed">0 MB/s</b></span>
-          <span>📊 Прогресс: <b id="torrent-progress">0%</b></span>
-        </div>
-      </div>
     </div>
   `;
 
-  // Переключение панели ввода ссылки
+  // Кнопка быстрого перехода на CDN
+  const fallbackBtn = container.querySelector('#torrent-fallback-cdn-btn');
+  if (fallbackBtn) {
+    fallbackBtn.onclick = () => {
+      const cdn = currentPlayers.find(p => p.id !== 'webtorrent' && p.url && !p.url.includes('youtube'));
+      if (cdn) {
+        selectPlayer(cdn);
+        updatePlayerTriggerInfo(cdn);
+      } else {
+        showToast('Серверные потоки проверяются...', 'info');
+      }
+    };
+  }
+
+  // Переключение качества
+  const qualityBtns = container.querySelectorAll('.webtorrent-quality-btn');
+  qualityBtns.forEach(btn => {
+    btn.onclick = () => {
+      qualityBtns.forEach(b => {
+        b.classList.remove('storm-btn-primary');
+        b.classList.add('storm-btn-secondary');
+      });
+      btn.classList.add('storm-btn-primary');
+      btn.classList.remove('storm-btn-secondary');
+
+      const idx = parseInt(btn.dataset.index, 10);
+      const chosen = releases[idx];
+      if (chosen) {
+        showToast(`Выбрано качество: ${chosen.quality}`, 'info');
+        startWebTorrentStream(chosen.magnet);
+      }
+    };
+  });
+
+  // Панель ввода кастомной ссылки
   const toggleCustomBtn = container.querySelector('#toggle-custom-magnet-btn');
   const customPanel = container.querySelector('#custom-magnet-panel');
   if (toggleCustomBtn && customPanel) {
@@ -1410,19 +1448,6 @@ function renderWebTorrentPlayer() {
     };
   }
 
-  // Запуск из карточки
-  container.querySelectorAll('.launch-release-btn').forEach(btn => {
-    btn.onclick = () => {
-      const idx = parseInt(btn.dataset.index, 10);
-      const chosen = releases[idx];
-      if (chosen) {
-        showToast(`Запуск P2P стрима: ${chosen.quality}`, 'info');
-        startWebTorrentStream(chosen.magnet);
-      }
-    };
-  });
-
-  // Кастомный запуск
   const startCustomBtn = container.querySelector('#start-custom-torrent-btn');
   const customInput = container.querySelector('#torrent-magnet-input');
   if (startCustomBtn && customInput) {
@@ -1436,7 +1461,6 @@ function renderWebTorrentPlayer() {
     };
   }
 
-  // Загрузка .torrent файла
   const fileInput = container.querySelector('#torrent-file-input');
   if (fileInput) {
     fileInput.onchange = (e) => {
@@ -1445,36 +1469,71 @@ function renderWebTorrentPlayer() {
       }
     };
   }
+
+  // Запуск первого релиза
+  if (releases.length > 0) {
+    startWebTorrentStream(releases[0].magnet);
+  }
 }
 
 function startWebTorrentStream(torrentIdentifier) {
   if (!window.WebTorrent) {
-    showToast('Библиотека WebTorrent загружается, повторите попытку', 'warning');
+    showToast('Библиотека WebTorrent загружается, повторите попытку через секунду', 'warning');
     return;
   }
 
   const playbackArea = document.getElementById('torrent-playback-area');
-  if (playbackArea) {
-    playbackArea.style.display = 'block';
-    playbackArea.scrollIntoView({ behavior: 'smooth' });
+  const loaderOverlay = document.getElementById('torrent-loader-overlay');
+  const loaderTitle = document.getElementById('torrent-loader-title');
+  const loaderSubtitle = document.getElementById('torrent-loader-subtitle');
+
+  if (loaderOverlay) {
+    loaderOverlay.style.display = 'flex';
+    if (loaderTitle) loaderTitle.textContent = 'Подключение к пиринговой сети P2P...';
   }
 
   if (torrentClient) {
-    torrentClient.destroy();
+    try {
+      torrentClient.destroy();
+    } catch {}
+    torrentClient = null;
   }
 
-  torrentClient = new window.WebTorrent();
-  showToast('Подключение к пиринговой сети P2P...', 'info');
+  try {
+    torrentClient = new window.WebTorrent({
+      tracker: {
+        announce: WEBTORRENT_TRACKERS
+      }
+    });
+  } catch {
+    torrentClient = new window.WebTorrent();
+  }
 
-  torrentClient.add(torrentIdentifier, (torrent) => {
-    showToast(`Торрент обнаружен: ${torrent.name}`, 'success');
+  showToast('Подключение к пирам P2P WebTorrent...', 'info');
+
+  const addOpts = {
+    announce: WEBTORRENT_TRACKERS
+  };
+
+  torrentClient.add(torrentIdentifier, addOpts, (torrent) => {
+    showToast(`Раздача подключена: ${torrent.name || 'Поток'}`, 'success');
     trackClientAction('use_torrent');
+
+    if (loaderTitle) loaderTitle.textContent = `Загрузка видеопотока (${torrent.name || 'P2P'})...`;
 
     const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.mkv') || f.name.endsWith('.webm'));
     if (file) {
       const video = document.getElementById('storm-video-player');
-      file.renderTo(video, { autoplay: true });
-      setupVideoFeatures(video, playbackArea);
+      if (video) {
+        file.renderTo(video, { autoplay: true });
+        setupVideoFeatures(video, playbackArea);
+        video.onplaying = () => {
+          if (loaderOverlay) loaderOverlay.style.display = 'none';
+        };
+        video.onloadeddata = () => {
+          if (loaderOverlay) loaderOverlay.style.display = 'none';
+        };
+      }
     }
 
     torrent.on('download', () => {
@@ -1485,7 +1544,17 @@ function startWebTorrentStream(torrentIdentifier) {
       if (peersEl) peersEl.textContent = torrent.numPeers;
       if (speedEl) speedEl.textContent = `${(torrent.downloadSpeed / (1024 * 1024)).toFixed(1)} MB/s`;
       if (progressEl) progressEl.textContent = `${(torrent.progress * 100).toFixed(1)}%`;
+
+      if (torrent.downloadSpeed > 0 && loaderOverlay && loaderOverlay.style.display !== 'none') {
+        if (loaderSubtitle) loaderSubtitle.textContent = `Скорость: ${(torrent.downloadSpeed / (1024 * 1024)).toFixed(1)} MB/s, пиров: ${torrent.numPeers}`;
+      }
     });
+  });
+
+  torrentClient.on('error', (err) => {
+    console.warn('WebTorrent client error:', err);
+    if (loaderTitle) loaderTitle.textContent = 'Пиры WebRTC не отвечают';
+    if (loaderSubtitle) loaderSubtitle.textContent = 'Для этой раздачи нет веб-сидов в браузере. Воспользуйтесь быстрым сервером (CDN) или TorrServer.';
   });
 }
 
@@ -2015,11 +2084,78 @@ function initProgressSlider() {
 export function cleanVideoTitle(str) {
   if (!str) return '';
   let s = String(str).trim();
+  s = s.replace(/\s*постер\s*4[KkКк]/gi, '');
+  s = s.replace(/\s*постер/gi, '');
   s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
   s = s.replace(/\s*[\(\[]?\s*(?:Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\s*[\)\]]?/gi, '');
   s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '');
+  s = s.replace(/\s*[\(\[]?\s*(?:фильм|сериал)\s*[\)\]]?/gi, '');
   s = s.replace(/[-–—/]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
+}
+
+export function parseFormattedCountries(rawCountries) {
+  if (!rawCountries) return ['Мировой релиз'];
+  let list = [];
+  if (Array.isArray(rawCountries)) {
+    list = rawCountries;
+  } else if (typeof rawCountries === 'string') {
+    list = rawCountries.split(/[,/|•\n]+/);
+  }
+
+  const translations = {
+    'united states of america': 'США',
+    'united states': 'США',
+    'usa': 'США',
+    'us': 'США',
+    'united kingdom': 'Великобритания',
+    'great britain': 'Великобритания',
+    'uk': 'Великобритания',
+    'russia': 'Россия',
+    'russian federation': 'Россия',
+    'japan': 'Япония',
+    'france': 'Франция',
+    'germany': 'Германия',
+    'south korea': 'Южная Корея',
+    'korea': 'Южная Корея',
+    'china': 'Китай',
+    'italy': 'Италия',
+    'spain': 'Испания',
+    'canada': 'Канада',
+    'australia': 'Австралия',
+    'india': 'Индия',
+    'brazil': 'Бразилия',
+    'sweden': 'Швеция',
+    'norway': 'Норвегия',
+    'denmark': 'Дания',
+    'finland': 'Финляндия',
+    'ireland': 'Ирландия',
+    'belgium': 'Бельгия',
+    'netherlands': 'Нидерланды',
+    'mexico': 'Мексика',
+    'poland': 'Польша',
+    'turkey': 'Турция',
+    'ussr': 'СССР',
+    'ссср': 'СССР',
+    'сша': 'США'
+  };
+
+  const capitalize = str => {
+    if (!str) return '';
+    const clean = str.trim();
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  };
+
+  const res = [];
+  for (const c of list) {
+    if (!c) continue;
+    const clean = String(c).trim();
+    if (!clean) continue;
+    const lower = clean.toLowerCase();
+    const mapped = translations[lower] || capitalize(clean);
+    if (!res.includes(mapped)) res.push(mapped);
+  }
+  return res.length > 0 ? res : ['Мировой релиз'];
 }
 
 export function parseFormattedGenres(rawGenres) {
@@ -2138,7 +2274,19 @@ function renderDetailedMediaInfo(mediaDetails) {
 
   const cleanTitle = cleanVideoTitle(mediaDetails.title);
   const poster = mediaDetails.poster || 'assets/favicon.svg';
-  const releaseDate = mediaDetails.release_date || (mediaDetails.year ? `01.01.${mediaDetails.year}` : 'Не указана');
+
+  let formattedReleaseDate = 'Не указана';
+  if (mediaDetails.release_date) {
+    const parts = String(mediaDetails.release_date).split('-');
+    if (parts.length === 3) {
+      formattedReleaseDate = `${parts[2].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[0]}`;
+    } else {
+      formattedReleaseDate = mediaDetails.release_date;
+    }
+  } else if (mediaDetails.year) {
+    formattedReleaseDate = `${mediaDetails.year} год`;
+  }
+
   const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : '1 ч 45 мин');
   const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
   const ratingImdb = mediaDetails.rating_imdb || mediaDetails.rating_tmdb || mediaDetails.rating || '—';
@@ -2147,7 +2295,7 @@ function renderDetailedMediaInfo(mediaDetails) {
   const ratingMeta = mediaDetails.rating_metacritic || (parseFloat(mediaDetails.rating) ? Math.min(98, Math.round(parseFloat(mediaDetails.rating) * 10.1)) : 76);
 
   const formattedGenres = parseFormattedGenres(mediaDetails.genres);
-  const countries = (mediaDetails.countries || []).join(', ') || 'Мировой релиз';
+  const formattedCountries = parseFormattedCountries(mediaDetails.countries || mediaDetails.country);
 
   const directors = mediaDetails.directors || [];
   const primaryDirector = directors[0] || null;
@@ -2188,26 +2336,56 @@ function renderDetailedMediaInfo(mediaDetails) {
       </div>
     </div>
 
-    <!-- Сетка метаданных -->
-    <div class="cinema-meta-grid">
-      <div class="cinema-meta-item">
-        <span class="cinema-meta-label">Премьера</span>
-        <span class="cinema-meta-val">${releaseDate}</span>
-      </div>
-      <div class="cinema-meta-item">
-        <span class="cinema-meta-label">Длительность</span>
-        <span class="cinema-meta-val">${duration}</span>
-      </div>
-      <div class="cinema-meta-item" style="grid-column: 1 / -1;">
-        <span class="cinema-meta-label">Страна</span>
-        <span class="cinema-meta-val">${countries}</span>
-      </div>
-      <div class="cinema-meta-item" style="grid-column: 1 / -1;">
-        <span class="cinema-meta-label">Жанры</span>
-        <span class="cinema-meta-val" style="color: var(--text-primary); font-weight: 600;">
-          ${formattedGenres.join(', ') || 'Не указаны'}
-        </span>
-      </div>
+    <!-- 3D Таблица параметров и метаданных -->
+    <div class="cinema-info-table-wrap">
+      <table class="cinema-info-table">
+        <tbody>
+          <tr>
+            <td class="info-table-label">📅 Премьера</td>
+            <td class="info-table-val"><b>${formattedReleaseDate}</b></td>
+          </tr>
+          <tr>
+            <td class="info-table-label">⏱️ Длительность</td>
+            <td class="info-table-val"><b>${duration}</b></td>
+          </tr>
+          <tr>
+            <td class="info-table-label">⭐ Рейтинги</td>
+            <td class="info-table-val">
+              <div class="info-table-ratings">
+                <span class="info-rating-chip kp" title="Кинопоиск">★ ${ratingKp}</span>
+                <span class="info-rating-chip imdb" title="IMDb">★ ${ratingImdb}</span>
+                <span class="info-rating-chip tmdb" title="TMDB">★ ${ratingTmdb}</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="info-table-label">🌍 Страны</td>
+            <td class="info-table-val">
+              <div class="cinema-meta-chips-wrap">
+                ${formattedCountries.map(c => `
+                  <button type="button" class="cinema-meta-chip country-chip" data-country="${c}" title="Показать все фильмы (${c})">
+                    <span>🌍</span>
+                    <span>${c}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="info-table-label">🎭 Жанры</td>
+            <td class="info-table-val">
+              <div class="cinema-meta-chips-wrap">
+                ${formattedGenres.map(g => `
+                  <button type="button" class="cinema-meta-chip genre-chip" data-genre="${g}" title="Показать все фильмы в жанре ${g}">
+                    <span>🎭</span>
+                    <span>${g}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- Режиссер -->
@@ -2252,6 +2430,30 @@ function renderDetailedMediaInfo(mediaDetails) {
     ` : ''}
   `;
 
+  // Клики по жанрам
+  container.querySelectorAll('.cinema-meta-chip.genre-chip').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const genre = btn.dataset.genre;
+      closePlayerModal();
+      if (window.applyGenreFilter) {
+        window.applyGenreFilter(genre);
+      }
+    };
+  });
+
+  // Клики по странам
+  container.querySelectorAll('.cinema-meta-chip.country-chip').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const country = btn.dataset.country;
+      closePlayerModal();
+      if (window.applyCountryFilter) {
+        window.applyCountryFilter(country);
+      }
+    };
+  });
+
   // Обработчик клика по карточке режиссера
   const dirCard = container.querySelector('.cinema-director-card');
   if (dirCard) {
@@ -2294,6 +2496,16 @@ export async function openPersonModal(personId, personName) {
     const person = data.person || {};
     const items = data.items || [];
 
+    let formattedBirthday = '';
+    if (person.birthday) {
+      const parts = String(person.birthday).split('-');
+      if (parts.length === 3) {
+        formattedBirthday = `${parts[2].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[0]}`;
+      } else {
+        formattedBirthday = person.birthday;
+      }
+    }
+
     body.innerHTML = `
       <div class="person-profile-header">
         <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="person-profile-photo" onerror="this.src='assets/favicon.svg'">
@@ -2301,7 +2513,7 @@ export async function openPersonModal(personId, personName) {
           <h3 class="person-profile-name">${person.name || personName}</h3>
           <div class="person-profile-meta">
             <span>${person.known_for || 'Кинематографист'}</span>
-            ${person.birthday ? `<span>• Дата рождения: ${person.birthday}</span>` : ''}
+            ${formattedBirthday ? `<span>• Дата рождения: <b>${formattedBirthday}</b></span>` : ''}
             ${person.place_of_birth ? `<span>• ${person.place_of_birth}</span>` : ''}
           </div>
           ${person.biography ? `<p class="person-profile-bio">${person.biography}</p>` : ''}

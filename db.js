@@ -428,6 +428,11 @@ export function setBookmark(userId, data) {
       updated_at = excluded.updated_at
   `);
 
+  if (!status || status === 'none' || status === 'null') {
+    removeBookmark(userId, media_id, source);
+    return null;
+  }
+
   upsert.run(
     userId,
     String(media_id),
@@ -448,7 +453,15 @@ export function setBookmark(userId, data) {
 }
 
 export function removeBookmark(userId, mediaId, source) {
-  db.prepare('DELETE FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?').run(userId, String(mediaId), source);
+  const strId = String(mediaId);
+  const cleanId = strId.replace(/^[a-z]+_/, '');
+  const prefixId = `${source}_${cleanId}`;
+  db.prepare(`
+    DELETE FROM bookmarks
+    WHERE user_id = ?
+      AND (media_id = ? OR media_id = ? OR media_id = ?)
+      AND (source = ? OR ? IS NULL)
+  `).run(userId, strId, cleanId, prefixId, source, source);
 }
 
 // История и прогресс просмотра

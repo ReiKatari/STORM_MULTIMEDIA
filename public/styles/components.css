@@ -2134,46 +2134,119 @@ input[type="checkbox"]::after {
   object-fit: cover;
 }
 
-.cinema-meta-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* 3D Таблица параметров и метаданных релиза */
+.cinema-info-table-wrap {
+  width: 100%;
+  margin: 12px 0 16px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.cinema-meta-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-subtle);
+.cinema-info-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 12px;
 }
 
-.cinema-meta-label {
-  color: var(--text-muted);
-  font-weight: 600;
+.cinema-info-table tr {
+  transition: background 0.15s ease;
 }
 
-.cinema-meta-val {
-  color: var(--text-primary);
+.cinema-info-table tr:not(:last-child) td {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cinema-info-table tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.info-table-label {
+  padding: 10px 14px;
   font-weight: 700;
+  color: var(--text-muted);
+  width: 115px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.info-table-val {
+  padding: 10px 14px;
+  color: var(--text-primary);
+  vertical-align: middle;
   text-align: right;
 }
 
-.cinema-meta-tags {
+.info-table-ratings {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.info-rating-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+.info-rating-chip.kp {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.info-rating-chip.imdb {
+  color: #eab308;
+  border-color: rgba(234, 179, 8, 0.35);
+}
+
+.info-rating-chip.tmdb {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.cinema-meta-chips-wrap {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 4px;
+  justify-content: flex-end;
 }
 
-.cinema-meta-tag {
-  padding: 3px 8px;
+.cinema-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
   border-radius: 6px;
-  background: var(--bg-card);
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-card) 100%);
   border: 1px solid var(--border-subtle);
   font-size: 11px;
-  color: var(--text-secondary);
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.cinema-meta-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.cinema-meta-chip:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .cinema-section-subtitle {
@@ -2185,26 +2258,6 @@ input[type="checkbox"]::after {
   color: var(--text-primary);
   margin: 12px 0 8px 0;
   letter-spacing: 0.3px;
-}
-
-.cinema-genres-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.cinema-genre-tag {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.35;
-  white-space: nowrap;
 }
 
 /* Сетка рейтингов авторитетных платформ */
@@ -2311,11 +2364,11 @@ input[type="checkbox"]::after {
 .cinema-cast-scroll {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
-  max-height: 240px;
+  gap: 8px;
+  max-height: 250px;
   overflow-y: auto;
   scrollbar-width: thin;
-  padding-right: 4px;
+  padding: 6px 8px 8px 6px;
 }
 
 .cinema-actor-chip {
@@ -2325,16 +2378,19 @@ input[type="checkbox"]::after {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 5px 7px;
+  padding: 6px 8px;
+  margin: 1px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 0;
 }
 
-.cinema-actor-chip:hover {
+.cinema-actor-chip:hover,
+.cinema-actor-chip:focus-visible {
   border-color: var(--accent);
   transform: translateY(-1px);
-  box-shadow: 0 3px 10px var(--accent-glow);
+  box-shadow: 0 4px 12px var(--accent-glow);
+  outline: none;
 }
 
 .cinema-actor-photo {
@@ -2403,8 +2459,18 @@ input[type="checkbox"]::after {
    МОДАЛЬНОЕ ОКНО ФИЛЬМОГРАФИИ АКТЕРА / РЕЖИССЕРА
    ========================================================================== */
 .person-modal-dialog {
-  max-width: 1040px;
-  width: 94vw;
+  max-width: 1400px;
+  width: 95vw;
+  height: 90vh;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.person-modal-dialog .storm-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
 }
 
 .person-profile-header {
@@ -2416,6 +2482,7 @@ input[type="checkbox"]::after {
   padding: 16px;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 
 .person-profile-photo {
@@ -2425,6 +2492,7 @@ input[type="checkbox"]::after {
   object-fit: cover;
   border: 3px solid var(--accent);
   box-shadow: 0 0 16px var(--accent-glow);
+  flex-shrink: 0;
 }
 
 .person-profile-info h3 {
@@ -2436,11 +2504,82 @@ input[type="checkbox"]::after {
 
 .person-filmography-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
-  max-height: 520px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  max-height: calc(90vh - 220px);
   overflow-y: auto;
   scrollbar-width: thin;
+  padding: 4px;
+}
+
+.person-media-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.person-media-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 10px var(--accent-glow);
+}
+
+.person-media-poster-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+
+.person-media-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.person-media-card:hover .person-media-poster {
+  transform: scale(1.04);
+}
+
+.person-media-rating {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #f59e0b;
+}
+
+.person-media-info {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.person-media-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-media-year {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ==========================================================================

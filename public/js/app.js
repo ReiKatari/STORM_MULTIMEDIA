@@ -22,6 +22,7 @@ let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
 let currentSource = 'all';
 let currentSort = 'popular';
 let currentGenre = 'all';
+let currentCountry = 'all';
 let currentYear = 'all';
 let currentRating = 0;
 let currentPage = 1;
@@ -183,9 +184,12 @@ function renderSkeletonGrid() {
 export function cleanVideoTitle(str) {
   if (!str) return '';
   let s = String(str).trim();
+  s = s.replace(/\s*постер\s*4[KkКк]/gi, '');
+  s = s.replace(/\s*постер/gi, '');
   s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
   s = s.replace(/\s*[\(\[]?\s*(?:Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\s*[\)\]]?/gi, '');
   s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '');
+  s = s.replace(/\s*[\(\[]?\s*(?:фильм|сериал)\s*[\)\]]?/gi, '');
   s = s.replace(/[-–—/]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
 }
@@ -313,10 +317,14 @@ function renderMediaItems(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
+  hideCardHoverPreview();
+  clearTimeout(hoverPreviewTimer);
+  clearTimeout(hoverCloseTimer);
+
   items = deduplicateMediaList(items);
 
   if (!items || items.length === 0) {
-    const isFiltered = currentGenre !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
+    const isFiltered = currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
     container.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
         <div style="font-size: 42px; margin-bottom: 12px;">📂</div>
@@ -372,13 +380,15 @@ function renderMediaItems(items) {
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
 
-      // Видеопревью при наведении курсора (Video Hover Preview)
+      // Видеопревью при наведении курсора (Video Hover Preview) с задержкой 2 секунды
       card.onmouseenter = () => {
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverPreviewTimer);
         hoverPreviewTimer = setTimeout(() => {
-          showCardHoverPreview(card, items[idx]);
-        }, 300);
+          if (card.matches(':hover') && card.isConnected) {
+            showCardHoverPreview(card, items[idx]);
+          }
+        }, 2000);
       };
 
       card.onmouseleave = () => {
@@ -983,6 +993,7 @@ export function initFilterDropdowns() {
 
 export function resetAllFilters() {
   currentGenre = 'all';
+  currentCountry = 'all';
   currentYear = 'all';
   currentRating = 0;
   currentSort = 'popular';
@@ -1019,7 +1030,7 @@ export function resetAllFilters() {
 }
 
 export function renderFilteredCatalog() {
-  const isFiltered = currentGenre !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
+  const isFiltered = currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) {
     resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
@@ -1051,6 +1062,26 @@ export function renderFilteredCatalog() {
       }
       if (typeof item.description === 'string') {
         return item.description.toLowerCase().includes(targetGenre);
+      }
+      return false;
+    });
+  }
+
+  // 1.5 Фильтр по стране
+  if (currentCountry !== 'all') {
+    const targetCountry = currentCountry.toLowerCase();
+    items = items.filter(item => {
+      if (Array.isArray(item.countries)) {
+        return item.countries.some(c => String(c).toLowerCase().includes(targetCountry));
+      }
+      if (typeof item.countries === 'string') {
+        return item.countries.toLowerCase().includes(targetCountry);
+      }
+      if (typeof item.country === 'string') {
+        return item.country.toLowerCase().includes(targetCountry);
+      }
+      if (typeof item.description === 'string') {
+        return item.description.toLowerCase().includes(targetCountry);
       }
       return false;
     });
@@ -1090,6 +1121,82 @@ export function renderFilteredCatalog() {
   currentItems = items;
   renderMediaItems(currentItems);
 }
+
+export async function applyGenreFilter(genre) {
+  if (!genre) return;
+  const cleanGenre = genre.trim();
+  currentGenre = cleanGenre.toLowerCase();
+  currentCountry = 'all';
+
+  const homeBtn = document.querySelector('.storm-tab-btn[data-tab="home"]');
+  if (homeBtn && currentTab !== 'home') {
+    currentTab = 'home';
+    document.querySelectorAll('.storm-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'home'));
+  }
+
+  const genreLabel = document.getElementById('filter-genre-label');
+  if (genreLabel) {
+    genreLabel.textContent = cleanGenre.charAt(0).toUpperCase() + cleanGenre.slice(1);
+  }
+  document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === currentGenre);
+  });
+
+  const resetBtn = document.getElementById('reset-filters-btn');
+  if (resetBtn) resetBtn.style.display = 'inline-flex';
+
+  renderFilteredCatalog();
+
+  if (currentItems.length < 3) {
+    try {
+      const res = await fetch(`/api/media/search?q=${encodeURIComponent(cleanGenre)}&source=all`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          rawCatalogItems = deduplicateMediaList([...rawCatalogItems, ...data.items]);
+          renderFilteredCatalog();
+        }
+      }
+    } catch {}
+  }
+
+  showToast(`Фильтр по жанру: ${cleanGenre.charAt(0).toUpperCase() + cleanGenre.slice(1)}`, 'info');
+}
+window.applyGenreFilter = applyGenreFilter;
+
+export async function applyCountryFilter(country) {
+  if (!country) return;
+  const cleanCountry = country.trim();
+  currentCountry = cleanCountry.toLowerCase();
+  currentGenre = 'all';
+
+  const homeBtn = document.querySelector('.storm-tab-btn[data-tab="home"]');
+  if (homeBtn && currentTab !== 'home') {
+    currentTab = 'home';
+    document.querySelectorAll('.storm-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'home'));
+  }
+
+  const resetBtn = document.getElementById('reset-filters-btn');
+  if (resetBtn) resetBtn.style.display = 'inline-flex';
+
+  renderFilteredCatalog();
+
+  if (currentItems.length < 3) {
+    try {
+      const res = await fetch(`/api/media/search?q=${encodeURIComponent(cleanCountry)}&source=all`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          rawCatalogItems = deduplicateMediaList([...rawCatalogItems, ...data.items]);
+          renderFilteredCatalog();
+        }
+      }
+    } catch {}
+  }
+
+  showToast(`Фильтр по стране: ${cleanCountry.charAt(0).toUpperCase() + cleanCountry.slice(1)}`, 'info');
+}
+window.applyCountryFilter = applyCountryFilter;
 
 // -------------------------------------------------------------
 // МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (MODALS)
@@ -1261,30 +1368,46 @@ function showCardHoverPreview(card, item) {
   clearTimeout(hoverCloseTimer);
   hideCardHoverPreview();
 
+  if (!card || !card.isConnected || !card.matches(':hover')) {
+    return;
+  }
+
   const rect = card.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+
   const preview = document.createElement('div');
   preview.className = 'media-hover-preview-popup';
+  preview.style.visibility = 'hidden';
+  document.body.appendChild(preview);
 
   const popupWidth = 380;
-  // Умное позиционирование: размещаем рядом с карточкой (справа или слева), не перекрывая обложку
-  let left = rect.right + 12;
-  if (left + popupWidth > window.innerWidth - 12) {
-    left = rect.left - popupWidth - 12;
+  const margin = 14;
+
+  // Умное позиционирование: размещаем рядом с карточкой, не выходя за пределы экрана
+  let left = rect.right + margin;
+  if (left + popupWidth > window.innerWidth - margin) {
+    left = rect.left - popupWidth - margin;
   }
-  if (left < 10) {
-    // Если по бокам не помещается, центрируем с безопасными отступами
-    left = Math.max(10, Math.min(window.innerWidth - popupWidth - 10, rect.left + (rect.width - popupWidth) / 2));
+  if (left < margin) {
+    left = Math.max(margin, Math.min(window.innerWidth - popupWidth - margin, rect.left + (rect.width - popupWidth) / 2));
   }
 
+  const popupHeight = preview.offsetHeight || 380;
   let top = rect.top + window.scrollY;
-  const maxBottom = window.scrollY + window.innerHeight - 240;
-  if (top > maxBottom) {
-    top = Math.max(window.scrollY + 10, maxBottom);
+  const viewportTop = window.scrollY + margin;
+  const viewportBottom = window.scrollY + window.innerHeight - popupHeight - margin;
+
+  if (top > viewportBottom) {
+    top = Math.max(viewportTop, viewportBottom);
+  }
+  if (top < viewportTop) {
+    top = viewportTop;
   }
 
   preview.style.top = `${top}px`;
   preview.style.left = `${left}px`;
   preview.style.width = `${popupWidth}px`;
+  preview.style.visibility = 'visible';
 
   const formattedTitle = formatMediaTitle(item);
   const sourceName = getSourceName(item);
@@ -1344,7 +1467,6 @@ function showCardHoverPreview(card, item) {
     </div>
   `;
 
-  document.body.appendChild(preview);
   activeHoverPreviewEl = preview;
 
   // Удерживаем попап при наведении курсора на него
@@ -1388,42 +1510,91 @@ function showCardHoverPreview(card, item) {
     btn.onclick = async (e) => {
       e.stopPropagation();
       clearTimeout(hoverCloseTimer);
-      const targetStatus = btn.dataset.status;
+      const clickedStatus = btn.dataset.status;
+      const isCurrentlyActive = item.user_status === clickedStatus || btn.classList.contains('active');
+      const finalStatus = isCurrentlyActive ? 'none' : clickedStatus;
 
-      const res = await saveBookmarkStatus(item, targetStatus);
+      const res = await saveBookmarkStatus(item, finalStatus);
       if (res) {
-        item.user_status = targetStatus;
-        statusBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        if (finalStatus === 'none') {
+          item.user_status = null;
+          statusBtns.forEach(b => b.classList.remove('active'));
 
-        // Обновляем плашку статуса на самом попапе
-        const badgesLeft = preview.querySelector('.hover-preview-badges-left');
-        if (badgesLeft) {
-          const oldBadge = badgesLeft.querySelector('.media-card-status-badge');
-          if (oldBadge) oldBadge.remove();
-          badgesLeft.insertAdjacentHTML('beforeend', getStatusBadge(targetStatus));
-        }
-
-        // Обновляем плашку статуса на исходной карточке (сетка)
-        const cardPoster = card.querySelector('.media-card-poster');
-        if (cardPoster) {
-          const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
-          if (oldCardBadge) oldCardBadge.remove();
-          const overlay = cardPoster.querySelector('.media-card-overlay');
-          const badgeHtml = getStatusBadge(targetStatus);
-          if (overlay) {
-            overlay.insertAdjacentHTML('beforebegin', badgeHtml);
-          } else {
-            cardPoster.insertAdjacentHTML('beforeend', badgeHtml);
+          // Удаляем плашку статуса на самом попапе
+          const badgesLeft = preview.querySelector('.hover-preview-badges-left');
+          if (badgesLeft) {
+            const oldBadge = badgesLeft.querySelector('.media-card-status-badge');
+            if (oldBadge) oldBadge.remove();
           }
-        }
 
-        // Обновляем плашку статуса на исходной карточке (список)
-        const detailedHeaderDiv = card.querySelector('.media-detailed-header > div:last-child');
-        if (detailedHeaderDiv) {
-          const oldCardBadge = detailedHeaderDiv.querySelector('.media-card-status-badge');
-          if (oldCardBadge) oldCardBadge.remove();
-          detailedHeaderDiv.insertAdjacentHTML('beforeend', getStatusBadge(targetStatus));
+          // Удаляем плашку статуса на исходной карточке (сетка)
+          const cardPoster = card.querySelector('.media-card-poster');
+          if (cardPoster) {
+            const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
+            if (oldCardBadge) oldCardBadge.remove();
+          }
+
+          // Удаляем плашку статуса на исходной карточке (список)
+          const detailedHeaderDiv = card.querySelector('.media-detailed-header > div:last-child');
+          if (detailedHeaderDiv) {
+            const oldCardBadge = detailedHeaderDiv.querySelector('.media-card-status-badge');
+            if (oldCardBadge) oldCardBadge.remove();
+          }
+
+          // Мгновенное динамическое удаление карточки из DOM во вкладке закладок
+          if (currentTab === 'bookmarks') {
+            hideCardHoverPreview();
+            card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.85)';
+            setTimeout(() => {
+              card.remove();
+              const container = document.getElementById('media-render-container');
+              if (container && container.querySelectorAll('.media-card, .media-detailed-card, tr[data-idx]').length === 0) {
+                container.innerHTML = `
+                  <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
+                    <div style="font-size: 42px; margin-bottom: 12px;">📋</div>
+                    <h3>Закладок пока нет</h3>
+                    <p>Добавляйте фильмы и сериалы в закладки для быстрого доступа</p>
+                  </div>
+                `;
+              }
+            }, 300);
+          }
+        } else {
+          item.user_status = finalStatus;
+          statusBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          // Обновляем плашку статуса на самом попапе
+          const badgesLeft = preview.querySelector('.hover-preview-badges-left');
+          if (badgesLeft) {
+            const oldBadge = badgesLeft.querySelector('.media-card-status-badge');
+            if (oldBadge) oldBadge.remove();
+            badgesLeft.insertAdjacentHTML('beforeend', getStatusBadge(finalStatus));
+          }
+
+          // Обновляем плашку статуса на исходной карточке (сетка)
+          const cardPoster = card.querySelector('.media-card-poster');
+          if (cardPoster) {
+            const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
+            if (oldCardBadge) oldCardBadge.remove();
+            const overlay = cardPoster.querySelector('.media-card-overlay');
+            const badgeHtml = getStatusBadge(finalStatus);
+            if (overlay) {
+              overlay.insertAdjacentHTML('beforebegin', badgeHtml);
+            } else {
+              cardPoster.insertAdjacentHTML('beforeend', badgeHtml);
+            }
+          }
+
+          // Обновляем плашку статуса на исходной карточке (список)
+          const detailedHeaderDiv = card.querySelector('.media-detailed-header > div:last-child');
+          if (detailedHeaderDiv) {
+            const oldCardBadge = detailedHeaderDiv.querySelector('.media-card-status-badge');
+            if (oldCardBadge) oldCardBadge.remove();
+            detailedHeaderDiv.insertAdjacentHTML('beforeend', getStatusBadge(finalStatus));
+          }
         }
       }
     };
