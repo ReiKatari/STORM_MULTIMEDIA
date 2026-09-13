@@ -1253,9 +1253,24 @@ app.get('/api/media/search', async (req, res) => {
   }
 });
 
+const itemDetailsCache = new Map();
+
 app.get('/api/media/item', async (req, res) => {
   try {
     const { id, source, url } = req.query;
+    const cacheKey = `${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}`;
+    const cached = itemDetailsCache.get(cacheKey);
+    if (cached && (Date.now() - cached.time < 30 * 60 * 1000)) {
+      let userBookmark = null;
+      if (req.user) {
+        userBookmark = getBookmark(req.user.id, String(id || cached.data.id), source || 'fanfilm4k', cached.data.title, cached.data.original_title);
+      }
+      return res.json({
+        ...cached.data,
+        user_bookmark: userBookmark
+      });
+    }
+
     let mediaDetails = null;
 
     if (source === 'anixart' || String(id || '').startsWith('anix_')) {
@@ -1513,6 +1528,14 @@ app.get('/api/media/item', async (req, res) => {
       userBookmark = getBookmark(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title, mediaDetails.original_title);
     }
 
+    itemDetailsCache.set(cacheKey, {
+      data: {
+        ...mediaDetails,
+        players: allPlayers
+      },
+      time: Date.now()
+    });
+
     res.json({
       ...mediaDetails,
       players: allPlayers,
@@ -1537,11 +1560,72 @@ app.get('/api/media/series-episodes', async (req, res) => {
   }
 });
 
-// Получение актуального расписания выхода серий и онгоингов (LostFilm, Red Head Sound, AniLibria)
+// ==========================================
+// СЕРВЕРНЫЙ ПРОКСИ ИЗОБРАЖЕНИЙ И ОБЛОЖЕК
+// ==========================================
+const serverImageCache = new Map();
+
+app.get('/api/media/image-proxy', async (req, res) => {
+  try {
+    const rawUrl = req.query.url;
+    if (!rawUrl) {
+      return res.redirect(302, '/assets/favicon.svg');
+    }
+
+    const decodedUrl = decodeURIComponent(rawUrl);
+
+    if (decodedUrl.startsWith('/') || decodedUrl.startsWith('assets/')) {
+      return res.redirect(302, decodedUrl);
+    }
+
+    if (serverImageCache.has(decodedUrl)) {
+      const cached = serverImageCache.get(decodedUrl);
+      if (Date.now() - cached.timestamp < 3600000 * 24) {
+        res.setHeader('Content-Type', cached.contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(cached.buffer);
+      }
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const resp = await fetch(decodedUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Referer': 'https://v17.fanfilm4k.media/'
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      return res.redirect(302, '/assets/favicon.svg');
+    }
+
+    const contentType = resp.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await resp.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    serverImageCache.set(decodedUrl, {
+      buffer,
+      contentType,
+      timestamp: Date.now()
+    });
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  } catch {
+    res.redirect(302, '/assets/favicon.svg');
+  }
+});
+
+// Получение актуального расписания выхода серий и онгоингов на 2 недели
 app.get('/api/media/schedule', async (req, res) => {
   try {
-    const items = await getAggregatedSchedule();
-    res.json({ items });
+    const week = req.query.week === 'next' ? 'next' : 'current';
+    const result = await getAggregatedSchedule(week);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message, items: [] });
   }
