@@ -11,7 +11,7 @@ import { trackClientAction } from './achievements.js';
 import { renderReviewsSection } from './reviews.js';
 import { attachPlayerToRoom, createWatchRoom, getActiveRoom } from './watch-together.js';
 import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js';
-import { initSmartSkip, renderChaptersOnTrack } from './smart-skip.js';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js';
 import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js';
 import { toggleWhisperAiSubtitles } from './whisper-subtitles.js';
 import { saveMediaForOffline } from './offline-storage.js';
@@ -68,7 +68,7 @@ const AMBILIGHT_PRESETS = [
 
 // Skip Intro и Outro
 let skipIntervals = null;
-let autoSkipEnabled = false;
+let autoSkipEnabled = localStorage.getItem('storm_auto_skip') === 'true';
 
 // WebTorrent
 let torrentClient = null;
@@ -149,15 +149,29 @@ function initFullscreenControls() {
       btn.textContent = isFs ? '🗗' : '⛶';
       btn.title = isFs ? 'Выйти из полноэкранного режима (F / Esc)' : 'Развернуть на весь экран (F)';
     }
-    const actionBtn = document.getElementById('toggle-fullscreen-action-btn');
-    if (actionBtn) {
-      actionBtn.querySelector('span').textContent = isFs ? '🗗 Окно' : '⛶ Экран';
-    }
   };
 
   document.addEventListener('fullscreenchange', updateFsIcon);
   document.addEventListener('webkitfullscreenchange', updateFsIcon);
   document.addEventListener('mozfullscreenchange', updateFsIcon);
+
+  // Обработка запросов полноэкранного режима от встроенных плееров (PlayerJS, Kodik, Allplay и др.)
+  window.addEventListener('message', (event) => {
+    if (!event || !event.data) return;
+    try {
+      let data = event.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch {}
+      }
+      if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen') {
+        toggleCinemaFullscreen();
+      } else if (typeof data === 'object' && data) {
+        if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.action === 'fullscreen') {
+          toggleCinemaFullscreen();
+        }
+      }
+    } catch {}
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') {
@@ -1243,7 +1257,7 @@ function playStreamUrl(url) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -1973,15 +1987,33 @@ function stopAmbilight() {
 // ==========================================
 // ПРОПУСК ОПЕНИНГОВ И ЭНДИНГОВ (SKIP INTRO/OUTRO)
 // ==========================================
+let hasAutoSkippedOp = false;
+let hasAutoSkippedEd = false;
+
 async function loadSkipTimes(mediaId, episode) {
   skipIntervals = null;
+  hasAutoSkippedOp = false;
+  hasAutoSkippedEd = false;
   try {
-    const res = await fetch(`/api/media/skip-times?malId=${encodeURIComponent(mediaId)}&episode=${encodeURIComponent(episode)}`);
+    const title = currentMedia?.title || currentMedia?.original_title || '';
+    const video = document.getElementById('storm-video-player');
+    const dur = video?.duration || 0;
+    const res = await fetch(`/api/media/skip-times?malId=${encodeURIComponent(mediaId || '')}&title=${encodeURIComponent(title)}&episode=${encodeURIComponent(episode || 1)}&duration=${encodeURIComponent(Math.round(dur))}`);
     if (res.ok) {
-      skipIntervals = await res.json();
+      const data = await res.json();
+      if (data && data.found && (data.op || data.ed)) {
+        skipIntervals = data;
+        setSmartSkipIntervals({
+          verified: true,
+          intro: data.op ? { start: data.op.start, end: data.op.end, label: data.op.label || 'Опенинг (Интро)' } : null,
+          outro: data.ed ? { start: data.ed.start, end: data.ed.end, label: data.ed.label || 'Финальные титры (Эндинг)' } : null
+        });
+      } else {
+        skipIntervals = null;
+      }
     }
   } catch {
-    skipIntervals = { op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } };
+    skipIntervals = null;
   }
 }
 
@@ -1992,7 +2024,7 @@ function setupSkipLogic(video) {
   if (skipIntroBtn) {
     skipIntroBtn.onclick = () => {
       if (skipIntervals?.op?.end) {
-        video.currentTime = skipIntervals.op.end + 0.5;
+        video.currentTime = skipIntervals.op.end;
         trackClientAction('use_skip');
         showToast('Заставка пропущена', 'info');
       }
@@ -2002,7 +2034,12 @@ function setupSkipLogic(video) {
   if (skipOutroBtn) {
     skipOutroBtn.onclick = () => {
       trackClientAction('use_skip');
-      playNextEpisode();
+      if (video.duration && skipIntervals?.ed?.end && skipIntervals.ed.end < video.duration - 15) {
+        video.currentTime = skipIntervals.ed.end;
+        showToast('Титры пропущены (сцена после титров)', 'info');
+      } else {
+        playNextEpisode();
+      }
     };
   }
 
@@ -2039,11 +2076,21 @@ function setupSkipLogic(video) {
 
     if (!skipIntervals) return;
 
+    // Сброс флага автопропуска, если зритель перемотал назад до заставки
+    if (skipIntervals.op && time < Math.max(0, skipIntervals.op.start - 3)) {
+      hasAutoSkippedOp = false;
+    }
+    if (skipIntervals.ed && time < Math.max(0, skipIntervals.ed.start - 3)) {
+      hasAutoSkippedEd = false;
+    }
+
     // Пропуск заставки
     if (skipIntervals.op && time >= skipIntervals.op.start && time <= skipIntervals.op.end) {
-      if (autoSkipEnabled) {
-        video.currentTime = skipIntervals.op.end + 0.5;
-      } else if (skipIntroBtn) {
+      if (autoSkipEnabled && !hasAutoSkippedOp) {
+        hasAutoSkippedOp = true;
+        video.currentTime = skipIntervals.op.end;
+        showToast('⏩ Заставка автоматически пропущена', 'info');
+      } else if (skipIntroBtn && !autoSkipEnabled) {
         skipIntroBtn.style.display = 'block';
       }
     } else if (skipIntroBtn) {
@@ -2052,9 +2099,15 @@ function setupSkipLogic(video) {
 
     // Пропуск титров
     if (skipIntervals.ed && time >= skipIntervals.ed.start && time <= skipIntervals.ed.end) {
-      if (autoSkipEnabled) {
-        playNextEpisode();
-      } else if (skipOutroBtn) {
+      if (autoSkipEnabled && !hasAutoSkippedEd) {
+        hasAutoSkippedEd = true;
+        if (video.duration && skipIntervals.ed.end < video.duration - 15) {
+          video.currentTime = skipIntervals.ed.end;
+          showToast('⏩ Титры пропущены (сцена после титров)', 'info');
+        } else {
+          playNextEpisode();
+        }
+      } else if (skipOutroBtn && !autoSkipEnabled) {
         skipOutroBtn.style.display = 'block';
       }
     } else if (skipOutroBtn) {
@@ -2496,9 +2549,6 @@ function renderPlayerUtilityButtons() {
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Режим «Картинка в картинке»">
             <span>🖼️ PiP</span>
           </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-fullscreen-action-btn" title="Развернуть видео на весь экран (F)">
-            <span>⛶ Экран</span>
-          </button>
           <label class="studio-autoskip-toggle" title="Автоматический пропуск опенингов и титров">
             <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
             <span class="studio-autoskip-indicator"></span>
@@ -2755,11 +2805,6 @@ function renderPlayerUtilityButtons() {
   const pipBtn = container.querySelector('#toggle-pip-btn');
   if (pipBtn) {
     pipBtn.onclick = toggleAdvancedPiP;
-  }
-
-  const fsBtn = container.querySelector('#toggle-fullscreen-action-btn');
-  if (fsBtn) {
-    fsBtn.onclick = () => toggleCinemaFullscreen();
   }
 
   const autoSkipCheck = container.querySelector('#toggle-autoskip');
@@ -3134,7 +3179,7 @@ function playAnixartEpisode(episode) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${episode.url}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${episode.url}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 

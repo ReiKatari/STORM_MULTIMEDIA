@@ -1463,6 +1463,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 
     const finalUrl = urlObj.toString();
 
+    res.setHeader('Permissions-Policy', 'fullscreen=*');
     return res.redirect(finalUrl);
   } catch (err) {
     console.error('Ошибка прокси плеера:', err.message);
@@ -2008,29 +2009,80 @@ app.post('/api/sync/shikimori', requireAuth, async (req, res) => {
 // ==========================================
 app.get('/api/media/skip-times', async (req, res) => {
   try {
-    const { malId, episode } = req.query;
-    if (!malId || !episode) {
-      return res.json({ op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } });
+    let { malId, title, episode, duration } = req.query;
+    const epNum = Number(episode) || 1;
+    const episodeLength = Number(duration) || 0;
+
+    let targetMalId = malId && /^\d+$/.test(String(malId).trim()) ? String(malId).trim() : null;
+
+    // Если числовой MAL ID не передан, но есть название — ищем через Shikimori API
+    if (!targetMalId && title && typeof title === 'string' && title.trim()) {
+      const cleanTitle = title.trim();
+      const cachedMalId = getCache('shikimori_mal_id', cleanTitle);
+      if (cachedMalId) {
+        targetMalId = cachedMalId;
+      } else {
+        try {
+          const sRes = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
+            headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
+          });
+          if (sRes.ok) {
+            const list = await sRes.json();
+            if (Array.isArray(list) && list[0] && list[0].id) {
+              targetMalId = String(list[0].id);
+              setCache('shikimori_mal_id', cleanTitle, targetMalId, 86400 * 7);
+            }
+          }
+        } catch {}
+      }
     }
 
-    const response = await fetch(`https://api.aniskip.com/v2/skip-times/${encodeURIComponent(malId)}/${encodeURIComponent(episode)}?types=op&types=ed`);
-    if (!response.ok) {
-      return res.json({ op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } });
+    if (!targetMalId) {
+      return res.json({ found: false, op: null, ed: null });
     }
+
+    const cacheKey = `aniskip_${targetMalId}_ep_${epNum}`;
+    const cachedData = getCache('aniskip', cacheKey);
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    // AniSkip v2 API требует обязательный параметр episodeLength
+    const aniskipUrl = `https://api.aniskip.com/v2/skip-times/${encodeURIComponent(targetMalId)}/${encodeURIComponent(epNum)}?types=op&types=ed&episodeLength=${episodeLength}`;
+    const response = await fetch(aniskipUrl);
+    if (!response.ok) {
+      return res.json({ found: false, op: null, ed: null });
+    }
+
     const data = await response.json();
-    const result = {};
-    if (data.results) {
+    const result = { found: false, op: null, ed: null, verified: true };
+
+    if (data.results && Array.isArray(data.results)) {
       data.results.forEach(item => {
-        if (item.skipType === 'op') {
-          result.op = { start: item.interval.startTime, end: item.interval.endTime };
-        } else if (item.skipType === 'ed') {
-          result.ed = { start: item.interval.startTime, end: item.interval.endTime };
+        if (item.skipType === 'op' && item.interval) {
+          result.op = {
+            start: item.interval.startTime,
+            end: item.interval.endTime,
+            label: 'Опенинг (Интро)'
+          };
+          result.found = true;
+        } else if (item.skipType === 'ed' && item.interval) {
+          result.ed = {
+            start: item.interval.startTime,
+            end: item.interval.endTime,
+            label: 'Титры (Эндинг)'
+          };
+          result.found = true;
         }
       });
     }
+
+    if (result.found) {
+      setCache('aniskip', cacheKey, result, 86400 * 3);
+    }
     res.json(result);
   } catch {
-    res.json({ op: { start: 85, end: 175 }, ed: { start: 1320, end: 1405 } });
+    res.json({ found: false, op: null, ed: null });
   }
 });
 
