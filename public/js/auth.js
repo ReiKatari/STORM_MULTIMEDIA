@@ -31,8 +31,13 @@ export function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = 'storm-toast';
   
-  const icon = type === 'success' ? '✅' : type === 'error' ? '⚠️' : '⚡';
-  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+  const rawMsg = String(message || '').trim();
+  // Проверка: начинается ли сообщение уже с эмодзи или пиктограммы (⚡, ✅, ⚠️, ⏱️, 🎬 и т.д.)
+  const alreadyHasIcon = /^(\p{Emoji}|\uD83C[\uDF00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDD00-\uDFFF]|⚡|✅|⚠️|❌|ℹ️|⏱️|⏩|🎧|🎙️|🔊|🎬)/u.test(rawMsg);
+  const defaultIcon = type === 'success' ? '✅' : type === 'error' ? '⚠️' : '⚡';
+  const iconHtml = alreadyHasIcon ? '' : `<span>${defaultIcon}</span>`;
+
+  toast.innerHTML = `${iconHtml}<span>${rawMsg}</span>`;
 
   container.appendChild(toast);
   setTimeout(() => {
