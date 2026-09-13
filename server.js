@@ -1024,6 +1024,32 @@ app.get('/api/media/search', async (req, res) => {
       return res.json({ query: '', total: 0, items: [] });
     }
 
+    // 0. Прямой поиск по URL (FanFilm4K, Kinopoisk, TMDB)
+    if (/https?:\/\//i.test(query)) {
+      const ffMatch = query.match(/fanfilm4k\.media\/(\d+)[^\s]*/i);
+      if (ffMatch) {
+        const ffDetails = await getFanFilmDetails(query);
+        if (ffDetails) {
+          const directItem = {
+            id: ffDetails.id,
+            source: 'fanfilm4k',
+            title: ffDetails.title,
+            original_title: ffDetails.original_title || '',
+            link: query,
+            poster: ffDetails.poster,
+            quality: ffDetails.quality || '4K Ultra HD',
+            is4K: true,
+            year: ffDetails.year || '2026',
+            rating: ffDetails.rating || 8.0,
+            media_type: ffDetails.media_type || 'movie',
+            description: ffDetails.description || '',
+            fanfilm_4k_url: query
+          };
+          return res.json({ query, total: 1, items: [directItem] });
+        }
+      }
+    }
+
     const tasks = [];
     const withTimeout = (promise, ms = 3500) =>
       Promise.race([
@@ -1070,12 +1096,30 @@ app.get('/api/media/search', async (req, res) => {
         .trim();
     };
 
-    // 1. Фильтрация нерелевантных результатов: проверяем вхождение поискового запроса в название или описание
-    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+    // 1. Фильтрация нерелевантных результатов: проверяем вхождение поискового запроса в название
+    const queryWords = query
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 2);
+
     if (queryWords.length > 0) {
       rawItems = rawItems.filter(item => {
-        const itemText = `${item.title || ''} ${item.original_title || ''} ${item.description || ''}`.toLowerCase();
-        return queryWords.some(w => itemText.includes(w));
+        const itemTitle = `${item.title || ''}`.toLowerCase();
+        const itemAll = `${item.title || ''} ${item.original_title || ''} ${item.description || ''}`.toLowerCase();
+
+        // Если запрос длинный (из 3+ слов), в названии должно быть хотя бы 2 ключевых слова
+        if (queryWords.length >= 3) {
+          const matchedWords = queryWords.filter(w => itemTitle.includes(w));
+          return matchedWords.length >= 2 || itemTitle.includes(query.toLowerCase());
+        }
+
+        // Для запроса из 2 слов — хотя бы 1 слово в названии
+        if (queryWords.length === 2) {
+          return queryWords.some(w => itemTitle.includes(w));
+        }
+
+        return queryWords.some(w => itemAll.includes(w));
       });
     }
 
@@ -1121,10 +1165,21 @@ app.get('/api/media/search', async (req, res) => {
       const bNorm = normalizeMediaKey(b.title);
       if (aNorm === normQuery && bNorm !== normQuery) return -1;
       if (bNorm === normQuery && aNorm !== normQuery) return 1;
+
       const aStarts = aNorm.startsWith(normQuery);
       const bStarts = bNorm.startsWith(normQuery);
       if (aStarts && !bStarts) return -1;
       if (bStarts && !aStarts) return 1;
+
+      const aContains = aNorm.includes(normQuery);
+      const bContains = bNorm.includes(normQuery);
+      if (aContains && !bContains) return -1;
+      if (bContains && !aContains) return 1;
+
+      const aWordsCount = queryWords.filter(w => aNorm.includes(w)).length;
+      const bWordsCount = queryWords.filter(w => bNorm.includes(w)).length;
+      if (aWordsCount !== bWordsCount) return bWordsCount - aWordsCount;
+
       return (b.rating || 0) - (a.rating || 0);
     });
 
