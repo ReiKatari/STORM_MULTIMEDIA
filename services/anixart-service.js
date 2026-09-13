@@ -13,10 +13,19 @@ function formatAnimeRelease(rel) {
   const title = rel.title_ru || rel.title_original || rel.title_alt || rel.title || 'Аниме релиз';
   const origTitle = rel.title_original || rel.title_alt || '';
 
-  // Извлекаем постер
-  let rawPoster = rel.image || '';
-  if (!rawPoster && rel.poster) {
-    rawPoster = `https://s.anixmirai.com/posters/${rel.poster}.jpg`;
+  // Извлекаем постер: приоритет официальному быстрому CDN static.anixart.tv
+  let rawPoster = '';
+  if (rel.poster) {
+    const posterCode = String(rel.poster).replace(/\.jpg$/i, '').trim();
+    if (posterCode.startsWith('http')) {
+      rawPoster = posterCode.replace(/https?:\/\/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\//i, 'https://static.anixart.tv/posters/');
+    } else {
+      rawPoster = `https://static.anixart.tv/posters/${posterCode}.jpg`;
+    }
+  } else if (rel.image) {
+    rawPoster = String(rel.image)
+      .replace(/https?:\/\/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\//i, 'https://static.anixart.tv/posters/')
+      .trim();
   }
   if (!rawPoster && rel.screenshot_images && rel.screenshot_images.length > 0) {
     rawPoster = rel.screenshot_images[0];
