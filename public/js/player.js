@@ -72,6 +72,33 @@ let autoSkipEnabled = false;
 // WebTorrent
 let torrentClient = null;
 
+function getSourceName(item) {
+  const map = {
+    fanfilm4k: 'FanFilm4K',
+    tmdb: 'TMDB',
+    anixart: 'AniXart',
+    anilibria: 'AniLibria',
+    shikimori: 'Shikimori',
+    kodik: 'Kodik',
+    hdrezka: 'HDRezka',
+    collaps: 'Collaps',
+    alloha: 'Alloha TV',
+    videocdn: 'VideoCDN',
+    ashdi: 'Ashdi',
+    vidsrc: 'Vidsrc',
+    kinobaza: 'Kinobaza',
+    kinogo: 'Kinogo',
+    webtorrent: 'WebTorrent',
+    rutracker: 'RuTracker',
+    nnmclub: 'NNM-Club',
+    rutor: 'Rutor',
+    lostfilm: 'LostFilm',
+    redheadsound: 'Red Head Sound',
+    animevost: 'Animevost'
+  };
+  return map[item?.source] || (item?.source || 'STORM').toUpperCase();
+}
+
 export async function openPlayerModal(mediaItem) {
   currentMedia = mediaItem;
   const modal = document.getElementById('cinema-modal');
@@ -108,6 +135,15 @@ export async function openPlayerModal(mediaItem) {
   renderStatusButtons(mediaItem.user_status);
   renderCustomListsSelector();
   renderPlayerUtilityButtons();
+
+  // Моментально отображаем плашку активного источника без зависания «Загрузка плееров...»
+  currentActivePlayer = {
+    badge: (mediaItem.source || 'ПЛЕЕР').toUpperCase(),
+    name: `${mediaItem.title || 'Основной поток'} (${getSourceName(mediaItem)})`,
+    quality: '1080p FHD',
+    status_label: '🟢 Онлайн'
+  };
+  updatePlayerTriggerInfo(currentActivePlayer);
 
   try {
     // Получаем детальные данные с сервера с таймаутом 5000мс
@@ -488,6 +524,37 @@ function setupVideoFeatures(video, wrapper) {
 
   // 7. Покадровая навигация (Thumbnail Scrubbing)
   setupThumbnailScrubbing(video);
+
+  // 8. Автоматический динамический прогресс просмотра
+  let lastSyncTime = 0;
+  video.addEventListener('timeupdate', () => {
+    if (video.duration && !isNaN(video.duration)) {
+      const percent = Math.min(100, Math.round((video.currentTime / video.duration) * 100));
+      currentProgressPercent = percent;
+      currentWatchTimeSeconds = Math.round(video.currentTime);
+      const slider = document.getElementById('player-progress-slider');
+      const label = document.getElementById('player-progress-label');
+      if (slider) slider.value = percent;
+      if (label) label.textContent = `${percent}%`;
+
+      const now = Date.now();
+      if (now - lastSyncTime >= 15000 && getUser() && currentMedia) {
+        lastSyncTime = now;
+        syncWatchProgress({
+          media_id: currentMedia.id,
+          source: currentMedia.source,
+          title: currentMedia.title,
+          poster_url: currentMedia.poster,
+          media_type: currentMedia.media_type,
+          season: currentMedia.season || 1,
+          episode: currentEpisodeIndex || 1,
+          total_episodes: currentEpisodes.length || 1,
+          duration_seconds: Math.round(video.duration),
+          time_seconds: currentWatchTimeSeconds
+        });
+      }
+    }
+  });
 }
 
 // ==========================================
@@ -1524,6 +1591,16 @@ function renderAniLibriaControls(details) {
   if (!container) return;
   container.style.display = 'block';
 
+  const playerObj = {
+    id: 'anilibria_hls',
+    name: 'AniLibria (Официальный Full HD поток)',
+    badge: 'ANILIBRIA',
+    quality: '1080p FHD',
+    status_label: '🟢 Онлайн'
+  };
+  currentActivePlayer = playerObj;
+  updatePlayerTriggerInfo(playerObj);
+
   const voiceoversPills = document.getElementById('voiceovers-pills');
   voiceoversPills.innerHTML = '<button class="voiceover-pill active">Официальный дубляж AniLibria (1080p FHD)</button>';
 
@@ -1633,6 +1710,17 @@ function playAnixartEpisode(episode) {
     clearInterval(iframeWatchInterval);
     iframeWatchInterval = null;
   }
+
+  const activeVoiceover = currentMedia?.voiceovers?.find(v => v.id === currentVoiceoverId)?.name || 'Дубляж';
+  const playerObj = {
+    id: `anixart_${currentVoiceoverId}_${episode.position || 1}`,
+    name: `AniXart (${activeVoiceover}, ${episode.position || 1} серия)`,
+    badge: 'ANIXART',
+    quality: '1080p FHD',
+    status_label: '🟢 Онлайн'
+  };
+  currentActivePlayer = playerObj;
+  updatePlayerTriggerInfo(playerObj);
 
   if (episode.url) {
     container.innerHTML = `
@@ -1866,35 +1954,12 @@ function initProgressSlider() {
   if (!slider || slider.dataset.inited) return;
   slider.dataset.inited = 'true';
 
-  slider.oninput = (e) => {
-    const val = parseInt(e.target.value, 10);
-    if (label) label.textContent = `${val}%`;
-  };
-
-  slider.onchange = (e) => {
-    const val = parseInt(e.target.value, 10);
-    const video = document.getElementById('storm-video-player');
-    if (video && video.duration) {
-      video.currentTime = (val / 100) * video.duration;
-    }
-    currentProgressPercent = val;
-    currentWatchTimeSeconds = Math.round((val / 100) * 7200);
-
-    if (getUser() && currentMedia) {
-      syncWatchProgress({
-        media_id: currentMedia.id,
-        source: currentMedia.source,
-        title: currentMedia.title,
-        poster_url: currentMedia.poster,
-        media_type: currentMedia.media_type,
-        season: currentMedia.season || 1,
-        episode: currentEpisodeIndex || 1,
-        total_episodes: currentEpisodes.length || 1,
-        duration_seconds: video?.duration ? Math.round(video.duration) : 7200,
-        time_seconds: currentWatchTimeSeconds
-      });
-    }
-  };
+  // Прогресс просмотра фиксируется строго автоматически и динамически - ручное вмешательство заблокировано
+  slider.readOnly = true;
+  slider.style.pointerEvents = 'none';
+  slider.title = 'Прогресс просмотра фиксируется автоматически';
+  slider.oninput = null;
+  slider.onchange = null;
 }
 
 // ==========================================

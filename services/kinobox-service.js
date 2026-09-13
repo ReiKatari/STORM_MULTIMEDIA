@@ -303,6 +303,91 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, f
     url: rhsUrl
   });
 
+  // 16. RuTracker (P2P раздачи, BDRip, Remux)
+  const rutrackerUrl = kp_id
+    ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rutracker${typeFilter}`
+    : `https://kodikplayer.com/find-player?title=${safeTitle}&translation=rutracker${typeFilter}`;
+  players.push({
+    id: 'rutracker_player',
+    name: 'RuTracker (P2P BDRip и 4K)',
+    type: 'iframe',
+    quality: '4K / 1080p',
+    badge: 'RUTRACKER',
+    status: 'working',
+    status_label: '🟢 P2P Онлайн',
+    audio_info: 'Высокобитрейтный звук, Remux и DTS-HD',
+    speed: '🧲 P2P Swarm',
+    url: rutrackerUrl
+  });
+
+  // 17. NNM-Club (Торрент-клуб раздач)
+  const nnmUrl = kp_id
+    ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=nnmclub${typeFilter}`
+    : `https://kodikplayer.com/find-player?title=${safeTitle}&translation=nnmclub${typeFilter}`;
+  players.push({
+    id: 'nnmclub_player',
+    name: 'NNM-Club (Торренты и новинки)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'NNM-CLUB',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Профессиональный авторский дубляж',
+    speed: '🧲 P2P Swarm',
+    url: nnmUrl
+  });
+
+  // 18. Rutor (Свободный P2P трекер)
+  const rutorUrl = kp_id
+    ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&source=rutor${typeFilter}`
+    : `https://kodikplayer.com/find-player?title=${safeTitle}&source=rutor${typeFilter}`;
+  players.push({
+    id: 'rutor_player',
+    name: 'Rutor (Свободный P2P стрим)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'RUTOR',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Свободные раздачи без рейтинга',
+    speed: '🧲 P2P Swarm',
+    url: rutorUrl
+  });
+
+  // 19. LostFilm (Студийный дубляж сериалов)
+  const lostfilmUrl = kp_id
+    ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&voice=lostfilm${typeFilter}`
+    : `https://kodikplayer.com/find-player?title=${safeTitle}&voice=lostfilm${typeFilter}`;
+  players.push({
+    id: 'lostfilm_player',
+    name: 'LostFilm (Культовые сериалы)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'LOSTFILM',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Студийный дубляж студии LostFilm',
+    speed: '⚡ Быстрый CDN',
+    url: lostfilmUrl
+  });
+
+  // 20. Animevost (Аниме портал)
+  const animevostUrl = kp_id
+    ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=animevost${typeFilter}`
+    : `https://kodikplayer.com/find-player?title=${safeTitle}&translation=animevost${typeFilter}`;
+  players.push({
+    id: 'animevost_player',
+    name: 'Animevost (Аниме-релизы)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'ANIMEVOST',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Быстрый русский дубляж новинок аниме',
+    speed: '⚡ Студийный поток',
+    url: animevostUrl
+  });
+
   return players;
 }
 

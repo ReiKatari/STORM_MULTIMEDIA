@@ -55,6 +55,7 @@ export async function saveBookmarkStatus(mediaData, status) {
     if (!res.ok) throw new Error('Ошибка сохранения закладки');
     const updated = await res.json();
     showToast(t('msg_bookmark_saved'), 'success');
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status } }));
     return updated;
   } catch (err) {
     showToast(err.message, 'error');
@@ -77,6 +78,7 @@ export async function deleteBookmark(mediaId, source) {
     });
     if (res.ok) {
       showToast('Удалено из закладок', 'info');
+      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, deleted: true } }));
     }
   } catch (err) {
     showToast('Ошибка удаления закладки', 'error');

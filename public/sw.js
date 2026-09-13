@@ -2,10 +2,11 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v1.2';
+const CACHE_NAME = 'storm-multimedia-v2.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
+  '/remote.html',
   '/styles/storm-theme.css',
   '/styles/components.css',
   '/styles/main.css',
@@ -23,6 +24,14 @@ const STATIC_ASSETS = [
   '/js/voice-assistant.js',
   '/js/gamepad-tv.js',
   '/js/sync-service.js',
+  '/js/smart-skip.js',
+  '/js/smart-lights.js',
+  '/js/neural-recommender.js',
+  '/js/offline-storage.js',
+  '/js/torrserver-client.js',
+  '/js/whisper-subtitles.js',
+  '/js/release-calendar.js',
+  '/js/storm-remote.js',
   '/assets/favicon.svg',
   '/manifest.json'
 ];
@@ -71,7 +80,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для статических файлов: Stale-While-Revalidate
+  // Для скриптов, стилей и HTML: Network-First для мгновенного применения обновлений без кэш-задержек
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
+        return caches.match(event.request);
+      })
+    );
+    return;
+  }
+
+  // Для остальных статических файлов (картинки, шрифты): Stale-While-Revalidate
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {

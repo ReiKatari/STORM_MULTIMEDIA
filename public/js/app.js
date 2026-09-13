@@ -5,7 +5,7 @@
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection } from './bookmarks.js';
+import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 import { trackClientAction, renderProfileAchievements } from './achievements.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
@@ -50,6 +50,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateFamilyProfileHeader();
     if (currentTab === 'bookmarks' || currentTab === 'continue') {
       loadCurrentTab();
+    }
+  });
+
+  // Динамическое автоматическое обновление закладок и списков без перезагрузки
+  window.addEventListener('storm:bookmarks-updated', (e) => {
+    if (currentTab === 'bookmarks' || currentTab === 'continue') {
+      loadCurrentTab();
+    } else if (e.detail?.mediaData && e.detail?.status) {
+      const updatedId = String(e.detail.mediaData.id || e.detail.mediaData.media_id);
+      const updatedSource = String(e.detail.mediaData.source || '');
+      const found = rawCatalogItems.find(x => String(x.id) === updatedId && (!updatedSource || String(x.source) === updatedSource));
+      if (found) {
+        found.user_status = e.detail.status;
+      }
     }
   });
 
@@ -492,7 +506,13 @@ function getSourceBadge(item) {
     vidsrc: { name: 'VIDSRC', bg: 'linear-gradient(135deg,#84cc16 0%,#4d7c0f 100%)' },
     kinobaza: { name: 'KINOBAZA', bg: 'linear-gradient(135deg,#f97316 0%,#c2410c 100%)' },
     kinogo: { name: 'KINOGO', bg: 'linear-gradient(135deg,#a855f7 0%,#7e22ce 100%)' },
-    webtorrent: { name: 'WEBTORRENT', bg: 'linear-gradient(135deg,#f43f5e 0%,#be123c 100%)' }
+    webtorrent: { name: 'WEBTORRENT', bg: 'linear-gradient(135deg,#f43f5e 0%,#be123c 100%)' },
+    rutracker: { name: 'RUTRACKER', bg: 'linear-gradient(135deg,#0284c7 0%,#0369a1 100%)' },
+    nnmclub: { name: 'NNM-CLUB', bg: 'linear-gradient(135deg,#d97706 0%,#b45309 100%)' },
+    rutor: { name: 'RUTOR', bg: 'linear-gradient(135deg,#dc2626 0%,#991b1b 100%)' },
+    lostfilm: { name: 'LOSTFILM', bg: 'linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%)' },
+    redheadsound: { name: 'RED HEAD SOUND', bg: 'linear-gradient(135deg,#e11d48 0%,#9f1239 100%)' },
+    animevost: { name: 'ANIMEVOST', bg: 'linear-gradient(135deg,#059669 0%,#047857 100%)' }
   };
   const b = badges[s] || { name: (item.source || 'MEDIA').toUpperCase(), bg: 'linear-gradient(135deg,#475569 0%,#334155 100%)' };
   return `<span class="storm-badge storm-badge-quality" style="background:${b.bg}; color:#ffffff !important; border-color:rgba(255,255,255,0.35);">${b.name}</span>`;
@@ -514,7 +534,13 @@ function getSourceName(item) {
     vidsrc: 'Vidsrc Cinema',
     kinobaza: 'Kinobaza',
     kinogo: 'Kinogo',
-    webtorrent: 'P2P WebTorrent'
+    webtorrent: 'P2P WebTorrent',
+    rutracker: 'RuTracker (P2P)',
+    nnmclub: 'NNM-Club (P2P)',
+    rutor: 'Rutor (P2P)',
+    lostfilm: 'LostFilm',
+    redheadsound: 'Red Head Sound',
+    animevost: 'Animevost'
   };
   return map[item.source] || item.source?.toUpperCase() || 'STORM';
 }
@@ -621,7 +647,13 @@ function initSourceFilterDropdown() {
     { id: 'vidsrc', badge: '🌍', name: 'Vidsrc Cinema (Original)', desc: 'Оригинальный звук и субтитры' },
     { id: 'kinobaza', badge: '🔥', name: 'Kinobaza (HD)', desc: 'Фильмы и сериалы в HD' },
     { id: 'kinogo', badge: '🎪', name: 'Kinogo HD (Классика)', desc: 'Большая база популярного кино' },
-    { id: 'webtorrent', badge: '🧲', name: 'P2P WebTorrent (Торренты)', desc: 'Прямой стриминг раздач' }
+    { id: 'webtorrent', badge: '🧲', name: 'P2P WebTorrent (Торренты)', desc: 'Прямой стриминг раздач' },
+    { id: 'rutracker', badge: '🏴‍☠️', name: 'RuTracker (BDRip и 4K)', desc: 'Качественные P2P раздачи и Remux' },
+    { id: 'nnmclub', badge: '⚡', name: 'NNM-Club (Торрент-клуб)', desc: 'Премьеры фильмов и сериалов' },
+    { id: 'rutor', badge: '🧲', name: 'Rutor (Свободный P2P)', desc: 'Быстрый торрент-стриминг' },
+    { id: 'lostfilm', badge: '🎬', name: 'LostFilm (Студийный дубляж)', desc: 'Культовые зарубежные сериалы' },
+    { id: 'redheadsound', badge: '🎙️', name: 'Red Head Sound (RHS)', desc: 'Профессиональный дубляж новинок' },
+    { id: 'animevost', badge: '🌸', name: 'Animevost (Аниме-релизы)', desc: 'Быстрый русский дубляж аниме' }
   ];
 
   const renderOptions = (query = '') => {
@@ -1260,6 +1292,18 @@ function showCardHoverPreview(card, item) {
       <button type="button" class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">▶ Смотреть</button>
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm hover-room-btn" title="Совместный просмотр в кинозале">👥 Кинозал</button>
     </div>
+
+    <!-- Быстрый выбор статуса просмотра -->
+    <div class="hover-preview-status-row">
+      <span class="hover-preview-status-label">Статус:</span>
+      <div class="hover-preview-status-btns">
+        <button type="button" class="hover-status-btn ${item.user_status === 'watching' ? 'active' : ''}" data-status="watching" title="Смотрю">👁️</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'planned' ? 'active' : ''}" data-status="planned" title="В планах">📋</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'completed' ? 'active' : ''}" data-status="completed" title="Просмотрено">✅</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'favorite' ? 'active' : ''}" data-status="favorite" title="Любимое">❤️</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'on_hold' ? 'active' : ''}" data-status="on_hold" title="Отложено">⏸️</button>
+      </div>
+    </div>
   `;
 
   document.body.appendChild(preview);
@@ -1300,6 +1344,52 @@ function showCardHoverPreview(card, item) {
       }
     };
   }
+
+  const statusBtns = preview.querySelectorAll('.hover-status-btn');
+  statusBtns.forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      clearTimeout(hoverCloseTimer);
+      const targetStatus = btn.dataset.status;
+
+      const res = await saveBookmarkStatus(item, targetStatus);
+      if (res) {
+        item.user_status = targetStatus;
+        statusBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Обновляем плашку статуса на самом попапе
+        const badgesLeft = preview.querySelector('.hover-preview-badges-left');
+        if (badgesLeft) {
+          const oldBadge = badgesLeft.querySelector('.media-card-status-badge');
+          if (oldBadge) oldBadge.remove();
+          badgesLeft.insertAdjacentHTML('beforeend', getStatusBadge(targetStatus));
+        }
+
+        // Обновляем плашку статуса на исходной карточке (сетка)
+        const cardPoster = card.querySelector('.media-card-poster');
+        if (cardPoster) {
+          const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
+          if (oldCardBadge) oldCardBadge.remove();
+          const overlay = cardPoster.querySelector('.media-card-overlay');
+          const badgeHtml = getStatusBadge(targetStatus);
+          if (overlay) {
+            overlay.insertAdjacentHTML('beforebegin', badgeHtml);
+          } else {
+            cardPoster.insertAdjacentHTML('beforeend', badgeHtml);
+          }
+        }
+
+        // Обновляем плашку статуса на исходной карточке (список)
+        const detailedHeaderDiv = card.querySelector('.media-detailed-header > div:last-child');
+        if (detailedHeaderDiv) {
+          const oldCardBadge = detailedHeaderDiv.querySelector('.media-card-status-badge');
+          if (oldCardBadge) oldCardBadge.remove();
+          detailedHeaderDiv.insertAdjacentHTML('beforeend', getStatusBadge(targetStatus));
+        }
+      }
+    };
+  });
 }
 
 function hideCardHoverPreview() {
