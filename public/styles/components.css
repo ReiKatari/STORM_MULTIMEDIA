@@ -1889,15 +1889,18 @@ input[type="checkbox"]::after {
 .player-dropdown-menu {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
-  right: 0;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
   z-index: 1000;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--accent);
   border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-glow);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
   overflow: hidden;
-  max-height: 420px;
+  max-height: 480px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
@@ -1905,17 +1908,20 @@ input[type="checkbox"]::after {
 .player-dropdown-list {
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 .player-dropdown-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 16px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .player-dropdown-item:last-child {
@@ -1925,17 +1931,28 @@ input[type="checkbox"]::after {
 .player-dropdown-item:hover {
   background: var(--bg-tertiary);
   transform: translateX(4px);
+  border-left: 3px solid var(--accent);
 }
 
 .player-dropdown-item.active {
   background: rgba(0, 210, 255, 0.12);
-  border-left: 3px solid var(--accent);
+  border-left: 4px solid var(--accent);
 }
 
-.player-item-left {
+.player-item-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  min-width: 220px;
+  flex: 1;
+}
+
+.player-item-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .player-item-right {
@@ -2159,15 +2176,86 @@ input[type="checkbox"]::after {
   color: var(--text-secondary);
 }
 
+.cinema-section-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800 !important;
+  color: var(--text-primary);
+  margin: 12px 0 8px 0;
+  letter-spacing: 0.3px;
+}
+
+.cinema-genres-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.cinema-genre-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* Сетка рейтингов авторитетных платформ */
+.cinema-ratings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin: 10px 0 14px 0;
+}
+
+.cinema-rating-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s ease;
+}
+
+.cinema-rating-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.cinema-rating-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.cinema-rating-score {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
 /* Режиссер */
 .cinema-director-card {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -2175,29 +2263,56 @@ input[type="checkbox"]::after {
 .cinema-director-card:hover {
   border-color: var(--accent);
   box-shadow: 0 4px 14px var(--accent-glow);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .cinema-director-photo {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid var(--accent);
+  flex-shrink: 0;
+}
+
+.cinema-director-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.cinema-director-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cinema-director-role {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.cinema-director-btn {
+  font-size: 10px !important;
+  padding: 3px 8px !important;
+  height: 22px !important;
 }
 
 /* В главных ролях (Актёры) */
 .cinema-cast-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .cinema-cast-scroll {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  max-height: 280px;
+  gap: 6px;
+  max-height: 240px;
   overflow-y: auto;
   scrollbar-width: thin;
   padding-right: 4px;
@@ -2206,13 +2321,14 @@ input[type="checkbox"]::after {
 .cinema-actor-chip {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 5px 7px;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-width: 0;
 }
 
 .cinema-actor-chip:hover {
@@ -2222,8 +2338,8 @@ input[type="checkbox"]::after {
 }
 
 .cinema-actor-photo {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
@@ -2232,25 +2348,55 @@ input[type="checkbox"]::after {
 
 .cinema-actor-info {
   min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
 
 .cinema-actor-name {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.cinema-actor-role,
 .cinema-actor-char {
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Группировка кнопок панели плеера */
+.player-utility-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.player-utility-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.player-utility-group-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
 }
 
 /* ==========================================================================

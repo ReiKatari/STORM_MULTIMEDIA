@@ -229,7 +229,8 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null) {
       }
 
       // Проверка на статус не вышедшего фильма
-      const isUpcoming = dateStr ? new Date(dateStr) > new Date() : false;
+      const isUpcoming = (dateStr ? new Date(dateStr) > new Date() : false) ||
+                         ['Planned', 'In Production', 'Post Production', 'Rumored', 'Upcoming'].includes(data.status);
 
       const details = {
         id: `tmdb_${data.id}`,

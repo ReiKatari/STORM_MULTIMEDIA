@@ -510,8 +510,17 @@ body {
   left: 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   z-index: 4;
+  max-width: calc(100% - 68px);
+  pointer-events: none;
+}
+
+.media-card-badges .storm-badge {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .media-card-rating {
@@ -718,28 +727,53 @@ body {
 
 .media-table-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   text-align: left;
   font-size: 13px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .media-table-table th {
   background: var(--bg-tertiary);
-  padding: 12px 16px;
-  color: var(--text-muted);
-  font-weight: 600;
+  padding: 12px 14px;
+  color: var(--text-primary);
+  font-weight: 800;
   border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-subtle);
+  user-select: none;
+  letter-spacing: 0.3px;
+}
+
+.media-table-table th:last-child {
+  border-right: none;
 }
 
 .media-table-table td {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
   color: var(--text-primary);
   vertical-align: middle;
 }
 
+.media-table-table td:last-child {
+  border-right: none;
+}
+
+.media-table-table tr:last-child td {
+  border-bottom: none;
+}
+
 .media-table-table tr:hover td {
   background: var(--bg-card-hover);
+}
+
+.media-table-table .th-center,
+.media-table-table .td-center {
+  text-align: center;
 }
 
 .media-table-thumb {
@@ -747,6 +781,8 @@ body {
   height: 56px;
   border-radius: 4px;
   object-fit: cover;
+  display: block;
+  margin: 0 auto;
 }
 
 /* -------------------------------------------------------------
