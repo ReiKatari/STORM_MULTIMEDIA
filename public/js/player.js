@@ -270,6 +270,9 @@ export function closePlayerModal() {
     const iframeContainer = document.getElementById('cinema-player-wrapper');
     if (iframeContainer) iframeContainer.innerHTML = '';
 
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar) quickBar.style.display = 'none';
+
     if (torrentClient) {
       try {
         torrentClient.destroy();
@@ -438,6 +441,295 @@ function selectPlayer(player) {
   playStreamUrl(player.url);
 }
 
+/* ==========================================================================
+   СТИЛИЗОВАННАЯ ПАНЕЛЬ СЕРИАЛОВ (СЕЗОНЫ, СЕРИИ И СТУДИЙНАЯ ОЗВУЧКА 4K UHD)
+   ========================================================================== */
+let quickBarSeriesData = null;
+let quickBarActiveSeason = 1;
+let quickBarActiveEpisode = 1;
+let quickBarActiveTranslationId = null;
+let quickBarBaseUrl = null;
+
+async function initSeriesQuickBar(playerUrl) {
+  const quickBar = document.getElementById('player-series-quick-bar');
+  if (!quickBar) return;
+
+  quickBarBaseUrl = playerUrl;
+  try {
+    const res = await fetch(`/api/player/series-options?url=${encodeURIComponent(playerUrl)}`);
+    if (!res.ok) {
+      quickBar.style.display = 'none';
+      return;
+    }
+    const data = await res.json();
+    if (!data.success || data.type !== 'serial' || !data.seasons || data.seasons.length === 0) {
+      quickBar.style.display = 'none';
+      return;
+    }
+
+    quickBarSeriesData = data;
+    quickBar.style.display = 'flex';
+
+    quickBarActiveSeason = data.active?.season || data.seasons[0].season || 1;
+    quickBarActiveEpisode = data.active?.episode || 1;
+    quickBarActiveTranslationId = data.active?.id_translation || null;
+
+    renderQuickBarDropdowns();
+    setupQuickBarOutsideListeners();
+  } catch (err) {
+    console.warn('Ошибка быстрой панели серий:', err);
+    quickBar.style.display = 'none';
+  }
+}
+
+function renderQuickBarDropdowns() {
+  if (!quickBarSeriesData || !quickBarSeriesData.seasons) return;
+
+  const currentSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
+  if (!currentSeasonObj) return;
+
+  const currentEpisodeObj = currentSeasonObj.episodes.find(e => e.episode === quickBarActiveEpisode) || currentSeasonObj.episodes[0];
+  const translations = currentEpisodeObj?.translations || [];
+
+  // 1. Сезон
+  const seasonVal = document.getElementById('quick-season-val');
+  const seasonList = document.getElementById('quick-season-list');
+  const seasonDropdown = document.getElementById('quick-season-dropdown');
+  const seasonTrigger = document.getElementById('quick-season-trigger');
+  const seasonMenu = document.getElementById('quick-season-menu');
+
+  if (seasonVal) seasonVal.textContent = currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`;
+  if (seasonList) {
+    seasonList.innerHTML = quickBarSeriesData.seasons.map(s => `
+      <div class="quick-dropdown-item ${s.season === quickBarActiveSeason ? 'active' : ''}" data-season="${s.season}">
+        <span>${s.name}</span>
+        <span class="fhd-pill">${s.episodes_count} сер.</span>
+      </div>
+    `).join('');
+
+    seasonList.querySelectorAll('.quick-dropdown-item').forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const sNum = parseInt(item.dataset.season, 10);
+        selectQuickSeason(sNum);
+        if (seasonMenu) seasonMenu.style.display = 'none';
+        if (seasonDropdown) seasonDropdown.classList.remove('is-open');
+      };
+    });
+  }
+
+  if (seasonTrigger && !seasonTrigger.dataset.hasListener) {
+    seasonTrigger.dataset.hasListener = 'true';
+    seasonTrigger.onclick = (e) => {
+      e.stopPropagation();
+      closeOtherQuickDropdowns('quick-season-dropdown');
+      const isOpen = seasonMenu.style.display === 'block';
+      seasonMenu.style.display = isOpen ? 'none' : 'block';
+      seasonDropdown.classList.toggle('is-open', !isOpen);
+    };
+  }
+
+  // 2. Серия
+  const epVal = document.getElementById('quick-episode-val');
+  const epList = document.getElementById('quick-episode-list');
+  const epDropdown = document.getElementById('quick-episode-dropdown');
+  const epTrigger = document.getElementById('quick-episode-trigger');
+  const epMenu = document.getElementById('quick-episode-menu');
+
+  if (epVal) epVal.textContent = currentEpisodeObj ? currentEpisodeObj.name : `${quickBarActiveEpisode} серия`;
+  if (epList) {
+    const watchedEpisodes = currentMedia ? getWatchedEpisodes(currentMedia.id, quickBarActiveSeason) : new Set();
+
+    epList.innerHTML = currentSeasonObj.episodes.map(ep => {
+      const isWatched = watchedEpisodes.has(ep.episode);
+      return `
+        <div class="quick-dropdown-item ${ep.episode === quickBarActiveEpisode ? 'active' : ''}" data-episode="${ep.episode}">
+          <span>${ep.name}</span>
+          ${isWatched ? '<span class="watched-pill">✓ Просмотрено</span>' : ''}
+        </div>
+      `;
+    }).join('');
+
+    epList.querySelectorAll('.quick-dropdown-item').forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const epNum = parseInt(item.dataset.episode, 10);
+        selectQuickEpisode(epNum);
+        if (epMenu) epMenu.style.display = 'none';
+        if (epDropdown) epDropdown.classList.remove('is-open');
+      };
+    });
+  }
+
+  if (epTrigger && !epTrigger.dataset.hasListener) {
+    epTrigger.dataset.hasListener = 'true';
+    epTrigger.onclick = (e) => {
+      e.stopPropagation();
+      closeOtherQuickDropdowns('quick-episode-dropdown');
+      const isOpen = epMenu.style.display === 'block';
+      epMenu.style.display = isOpen ? 'none' : 'block';
+      epDropdown.classList.toggle('is-open', !isOpen);
+    };
+  }
+
+  // 3. Озвучка
+  const voiceVal = document.getElementById('quick-voiceover-val');
+  const voiceBadge = document.getElementById('quick-voiceover-badge');
+  const voiceList = document.getElementById('quick-voiceover-list');
+  const voiceDropdown = document.getElementById('quick-voiceover-dropdown');
+  const voiceTrigger = document.getElementById('quick-voiceover-trigger');
+  const voiceMenu = document.getElementById('quick-voiceover-menu');
+
+  let activeTrans = translations.find(t => t.id === quickBarActiveTranslationId) || translations[0];
+  if (activeTrans) {
+    quickBarActiveTranslationId = activeTrans.id;
+    if (voiceVal) voiceVal.textContent = activeTrans.name;
+    if (voiceBadge) {
+      voiceBadge.style.display = activeTrans.is_uhd ? 'inline-block' : 'none';
+      voiceBadge.textContent = '4K UHD';
+    }
+  }
+
+  if (voiceList) {
+    voiceList.innerHTML = translations.map(t => {
+      const isAct = t.id === quickBarActiveTranslationId;
+      return `
+        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-trans-id="${t.id}">
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">${t.name}</span>
+          ${t.is_uhd ? '<span class="uhd-pill">4K UHD</span>' : '<span class="fhd-pill">' + (t.quality || 'FHD') + '</span>'}
+        </div>
+      `;
+    }).join('');
+
+    voiceList.querySelectorAll('.quick-dropdown-item').forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const tId = parseInt(item.dataset.transId, 10);
+        selectQuickVoiceover(tId);
+        if (voiceMenu) voiceMenu.style.display = 'none';
+        if (voiceDropdown) voiceDropdown.classList.remove('is-open');
+      };
+    });
+  }
+
+  if (voiceTrigger && !voiceTrigger.dataset.hasListener) {
+    voiceTrigger.dataset.hasListener = 'true';
+    voiceTrigger.onclick = (e) => {
+      e.stopPropagation();
+      closeOtherQuickDropdowns('quick-voiceover-dropdown');
+      const isOpen = voiceMenu.style.display === 'block';
+      voiceMenu.style.display = isOpen ? 'none' : 'block';
+      voiceDropdown.classList.toggle('is-open', !isOpen);
+    };
+  }
+}
+
+function closeOtherQuickDropdowns(activeDropdownId) {
+  const ids = ['quick-season-dropdown', 'quick-episode-dropdown', 'quick-voiceover-dropdown'];
+  ids.forEach(id => {
+    if (id !== activeDropdownId) {
+      const dd = document.getElementById(id);
+      if (dd) {
+        dd.classList.remove('is-open');
+        const m = dd.querySelector('.quick-dropdown-menu');
+        if (m) m.style.display = 'none';
+      }
+    }
+  });
+}
+
+function setupQuickBarOutsideListeners() {
+  if (document.body.dataset.hasQuickBarListener) return;
+  document.body.dataset.hasQuickBarListener = 'true';
+
+  document.addEventListener('click', (e) => {
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar && !quickBar.contains(e.target)) {
+      closeOtherQuickDropdowns(null);
+    }
+  });
+}
+
+function updateQuickIframeSrc() {
+  const iframe = document.querySelector('.cinema-player-iframe');
+  if (!iframe || !quickBarBaseUrl) return;
+
+  const url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}&translation=${quickBarActiveTranslationId || ''}`;
+  iframe.src = url;
+}
+
+function highlightActiveEpisodeInGrid(episodeNum) {
+  const gridEl = document.getElementById('series-episodes-grid');
+  if (!gridEl) return;
+  gridEl.querySelectorAll('.series-episode-card').forEach(card => {
+    const isAct = parseInt(card.dataset.epNum, 10) === episodeNum;
+    card.classList.toggle('active', isAct);
+  });
+}
+
+function selectQuickSeason(seasonNum) {
+  if (quickBarActiveSeason === seasonNum) return;
+  quickBarActiveSeason = seasonNum;
+  quickBarActiveEpisode = 1;
+  renderQuickBarDropdowns();
+  updateQuickIframeSrc();
+
+  showToast(`📺 Сезон ${seasonNum}`, 'info');
+  trackClientAction('watch_series_episode', { season: seasonNum, episode: 1 });
+}
+
+function selectQuickEpisode(episodeNum) {
+  if (quickBarActiveEpisode === episodeNum) return;
+  quickBarActiveEpisode = episodeNum;
+  renderQuickBarDropdowns();
+  updateQuickIframeSrc();
+
+  if (currentMedia?.id) {
+    markEpisodeWatched(currentMedia.id, quickBarActiveSeason, episodeNum, true);
+  }
+
+  showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${episodeNum}`, 'info');
+  trackClientAction('watch_series_episode', { season: quickBarActiveSeason, episode: episodeNum });
+
+  if (currentMedia?.id && quickBarSeriesData) {
+    const sObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason);
+    if (sObj && sObj.episodes_count) {
+      const watched = getWatchedEpisodes(currentMedia.id, quickBarActiveSeason);
+      if (watched.size >= sObj.episodes_count) {
+        trackClientAction('complete_season', { season: quickBarActiveSeason });
+      }
+    }
+  }
+
+  highlightActiveEpisodeInGrid(episodeNum);
+}
+
+function selectQuickVoiceover(translationId) {
+  if (quickBarActiveTranslationId === translationId) return;
+  quickBarActiveTranslationId = translationId;
+  renderQuickBarDropdowns();
+  updateQuickIframeSrc();
+
+  let voiceName = 'Озвучка обновлена';
+  const sObj = quickBarSeriesData?.seasons?.find(s => s.season === quickBarActiveSeason);
+  const epObj = sObj?.episodes?.find(e => e.episode === quickBarActiveEpisode);
+  const transObj = epObj?.translations?.find(t => t.id === translationId);
+  if (transObj) {
+    voiceName = `🎙️ ${transObj.name}${transObj.is_uhd ? ' (4K UHD)' : ''}`;
+    if (transObj.is_uhd) {
+      trackClientAction('use_4k');
+      const cur4k = parseInt(localStorage.getItem('storm_4k_count') || '0', 10);
+      localStorage.setItem('storm_4k_count', String(cur4k + 1));
+    }
+  }
+
+  const curVoiceCount = parseInt(localStorage.getItem('storm_voiceovers_count') || '0', 10);
+  localStorage.setItem('storm_voiceovers_count', String(curVoiceCount + 1));
+
+  showToast(voiceName, 'info');
+  trackClientAction('switch_voiceover', { translation_id: translationId });
+}
+
 function playStreamUrl(url) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
@@ -452,6 +744,9 @@ function playStreamUrl(url) {
   }
 
   if (url.includes('.m3u8')) {
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar) quickBar.style.display = 'none';
+
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <!-- Динамическая подсветка Ambilight -->
@@ -490,10 +785,21 @@ function playStreamUrl(url) {
     return;
   }
 
+  let streamUrl = url;
+  const isFanfilmOrStravers = url.includes('stravers.live') || url.includes('fanfilm4k') || currentMedia?.source === 'fanfilm4k';
+
+  if (isFanfilmOrStravers) {
+    streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}`;
+    initSeriesQuickBar(url);
+  } else {
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar) quickBar.style.display = 'none';
+  }
+
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${url}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 

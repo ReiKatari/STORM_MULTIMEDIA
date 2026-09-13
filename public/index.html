@@ -290,6 +290,46 @@
         <div class="cinema-layout-grid">
           <!-- Основная левая колонка -->
           <div class="cinema-main-column">
+            <!-- Быстрая панель выбора сезона, серии и студийной озвучки (3D Stylized Quick Bar) -->
+            <div class="player-series-quick-bar" id="player-series-quick-bar" style="display: none;">
+              <!-- 1. Выбор сезона -->
+              <div class="quick-select-dropdown" id="quick-season-dropdown">
+                <button type="button" class="quick-dropdown-trigger" id="quick-season-trigger" title="Выбрать сезон">
+                  <span class="quick-dropdown-icon">📺</span>
+                  <span class="quick-dropdown-val" id="quick-season-val">Сезон 1</span>
+                  <span class="quick-dropdown-arrow">▼</span>
+                </button>
+                <div class="quick-dropdown-menu" id="quick-season-menu" style="display: none;">
+                  <div class="quick-dropdown-list" id="quick-season-list"></div>
+                </div>
+              </div>
+
+              <!-- 2. Выбор серии -->
+              <div class="quick-select-dropdown" id="quick-episode-dropdown">
+                <button type="button" class="quick-dropdown-trigger" id="quick-episode-trigger" title="Выбрать серию">
+                  <span class="quick-dropdown-icon">🎬</span>
+                  <span class="quick-dropdown-val" id="quick-episode-val">1 серия</span>
+                  <span class="quick-dropdown-arrow">▼</span>
+                </button>
+                <div class="quick-dropdown-menu" id="quick-episode-menu" style="display: none;">
+                  <div class="quick-dropdown-list" id="quick-episode-list"></div>
+                </div>
+              </div>
+
+              <!-- 3. Выбор студийной озвучки -->
+              <div class="quick-select-dropdown" id="quick-voiceover-dropdown">
+                <button type="button" class="quick-dropdown-trigger" id="quick-voiceover-trigger" title="Выбрать студию озвучки">
+                  <span class="quick-dropdown-icon">🎙️</span>
+                  <span class="quick-dropdown-val" id="quick-voiceover-val">Дубляж</span>
+                  <span class="quick-dropdown-badge" id="quick-voiceover-badge" style="display: none;">4K UHD</span>
+                  <span class="quick-dropdown-arrow">▼</span>
+                </button>
+                <div class="quick-dropdown-menu quick-dropdown-menu-wide" id="quick-voiceover-menu" style="display: none;">
+                  <div class="quick-dropdown-list" id="quick-voiceover-list"></div>
+                </div>
+              </div>
+            </div>
+
             <!-- Фрейм видеоплеера -->
             <div class="cinema-player-wrapper" id="cinema-player-wrapper">
               <!-- Заполняется динамически -->
@@ -491,7 +531,7 @@
         <!-- Вкладки профиля -->
         <div class="profile-tab-links">
           <button class="profile-tab-link active" data-ptab="overview">Обзор и статистика</button>
-          <button class="profile-tab-link" data-ptab="achievements">Достижения (42)</button>
+          <button class="profile-tab-link" data-ptab="achievements" id="profile-tab-achievements">Достижения (67)</button>
           <button class="profile-tab-link" data-ptab="edit">Смена аватарки и данных</button>
           <button class="profile-tab-link" data-ptab="security">Безопасность</button>
         </div>
