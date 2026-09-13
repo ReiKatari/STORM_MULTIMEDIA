@@ -91,6 +91,10 @@ import {
   getAggregatedSchedule
 } from './services/schedule-service.js';
 
+import {
+  getCategoryFallback
+} from './services/catalog-fallback.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -916,7 +920,7 @@ app.get('/api/media/catalog', async (req, res) => {
     let items = [];
     let totalItems = 0;
 
-    if (cachedEntry && (Date.now() - cachedEntry.timestamp < MEMORY_CATALOG_TTL)) {
+    if (cachedEntry && (Date.now() - cachedEntry.timestamp < MEMORY_CATALOG_TTL) && Array.isArray(cachedEntry.items) && cachedEntry.items.length > 0) {
       items = cachedEntry.items;
       totalItems = cachedEntry.totalItems;
     } else {
@@ -1017,7 +1021,15 @@ app.get('/api/media/catalog', async (req, res) => {
       }
     }
 
-    memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
+    if (!items || items.length === 0) {
+      console.warn(`[Catalog] Внешние источники вернули 0 элементов для ${category}, применяем проверенный каталог`);
+      items = getCategoryFallback(category);
+      totalItems = items.length;
+    }
+
+    if (items && items.length > 0) {
+      memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
+    }
   }
 
     // Прикрепляем закладки и статусы только для авторизованных пользователей
@@ -1037,11 +1049,19 @@ app.get('/api/media/catalog', async (req, res) => {
       category,
       page,
       source,
-      total_items: totalItems,
+      total_items: totalItems || items.length,
       items
     });
   } catch (err) {
-    res.status(500).json({ error: err.message, items: [] });
+    console.error('Ошибка агрегации каталога:', err.message);
+    const fallbackItems = getCategoryFallback(req.query.category || 'popular');
+    res.json({
+      category: req.query.category || 'popular',
+      page: parseInt(req.query.page, 10) || 1,
+      source: req.query.source || 'all',
+      total_items: fallbackItems.length,
+      items: fallbackItems
+    });
   }
 });
 
