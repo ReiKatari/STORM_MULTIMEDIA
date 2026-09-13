@@ -177,7 +177,7 @@ function initFullscreenControls() {
     });
   }
 
-  // Обработка запросов полноэкранного режима от встроенных плееров (PlayerJS, Kodik, Allplay и др.)
+  // Обработка запросов полноэкранного режима и изменения скорости от встроенных плееров (PlayerJS, Kodik, Allplay и др.)
   window.addEventListener('message', (event) => {
     if (!event || !event.data) return;
     try {
@@ -188,6 +188,13 @@ function initFullscreenControls() {
       if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
         toggleCinemaFullscreen();
       } else if (typeof data === 'object' && data) {
+        if (data.type === 'STORM_SPEED_CHANGED') {
+          const sp = parseFloat(data.speed);
+          if (sp && !isNaN(sp)) {
+            localStorage.setItem('storm_playback_speed', String(sp));
+            updateInPlayerSpeedDisplay(sp);
+          }
+        }
         if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.event === 'dblclick' || data.action === 'fullscreen') {
           toggleCinemaFullscreen();
         }
@@ -1456,8 +1463,6 @@ function playStreamUrl(url) {
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <button type="button" class="player-switch-source-btn" id="html5-switch-source-btn" title="Сменить видеоплеер / источник">⚡ Сменить источник</button>
-        <button type="button" class="player-overlay-fs-btn" id="html5-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
 
         <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
 
@@ -1470,22 +1475,6 @@ function playStreamUrl(url) {
         </button>
       </div>
     `;
-
-    const html5SwitchBtn = container.querySelector('#html5-switch-source-btn');
-    if (html5SwitchBtn) {
-      html5SwitchBtn.onclick = (e) => {
-        e.stopPropagation();
-        switchToNextSource();
-      };
-    }
-
-    const html5FsBtn = container.querySelector('#html5-overlay-fs-btn');
-    if (html5FsBtn) {
-      html5FsBtn.onclick = (e) => {
-        e.stopPropagation();
-        toggleCinemaFullscreen();
-      };
-    }
 
     const video = document.getElementById('storm-video-player');
     const videoBox = container.querySelector('.player-video-box');
@@ -1535,27 +1524,9 @@ function playStreamUrl(url) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <button type="button" class="player-switch-source-btn" id="iframe-switch-source-btn" title="Сменить видеоплеер / источник">⚡ Сменить источник</button>
-      <button type="button" class="player-overlay-fs-btn" id="iframe-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
       <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
-
-  const iframeSwitchBtn = container.querySelector('#iframe-switch-source-btn');
-  if (iframeSwitchBtn) {
-    iframeSwitchBtn.onclick = (e) => {
-      e.stopPropagation();
-      switchToNextSource();
-    };
-  }
-
-  const iframeFsBtn = container.querySelector('#iframe-overlay-fs-btn');
-  if (iframeFsBtn) {
-    iframeFsBtn.onclick = (e) => {
-      e.stopPropagation();
-      toggleCinemaFullscreen();
-    };
-  }
 
   const iframeBox = container.querySelector('.player-video-box');
   if (iframeBox) {
@@ -3119,30 +3090,8 @@ export function mountInPlayerOverlay(videoBox) {
           <span class="inplayer-series-name" id="inplayer-series-name">${escapeHtml(currentMedia?.title || '')}</span>
         </div>
         <div class="inplayer-top-actions">
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-speed-btn" title="Скорость воспроизведения (нажмите для переключения)">
-            <svg class="inplayer-speed-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
-            <span>${parseFloat(localStorage.getItem('storm_playback_speed') || '1')}x</span>
-          </button>
-          <div class="inplayer-speed-menu" id="inplayer-speed-menu">
-            <div class="inplayer-speed-item" data-speed="0.5">0.5x</div>
-            <div class="inplayer-speed-item" data-speed="0.75">0.75x</div>
-            <div class="inplayer-speed-item active" data-speed="1">1x</div>
-            <div class="inplayer-speed-item" data-speed="1.25">1.25x</div>
-            <div class="inplayer-speed-item" data-speed="1.5">1.5x</div>
-            <div class="inplayer-speed-item" data-speed="1.75">1.75x</div>
-            <div class="inplayer-speed-item" data-speed="2">2x</div>
-          </div>
           <button type="button" class="inplayer-ctrl-btn" id="inplayer-episodes-btn" title="Список серий" style="${isSeries ? '' : 'display: none;'}">
             📋 Серии
-          </button>
-          <button type="button" class="inplayer-ctrl-btn inplayer-icon-btn" id="inplayer-fs-btn" title="Полноэкранный режим (F)">
-            ⛶
-          </button>
-          <button type="button" class="inplayer-ctrl-btn inplayer-icon-btn inplayer-close-btn" id="inplayer-close-btn" title="Закрыть кинотеатр">
-            ✕
           </button>
         </div>
       </div>
@@ -3172,49 +3121,6 @@ export function mountInPlayerOverlay(videoBox) {
       </div>
     `;
     videoBox.appendChild(overlay);
-
-    const fsBtn = overlay.querySelector('#inplayer-fs-btn');
-    if (fsBtn) {
-      fsBtn.onclick = (e) => {
-        e.stopPropagation();
-        toggleCinemaFullscreen();
-      };
-    }
-
-    const closeBtn = overlay.querySelector('#inplayer-close-btn');
-    if (closeBtn) {
-      closeBtn.onclick = (e) => {
-        e.stopPropagation();
-        closePlayerModal();
-      };
-    }
-
-    const speedBtn = overlay.querySelector('#inplayer-speed-btn');
-    if (speedBtn) {
-      // Одиночный клик: мгновенное циклическое переключение скорости (1x -> 1.25x -> 1.5x -> 2x...)
-      speedBtn.onclick = (e) => {
-        e.stopPropagation();
-        cyclePlaybackSpeed();
-      };
-      // Правый клик / контекстное меню: открытие выпадающего списка
-      speedBtn.oncontextmenu = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleInPlayerSpeedMenu(overlay);
-      };
-    }
-
-    const speedMenu = overlay.querySelector('#inplayer-speed-menu');
-    if (speedMenu) {
-      speedMenu.querySelectorAll('.inplayer-speed-item').forEach(item => {
-        item.onclick = (e) => {
-          e.stopPropagation();
-          const sp = parseFloat(item.dataset.speed);
-          setGlobalPlaybackSpeed(sp);
-          speedMenu.classList.remove('is-open');
-        };
-      });
-    }
 
     const epBtn = overlay.querySelector('#inplayer-episodes-btn');
     if (epBtn) {
@@ -3253,8 +3159,7 @@ export function mountInPlayerOverlay(videoBox) {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
         const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
-        const spMenu = overlay.querySelector('#inplayer-speed-menu');
-        if (!sheet?.classList.contains('is-open') && !spMenu?.classList.contains('is-open')) {
+        if (!sheet?.classList.contains('is-open')) {
           videoBox.classList.remove('controls-visible');
         }
       }, 2800);
@@ -3270,7 +3175,7 @@ export function mountInPlayerOverlay(videoBox) {
 
     // Тап/клик по видео: переключение видимости оверлея
     videoBox.addEventListener('click', (e) => {
-      if (e.target.closest('.inplayer-top-bar') || e.target.closest('.inplayer-bottom-bar') || e.target.closest('.player-inplayer-episodes-sheet') || e.target.closest('.inplayer-speed-menu')) {
+      if (e.target.closest('.inplayer-top-bar') || e.target.closest('.inplayer-bottom-bar') || e.target.closest('.player-inplayer-episodes-sheet')) {
         resetHideTimer();
         return;
       }
@@ -3284,7 +3189,7 @@ export function mountInPlayerOverlay(videoBox) {
     });
 
     videoBox.addEventListener('touchstart', (e) => {
-      if (!e.target.closest('.inplayer-ctrl-btn') && !e.target.closest('.player-inplayer-episodes-sheet') && !e.target.closest('.inplayer-speed-menu')) {
+      if (!e.target.closest('.inplayer-ctrl-btn') && !e.target.closest('.player-inplayer-episodes-sheet')) {
         resetHideTimer();
       }
     }, { passive: true });

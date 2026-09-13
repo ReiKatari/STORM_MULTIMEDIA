@@ -1833,6 +1833,10 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             let delayNode = null;
             let currentSettings = null;
             let currentSpeed = 1;
+            try {
+              const savedSp = localStorage.getItem('storm_playback_speed');
+              if (savedSp) currentSpeed = parseFloat(savedSp) || 1;
+            } catch {}
 
             const EQ_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -1976,26 +1980,59 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }
             }
 
+            function applySpeedToPlayerJS(sp) {
+              try {
+                if (window.Playerjs && typeof window.Playerjs.api === 'function') {
+                  window.Playerjs.api('speed', sp);
+                } else if (window.player && typeof window.player.api === 'function') {
+                  window.player.api('speed', sp);
+                } else if (window.pjs && typeof window.pjs.api === 'function') {
+                  window.pjs.api('speed', sp);
+                }
+              } catch {}
+            }
+
             setInterval(() => {
               const v = document.querySelector('video');
               if (v) {
-                if (currentSpeed && v.playbackRate !== currentSpeed) {
-                  v.playbackRate = currentSpeed;
-                }
                 if (!v._stormEventsHooked) {
                   v._stormEventsHooked = true;
+                  if (currentSpeed && Math.abs(v.playbackRate - currentSpeed) > 0.01) {
+                    v._settingPlaybackRate = true;
+                    v.playbackRate = currentSpeed;
+                    setTimeout(() => { v._settingPlaybackRate = false; }, 60);
+                  }
+                  applySpeedToPlayerJS(currentSpeed);
                   v.addEventListener('play', () => {
                     if (!sourceNode) initAudio(v);
                     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-                    if (currentSpeed && v.playbackRate !== currentSpeed) v.playbackRate = currentSpeed;
+                    if (currentSpeed && Math.abs(v.playbackRate - currentSpeed) > 0.01) {
+                      v._settingPlaybackRate = true;
+                      v.playbackRate = currentSpeed;
+                      setTimeout(() => { v._settingPlaybackRate = false; }, 60);
+                    }
+                    applySpeedToPlayerJS(currentSpeed);
+                  });
+                  v.addEventListener('loadedmetadata', () => {
+                    if (currentSpeed && Math.abs(v.playbackRate - currentSpeed) > 0.01) {
+                      v._settingPlaybackRate = true;
+                      v.playbackRate = currentSpeed;
+                      setTimeout(() => { v._settingPlaybackRate = false; }, 60);
+                    }
+                    applySpeedToPlayerJS(currentSpeed);
                   });
                   v.addEventListener('ratechange', () => {
-                    if (currentSpeed && v.playbackRate !== currentSpeed) v.playbackRate = currentSpeed;
+                    if (v._settingPlaybackRate) return;
+                    if (v.playbackRate && Math.abs(v.playbackRate - currentSpeed) > 0.01) {
+                      currentSpeed = v.playbackRate;
+                      try { localStorage.setItem('storm_playback_speed', String(currentSpeed)); } catch {}
+                      try { window.parent.postMessage({ type: 'STORM_SPEED_CHANGED', speed: currentSpeed }, '*'); } catch {}
+                    }
                   });
                 }
                 if (!sourceNode) initAudio(v);
               }
-            }, 250);
+            }, 400);
 
             window.addEventListener('message', (e) => {
               let data = e.data;
@@ -2013,13 +2050,28 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 const sp = parseFloat(data.value || data.speed || data.rate || data.set || data.playbackRate || data.val);
                 if (sp && !isNaN(sp)) {
                   currentSpeed = sp;
+                  try { localStorage.setItem('storm_playback_speed', String(sp)); } catch {}
                   const v = document.querySelector('video');
-                  if (v) v.playbackRate = sp;
+                  if (v) {
+                    v._settingPlaybackRate = true;
+                    v.playbackRate = sp;
+                    setTimeout(() => { v._settingPlaybackRate = false; }, 60);
+                  }
+                  applySpeedToPlayerJS(sp);
                 }
               }
             });
           })();
           </script>
+          <style>
+            .pj_menu_item.pj_active, [class*="menu_item"][class*="active"], [class*="speed-item"][class*="active"] {
+              background: rgba(0, 210, 255, 0.35) !important;
+              color: #ffffff !important;
+              font-weight: 700 !important;
+              border-left: 3px solid #00d2ff !important;
+              box-shadow: inset 0 0 10px rgba(0, 210, 255, 0.25) !important;
+            }
+          </style>
         `;
         html = html.replace('<head>', '<head>' + proAudioInjection);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
