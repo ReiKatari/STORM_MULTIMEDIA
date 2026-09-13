@@ -24,6 +24,28 @@
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
   --btn-3d-shadow: 0 4px 0 #077994, 0 8px 16px rgba(0, 210, 255, 0.3);
   --btn-3d-shadow-press: 0 1px 0 #077994, 0 3px 8px rgba(0, 210, 255, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #10b981;
+  --tab-continue-bg: rgba(16, 185, 129, 0.12);
+  --tab-continue-border: rgba(16, 185, 129, 0.4);
+  --tab-continue-glow: rgba(16, 185, 129, 0.35);
+  --tab-continue-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --tab-continue-3d: 0 4px 0 #047857, 0 8px 18px rgba(16, 185, 129, 0.35);
+
+  --tab-bookmarks-color: #a855f7;
+  --tab-bookmarks-bg: rgba(168, 85, 247, 0.12);
+  --tab-bookmarks-border: rgba(168, 85, 247, 0.4);
+  --tab-bookmarks-glow: rgba(168, 85, 247, 0.35);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  --tab-bookmarks-3d: 0 4px 0 #6b21a8, 0 8px 18px rgba(168, 85, 247, 0.35);
+
+  --tab-offline-color: #f59e0b;
+  --tab-offline-bg: rgba(245, 158, 11, 0.12);
+  --tab-offline-border: rgba(245, 158, 11, 0.4);
+  --tab-offline-glow: rgba(245, 158, 11, 0.35);
+  --tab-offline-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --tab-offline-3d: 0 4px 0 #b45309, 0 8px 18px rgba(245, 158, 11, 0.35);
 }
 
 [data-theme="STORM NIGHT"] {
@@ -47,6 +69,28 @@
   --card-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 240, 255, 0.1);
   --btn-3d-shadow: 0 4px 0 #008fa0, 0 8px 18px rgba(0, 240, 255, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #008fa0, 0 3px 8px rgba(0, 240, 255, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #00ffaa;
+  --tab-continue-bg: rgba(0, 255, 170, 0.12);
+  --tab-continue-border: rgba(0, 255, 170, 0.45);
+  --tab-continue-glow: rgba(0, 255, 170, 0.45);
+  --tab-continue-gradient: linear-gradient(135deg, #00ffaa 0%, #00b377 100%);
+  --tab-continue-3d: 0 4px 0 #008f5f, 0 8px 18px rgba(0, 255, 170, 0.4);
+
+  --tab-bookmarks-color: #c084fc;
+  --tab-bookmarks-bg: rgba(192, 132, 252, 0.12);
+  --tab-bookmarks-border: rgba(192, 132, 252, 0.45);
+  --tab-bookmarks-glow: rgba(192, 132, 252, 0.45);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #c084fc 0%, #9333ea 100%);
+  --tab-bookmarks-3d: 0 4px 0 #7e22ce, 0 8px 18px rgba(192, 132, 252, 0.4);
+
+  --tab-offline-color: #fb923c;
+  --tab-offline-bg: rgba(251, 146, 60, 0.12);
+  --tab-offline-border: rgba(251, 146, 60, 0.45);
+  --tab-offline-glow: rgba(251, 146, 60, 0.45);
+  --tab-offline-gradient: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+  --tab-offline-3d: 0 4px 0 #c2410c, 0 8px 18px rgba(251, 146, 60, 0.4);
 }
 
 [data-theme="STORM MATRIX"] {
@@ -68,8 +112,30 @@
   --text-muted: #86efac;
   --shadow-color: rgba(0, 0, 0, 0.75);
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 255, 102, 0.12);
-  --btn-3d-shadow: 0 4px 0 #00993d, 0 8px 16px rgba(0, 255, 102, 0.3);
-  --btn-3d-shadow-press: 0 1px 0 #00993d, 0 3px 8px rgba(0, 255, 102, 0.2);
+  --btn-3d-shadow: 0 4px 0 #00993d, 0 8px 16px rgba(255, 255, 255, 0.3);
+  --btn-3d-shadow-press: 0 1px 0 #00993d, 0 3px 8px rgba(255, 255, 255, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #39ff14;
+  --tab-continue-bg: rgba(57, 255, 20, 0.12);
+  --tab-continue-border: rgba(57, 255, 20, 0.45);
+  --tab-continue-glow: rgba(57, 255, 20, 0.45);
+  --tab-continue-gradient: linear-gradient(135deg, #39ff14 0%, #00b32d 100%);
+  --tab-continue-3d: 0 4px 0 #008020, 0 8px 18px rgba(57, 255, 20, 0.4);
+
+  --tab-bookmarks-color: #bef264;
+  --tab-bookmarks-bg: rgba(190, 242, 100, 0.12);
+  --tab-bookmarks-border: rgba(190, 242, 100, 0.45);
+  --tab-bookmarks-glow: rgba(190, 242, 100, 0.4);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #bef264 0%, #65a30d 100%);
+  --tab-bookmarks-3d: 0 4px 0 #4d7c0f, 0 8px 18px rgba(190, 242, 100, 0.35);
+
+  --tab-offline-color: #00f0ff;
+  --tab-offline-bg: rgba(0, 240, 255, 0.12);
+  --tab-offline-border: rgba(0, 240, 255, 0.45);
+  --tab-offline-glow: rgba(0, 240, 255, 0.4);
+  --tab-offline-gradient: linear-gradient(135deg, #00f0ff 0%, #0284c7 100%);
+  --tab-offline-3d: 0 4px 0 #0369a1, 0 8px 18px rgba(0, 240, 255, 0.35);
 }
 
 [data-theme="STORM CYBERPUNK"] {
@@ -93,6 +159,28 @@
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 15px rgba(255, 0, 127, 0.15);
   --btn-3d-shadow: 0 4px 0 #a30052, 0 8px 16px rgba(255, 0, 127, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #a30052, 0 3px 8px rgba(255, 0, 127, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #00f0ff;
+  --tab-continue-bg: rgba(0, 240, 255, 0.12);
+  --tab-continue-border: rgba(0, 240, 255, 0.45);
+  --tab-continue-glow: rgba(0, 240, 255, 0.45);
+  --tab-continue-gradient: linear-gradient(135deg, #00f0ff 0%, #0088ff 100%);
+  --tab-continue-3d: 0 4px 0 #0066cc, 0 8px 18px rgba(0, 240, 255, 0.4);
+
+  --tab-bookmarks-color: #ff007f;
+  --tab-bookmarks-bg: rgba(255, 0, 127, 0.12);
+  --tab-bookmarks-border: rgba(255, 0, 127, 0.45);
+  --tab-bookmarks-glow: rgba(255, 0, 127, 0.45);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #ff007f 0%, #b80058 100%);
+  --tab-bookmarks-3d: 0 4px 0 #8f0045, 0 8px 18px rgba(255, 0, 127, 0.4);
+
+  --tab-offline-color: #ffb703;
+  --tab-offline-bg: rgba(255, 183, 3, 0.12);
+  --tab-offline-border: rgba(255, 183, 3, 0.45);
+  --tab-offline-glow: rgba(255, 183, 3, 0.45);
+  --tab-offline-gradient: linear-gradient(135deg, #ffb703 0%, #fb8500 100%);
+  --tab-offline-3d: 0 4px 0 #d46b08, 0 8px 18px rgba(255, 183, 3, 0.4);
 }
 
 [data-theme="STORM MIDNIGHT"] {
@@ -116,6 +204,28 @@
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 14px rgba(168, 85, 247, 0.12);
   --btn-3d-shadow: 0 4px 0 #6b21a8, 0 8px 16px rgba(168, 85, 247, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #6b21a8, 0 3px 8px rgba(168, 85, 247, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #38bdf8;
+  --tab-continue-bg: rgba(56, 189, 248, 0.12);
+  --tab-continue-border: rgba(56, 189, 248, 0.4);
+  --tab-continue-glow: rgba(56, 189, 248, 0.4);
+  --tab-continue-gradient: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+  --tab-continue-3d: 0 4px 0 #0369a1, 0 8px 18px rgba(56, 189, 248, 0.35);
+
+  --tab-bookmarks-color: #e879f9;
+  --tab-bookmarks-bg: rgba(232, 121, 249, 0.12);
+  --tab-bookmarks-border: rgba(232, 121, 249, 0.4);
+  --tab-bookmarks-glow: rgba(232, 121, 249, 0.4);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #e879f9 0%, #c026d3 100%);
+  --tab-bookmarks-3d: 0 4px 0 #a21caf, 0 8px 18px rgba(232, 121, 249, 0.35);
+
+  --tab-offline-color: #fb7185;
+  --tab-offline-bg: rgba(251, 113, 133, 0.12);
+  --tab-offline-border: rgba(251, 113, 133, 0.4);
+  --tab-offline-glow: rgba(251, 113, 133, 0.4);
+  --tab-offline-gradient: linear-gradient(135deg, #fb7185 0%, #e11d48 100%);
+  --tab-offline-3d: 0 4px 0 #be123c, 0 8px 18px rgba(251, 113, 133, 0.35);
 }
 
 [data-theme="STORM FANTASY"] {
@@ -139,6 +249,28 @@
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.65), 0 0 14px rgba(245, 158, 11, 0.12);
   --btn-3d-shadow: 0 4px 0 #b45309, 0 8px 16px rgba(245, 158, 11, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #b45309, 0 3px 8px rgba(245, 158, 11, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #10b981;
+  --tab-continue-bg: rgba(16, 185, 129, 0.12);
+  --tab-continue-border: rgba(16, 185, 129, 0.4);
+  --tab-continue-glow: rgba(16, 185, 129, 0.35);
+  --tab-continue-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --tab-continue-3d: 0 4px 0 #047857, 0 8px 18px rgba(16, 185, 129, 0.35);
+
+  --tab-bookmarks-color: #c084fc;
+  --tab-bookmarks-bg: rgba(192, 132, 252, 0.12);
+  --tab-bookmarks-border: rgba(192, 132, 252, 0.4);
+  --tab-bookmarks-glow: rgba(192, 132, 252, 0.35);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #c084fc 0%, #8b5cf6 100%);
+  --tab-bookmarks-3d: 0 4px 0 #6d28d9, 0 8px 18px rgba(192, 132, 252, 0.35);
+
+  --tab-offline-color: #f59e0b;
+  --tab-offline-bg: rgba(245, 158, 11, 0.12);
+  --tab-offline-border: rgba(245, 158, 11, 0.4);
+  --tab-offline-glow: rgba(245, 158, 11, 0.35);
+  --tab-offline-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --tab-offline-3d: 0 4px 0 #b45309, 0 8px 18px rgba(245, 158, 11, 0.35);
 }
 
 [data-theme="STORM WARHAMMER 40K"] {
@@ -162,6 +294,28 @@
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 14px rgba(212, 175, 55, 0.15);
   --btn-3d-shadow: 0 4px 0 #856a16, 0 8px 16px rgba(212, 175, 55, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #856a16, 0 3px 8px rgba(212, 175, 55, 0.2);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #4ade80;
+  --tab-continue-bg: rgba(74, 222, 128, 0.12);
+  --tab-continue-border: rgba(74, 222, 128, 0.4);
+  --tab-continue-glow: rgba(74, 222, 128, 0.35);
+  --tab-continue-gradient: linear-gradient(135deg, #4ade80 0%, #16a34a 100%);
+  --tab-continue-3d: 0 4px 0 #15803d, 0 8px 18px rgba(74, 222, 128, 0.35);
+
+  --tab-bookmarks-color: #f43f5e;
+  --tab-bookmarks-bg: rgba(244, 63, 94, 0.12);
+  --tab-bookmarks-border: rgba(244, 63, 94, 0.4);
+  --tab-bookmarks-glow: rgba(244, 63, 94, 0.35);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #f43f5e 0%, #be123c 100%);
+  --tab-bookmarks-3d: 0 4px 0 #9f1239, 0 8px 18px rgba(244, 63, 94, 0.35);
+
+  --tab-offline-color: #d4af37;
+  --tab-offline-bg: rgba(212, 175, 55, 0.12);
+  --tab-offline-border: rgba(212, 175, 55, 0.4);
+  --tab-offline-glow: rgba(212, 175, 55, 0.35);
+  --tab-offline-gradient: linear-gradient(135deg, #d4af37 0%, #997b1e 100%);
+  --tab-offline-3d: 0 4px 0 #856a16, 0 8px 18px rgba(212, 175, 55, 0.35);
 }
 
 [data-theme="STORM DAY"] {
@@ -185,6 +339,28 @@
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
   --btn-3d-shadow: 0 4px 0 #0369a1, 0 8px 16px rgba(2, 132, 199, 0.25);
   --btn-3d-shadow-press: 0 1px 0 #0369a1, 0 3px 8px rgba(2, 132, 199, 0.15);
+
+  /* Индивидуальные стили вкладок */
+  --tab-continue-color: #059669;
+  --tab-continue-bg: rgba(5, 150, 105, 0.1);
+  --tab-continue-border: rgba(5, 150, 105, 0.35);
+  --tab-continue-glow: rgba(5, 150, 105, 0.25);
+  --tab-continue-gradient: linear-gradient(135deg, #059669 0%, #047857 100%);
+  --tab-continue-3d: 0 4px 0 #065f46, 0 8px 16px rgba(5, 150, 105, 0.25);
+
+  --tab-bookmarks-color: #7c3aed;
+  --tab-bookmarks-bg: rgba(124, 58, 237, 0.1);
+  --tab-bookmarks-border: rgba(124, 58, 237, 0.35);
+  --tab-bookmarks-glow: rgba(124, 58, 237, 0.25);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  --tab-bookmarks-3d: 0 4px 0 #5b21b6, 0 8px 16px rgba(124, 58, 237, 0.25);
+
+  --tab-offline-color: #d97706;
+  --tab-offline-bg: rgba(217, 119, 6, 0.1);
+  --tab-offline-border: rgba(217, 119, 6, 0.35);
+  --tab-offline-glow: rgba(217, 119, 6, 0.25);
+  --tab-offline-gradient: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  --tab-offline-3d: 0 4px 0 #92400e, 0 8px 16px rgba(217, 119, 6, 0.25);
 }
 
 /* Статусные глобальные цвета */

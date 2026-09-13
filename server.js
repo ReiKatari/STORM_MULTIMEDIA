@@ -37,7 +37,9 @@ import {
   claimAchievement,
   exportUserData,
   importUserData,
-  getOrCreateDefaultUserSession
+  getOrCreateDefaultUserSession,
+  getUserFamilyProfiles,
+  saveUserFamilyProfiles
 } from './db.js';
 
 import {
@@ -522,6 +524,36 @@ app.get('/api/auth/stats', requireAuth, (req, res) => {
   try {
     const stats = getUserStats(req.user.id);
     res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Управление семейными профилями
+app.get('/api/profiles', (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    let profiles = null;
+    if (userId) {
+      profiles = getUserFamilyProfiles(userId);
+    }
+    res.json({ profiles });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/profiles/save', (req, res) => {
+  try {
+    const { profiles } = req.body;
+    if (!Array.isArray(profiles)) {
+      return res.status(400).json({ error: 'Неверный формат профилей' });
+    }
+    const userId = req.user ? req.user.id : null;
+    if (userId) {
+      saveUserFamilyProfiles(userId, profiles);
+    }
+    res.json({ success: true, profiles });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

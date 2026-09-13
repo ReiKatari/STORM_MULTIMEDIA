@@ -302,6 +302,22 @@ export function updateUserSettings(userId, settings) {
   db.prepare('UPDATE users SET settings_json = ? WHERE id = ?').run(settingsJson, userId);
 }
 
+export function getUserFamilyProfiles(userId) {
+  const user = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+  if (!user) return null;
+  const settings = JSON.parse(user.settings_json || '{}');
+  return settings.familyProfiles || null;
+}
+
+export function saveUserFamilyProfiles(userId, profiles) {
+  const user = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+  if (!user) return false;
+  const settings = JSON.parse(user.settings_json || '{}');
+  settings.familyProfiles = profiles;
+  updateUserSettings(userId, settings);
+  return true;
+}
+
 export function updateUserProfile(userId, { username, email, avatar }) {
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
   if (!user) throw new Error('Пользователь не найден');

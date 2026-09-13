@@ -1879,7 +1879,11 @@ export function updateFamilyProfileHeader() {
   const iconEl = document.getElementById('active-profile-avatar-icon');
   const labelEl = document.getElementById('active-profile-name-label');
   if (iconEl && profile) {
-    iconEl.textContent = profile.isKid ? '🦄' : (profile.id === 'family' ? '👨‍👩‍👧' : '👑');
+    if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/') || profile.avatar.startsWith('data:'))) {
+      iconEl.innerHTML = `<img src="${profile.avatar}" alt="" style="width: 16px; height: 16px; border-radius: 50%; object-fit: cover; vertical-align: middle;">`;
+    } else {
+      iconEl.textContent = profile.avatar || (profile.isKid ? '🦄' : '👑');
+    }
   }
   if (labelEl && profile) {
     labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Семья';

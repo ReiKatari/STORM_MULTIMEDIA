@@ -432,6 +432,66 @@ body {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
+/* Выделение цветом: «Продолжить просмотр» */
+.storm-tab-btn.storm-tab-continue {
+  border-color: var(--tab-continue-border);
+  color: var(--tab-continue-color);
+  background: var(--tab-continue-bg);
+}
+
+.storm-tab-btn.storm-tab-continue:hover {
+  border-color: var(--tab-continue-color);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 14px var(--shadow-color), 0 0 14px var(--tab-continue-glow);
+}
+
+.storm-tab-btn.storm-tab-continue.active {
+  background: var(--tab-continue-gradient) !important;
+  color: #030805 !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: var(--tab-continue-3d) !important;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+/* Выделение цветом: «Мои списки и закладки» */
+.storm-tab-btn.storm-tab-bookmarks {
+  border-color: var(--tab-bookmarks-border);
+  color: var(--tab-bookmarks-color);
+  background: var(--tab-bookmarks-bg);
+}
+
+.storm-tab-btn.storm-tab-bookmarks:hover {
+  border-color: var(--tab-bookmarks-color);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 14px var(--shadow-color), 0 0 14px var(--tab-bookmarks-glow);
+}
+
+.storm-tab-btn.storm-tab-bookmarks.active {
+  background: var(--tab-bookmarks-gradient) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: var(--tab-bookmarks-3d) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Выделение цветом: «Офлайн-просмотр» */
+.storm-tab-btn.storm-tab-offline {
+  border-color: var(--tab-offline-border);
+  color: var(--tab-offline-color);
+  background: var(--tab-offline-bg);
+}
+
+.storm-tab-btn.storm-tab-offline:hover {
+  border-color: var(--tab-offline-color);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 14px var(--shadow-color), 0 0 14px var(--tab-offline-glow);
+}
+
+.storm-tab-btn.storm-tab-offline.active {
+  background: var(--tab-offline-gradient) !important;
+  color: #0c0803 !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: var(--tab-offline-3d) !important;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
 /* -------------------------------------------------------------
    ПАНЕЛЬ УПРАВЛЕНИЯ: ФИЛЬТРЫ И РЕЖИМЫ ОТОБРАЖЕНИЯ (TOOLBAR)
    ------------------------------------------------------------- */
