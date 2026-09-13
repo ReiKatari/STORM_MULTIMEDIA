@@ -81,6 +81,10 @@ import {
   getAvailablePlayers
 } from './services/kinobox-service.js';
 
+import {
+  getAggregatedSchedule
+} from './services/schedule-service.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -384,11 +388,14 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Раздача статических файлов
+// Раздача статических файлов с интеллектуальным кэшированием
 app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '7d',
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     }
   }
 }));
@@ -864,18 +871,28 @@ function interleaveSources(arrays) {
 // 3. МЕДИА КАТАЛОГ И АГРЕГАЦИЯ 12+ ИСТОЧНИКОВ
 // ==========================================
 
+const memoryCatalogCache = new Map();
+const MEMORY_CATALOG_TTL = 10 * 60 * 1000; // 10 минут
+
 app.get('/api/media/catalog', async (req, res) => {
   try {
     const category = req.query.category || 'home';
     const page = parseInt(req.query.page, 10) || 1;
     const source = req.query.source || 'all';
 
+    const cacheKey = `${category}_${page}_${source}`;
+    const cachedEntry = memoryCatalogCache.get(cacheKey);
+
     let items = [];
     let totalItems = 0;
 
-    // 1. Прямой источник: The Movie Database (TMDB)
-    if (source === 'tmdb') {
-      const tmdbRes = await getTmdbCatalog(category, page);
+    if (cachedEntry && (Date.now() - cachedEntry.timestamp < MEMORY_CATALOG_TTL)) {
+      items = cachedEntry.items;
+      totalItems = cachedEntry.totalItems;
+    } else {
+      // 1. Прямой источник: The Movie Database (TMDB)
+      if (source === 'tmdb') {
+        const tmdbRes = await getTmdbCatalog(category, page);
       items = tmdbRes.items;
       totalItems = tmdbRes.total_items;
     }
@@ -969,6 +986,9 @@ app.get('/api/media/catalog', async (req, res) => {
         totalItems = items.length;
       }
     }
+
+    memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
+  }
 
     // Прикрепляем закладки и статусы только для авторизованных пользователей
     const activeUserId = req.user?.id || null;
@@ -1409,6 +1429,16 @@ app.get('/api/media/series-episodes', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Получение актуального расписания выхода серий и онгоингов (LostFilm, Red Head Sound, AniLibria)
+app.get('/api/media/schedule', async (req, res) => {
+  try {
+    const items = await getAggregatedSchedule();
+    res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message, items: [] });
   }
 });
 
