@@ -3,6 +3,14 @@ import { getCache, setCache } from '../db.js';
 
 const client = new Anixart();
 
+function withTimeout(promise, ms = 2500) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`AniXart request timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
 /**
  * Преобразование объекта релиза AniXart в единый формат STORM MULTIMEDIA
  */
@@ -77,42 +85,42 @@ export async function getAnixartDiscover(category = 'popular', page = 0) {
     switch (category) {
       case 'new':
         // Сортировка по дате обновления (Новинки)
-        res = await client.endpoints.filter.filter(pageNum, {
+        res = await withTimeout(client.endpoints.filter.filter(pageNum, {
           sort: FilterSortType.SortDateUpdate || 0
-        });
+        }));
         break;
 
       case 'anime-movies':
         // Только полнометражные аниме-фильмы
-        res = await client.endpoints.filter.filter(pageNum, {
+        res = await withTimeout(client.endpoints.filter.filter(pageNum, {
           category_id: ReleaseCategory.Movie || 2,
           sort: FilterSortType.SortPopular || 3
-        });
+        }));
         break;
 
       case 'anime-series':
         // Только аниме-сериалы
-        res = await client.endpoints.filter.filter(pageNum, {
+        res = await withTimeout(client.endpoints.filter.filter(pageNum, {
           category_id: ReleaseCategory.Series || 1,
           sort: FilterSortType.SortPopular || 3
-        });
+        }));
         break;
 
       case 'top-rated':
         // По оценке зрителей
-        res = await client.endpoints.filter.filter(pageNum, {
+        res = await withTimeout(client.endpoints.filter.filter(pageNum, {
           sort: FilterSortType.SortGrade || 1
-        });
+        }));
         break;
 
       case 'popular':
       default:
         // Популярные онгоинги и сериалы
-        res = await client.endpoints.discover.watching(pageNum);
+        res = await withTimeout(client.endpoints.discover.watching(pageNum));
         if (!res?.content || res.content.length === 0) {
-          res = await client.endpoints.filter.filter(pageNum, {
+          res = await withTimeout(client.endpoints.filter.filter(pageNum, {
             sort: FilterSortType.SortPopular || 3
-          });
+          }));
         }
         break;
     }
@@ -149,7 +157,7 @@ export async function searchAnixart(query, page = 0) {
   if (cached) return cached;
 
   try {
-    const res = await client.endpoints.search.releaseSearch(pageNum, { query: cleanQuery });
+    const res = await withTimeout(client.endpoints.search.releaseSearch(pageNum, { query: cleanQuery }));
     const rawList = res?.releases || res?.content || [];
     const items = rawList.map(formatAnimeRelease).filter(Boolean);
 
@@ -181,7 +189,7 @@ export async function getAnixartReleaseDetails(releaseId) {
   if (cached) return cached;
 
   try {
-    const releaseRes = await client.endpoints.release.release(numId);
+    const releaseRes = await withTimeout(client.endpoints.release.release(numId));
     const rel = releaseRes?.release || releaseRes;
     const baseFormatted = formatAnimeRelease(rel);
     if (!baseFormatted) return null;
@@ -189,7 +197,7 @@ export async function getAnixartReleaseDetails(releaseId) {
     // Получаем озвучки (AniLibria, AniDUB, SovetRomantica, Persona99, Студийная Банда и др.)
     let voiceovers = [];
     try {
-      const typesRes = await client.endpoints.episode.types(numId);
+      const typesRes = await withTimeout(client.endpoints.episode.types(numId));
       if (typesRes?.types && Array.isArray(typesRes.types)) {
         voiceovers = typesRes.types.map(t => ({
           id: t.id,

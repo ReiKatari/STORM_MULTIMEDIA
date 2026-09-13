@@ -20,6 +20,7 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
 
   try {
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(2500),
       headers: { 'User-Agent': USER_AGENT }
     });
     if (!res.ok) throw new Error(`Shikimori error ${res.status}`);
@@ -57,6 +58,7 @@ export async function searchShikimori(query) {
 
   try {
     const res = await fetch(`${SHIKIMORI_BASE}/api/animes?limit=20&search=${encodeURIComponent(query.trim())}`, {
+      signal: AbortSignal.timeout(2500),
       headers: { 'User-Agent': USER_AGENT }
     });
     if (!res.ok) return [];

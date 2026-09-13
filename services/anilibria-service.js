@@ -9,6 +9,18 @@ import { getCache, setCache } from '../db.js';
 const ANILIBRIA_BASE = 'https://anilibria.top/api/v1';
 const DOMAIN = 'https://anilibria.top';
 
+async function anilibriaFetch(url, options = {}) {
+  const timeoutMs = options.timeout || 2500;
+  return await fetch(url, {
+    ...options,
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      'User-Agent': 'STORM-Multimedia/1.0',
+      ...(options.headers || {})
+    }
+  });
+}
+
 function formatAniLibriaRelease(rel) {
   if (!rel) return null;
 
@@ -64,11 +76,7 @@ export async function getAniLibriaCatalog(category = 'popular', page = 1) {
       url = `${ANILIBRIA_BASE}/anime/catalog/releases?types=TV&page=${pageNum}&limit=30`;
     }
 
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'STORM-Multimedia/1.0'
-      }
-    });
+    const res = await anilibriaFetch(url);
 
     if (!res.ok) {
       throw new Error(`AniLibria API returned status: ${res.status}`);
@@ -103,7 +111,7 @@ export async function getAniLibriaDetails(releaseId) {
 
   try {
     const url = `${ANILIBRIA_BASE}/anime/releases/${releaseId}`;
-    const res = await fetch(url);
+    const res = await anilibriaFetch(url);
     if (!res.ok) throw new Error(`AniLibria details error: ${res.status}`);
 
     const rel = await res.json();
@@ -144,7 +152,7 @@ export async function searchAniLibria(query) {
 
   try {
     const url = `${ANILIBRIA_BASE}/anime/catalog/releases?f[search]=${encodeURIComponent(query)}&limit=25`;
-    const res = await fetch(url);
+    const res = await anilibriaFetch(url);
     if (!res.ok) throw new Error(`AniLibria search error: ${res.status}`);
 
     const data = await res.json();

@@ -1490,17 +1490,30 @@ function playStreamUrl(url) {
     const video = document.getElementById('storm-video-player');
     const videoBox = container.querySelector('.player-video-box');
 
-    // Настраиваем HLS
-    if (window.Hls && window.Hls.isSupported()) {
-      const hls = new window.Hls();
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+    // Настраиваем HLS с поддержкой ленивой загрузки
+    const setupHlsStream = () => {
+      if (window.Hls && window.Hls.isSupported()) {
+        const hls = new window.Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {});
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
         video.play().catch(() => {});
+      }
+    };
+
+    if (window.Hls) {
+      setupHlsStream();
+    } else {
+      ensureHlsLoaded().then(setupHlsStream).catch(() => {
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url;
+          video.play().catch(() => {});
+        }
       });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
-      video.play().catch(() => {});
     }
 
     // Подключаем Ambilight, Субтитры, Пропуск заставок и Watch Together
@@ -3390,6 +3403,24 @@ export async function ensureWebTorrentLoaded() {
     document.head.appendChild(script);
   });
   return webTorrentLoadPromise;
+}
+
+let hlsLoadPromise = null;
+export async function ensureHlsLoaded() {
+  if (window.Hls) return true;
+  if (hlsLoadPromise) return hlsLoadPromise;
+  hlsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => {
+      hlsLoadPromise = null;
+      reject(new Error('Не удалось загрузить HLS модуль'));
+    };
+    document.head.appendChild(script);
+  });
+  return hlsLoadPromise;
 }
 
 function renderWebTorrentPlayer() {
