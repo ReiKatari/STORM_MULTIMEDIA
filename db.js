@@ -230,37 +230,6 @@ export function getOrCreateDefaultUserSession() {
     `).run('ReiKatari', '45316432+ReiKatari@users.noreply.github.com', passwordHash, 'assets/favicon.svg', now);
     const userId = Number(res.lastInsertRowid);
     user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
-
-    const createList = db.prepare(`
-      INSERT INTO custom_lists (user_id, title, description, color, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    createList.run(userId, 'Избранные шедевры', 'Коллекция лучших фильмов и сериалов', '#00d2ff', now);
-    createList.run(userId, 'Аниме марафон', 'Список аниме для просмотра на выходных', '#ff007f', now);
-  }
-
-  // Заполняем реалистичные закладки и прогресс для демонстрации
-  const bCount = db.prepare('SELECT COUNT(*) as count FROM bookmarks WHERE user_id = ?').get(user.id);
-  if (!bCount || bCount.count === 0) {
-    const seedBookmarks = [
-      { media_id: '693134', source: 'tmdb', title: 'Дюна: Часть вторая', media_type: 'movie', status: 'watching', progress_percent: 78.5, episodes_watched: 0, total_episodes: 0 },
-      { media_id: '872585', source: 'tmdb', title: 'Оппенгеймер', media_type: 'movie', status: 'completed', progress_percent: 100.0, episodes_watched: 0, total_episodes: 0 },
-      { media_id: '569094', source: 'tmdb', title: 'Человек-паук: Паутина вселенных', media_type: 'cartoons', status: 'watching', progress_percent: 45.0, episodes_watched: 0, total_episodes: 0 },
-      { media_id: '157336', source: 'tmdb', title: 'Интерстеллар', media_type: 'movie', status: 'favorite', progress_percent: 92.0, episodes_watched: 0, total_episodes: 0 },
-      { media_id: '335984', source: 'tmdb', title: 'Бегущий по лезвию 2049', media_type: 'movie', status: 'watching', progress_percent: 64.0, episodes_watched: 0, total_episodes: 0 },
-      { media_id: '94605', source: 'tmdb', title: 'Аркейн', media_type: 'series', status: 'watching', progress_percent: 50.0, episodes_watched: 5, total_episodes: 9 },
-      { media_id: '1429', source: 'tmdb', title: 'Атака титанов', media_type: 'series', status: 'watching', progress_percent: 85.0, episodes_watched: 20, total_episodes: 25 },
-      { media_id: '105248', source: 'tmdb', title: 'Киберпанк: Бегущие по краю', media_type: 'series', status: 'completed', progress_percent: 100.0, episodes_watched: 10, total_episodes: 10 }
-    ];
-
-    const stmt = db.prepare(`
-      INSERT INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
-      VALUES (?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, 0, ?)
-    `);
-
-    seedBookmarks.forEach(b => {
-      stmt.run(user.id, b.media_id, b.source, b.title, b.media_type, b.status, b.episodes_watched, b.total_episodes, b.progress_percent, now);
-    });
   }
 
   const existingSession = db.prepare('SELECT token FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1').get(user.id, now);
@@ -477,13 +446,25 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
   return results;
 }
 
-export function getBookmark(userId, mediaId, source) {
-  const byId = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?').get(userId, mediaId, source);
+export function getBookmark(userId, mediaId, source, title = '', originalTitle = '') {
+  if (!userId) return null;
+  const byId = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?').get(userId, String(mediaId), source);
   if (byId) return byId;
 
   // Поиск по очищенному идентификатору
   const cleanId = String(mediaId).replace(/^[a-z]+_/, '');
-  return db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ?)').get(userId, String(mediaId), cleanId);
+  const byCleanId = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ?)').get(userId, String(mediaId), cleanId);
+  if (byCleanId) return byCleanId;
+
+  // Поиск по нормализованному названию фильма/сериала для сквозной синхронизации между источниками
+  const targetKey = normalizeMediaKey(title, originalTitle);
+  if (targetKey) {
+    const allUserBookmarks = db.prepare('SELECT * FROM bookmarks WHERE user_id = ?').all(userId);
+    const byKey = allUserBookmarks.find(b => normalizeMediaKey(b.title, b.original_title) === targetKey);
+    if (byKey) return byKey;
+  }
+
+  return null;
 }
 
 export function setBookmark(userId, data) {

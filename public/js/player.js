@@ -16,7 +16,7 @@ import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.
 import { toggleWhisperAiSubtitles } from './whisper-subtitles.js';
 import { saveMediaForOffline } from './offline-storage.js';
 import { renderTorrServerSettings } from './torrserver-client.js';
-import { applyProVideoSettings, initProAudioEngine, renderProVideoPanel, renderProAudioPanel } from './pro-media-engine.js';
+import { applyProVideoSettings, initProAudioEngine, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js';
 
 let currentMedia = null;
 let currentPlayers = [];
@@ -155,6 +155,18 @@ function initFullscreenControls() {
   document.addEventListener('webkitfullscreenchange', updateFsIcon);
   document.addEventListener('mozfullscreenchange', updateFsIcon);
 
+  // Обработка двойного клика по области видео для переключения Fullscreen
+  const wrapper = document.getElementById('cinema-player-wrapper');
+  if (wrapper && !wrapper.dataset.hasDblClickListener) {
+    wrapper.dataset.hasDblClickListener = 'true';
+    wrapper.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button, input, select, a, .storm-skip-btn, .storm-btn, .studio-tab-btn, .player-studio-dock, .player-studio-drawer, .xray-header, .xray-tab-content, .player-series-quick-bar')) {
+        return;
+      }
+      toggleCinemaFullscreen();
+    });
+  }
+
   // Обработка запросов полноэкранного режима от встроенных плееров (PlayerJS, Kodik, Allplay и др.)
   window.addEventListener('message', (event) => {
     if (!event || !event.data) return;
@@ -163,10 +175,10 @@ function initFullscreenControls() {
       if (typeof data === 'string') {
         try { data = JSON.parse(data); } catch {}
       }
-      if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen') {
+      if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
         toggleCinemaFullscreen();
       } else if (typeof data === 'object' && data) {
-        if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.action === 'fullscreen') {
+        if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.event === 'dblclick' || data.action === 'fullscreen') {
           toggleCinemaFullscreen();
         }
       }
@@ -1209,6 +1221,7 @@ function playStreamUrl(url) {
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <button type="button" class="player-overlay-fs-btn" id="html5-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
 
         <video id="storm-video-player" controls autoplay style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
 
@@ -1221,6 +1234,14 @@ function playStreamUrl(url) {
         </button>
       </div>
     `;
+
+    const html5FsBtn = container.querySelector('#html5-overlay-fs-btn');
+    if (html5FsBtn) {
+      html5FsBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleCinemaFullscreen();
+      };
+    }
 
     const video = document.getElementById('storm-video-player');
     const videoBox = container.querySelector('.player-video-box');
@@ -1257,9 +1278,18 @@ function playStreamUrl(url) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
+      <button type="button" class="player-overlay-fs-btn" id="iframe-overlay-fs-btn" title="Развернуть на весь экран (F)">⛶</button>
       <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
+
+  const iframeFsBtn = container.querySelector('#iframe-overlay-fs-btn');
+  if (iframeFsBtn) {
+    iframeFsBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleCinemaFullscreen();
+    };
+  }
 
   applyProVideoSettings();
 
@@ -1309,6 +1339,14 @@ function playStreamUrl(url) {
 }
 
 function setupVideoFeatures(video, wrapper) {
+  if (video && !video.dataset.hasDblClickListener) {
+    video.dataset.hasDblClickListener = 'true';
+    video.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      toggleCinemaFullscreen();
+    });
+  }
+
   // 1. Ambilight
   initAmbilight(video);
 
@@ -1372,9 +1410,8 @@ function setupVideoFeatures(video, wrapper) {
 // НОЧНОЙ РЕЖИМ ЗВУКА (NIGHT MODE AUDIO)
 // ==========================================
 export function toggleNightModeAudio(video = document.getElementById('storm-video-player')) {
-  nightAudioModeEnabled = !nightAudioModeEnabled;
-  localStorage.setItem('storm_night_audio', nightAudioModeEnabled ? 'true' : 'false');
-  applyNightModeAudio(video);
+  nightAudioModeEnabled = !getProAudioNightMode();
+  setProAudioNightMode(nightAudioModeEnabled);
   showToast(`🌙 Ночной режим звука: ${nightAudioModeEnabled ? 'Включен (диалоги четче, взрывы мягче)' : 'Выключен (стандартный звук)'}`, 'info');
 
   const btn = document.getElementById('toggle-night-audio-btn');
@@ -1382,40 +1419,7 @@ export function toggleNightModeAudio(video = document.getElementById('storm-vide
 }
 
 export function applyNightModeAudio(video) {
-  if (!video) return;
-  try {
-    if (!audioCtx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      audioCtx = new AudioContext();
-    }
-    if (!audioSourceNode && audioCtx) {
-      audioSourceNode = audioCtx.createMediaElementSource(video);
-    }
-    if (!compressorNode && audioCtx) {
-      compressorNode = audioCtx.createDynamicsCompressor();
-      compressorNode.threshold.setValueAtTime(-24, audioCtx.currentTime);
-      compressorNode.knee.setValueAtTime(30, audioCtx.currentTime);
-      compressorNode.ratio.setValueAtTime(12, audioCtx.currentTime);
-      compressorNode.attack.setValueAtTime(0.003, audioCtx.currentTime);
-      compressorNode.release.setValueAtTime(0.25, audioCtx.currentTime);
-    }
-
-    if (audioSourceNode && compressorNode) {
-      audioSourceNode.disconnect();
-      if (nightAudioModeEnabled) {
-        audioSourceNode.connect(compressorNode);
-        compressorNode.connect(audioCtx.destination);
-      } else {
-        audioSourceNode.connect(audioCtx.destination);
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-    }
-  } catch (err) {
-    // В случае CORS или если источник уже подключен
-  }
+  setProAudioNightMode(nightAudioModeEnabled);
 }
 
 // ==========================================
@@ -1435,6 +1439,122 @@ function setupXRayMode(video, wrapper) {
   });
 }
 
+let xrayAudioElement = null;
+let currentPlayingTrackUrl = null;
+
+function renderXRaySoundtrackTab(musicTab, soundtrack, panel) {
+  if (!musicTab || !soundtrack) return;
+  const tracks = soundtrack.tracks || [];
+
+  musicTab.innerHTML = `
+    <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; align-items: center;">
+      <span>Альбом: <b style="color: var(--text-primary);">${soundtrack.album || soundtrack.title}</b></span>
+      <span>Композитор / Исполнитель: <b style="color: var(--accent);">${soundtrack.artist}</b></span>
+    </div>
+    <div class="xray-tracks-list">
+      ${tracks.length > 0 ? tracks.map(t => {
+        const isPlaying = currentPlayingTrackUrl === t.preview_url && t.preview_url;
+        return `
+          <div class="xray-track-item ${isPlaying ? 'is-playing' : ''}" data-track-url="${t.preview_url || ''}">
+            <div class="xray-track-info" style="display: flex; align-items: center; gap: 10px;">
+              ${t.preview_url ? `
+                <button type="button" class="xray-track-play-btn" data-preview-url="${t.preview_url}" title="${isPlaying ? 'Пауза' : 'Прослушать отрывок'}">
+                  ${isPlaying ? '⏸' : '▶'}
+                </button>
+              ` : `<span class="xray-track-num">${t.number || '🎵'}</span>`}
+              ${t.artwork ? `<img src="${t.artwork}" alt="${t.title}" class="xray-track-thumb" onerror="this.style.display='none'">` : ''}
+              <div>
+                <div class="xray-track-title" style="font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                  <span>${t.title}</span>
+                  ${isPlaying ? '<div class="xray-track-eq-anim"><span></span><span></span><span></span></div>' : ''}
+                </div>
+                <div class="xray-track-scene" style="font-size: 11px; color: var(--text-muted);">${t.artist || t.scene || ''}</div>
+              </div>
+            </div>
+            <span class="xray-track-dur" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">${t.duration || '03:30'}</span>
+          </div>
+        `;
+      }).join('') : '<div style="color: var(--text-muted); font-size: 12px; padding: 12px; text-align: center;">Саундтреки для данного релиза уточняются...</div>'}
+    </div>
+  `;
+
+  // Обработка клика по воспроизведению отрывка
+  musicTab.querySelectorAll('.xray-track-play-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const url = btn.dataset.previewUrl;
+      if (!url) return;
+
+      if (currentPlayingTrackUrl === url && xrayAudioElement && !xrayAudioElement.paused) {
+        xrayAudioElement.pause();
+        currentPlayingTrackUrl = null;
+        renderXRaySoundtrackTab(musicTab, soundtrack, panel);
+        return;
+      }
+
+      if (xrayAudioElement) {
+        xrayAudioElement.pause();
+        xrayAudioElement = null;
+      }
+
+      xrayAudioElement = new Audio(url);
+      xrayAudioElement.volume = 0.85;
+      xrayAudioElement.play().then(() => {
+        currentPlayingTrackUrl = url;
+        renderXRaySoundtrackTab(musicTab, soundtrack, panel);
+      }).catch(() => {
+        showToast('Не удалось запустить онлайн-воспроизведение отрывка', 'warning');
+      });
+
+      xrayAudioElement.onended = () => {
+        currentPlayingTrackUrl = null;
+        renderXRaySoundtrackTab(musicTab, soundtrack, panel);
+      };
+    };
+  });
+}
+
+function renderXRayCastTab(castTab, cast) {
+  if (!castTab) return;
+  castTab.innerHTML = `
+    <div class="xray-cast-row">
+      ${cast.length > 0 ? cast.map(c => `
+        <div class="xray-actor-card" data-person-id="${c.id || ''}" data-person-name="${c.name || ''}" title="Нажмите, чтобы открыть фильмографию">
+          <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
+          <div style="min-width: 0;">
+            <div class="xray-actor-name">${c.name}</div>
+            <div class="xray-actor-role">${c.character || 'В главных ролях'}</div>
+          </div>
+        </div>
+      `).join('') : '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">Информация об актерском составе загружается...</div>'}
+    </div>
+  `;
+
+  castTab.querySelectorAll('[data-person-id]').forEach(card => {
+    card.onclick = () => {
+      const pid = card.dataset.personId;
+      const pname = card.dataset.personName;
+      if (pid && typeof openPersonModal === 'function') {
+        openPersonModal(pid, pname);
+      }
+    };
+  });
+}
+
+function renderXRayTriviaTab(triviaTab, triviaList) {
+  if (!triviaTab) return;
+  triviaTab.innerHTML = `
+    <div class="xray-trivia-list">
+      ${triviaList.map(item => `
+        <div class="xray-trivia-item">
+          <span class="xray-trivia-label">${item.label}:</span>
+          <span class="xray-trivia-content">${item.content}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function showXRayPanel(wrapper) {
   if (!currentMedia) return;
   let panel = wrapper.querySelector('#player-xray-panel');
@@ -1452,12 +1572,11 @@ function showXRayPanel(wrapper) {
   const writers = currentMedia.writers || [];
   const cinematographers = currentMedia.cinematographers || [];
 
-  // Саундтрек конкретного релиза
   const primaryComposer = composers[0]?.name || (directors[0]?.name ? `Оркестр под управлением ${directors[0].name}` : 'Оригинальный композитор');
   const soundtrack = currentMedia.soundtrack || {
-    title: `${cleanTitle} — Original Soundtrack`,
+    title: `${cleanTitle} (Original Soundtrack)`,
     artist: primaryComposer,
-    album: `${cleanTitle} (OST)`,
+    album: `${cleanTitle} OST`,
     tracks: [
       { number: 1, title: `${cleanTitle} (Main Theme)`, artist: primaryComposer, duration: '03:42', scene: 'Заглавная тема фильма' },
       { number: 2, title: 'Cinematic Progression', artist: primaryComposer, duration: '02:35', scene: 'Развитие сюжета' },
@@ -1466,15 +1585,13 @@ function showXRayPanel(wrapper) {
     ]
   };
 
-  // Факты о картине (Trivia)
   const triviaList = currentMedia.trivia && currentMedia.trivia.length > 0 ? currentMedia.trivia : [
     { label: 'Мастеринг', content: 'Релиз представлен в оригинальном кинематографическом качестве 4K UHD с объемным многоканальным звуком.' },
     { label: 'Премьера', content: `Официальный мировой релиз ${currentMedia.release_date || currentMedia.year || ''} года.` }
   ];
 
-  // Создатели (Crew)
   const crewList = [
-    ...directors.map(d => ({ ...d, role: 'Режиссер' })),
+    ...directors.map(d => ({ ...d, role: d.role || 'Режиссер' })),
     ...composers.map(c => ({ ...c, role: 'Композитор' })),
     ...writers.map(w => ({ ...w, role: 'Сценарист' })),
     ...cinematographers.map(c => ({ ...c, role: 'Оператор' }))
@@ -1489,7 +1606,7 @@ function showXRayPanel(wrapper) {
         </div>
         <div class="xray-scene-music" title="Официальный саундтрек картины">
           <span>🎵</span>
-          <span><b>${soundtrack.tracks?.[0]?.title || soundtrack.title}</b> — ${soundtrack.artist}</span>
+          <span id="xray-soundtrack-title"><b>${soundtrack.tracks?.[0]?.title || soundtrack.title}</b> — ${soundtrack.artist}</span>
         </div>
       </div>
 
@@ -1505,53 +1622,13 @@ function showXRayPanel(wrapper) {
     </div>
 
     <!-- Вкладка 1: Актеры в кадре -->
-    <div class="xray-tab-content active" id="xray-tab-cast">
-      <div class="xray-cast-row">
-        ${cast.length > 0 ? cast.map(c => `
-          <div class="xray-actor-card" data-person-id="${c.id || ''}" data-person-name="${c.name || ''}" title="Нажмите, чтобы открыть фильмографию">
-            <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
-            <div style="min-width: 0;">
-              <div class="xray-actor-name">${c.name}</div>
-              <div class="xray-actor-role">${c.character || 'В главных ролях'}</div>
-            </div>
-          </div>
-        `).join('') : '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">Информация об актерском составе загружается...</div>'}
-      </div>
-    </div>
+    <div class="xray-tab-content active" id="xray-tab-cast"></div>
 
     <!-- Вкладка 2: Саундтрек и музыка -->
-    <div class="xray-tab-content" id="xray-tab-music">
-      <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-        <span>Альбом: <b style="color: var(--text-primary);">${soundtrack.album || soundtrack.title}</b></span>
-        <span>Композитор: <b style="color: var(--accent);">${soundtrack.artist}</b></span>
-      </div>
-      <div class="xray-tracks-list">
-        ${(soundtrack.tracks || []).map(t => `
-          <div class="xray-track-item">
-            <div class="xray-track-info">
-              <span class="xray-track-num">${t.number || '🎵'}</span>
-              <div>
-                <div class="xray-track-title">${t.title}</div>
-                <div class="xray-track-scene">${t.scene || t.artist || ''}</div>
-              </div>
-            </div>
-            <span class="xray-track-dur">${t.duration || '03:30'}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
+    <div class="xray-tab-content" id="xray-tab-music"></div>
 
     <!-- Вкладка 3: Интересные факты (Trivia) -->
-    <div class="xray-tab-content" id="xray-tab-trivia">
-      <div class="xray-trivia-list">
-        ${triviaList.map(item => `
-          <div class="xray-trivia-item">
-            <span class="xray-trivia-label">${item.label}:</span>
-            <span class="xray-trivia-content">${item.content}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
+    <div class="xray-tab-content" id="xray-tab-trivia"></div>
 
     <!-- Вкладка 4: Создатели картины -->
     <div class="xray-tab-content" id="xray-tab-crew">
@@ -1569,6 +1646,62 @@ function showXRayPanel(wrapper) {
     </div>
   `;
 
+  const castTab = panel.querySelector('#xray-tab-cast');
+  const musicTab = panel.querySelector('#xray-tab-music');
+  const triviaTab = panel.querySelector('#xray-tab-trivia');
+
+  renderXRayCastTab(castTab, cast);
+  renderXRaySoundtrackTab(musicTab, soundtrack, panel);
+  renderXRayTriviaTab(triviaTab, triviaList);
+
+  // Фоновая загрузка реальных саундтреков с iTunes
+  if (!currentMedia.soundtrackLoaded) {
+    fetch(`/api/media/soundtrack?title=${encodeURIComponent(cleanTitle)}&original_title=${encodeURIComponent(currentMedia.original_title || '')}&year=${encodeURIComponent(currentMedia.year || '')}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.tracks && data.tracks.length > 0) {
+          currentMedia.soundtrack = data;
+          currentMedia.soundtrackLoaded = true;
+          const currentMusicTab = panel.querySelector('#xray-tab-music');
+          if (currentMusicTab) renderXRaySoundtrackTab(currentMusicTab, data, panel);
+          const stTitle = panel.querySelector('#xray-soundtrack-title');
+          if (stTitle) stTitle.innerHTML = `<b>${data.tracks[0]?.title || data.title}</b> — ${data.artist}`;
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Фоновое обогащение актерского состава, если актеров нет
+  if (cast.length === 0 && currentMedia.title) {
+    fetch(`/api/media/search?q=${encodeURIComponent(cleanTitle)}&source=tmdb`)
+      .then(r => r.json())
+      .then(async data => {
+        if (data?.items?.length > 0) {
+          const first = data.items[0];
+          const res = await fetch(`/api/media/item?id=${first.id}&source=tmdb&media_type=${first.media_type || ''}&title=${encodeURIComponent(cleanTitle)}`);
+          if (res.ok) {
+            const full = await res.json();
+            if (full.cast?.length) {
+              currentMedia.cast = full.cast;
+              currentMedia.directors = full.directors || currentMedia.directors;
+              currentMedia.composers = full.composers || currentMedia.composers;
+              currentMedia.writers = full.writers || currentMedia.writers;
+              currentMedia.cinematographers = full.cinematographers || currentMedia.cinematographers;
+              if (full.trivia?.length) currentMedia.trivia = full.trivia;
+
+              const cTab = panel.querySelector('#xray-tab-cast');
+              if (cTab) renderXRayCastTab(cTab, full.cast);
+              const tTab = panel.querySelector('#xray-tab-trivia');
+              if (tTab && full.trivia?.length) renderXRayTriviaTab(tTab, full.trivia);
+              const castBtn = panel.querySelector('[data-xray-tab="cast"]');
+              if (castBtn) castBtn.textContent = `🎭 В кадре (${full.cast.length})`;
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
   // Переключение вкладок X-Ray
   panel.querySelectorAll('.xray-tab-btn').forEach(btn => {
     btn.onclick = () => {
@@ -1580,8 +1713,8 @@ function showXRayPanel(wrapper) {
     };
   });
 
-  // Клик по актеру или создателю для перехода в фильмографию
-  panel.querySelectorAll('[data-person-id]').forEach(card => {
+  // Клик по персоне съемочной группы для перехода в фильмографию
+  panel.querySelectorAll('#xray-tab-crew [data-person-id]').forEach(card => {
     card.onclick = () => {
       const pid = card.dataset.personId;
       const pname = card.dataset.personName;
@@ -1598,9 +1731,14 @@ function showXRayPanel(wrapper) {
 }
 
 function hideXRayPanel(wrapper) {
-  const panel = wrapper.querySelector('#player-xray-panel');
+  const panel = wrapper?.querySelector('#player-xray-panel');
   if (panel) {
     panel.style.display = 'none';
+  }
+  if (xrayAudioElement) {
+    xrayAudioElement.pause();
+    xrayAudioElement = null;
+    currentPlayingTrackUrl = null;
   }
   xrayVisible = false;
 }
@@ -1895,9 +2033,8 @@ function saveAmbilightSettings() {
 function applyAmbilightInstantGlow() {
   saveAmbilightSettings();
   if (!ambilightEnabled) {
-    ambilightEnabled = true;
-    const btn = document.getElementById('toggle-ambilight-btn');
-    if (btn) btn.classList.add('active');
+    // Если Ambilight отключен, сохраняем параметры, но не включаем подсветку самопроизвольно
+    return;
   }
 
   const aura = document.getElementById('player-ambilight-aura');
@@ -2084,9 +2221,9 @@ function setupSkipLogic(video) {
       hasAutoSkippedEd = false;
     }
 
-    // Пропуск заставки
+    // Пропуск заставки (только для проверенных интервалов, не обрезая диалоги)
     if (skipIntervals.op && time >= skipIntervals.op.start && time <= skipIntervals.op.end) {
-      if (autoSkipEnabled && !hasAutoSkippedOp) {
+      if (autoSkipEnabled && skipIntervals.verified && !hasAutoSkippedOp) {
         hasAutoSkippedOp = true;
         video.currentTime = skipIntervals.op.end;
         showToast('⏩ Заставка автоматически пропущена', 'info');
@@ -2097,15 +2234,15 @@ function setupSkipLogic(video) {
       skipIntroBtn.style.display = 'none';
     }
 
-    // Пропуск титров
+    // Пропуск титров (переход к сцене после титров без принудительного обрыва серии)
     if (skipIntervals.ed && time >= skipIntervals.ed.start && time <= skipIntervals.ed.end) {
-      if (autoSkipEnabled && !hasAutoSkippedEd) {
+      if (autoSkipEnabled && skipIntervals.verified && !hasAutoSkippedEd) {
         hasAutoSkippedEd = true;
-        if (video.duration && skipIntervals.ed.end < video.duration - 15) {
+        if (video.duration && skipIntervals.ed.end < video.duration - 12) {
           video.currentTime = skipIntervals.ed.end;
           showToast('⏩ Титры пропущены (сцена после титров)', 'info');
         } else {
-          playNextEpisode();
+          showToast('⏩ Финальные титры', 'info');
         }
       } else if (skipOutroBtn && !autoSkipEnabled) {
         skipOutroBtn.style.display = 'block';
@@ -2117,7 +2254,7 @@ function setupSkipLogic(video) {
 }
 
 function playNextEpisode() {
-  const grid = document.getElementById('episodes-grid');
+  const grid = document.getElementById('episodes-grid') || document.getElementById('series-episodes-grid');
   if (!grid) return;
   const activeBtn = grid.querySelector('.episode-btn.active');
   if (activeBtn && activeBtn.nextElementSibling) {
@@ -2130,52 +2267,77 @@ function playNextEpisode() {
 // ПРОДВИНУТЫЙ РЕЖИМ «КАРТИНКА В КАРТИНКЕ» (PIP)
 // ==========================================
 export async function toggleAdvancedPiP() {
+  const modal = document.getElementById('cinema-modal');
   const video = document.getElementById('storm-video-player');
-  if (!video) {
-    showToast('PiP доступен только для прямого видеопотока', 'warning');
+  const iframe = document.getElementById('cinema-player-wrapper')?.querySelector('iframe');
+
+  // Если окно уже в режиме плавающего mini-PiP — восстанавливаем кинотеатр
+  if (modal && modal.classList.contains('is-mini-pip')) {
+    modal.classList.remove('is-mini-pip');
+    showToast('Полноразмерный кинотеатр восстановлен', 'info');
     return;
   }
 
-  // Современный Document Picture-in-Picture API
+  // 1. Попытка Document Picture-in-Picture API для видео или любого iframe
   if ('documentPictureInPicture' in window) {
     try {
-      const pipWindow = await window.documentPictureInPicture.requestWindow({
-        width: 520,
-        height: 320
-      });
+      const pipTarget = video || iframe;
+      if (pipTarget) {
+        const parent = pipTarget.parentElement;
+        const nextSibling = pipTarget.nextSibling;
+        const pipWindow = await window.documentPictureInPicture.requestWindow({
+          width: 540,
+          height: 320
+        });
 
-      // Копируем стили
-      document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-        pipWindow.document.head.appendChild(link.cloneNode(true));
-      });
+        document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+          pipWindow.document.head.appendChild(link.cloneNode(true));
+        });
 
-      pipWindow.document.body.style.margin = '0';
-      pipWindow.document.body.style.background = '#000';
-      pipWindow.document.body.style.display = 'flex';
-      pipWindow.document.body.style.flexDirection = 'column';
-      pipWindow.document.body.style.height = '100vh';
+        pipWindow.document.body.style.margin = '0';
+        pipWindow.document.body.style.background = '#000';
+        pipWindow.document.body.style.display = 'flex';
+        pipWindow.document.body.style.flexDirection = 'column';
+        pipWindow.document.body.style.height = '100vh';
+        pipWindow.document.body.appendChild(pipTarget);
 
-      pipWindow.document.body.appendChild(video);
+        trackClientAction('use_pip');
+        showToast('Режим «Картинка в картинке» активирован', 'info');
 
-      trackClientAction('use_pip');
-      showToast('Режим Картинка в картинке активирован', 'info');
-
-      pipWindow.addEventListener('pagehide', () => {
-        const wrapper = document.querySelector('.player-video-box');
-        if (wrapper) wrapper.prepend(video);
-      });
-      return;
+        pipWindow.addEventListener('pagehide', () => {
+          if (parent) {
+            if (nextSibling) parent.insertBefore(pipTarget, nextSibling);
+            else parent.appendChild(pipTarget);
+          }
+        });
+        return;
+      }
     } catch (err) {
-      console.warn('Document PiP не запустился, переходим к стандартному PiP:', err);
+      console.warn('Document PiP не запустился, переходим к альтернативному режиму:', err);
     }
   }
 
-  // Стандартный HTML5 PiP
-  if (document.pictureInPictureElement) {
-    await document.exitPictureInPicture();
-  } else if (video.requestPictureInPicture) {
-    await video.requestPictureInPicture();
+  // 2. Стандартный HTML5 Video PiP
+  if (video && video.requestPictureInPicture) {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+        trackClientAction('use_pip');
+        showToast('Режим «Картинка в картинке» активирован', 'info');
+      }
+      return;
+    } catch (e) {
+      console.warn('HTML5 Video PiP недоступен:', e);
+    }
+  }
+
+  // 3. Универсальный плавающий режим Mini-Player (для всех плееров, включая iframes)
+  if (modal) {
+    modal.classList.add('is-mini-pip');
     trackClientAction('use_pip');
+    showToast('Плавающий мини-плеер активирован (кликните 🖼️ PiP для возврата)', 'info');
   }
 }
 
@@ -2668,11 +2830,11 @@ function renderPlayerUtilityButtons() {
       openDrawerTab('services', '⚡', 'Интеллектуальные сервисы и утилиты воспроизведения', (body) => {
         body.innerHTML = `
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-whisper-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
+            <button type="button" class="storm-btn ${document.getElementById('toggle-whisper-btn')?.classList.contains('active') ? 'storm-btn-primary active' : 'storm-btn-secondary'} storm-btn-sm" id="drawer-whisper-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
               <span style="font-size: 16px;">🎙️</span>
               <div style="text-align: left;">
                 <div style="font-weight: 800; font-size: 12px;">Whisper AI</div>
-                <div style="font-size: 10px; color: var(--text-muted);">Распознавание речи на лету</div>
+                <div class="storm-btn-subtext">Распознавание речи на лету</div>
               </div>
             </button>
 
@@ -2680,7 +2842,7 @@ function renderPlayerUtilityButtons() {
               <span style="font-size: 16px;">🔍</span>
               <div style="text-align: left;">
                 <div style="font-weight: 800; font-size: 12px;">X-Ray Режим</div>
-                <div style="font-size: 10px; color: var(--text-muted);">Актеры, саундтрек и факты</div>
+                <div class="storm-btn-subtext">Актеры, саундтрек и факты</div>
               </div>
             </button>
 
@@ -2688,7 +2850,7 @@ function renderPlayerUtilityButtons() {
               <span style="font-size: 16px;">💾</span>
               <div style="text-align: left;">
                 <div style="font-weight: 800; font-size: 12px;">Офлайн релиз</div>
-                <div style="font-size: 10px; color: var(--text-muted);">Сохранить в память PWA</div>
+                <div class="storm-btn-subtext">Сохранить в память PWA</div>
               </div>
             </button>
 
@@ -2696,7 +2858,7 @@ function renderPlayerUtilityButtons() {
               <span style="font-size: 16px;">🧲</span>
               <div style="text-align: left;">
                 <div style="font-weight: 800; font-size: 12px;">Торренты и P2P</div>
-                <div style="font-size: 10px; color: var(--text-muted);">TorrServer и AceStream</div>
+                <div class="storm-btn-subtext">TorrServer и AceStream</div>
               </div>
             </button>
           </div>
@@ -2708,8 +2870,9 @@ function renderPlayerUtilityButtons() {
         if (whisperBtn) {
           whisperBtn.onclick = () => {
             toggleWhisperAiSubtitles();
-            whisperBtn.classList.toggle('storm-btn-primary');
-            whisperBtn.classList.toggle('storm-btn-secondary');
+            const isActive = whisperBtn.classList.toggle('storm-btn-primary');
+            whisperBtn.classList.toggle('active', isActive);
+            whisperBtn.classList.toggle('storm-btn-secondary', !isActive);
           };
         }
 
