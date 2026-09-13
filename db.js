@@ -377,6 +377,16 @@ export function getUserStats(userId) {
 }
 
 // Закладки и статусы
+export function normalizeMediaKey(title, originalTitle = '') {
+  if (!title && !originalTitle) return '';
+  const raw = `${title || ''} ${originalTitle || ''}`.toLowerCase();
+  return raw
+    .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
+    .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
+    .replace(/[^a-zа-я0-9]/gi, '')
+    .trim();
+}
+
 export function getUserBookmarks(userId, status = null, mediaType = null) {
   let query = 'SELECT * FROM bookmarks WHERE user_id = ?';
   const params = [userId];
@@ -391,11 +401,38 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
   }
 
   query += ' ORDER BY updated_at DESC';
-  return db.prepare(query).all(...params);
+  const allRows = db.prepare(query).all(...params);
+
+  // Каноническая дедупликация на уровне базы данных
+  const canonicalMap = new Map();
+  for (const row of allRows) {
+    const key = normalizeMediaKey(row.title, row.original_title) || `${row.source}_${row.media_id}`;
+    if (!canonicalMap.has(key)) {
+      canonicalMap.set(key, row);
+    } else {
+      const existing = canonicalMap.get(key);
+      if ((row.source === 'tmdb' && existing.source !== 'tmdb') ||
+          (row.progress_percent > (existing.progress_percent || 0)) ||
+          (row.updated_at > existing.updated_at)) {
+        canonicalMap.set(key, {
+          ...existing,
+          ...row,
+          progress_percent: Math.max(row.progress_percent || 0, existing.progress_percent || 0)
+        });
+      }
+    }
+  }
+
+  return Array.from(canonicalMap.values());
 }
 
 export function getBookmark(userId, mediaId, source) {
-  return db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?').get(userId, mediaId, source);
+  const byId = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?').get(userId, mediaId, source);
+  if (byId) return byId;
+
+  // Поиск по очищенному идентификатору
+  const cleanId = String(mediaId).replace(/^[a-z]+_/, '');
+  return db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ?)').get(userId, String(mediaId), cleanId);
 }
 
 export function setBookmark(userId, data) {
@@ -413,27 +450,72 @@ export function setBookmark(userId, data) {
     last_time_seconds = 0
   } = data;
 
+  if (!status || status === 'none' || status === 'null') {
+    removeBookmark(userId, media_id, source, title);
+    return null;
+  }
+
   const now = Date.now();
-  const upsert = db.prepare(`
+  const targetKey = normalizeMediaKey(title, original_title);
+
+  // Ищем существующую запись того же фильма у пользователя для предотвращения дублей между источниками
+  const existingRows = db.prepare('SELECT * FROM bookmarks WHERE user_id = ?').all(userId);
+  const duplicateRows = existingRows.filter(r => {
+    return (String(r.media_id) === String(media_id) && r.source === source) ||
+           (targetKey && normalizeMediaKey(r.title, r.original_title) === targetKey);
+  });
+
+  if (duplicateRows.length > 0) {
+    const primary = duplicateRows[0];
+    db.prepare(`
+      UPDATE bookmarks SET
+        media_id = ?,
+        source = ?,
+        title = ?,
+        original_title = ?,
+        poster_url = COALESCE(NULLIF(?, ''), poster_url),
+        media_type = ?,
+        status = ?,
+        episodes_watched = ?,
+        total_episodes = ?,
+        progress_percent = ?,
+        last_time_seconds = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      String(media_id),
+      source,
+      title,
+      original_title,
+      poster_url,
+      media_type,
+      status,
+      episodes_watched,
+      total_episodes,
+      progress_percent,
+      last_time_seconds,
+      now,
+      primary.id
+    );
+
+    // Удаляем любые остальные дублирующие строки этого релиза
+    if (duplicateRows.length > 1) {
+      const extraIds = duplicateRows.slice(1).map(r => r.id);
+      db.prepare(`DELETE FROM bookmarks WHERE id IN (${extraIds.join(',')})`).run();
+    }
+
+    return db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(primary.id);
+  }
+
+  // Новая закладка
+  const insert = db.prepare(`
     INSERT INTO bookmarks (
       user_id, media_id, source, title, original_title, poster_url, media_type,
       status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, media_id, source) DO UPDATE SET
-      status = excluded.status,
-      episodes_watched = excluded.episodes_watched,
-      total_episodes = excluded.total_episodes,
-      progress_percent = excluded.progress_percent,
-      last_time_seconds = excluded.last_time_seconds,
-      updated_at = excluded.updated_at
   `);
 
-  if (!status || status === 'none' || status === 'null') {
-    removeBookmark(userId, media_id, source);
-    return null;
-  }
-
-  upsert.run(
+  insert.run(
     userId,
     String(media_id),
     source,
@@ -452,16 +534,29 @@ export function setBookmark(userId, data) {
   return getBookmark(userId, String(media_id), source);
 }
 
-export function removeBookmark(userId, mediaId, source) {
-  const strId = String(mediaId);
+export function removeBookmark(userId, mediaId, source, title = '') {
+  const strId = String(mediaId || '');
   const cleanId = strId.replace(/^[a-z]+_/, '');
   const prefixId = `${source}_${cleanId}`;
+  const targetKey = normalizeMediaKey(title);
+
   db.prepare(`
     DELETE FROM bookmarks
     WHERE user_id = ?
       AND (media_id = ? OR media_id = ? OR media_id = ?)
-      AND (source = ? OR ? IS NULL)
-  `).run(userId, strId, cleanId, prefixId, source, source);
+  `).run(userId, strId, cleanId, prefixId);
+
+  // Дополнительно удаляем по названию для очистки записей альтернативных плееров
+  if (targetKey) {
+    const userBookmarks = db.prepare('SELECT id, title, original_title FROM bookmarks WHERE user_id = ?').all(userId);
+    const matchedIds = userBookmarks
+      .filter(b => normalizeMediaKey(b.title, b.original_title) === targetKey)
+      .map(b => b.id);
+
+    if (matchedIds.length > 0) {
+      db.prepare(`DELETE FROM bookmarks WHERE id IN (${matchedIds.join(',')})`).run();
+    }
+  }
 }
 
 // История и прогресс просмотра
@@ -553,9 +648,18 @@ export function getContinueWatching(userId, limit = 12) {
     SELECT * FROM watch_history
     WHERE user_id = ? AND progress_percent < 95
     ORDER BY updated_at DESC
-    LIMIT ?
   `;
-  return db.prepare(query).all(userId, limit);
+  const allRows = db.prepare(query).all(userId);
+
+  const canonicalMap = new Map();
+  for (const row of allRows) {
+    const key = normalizeMediaKey(row.title) || `${row.source}_${row.media_id}`;
+    if (!canonicalMap.has(key)) {
+      canonicalMap.set(key, row);
+    }
+  }
+
+  return Array.from(canonicalMap.values()).slice(0, limit);
 }
 
 // Кастомные списки и коллекции
@@ -1129,4 +1233,51 @@ export function importUserData(userId, data) {
   trackUserAction(userId, 'sync_data');
   return { success: true, imported_count: importedCount };
 }
+
+// Автоматическая фоновая очистка дубликатов в базе данных SQLite
+export function cleanupDuplicateDatabaseRecords() {
+  try {
+    // 1. Очистка дубликатов в таблице bookmarks
+    const allBookmarks = db.prepare('SELECT id, user_id, title, original_title, updated_at, progress_percent FROM bookmarks ORDER BY updated_at DESC').all();
+    const seenUserBookmarks = new Map();
+    const bookmarksToDelete = [];
+
+    for (const b of allBookmarks) {
+      const key = `${b.user_id}:::${normalizeMediaKey(b.title, b.original_title)}`;
+      if (seenUserBookmarks.has(key)) {
+        bookmarksToDelete.push(b.id);
+      } else {
+        seenUserBookmarks.set(key, b.id);
+      }
+    }
+
+    if (bookmarksToDelete.length > 0) {
+      db.prepare(`DELETE FROM bookmarks WHERE id IN (${bookmarksToDelete.join(',')})`).run();
+    }
+
+    // 2. Очистка дубликатов в таблице watch_history
+    const allHistory = db.prepare('SELECT id, user_id, title, updated_at, progress_percent FROM watch_history ORDER BY updated_at DESC').all();
+    const seenUserHistory = new Map();
+    const historyToDelete = [];
+
+    for (const h of allHistory) {
+      const key = `${h.user_id}:::${normalizeMediaKey(h.title)}`;
+      if (seenUserHistory.has(key)) {
+        historyToDelete.push(h.id);
+      } else {
+        seenUserHistory.set(key, h.id);
+      }
+    }
+
+    if (historyToDelete.length > 0) {
+      db.prepare(`DELETE FROM watch_history WHERE id IN (${historyToDelete.join(',')})`).run();
+    }
+  } catch (err) {
+    console.warn('[STORM DB] Примечание очистки дубликатов:', err.message);
+  }
+}
+
+// Запуск дедупликации при старте сервера
+cleanupDuplicateDatabaseRecords();
+
 

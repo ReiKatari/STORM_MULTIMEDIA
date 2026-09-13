@@ -58,13 +58,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('storm:bookmarks-updated', (e) => {
     if (currentTab === 'bookmarks' || currentTab === 'continue') {
       loadCurrentTab();
+    } else if (e.detail?.deleted) {
+      const deletedId = String(e.detail.mediaId || '');
+      const deletedTitle = normalizeMediaTitle(e.detail.title || '');
+      rawCatalogItems.forEach(x => {
+        if (String(x.id) === deletedId || (deletedTitle && normalizeMediaTitle(x.title, x.original_title) === deletedTitle)) {
+          x.user_status = null;
+        }
+      });
+      renderFilteredCatalog();
     } else if (e.detail?.mediaData && e.detail?.status) {
       const updatedId = String(e.detail.mediaData.id || e.detail.mediaData.media_id);
-      const updatedSource = String(e.detail.mediaData.source || '');
-      const found = rawCatalogItems.find(x => String(x.id) === updatedId && (!updatedSource || String(x.source) === updatedSource));
-      if (found) {
-        found.user_status = e.detail.status;
-      }
+      const updatedTitle = normalizeMediaTitle(e.detail.mediaData.title || '');
+      rawCatalogItems.forEach(x => {
+        if (String(x.id) === updatedId || (updatedTitle && normalizeMediaTitle(x.title, x.original_title) === updatedTitle)) {
+          x.user_status = e.detail.status;
+        }
+      });
+      renderFilteredCatalog();
     }
   });
 
@@ -292,22 +303,52 @@ async function loadCurrentTab() {
   }
 }
 
-// Утилита дедупликации релизов
+// Нормализация названий медиа для надежного сопоставления и исключения дублей
+function normalizeMediaTitle(title, originalTitle = '') {
+  if (!title && !originalTitle) return '';
+  const raw = `${title || ''} ${originalTitle || ''}`.toLowerCase();
+  return raw
+    .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
+    .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
+    .replace(/[^a-zа-я0-9]/gi, '')
+    .trim();
+}
+
+// Утилита дедупликации релизов (полностью исключает дубли одного фильма из разных источников и баз)
 function deduplicateMediaList(items) {
   if (!Array.isArray(items)) return [];
-  const seenKeys = new Set();
-  const deduped = [];
+  const itemMap = new Map();
+
   for (const item of items) {
-    if (!item || !item.title) continue;
-    const cleanTitle = (item.title || '').trim().toLowerCase().replace(/[^a-zа-я0-9]/gi, '');
-    const cleanYear = String(item.year || '').trim();
-    const key = `${cleanTitle}_${cleanYear || item.source || ''}`;
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
-      deduped.push(item);
+    if (!item || (!item.title && !item.name)) continue;
+    const itemTitle = item.title || item.name || '';
+    const normKey = normalizeMediaTitle(itemTitle, item.original_title || item.original_name);
+    const key = normKey || `id_${item.id || item.media_id || ''}_${item.source || ''}`;
+
+    if (!itemMap.has(key)) {
+      itemMap.set(key, item);
+    } else {
+      const existing = itemMap.get(key);
+      // Предпочитаем источник TMDB, либо наличие постера/статуса, либо максимальный прогресс
+      const isNewBetter =
+        (item.source === 'tmdb' && existing.source !== 'tmdb') ||
+        (!existing.poster && (item.poster || item.poster_url)) ||
+        (!existing.user_status && item.user_status) ||
+        ((item.progress_percent || 0) > (existing.progress_percent || 0));
+
+      if (isNewBetter) {
+        itemMap.set(key, {
+          ...existing,
+          ...item,
+          poster: item.poster || item.poster_url || existing.poster || existing.poster_url,
+          user_status: item.user_status || existing.user_status,
+          progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
+        });
+      }
     }
   }
-  return deduped;
+
+  return Array.from(itemMap.values());
 }
 
 // -------------------------------------------------------------

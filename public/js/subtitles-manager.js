@@ -192,6 +192,13 @@ function updateSubtitlesFrame() {
   }
 }
 
+export function getActiveSubtitleText(time) {
+  if (!currentCues || currentCues.length === 0) return null;
+  const t = (time !== undefined ? time : (attachedVideo ? attachedVideo.currentTime : 0)) + timingOffset;
+  const activeCue = currentCues.find(cue => t >= cue.start && t <= cue.end);
+  return activeCue ? activeCue.text : null;
+}
+
 export function adjustSubtitleOffset(deltaSeconds) {
   timingOffset += deltaSeconds;
   showToast(`Сдвиг субтитров: ${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)} сек`, 'info');
