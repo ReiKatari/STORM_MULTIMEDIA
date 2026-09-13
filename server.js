@@ -649,8 +649,8 @@ app.get('/api/media/image-proxy', async (req, res) => {
     const title = req.query.title || '';
     const orig = req.query.orig || '';
 
-    // Если это прямая ссылка на сторонний быстрый CDN (не anixmirai) — сразу 302 редирект
-    if (imageUrl && !imageUrl.includes('anixmirai.com') && !imageUrl.includes('anixapi')) {
+    // Если это прямая валидная ссылка на сторонний быстрый CDN (не anixmirai и не заглушка 404) — сразу 302 редирект
+    if (imageUrl && !imageUrl.includes('anixmirai.com') && !imageUrl.includes('anixapi') && !isPlaceholderImage(imageUrl)) {
       const target = imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
       res.set('Cache-Control', 'public, max-age=604800, immutable');
       return res.redirect(302, target);
