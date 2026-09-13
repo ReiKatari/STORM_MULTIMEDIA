@@ -354,6 +354,10 @@ export function initProAudioEngine(video = document.getElementById('storm-video-
   }
 }
 
+export function getProAudioMasterNode() {
+  return { ctx: proAudioCtx, masterGain: proMasterGain };
+}
+
 // Генерация синтетического импульса кинозала (Reverb Impulse)
 function createCinematicImpulseBuffer(ctx, duration = 1.2, decay = 2.0) {
   const sampleRate = ctx.sampleRate;

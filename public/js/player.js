@@ -1686,184 +1686,299 @@ function renderPlayerUtilityButtons() {
   if (!container) return;
 
   container.innerHTML = `
-    <div class="player-utility-grid">
-      <!-- Блок 1: Видео и звук -->
-      <div class="player-utility-card">
-        <div class="player-utility-card-title">
-          <span>🎥</span>
-          <span>Видео и звук</span>
+    <div class="player-studio-dock">
+      <!-- Верхняя линейка вкладок и переключателей студии -->
+      <div class="player-studio-tabs-bar">
+        <div class="studio-tabs-group">
+          <button type="button" class="studio-tab-btn" id="studio-tab-video" title="Профессиональные настройки изображения (HDR10, Dolby Vision, FSR CAS, 21:9 Cinemascope)">
+            <span class="studio-tab-icon">🎛️</span>
+            <span class="studio-tab-text">Pro Видео</span>
+          </button>
+          <button type="button" class="studio-tab-btn" id="studio-tab-audio" title="Профессиональная студия звука (Dolby Atmos 3D, 10-Band EQ, AI Voice)">
+            <span class="studio-tab-icon">🔊</span>
+            <span class="studio-tab-text">Pro Звук</span>
+          </button>
+          <button type="button" class="studio-tab-btn ${ambilightEnabled ? 'active-glow' : ''}" id="studio-tab-ambilight" title="Динамическая фоновая подсветка Ambilight и настройки">
+            <span class="studio-tab-icon">🌈</span>
+            <span class="studio-tab-text">Ambilight</span>
+          </button>
+          <button type="button" class="studio-tab-btn" id="studio-tab-services" title="Интеллектуальные сервисы: Whisper AI, X-Ray, Офлайн, Торренты">
+            <span class="studio-tab-icon">⚡</span>
+            <span class="studio-tab-text">Сервисы и ИИ</span>
+          </button>
+          <button type="button" class="studio-tab-btn" id="studio-tab-subtitles" title="Внешние дорожки и пользовательские субтитры">
+            <span class="studio-tab-icon">💬</span>
+            <span class="studio-tab-text">Субтитры</span>
+          </button>
+          <button type="button" class="studio-tab-btn" id="studio-tab-room" title="Совместный просмотр с друзьями и чатом">
+            <span class="studio-tab-icon">👥</span>
+            <span class="studio-tab-text">Кинокомната</span>
+          </button>
         </div>
-        <div class="player-utility-card-items">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${ambilightEnabled ? 'active' : ''}" id="toggle-ambilight-btn" title="Фоновая динамическая подсветка">
-            🌈 Ambilight
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-ambilight-settings-btn" title="Настройки цвета и интенсивности Ambilight">
-            🎨 Палитра
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Картинка в картинке">
-            🖼️ PiP
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Компрессор звука для комфортного просмотра ночью">
-            🌙 Ночной звук
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pro-video-btn" title="Профессиональные настройки изображения (HDR10, Dolby Vision, FSR CAS, 21:9 Cinemascope)">
-            🎛️ Pro Видео
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pro-audio-btn" title="Профессиональная студия звука (Dolby Atmos 3D, 10-Band EQ, AI Voice)">
-            🔊 Pro Звук
-          </button>
-        </div>
-      </div>
 
-      <!-- Блок 2: Сервисы и ИИ -->
-      <div class="player-utility-card">
-        <div class="player-utility-card-title">
-          <span>⚡</span>
-          <span>Сервисы и ИИ</span>
-        </div>
-        <div class="player-utility-card-items">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-whisper-btn" title="Синхронные субтитры Whisper AI в реальном времени">
-            🎙️ Whisper AI
+        <div class="studio-quick-actions">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Ночной режим звука (компрессор динамического диапазона)">
+            <span>🌙 Ночь</span>
           </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-xray-btn" title="Актеры в сцене, саундтрек и интересные факты (X-Ray)">
-            🔍 X-Ray
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pip-btn" title="Режим «Картинка в картинке»">
+            <span>🖼️ PiP</span>
           </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="save-offline-btn" title="Сохранить релиз в память браузера (IndexedDB PWA)">
-            💾 Офлайн
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="open-torrserver-btn" title="Настройки TorrServer и AceStream">
-            🧲 Торренты
-          </button>
-          <label class="storm-btn storm-btn-secondary storm-btn-sm" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;" title="Автоматический пропуск опенингов и титров">
+          <label class="studio-autoskip-toggle" title="Автоматический пропуск опенингов и титров">
             <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
-            <span>Автопропуск интро</span>
+            <span class="studio-autoskip-indicator"></span>
+            <span class="studio-autoskip-label">Автопропуск</span>
           </label>
         </div>
       </div>
 
-      <!-- Блок 3: Связь и ссылки -->
-      <div class="player-utility-card">
-        <div class="player-utility-card-title">
-          <span>👥</span>
-          <span>Связь и ссылки</span>
+      <!-- Выдвижная панель студии (Studio Drawer), открывающаяся НЕПОСРЕДСТВЕННО под панелью кнопок -->
+      <div class="player-studio-drawer" id="player-studio-drawer" style="display: none;">
+        <div class="studio-drawer-header">
+          <div class="studio-drawer-title">
+            <span id="studio-drawer-icon">🎛️</span>
+            <span id="studio-drawer-heading">Pro Видео</span>
+          </div>
+          <button type="button" class="studio-drawer-close" id="studio-drawer-close" title="Закрыть панель">✕</button>
         </div>
-        <div class="player-utility-card-items">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="create-room-btn" title="Синхронный просмотр с друзьями и чатом">
-            👥 Кинокомната
-          </button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="share-media-btn" title="Скопировать прямую ссылку на данный релиз или серию">
-            🔗 Поделиться
-          </button>
-        </div>
-      </div>
-
-      <!-- Блок 4: Внешние дорожки и субтитры -->
-      <div class="player-utility-card">
-        <div class="player-utility-card-title">
-          <span>💬</span>
-          <span>Внешние дорожки и субтитры</span>
-        </div>
-        <div class="player-utility-card-items" id="subtitles-controls-host"></div>
+        <div class="studio-drawer-body" id="studio-drawer-body"></div>
       </div>
     </div>
-
-    <!-- Хост панели Pro Видео -->
-    <div id="pro-video-panel-host" style="display: none;"></div>
-
-    <!-- Хост панели Pro Звук -->
-    <div id="pro-audio-panel-host" style="display: none;"></div>
-
-    <!-- Хост панели настроек Ambilight -->
-    <div id="ambilight-settings-panel-host"></div>
-
-    <!-- Хост панели торрент-движков -->
-    <div id="torrserver-panel-host" style="display: none; margin-bottom: 8px;"></div>
   `;
 
-  const ambilightBtn = container.querySelector('#toggle-ambilight-btn');
-  if (ambilightBtn) ambilightBtn.onclick = toggleAmbilight;
+  const drawer = container.querySelector('#player-studio-drawer');
+  const drawerBody = container.querySelector('#studio-drawer-body');
+  const drawerIcon = container.querySelector('#studio-drawer-icon');
+  const drawerHeading = container.querySelector('#studio-drawer-heading');
+  const drawerClose = container.querySelector('#studio-drawer-close');
+  const tabButtons = container.querySelectorAll('.studio-tab-btn');
 
-  const ambilightSettingsBtn = container.querySelector('#toggle-ambilight-settings-btn');
-  if (ambilightSettingsBtn) ambilightSettingsBtn.onclick = toggleAmbilightSettings;
+  let activeTabName = null;
 
-  const pipBtn = container.querySelector('#toggle-pip-btn');
-  if (pipBtn) pipBtn.onclick = toggleAdvancedPiP;
+  const closeDrawer = () => {
+    if (drawer) drawer.style.display = 'none';
+    activeTabName = null;
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+  };
 
+  if (drawerClose) drawerClose.onclick = closeDrawer;
+
+  const openDrawerTab = (tabName, icon, heading, renderFn) => {
+    if (activeTabName === tabName && drawer.style.display !== 'none') {
+      closeDrawer();
+      return;
+    }
+
+    activeTabName = tabName;
+    tabButtons.forEach(btn => btn.classList.toggle('active', btn.id === `studio-tab-${tabName}`));
+
+    if (drawerIcon) drawerIcon.textContent = icon;
+    if (drawerHeading) drawerHeading.textContent = heading;
+
+    drawer.style.display = 'block';
+    drawerBody.innerHTML = '';
+    renderFn(drawerBody);
+  };
+
+  // 1. Pro Видео
+  const tabVideo = container.querySelector('#studio-tab-video');
+  if (tabVideo) {
+    tabVideo.onclick = () => {
+      openDrawerTab('video', '🎛️', 'Pro Видео (HDR10, Dolby Vision, FSR CAS, 21:9 Cinemascope)', (body) => {
+        renderProVideoPanel(body);
+      });
+    };
+  }
+
+  // 2. Pro Звук
+  const tabAudio = container.querySelector('#studio-tab-audio');
+  if (tabAudio) {
+    tabAudio.onclick = () => {
+      openDrawerTab('audio', '🔊', 'Pro Звук (Dolby Atmos 3D, DTS:X, 10-Band EQ, AI Voice)', (body) => {
+        renderProAudioPanel(body);
+      });
+    };
+  }
+
+  // 3. Ambilight
+  const tabAmbilight = container.querySelector('#studio-tab-ambilight');
+  if (tabAmbilight) {
+    tabAmbilight.onclick = () => {
+      openDrawerTab('ambilight', '🌈', 'Подсветка Ambilight и настройки палитры', (body) => {
+        const toggleBtnHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+            <div>
+              <div style="font-size: 13px; font-weight: 800; color: var(--text-primary);">Фоновая динамическая подсветка</div>
+              <div style="font-size: 11px; color: var(--text-muted);">Создает эффект погружения и расширяет границы экрана</div>
+            </div>
+            <button type="button" class="storm-btn ${ambilightEnabled ? 'storm-btn-primary' : 'storm-btn-secondary'} storm-btn-sm" id="drawer-toggle-ambilight-btn">
+              ${ambilightEnabled ? '🟢 Ambilight Включен' : '⚪ Включить Ambilight'}
+            </button>
+          </div>
+          <div id="drawer-ambilight-settings-host"></div>
+        `;
+        body.innerHTML = toggleBtnHtml;
+
+        const toggleBtn = body.querySelector('#drawer-toggle-ambilight-btn');
+        const settingsHost = body.querySelector('#drawer-ambilight-settings-host');
+
+        if (toggleBtn) {
+          toggleBtn.onclick = () => {
+            toggleAmbilight();
+            tabAmbilight.classList.toggle('active-glow', ambilightEnabled);
+            toggleBtn.className = `storm-btn ${ambilightEnabled ? 'storm-btn-primary' : 'storm-btn-secondary'} storm-btn-sm`;
+            toggleBtn.textContent = ambilightEnabled ? '🟢 Ambilight Включен' : '⚪ Включить Ambilight';
+          };
+        }
+
+        if (settingsHost) renderAmbilightSettings(settingsHost);
+      });
+    };
+  }
+
+  // 4. Сервисы и ИИ
+  const tabServices = container.querySelector('#studio-tab-services');
+  if (tabServices) {
+    tabServices.onclick = () => {
+      openDrawerTab('services', '⚡', 'Интеллектуальные сервисы и утилиты воспроизведения', (body) => {
+        body.innerHTML = `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-whisper-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
+              <span style="font-size: 16px;">🎙️</span>
+              <div style="text-align: left;">
+                <div style="font-weight: 800; font-size: 12px;">Whisper AI</div>
+                <div style="font-size: 10px; color: var(--text-muted);">Распознавание речи на лету</div>
+              </div>
+            </button>
+
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-xray-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
+              <span style="font-size: 16px;">🔍</span>
+              <div style="text-align: left;">
+                <div style="font-weight: 800; font-size: 12px;">X-Ray Режим</div>
+                <div style="font-size: 10px; color: var(--text-muted);">Актеры, саундтрек и факты</div>
+              </div>
+            </button>
+
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-offline-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
+              <span style="font-size: 16px;">💾</span>
+              <div style="text-align: left;">
+                <div style="font-weight: 800; font-size: 12px;">Офлайн релиз</div>
+                <div style="font-size: 10px; color: var(--text-muted);">Сохранить в память PWA</div>
+              </div>
+            </button>
+
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-torr-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
+              <span style="font-size: 16px;">🧲</span>
+              <div style="text-align: left;">
+                <div style="font-weight: 800; font-size: 12px;">Торренты и P2P</div>
+                <div style="font-size: 10px; color: var(--text-muted);">TorrServer и AceStream</div>
+              </div>
+            </button>
+          </div>
+
+          <div id="drawer-torrserver-host" style="display: none; margin-top: 10px;"></div>
+        `;
+
+        const whisperBtn = body.querySelector('#drawer-whisper-btn');
+        if (whisperBtn) {
+          whisperBtn.onclick = () => {
+            toggleWhisperAiSubtitles();
+            whisperBtn.classList.toggle('storm-btn-primary');
+            whisperBtn.classList.toggle('storm-btn-secondary');
+          };
+        }
+
+        const xrayBtn = body.querySelector('#drawer-xray-btn');
+        if (xrayBtn) {
+          xrayBtn.onclick = () => {
+            closeDrawer();
+            toggleXRayManual();
+          };
+        }
+
+        const offlineBtn = body.querySelector('#drawer-offline-btn');
+        if (offlineBtn) {
+          offlineBtn.onclick = () => {
+            if (currentMedia) saveMediaForOffline(currentMedia);
+          };
+        }
+
+        const torrBtn = body.querySelector('#drawer-torr-btn');
+        const torrHost = body.querySelector('#drawer-torrserver-host');
+        if (torrBtn && torrHost) {
+          torrBtn.onclick = () => {
+            if (torrHost.style.display === 'none') {
+              torrHost.style.display = 'block';
+              renderTorrServerSettings(torrHost);
+            } else {
+              torrHost.style.display = 'none';
+            }
+          };
+        }
+      });
+    };
+  }
+
+  // 5. Субтитры и внешние дорожки
+  const tabSubtitles = container.querySelector('#studio-tab-subtitles');
+  if (tabSubtitles) {
+    tabSubtitles.onclick = () => {
+      openDrawerTab('subtitles', '💬', 'Внешние дорожки, сдвиг тайминга и субтитры', (body) => {
+        renderSubtitlesControls(body);
+      });
+    };
+  }
+
+  // 6. Кинокомната и совместный просмотр
+  const tabRoom = container.querySelector('#studio-tab-room');
+  if (tabRoom) {
+    tabRoom.onclick = () => {
+      openDrawerTab('room', '👥', 'Кинокомната и синхронный просмотр с друзьями', (body) => {
+        body.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--bg-card); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border-subtle);">
+              <div>
+                <div style="font-weight: 800; font-size: 13px; color: var(--text-primary);">Синхронный просмотр с друзьями</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Создайте персональную кинокомнату со сквозным чатом и голосовой связью</div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="drawer-create-room-btn">
+                  👥 Создать кинокомнату
+                </button>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-share-media-btn">
+                  🔗 Поделиться ссылкой
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const roomBtn = body.querySelector('#drawer-create-room-btn');
+        if (roomBtn) {
+          roomBtn.onclick = async () => {
+            const code = await createWatchRoom(currentMedia);
+            if (code) {
+              showToast(`Кинокомната создана! Код: ${code}`, 'success');
+            }
+          };
+        }
+
+        const shareBtn = body.querySelector('#drawer-share-media-btn');
+        if (shareBtn) {
+          shareBtn.onclick = () => copyMediaShareLink();
+        }
+      });
+    };
+  }
+
+  // Быстрые кнопки панели справа
   const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
   if (nightAudioBtn) {
     nightAudioBtn.onclick = () => toggleNightModeAudio();
   }
 
-  // Профессиональные панели видео и звука
-  const proVideoBtn = container.querySelector('#toggle-pro-video-btn');
-  const proVideoHost = container.querySelector('#pro-video-panel-host');
-  if (proVideoBtn && proVideoHost) {
-    proVideoBtn.onclick = () => {
-      if (proVideoHost.style.display === 'none') {
-        proVideoHost.style.display = 'block';
-        renderProVideoPanel(proVideoHost);
-      } else {
-        proVideoHost.style.display = 'none';
-      }
-    };
-  }
-
-  const proAudioBtn = container.querySelector('#toggle-pro-audio-btn');
-  const proAudioHost = container.querySelector('#pro-audio-panel-host');
-  if (proAudioBtn && proAudioHost) {
-    proAudioBtn.onclick = () => {
-      if (proAudioHost.style.display === 'none') {
-        proAudioHost.style.display = 'block';
-        renderProAudioPanel(proAudioHost);
-      } else {
-        proAudioHost.style.display = 'none';
-      }
-    };
-  }
-
-  const xrayBtn = container.querySelector('#toggle-xray-btn');
-  if (xrayBtn) {
-    xrayBtn.onclick = () => toggleXRayManual();
-  }
-
-  const whisperBtn = container.querySelector('#toggle-whisper-btn');
-  if (whisperBtn) {
-    whisperBtn.onclick = () => toggleWhisperAiSubtitles();
-  }
-
-  const offlineBtn = container.querySelector('#save-offline-btn');
-  if (offlineBtn) {
-    offlineBtn.onclick = () => {
-      if (currentMedia) saveMediaForOffline(currentMedia);
-    };
-  }
-
-  const torrBtn = container.querySelector('#open-torrserver-btn');
-  const torrHost = container.querySelector('#torrserver-panel-host');
-  if (torrBtn && torrHost) {
-    torrBtn.onclick = () => {
-      if (torrHost.style.display === 'none') {
-        torrHost.style.display = 'block';
-        renderTorrServerSettings(torrHost);
-      } else {
-        torrHost.style.display = 'none';
-      }
-    };
-  }
-
-  const roomBtn = container.querySelector('#create-room-btn');
-  if (roomBtn) {
-    roomBtn.onclick = async () => {
-      const code = await createWatchRoom(currentMedia);
-      if (code) {
-        showToast(`Кинокомната создана! Код: ${code}`, 'success');
-      }
-    };
-  }
-
-  const shareBtn = container.querySelector('#share-media-btn');
-  if (shareBtn) {
-    shareBtn.onclick = () => copyMediaShareLink();
+  const pipBtn = container.querySelector('#toggle-pip-btn');
+  if (pipBtn) {
+    pipBtn.onclick = toggleAdvancedPiP;
   }
 
   const autoSkipCheck = container.querySelector('#toggle-autoskip');
@@ -1874,9 +1989,6 @@ function renderPlayerUtilityButtons() {
       showToast(`Автопропуск заставок: ${autoSkipEnabled ? 'Включен' : 'Выключен'}`, 'info');
     };
   }
-
-  const subHost = container.querySelector('#subtitles-controls-host');
-  if (subHost) renderSubtitlesControls(subHost);
 }
 
 function renderAniLibriaControls(details) {
@@ -2078,7 +2190,7 @@ function renderStatusButtons(currentStatus) {
     btn.onclick = async () => {
       if (isActive) {
         // Повторный клик: отменяем статус и удаляем закладку
-        await deleteBookmark(currentMedia.id, currentMedia.source);
+        await deleteBookmark(currentMedia.id, currentMedia.source, currentMedia.title);
         if (currentMedia) currentMedia.user_status = null;
         renderStatusButtons(null);
         showToast('Статус просмотра снят', 'info');
@@ -2489,27 +2601,27 @@ function renderDetailedMediaInfo(mediaDetails) {
       </div>
     </div>
 
-    <!-- Рейтинги мировых платформ -->
-    <div class="cinema-ratings-grid">
-      <div class="cinema-rating-card kp">
-        <span class="cinema-rating-label">Кинопоиск</span>
-        <span class="cinema-rating-value">★ ${ratingKp}</span>
+    <!-- Рейтинги мировых платформ в один ряд -->
+    <div class="cinema-ratings-strip" title="Рейтинги мировых платформ">
+      <div class="cinema-rating-pill kp" title="Кинопоиск">
+        <span class="rating-pill-logo">KP</span>
+        <span class="rating-pill-val">★ ${ratingKp}</span>
       </div>
-      <div class="cinema-rating-card imdb">
-        <span class="cinema-rating-label">IMDb</span>
-        <span class="cinema-rating-value">★ ${ratingImdb}</span>
+      <div class="cinema-rating-pill imdb" title="Internet Movie Database">
+        <span class="rating-pill-logo">IMDb</span>
+        <span class="rating-pill-val">★ ${ratingImdb}</span>
       </div>
-      <div class="cinema-rating-card tmdb">
-        <span class="cinema-rating-label">TMDB</span>
-        <span class="cinema-rating-value">★ ${ratingTmdb}</span>
+      <div class="cinema-rating-pill tmdb" title="The Movie Database">
+        <span class="rating-pill-logo">TMDB</span>
+        <span class="rating-pill-val">★ ${ratingTmdb}</span>
       </div>
-      <div class="cinema-rating-card rotten">
-        <span class="cinema-rating-label">Rotten Tomatoes</span>
-        <span class="cinema-rating-value">🍅 ${ratingRotten}%</span>
+      <div class="cinema-rating-pill rotten" title="Rotten Tomatoes">
+        <span class="rating-pill-logo">🍅 RT</span>
+        <span class="rating-pill-val">${ratingRotten}%</span>
       </div>
-      <div class="cinema-rating-card meta">
-        <span class="cinema-rating-label">Metacritic</span>
-        <span class="cinema-rating-value">🟢 ${ratingMeta}/100</span>
+      <div class="cinema-rating-pill meta" title="Metacritic">
+        <span class="rating-pill-logo">META</span>
+        <span class="rating-pill-val">${ratingMeta}</span>
       </div>
     </div>
 
@@ -2524,16 +2636,6 @@ function renderDetailedMediaInfo(mediaDetails) {
           <tr>
             <td class="info-table-label">⏱️ Длительность</td>
             <td class="info-table-val"><b>${duration}</b></td>
-          </tr>
-          <tr>
-            <td class="info-table-label">⭐ Рейтинги</td>
-            <td class="info-table-val">
-              <div class="info-table-ratings">
-                <span class="info-rating-chip kp" title="Кинопоиск">★ ${ratingKp}</span>
-                <span class="info-rating-chip imdb" title="IMDb">★ ${ratingImdb}</span>
-                <span class="info-rating-chip tmdb" title="TMDB">★ ${ratingTmdb}</span>
-              </div>
-            </td>
           </tr>
           <tr>
             <td class="info-table-label">🌍 Страны</td>

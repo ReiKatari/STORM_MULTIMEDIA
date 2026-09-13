@@ -67,7 +67,7 @@ export async function saveBookmarkStatus(mediaData, status) {
   }
 }
 
-export async function deleteBookmark(mediaId, source) {
+export async function deleteBookmark(mediaId, source, title = '') {
   const token = getToken();
   if (!token) return false;
 
@@ -78,11 +78,11 @@ export async function deleteBookmark(mediaId, source) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ media_id: mediaId, source })
+      body: JSON.stringify({ media_id: mediaId, source, title })
     });
     if (res.ok) {
       showToast('Удалено из закладок', 'info');
-      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, deleted: true } }));
+      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, title, deleted: true } }));
       return { success: true, deleted: true };
     }
     return false;
