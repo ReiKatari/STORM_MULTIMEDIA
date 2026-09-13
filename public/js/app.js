@@ -267,7 +267,8 @@ async function loadCurrentTab() {
       user_status: b.status,
       progress_percent: b.progress_percent,
       episodes_watched: b.episodes_watched,
-      total_episodes: b.total_episodes
+      total_episodes: b.total_episodes,
+      updated_at: b.updated_at
     }));
     rawCatalogItems = deduplicateMediaList(rawItems);
     renderFilteredCatalog();
@@ -1008,9 +1009,9 @@ export function initFilterDropdowns() {
   const statuses = [
     { id: 'all', name: 'Все статусы', icon: '🏷️' },
     { id: 'watching', name: 'Смотрю', icon: '👁️' },
+    { id: 'favorite', name: 'Любимое', icon: '❤️' },
     { id: 'planned', name: 'В планах', icon: '📋' },
     { id: 'completed', name: 'Просмотрено', icon: '✅' },
-    { id: 'favorite', name: 'Любимое', icon: '❤️' },
     { id: 'on_hold', name: 'Отложено', icon: '⏸️' },
     { id: 'dropped', name: 'Заброшено', icon: '🛑' },
     { id: 'wont_watch', name: 'Не буду смотреть', icon: '🚫' }
@@ -1206,6 +1207,28 @@ export function renderFilteredCatalog() {
     items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
   } else if (currentSort === 'title') {
     items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+  } else if (currentTab === 'bookmarks') {
+    // По умолчанию для "Мои списки и закладки" сортировка по статусам:
+    // Смотрю -> Любимое -> В планах -> Просмотрено -> Отложено -> Заброшено -> Не буду смотреть
+    const statusRank = (st) => {
+      switch (st) {
+        case 'watching': return 1;
+        case 'favorite': return 2;
+        case 'plan':
+        case 'planned': return 3;
+        case 'completed': return 4;
+        case 'hold':
+        case 'on_hold': return 5;
+        case 'dropped': return 6;
+        case 'wont_watch': return 7;
+        default: return 8;
+      }
+    };
+    items.sort((a, b) => {
+      const diff = statusRank(a.user_status) - statusRank(b.user_status);
+      if (diff !== 0) return diff;
+      return (b.updated_at || 0) - (a.updated_at || 0);
+    });
   }
 
   currentItems = items;

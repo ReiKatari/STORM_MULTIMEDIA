@@ -2276,31 +2276,37 @@ input[type="checkbox"]::after {
 
 .season-status-chip {
   font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
+  font-weight: 800;
+  padding: 4px 9px;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   line-height: 1.2;
+  letter-spacing: 0.3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s ease;
 }
 
 .season-status-chip.completed {
-  background: rgba(0, 255, 102, 0.15);
-  color: #00ff66;
-  border: 1px solid rgba(0, 255, 102, 0.35);
+  background: rgba(16, 185, 129, 0.22);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.7);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
 }
 
 .season-status-chip.watching {
-  background: rgba(0, 210, 255, 0.15);
-  color: #00d2ff;
-  border: 1px solid rgba(0, 210, 255, 0.35);
+  background: rgba(0, 210, 255, 0.22);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 210, 255, 0.7);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.35);
 }
 
 .season-status-chip.planned {
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 /* ==========================================================================
@@ -4162,6 +4168,46 @@ body.player-dropdown-active .cinema-player-iframe {
   box-shadow: 0 0 12px var(--accent-glow);
 }
 
+.quick-dropdown-item.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 800;
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.quick-dropdown-item.active .quick-item-title {
+  color: #000;
+  font-weight: 800;
+}
+
+.quick-dropdown-item.active .quick-status-pill {
+  background: #080c14;
+  color: #ffffff;
+  border: 1.5px solid #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.quick-dropdown-item.active .quick-status-pill.pill-current {
+  background: #080c14;
+  color: var(--accent);
+  border: 1.5px solid #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.quick-dropdown-item.active .quick-status-pill.pill-watched {
+  background: #080c14;
+  color: #10b981;
+  border: 1.5px solid #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.quick-dropdown-item.active .quick-ep-watch-toggle {
+  background: #080c14;
+  color: #ffffff;
+  border: 1.5px solid #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 .quick-dropdown-item.active .uhd-pill {
   background: #000;
   color: var(--accent);
@@ -4219,60 +4265,62 @@ body.player-dropdown-active .cinema-player-iframe {
 .quick-status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 3px 8px;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 750;
+  padding: 4px 9px;
   border-radius: 6px;
   white-space: nowrap;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.25px;
   transition: all 0.2s ease;
 }
 
 .quick-status-pill.pill-watched {
-  background: rgba(16, 185, 129, 0.16);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.24);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.65);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
 }
 
 .quick-status-pill.pill-progress {
-  background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+  background: rgba(245, 158, 11, 0.24);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.65);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
 }
 
 .quick-status-pill.pill-new,
 .quick-status-pill.pill-unwatched {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-weight: 750;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .quick-status-pill.pill-current {
-  background: rgba(0, 210, 255, 0.2);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow);
+  background: rgba(0, 210, 255, 0.24);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 210, 255, 0.75);
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 
 .quick-ep-watch-toggle {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 6px;
-  padding: 3px 7px;
+  padding: 3px 8px;
   font-size: 11px;
   font-weight: 800;
-  color: var(--text-muted);
+  color: #ffffff;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .quick-ep-watch-toggle:hover {
   border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(0, 210, 255, 0.15);
+  color: #ffffff;
+  background: rgba(0, 210, 255, 0.35);
   transform: scale(1.1);
   box-shadow: 0 0 8px var(--accent-glow);
 }
