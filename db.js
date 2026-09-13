@@ -887,6 +887,11 @@ export const ACHIEVEMENTS_CATALOG = [
   { id: 'cinema_master', title: 'Синефил со стажем', desc: 'Посмотреть 30 тайтлов', category: 'cinema', rarity: 'gold', icon: '📽️', target: 30 },
   { id: 'cinema_legend', title: 'Архивариус кинематографа', desc: 'Посмотреть 60 тайтлов', category: 'cinema', rarity: 'platinum', icon: '🏆', target: 60 },
   { id: 'cinema_god', title: 'Владыка киноэкрана', desc: 'Посмотреть 100 тайтлов', category: 'cinema', rarity: 'cyber', icon: '👑', target: 100 },
+  { id: 'series_first_ep', title: 'Сериальный старт', desc: 'Посмотреть 1 серию любого сериала', category: 'cinema', rarity: 'bronze', icon: '📺', target: 1 },
+  { id: 'series_binge_5', title: 'Сериальный марафон', desc: 'Посмотреть 5 серий сериалов', category: 'cinema', rarity: 'silver', icon: '🛋️', target: 5 },
+  { id: 'series_binge_25', title: 'Сериаломан', desc: 'Посмотреть 25 серий сериалов', category: 'cinema', rarity: 'gold', icon: '🍿', target: 25 },
+  { id: 'series_season_done', title: 'Завершённый сезон', desc: 'Полностью посмотреть сезон сериала', category: 'cinema', rarity: 'gold', icon: '🏁', target: 1 },
+  { id: 'series_three_seasons', title: 'Повелитель сезонов', desc: 'Полностью посмотреть 3 сезона сериалов', category: 'cinema', rarity: 'platinum', icon: '👑', target: 3 },
 
   // 2. Отаку и аниме-культура
   { id: 'anime_first', title: 'Первый кохай', desc: 'Посмотреть 1 аниме', category: 'anime', rarity: 'bronze', icon: '⛩️', target: 1 },
@@ -895,34 +900,55 @@ export const ACHIEVEMENTS_CATALOG = [
   { id: 'anime_jonin', title: 'Мастер ниндзюцу', desc: 'Посмотреть 30 аниме-релизов', category: 'anime', rarity: 'gold', icon: '⚡', target: 30 },
   { id: 'anime_hokage', title: 'Легендарный хокаге', desc: 'Посмотреть 50 аниме-релизов', category: 'anime', rarity: 'platinum', icon: '🔥', target: 50 },
   { id: 'anime_kami', title: 'Аниме-божество', desc: 'Посмотреть 100 аниме-релизов', category: 'anime', rarity: 'cyber', icon: '✨', target: 100 },
+  { id: 'anime_anilibria', title: 'Голос Анилибрии', desc: 'Посмотреть аниме в озвучке AniLibria', category: 'anime', rarity: 'bronze', icon: '🎙️', target: 1 },
+  { id: 'anime_season_pass', title: 'Онгоинг-мастер', desc: 'Посмотреть 12 серий аниме', category: 'anime', rarity: 'silver', icon: '⚡', target: 12 },
 
-  // 3. Хранитель времени
+  // 3. Жанровые эксперты
+  { id: 'genre_scifi', title: 'В глубинах космоса', desc: 'Посмотреть фантастику или научпоп', category: 'genres', rarity: 'bronze', icon: '🚀', target: 1 },
+  { id: 'genre_action', title: 'Адреналиновый шквал', desc: 'Посмотреть боевик или остросюжетный триллер', category: 'genres', rarity: 'bronze', icon: '💥', target: 1 },
+  { id: 'genre_comedy', title: 'Искренний смех', desc: 'Посмотреть комедию или ситком', category: 'genres', rarity: 'bronze', icon: '😄', target: 1 },
+  { id: 'genre_horror', title: 'Стальные нервы', desc: 'Посмотреть хоррор или фильм ужасов', category: 'genres', rarity: 'silver', icon: '👻', target: 1 },
+  { id: 'genre_drama', title: 'Глубокие эмоции', desc: 'Посмотреть драматическую картину', category: 'genres', rarity: 'bronze', icon: '🎭', target: 1 },
+  { id: 'genre_detective', title: 'Шерлок Холмс', desc: 'Посмотреть детектив или расследование', category: 'genres', rarity: 'silver', icon: '🔍', target: 1 },
+
+  // 4. Хранитель времени
   { id: 'time_1h', title: 'Первый час в Шторме', desc: 'Провести 1 час за просмотром', category: 'time', rarity: 'bronze', icon: '⏱️', target: 1 },
   { id: 'time_5h', title: 'Погружение в поток', desc: 'Провести 5 часов за просмотром', category: 'time', rarity: 'bronze', icon: '⌛', target: 5 },
   { id: 'time_20h', title: 'Ночной марафонец', desc: 'Провести 20 часов за просмотром', category: 'time', rarity: 'silver', icon: '🌙', target: 20 },
   { id: 'time_50h', title: 'Неутомимый зритель', desc: 'Провести 50 часов за просмотром', category: 'time', rarity: 'gold', icon: '🌟', target: 50 },
   { id: 'time_100h', title: 'Повелитель хроноса', desc: 'Провести 100 часов за просмотром', category: 'time', rarity: 'platinum', icon: '🌌', target: 100 },
   { id: 'time_250h', title: 'Вечный житель кибервселенной', desc: 'Провести 250 часов за просмотром', category: 'time', rarity: 'cyber', icon: '🪐', target: 250 },
+  { id: 'time_500h', title: 'Хранитель вечности', desc: 'Провести 500 часов за просмотром', category: 'time', rarity: 'cyber', icon: '⏳', target: 500 },
 
-  // 4. Кинокритика и сообщество
+  // 5. Кинокритика и сообщество
   { id: 'review_first', title: 'Первое мнение', desc: 'Оставить свой первый отзыв', category: 'social', rarity: 'bronze', icon: '✍️', target: 1 },
   { id: 'review_3', title: 'Внимательный критик', desc: 'Оставить 3 рецензии', category: 'social', rarity: 'silver', icon: '📝', target: 3 },
   { id: 'review_10', title: 'Золотое перо Шторма', desc: 'Оставить 10 развернутых рецензий', category: 'social', rarity: 'gold', icon: '✒️', target: 10 },
   { id: 'review_liked', title: 'Голос народа', desc: 'Получить первый лайк на свой отзыв', category: 'social', rarity: 'bronze', icon: '👍', target: 1 },
   { id: 'review_popular', title: 'Признание зала', desc: 'Собрать 5 лайков на рецензиях', category: 'social', rarity: 'gold', icon: '💖', target: 5 },
+  { id: 'review_rating', title: 'Строгий цензор', desc: 'Поставить 5 личных оценок релизам', category: 'social', rarity: 'silver', icon: '⭐', target: 5 },
   { id: 'room_host', title: 'Капитан кинозала', desc: 'Создать комнату совместного просмотра', category: 'social', rarity: 'silver', icon: '👥', target: 1 },
   { id: 'room_guest', title: 'Кино-компания', desc: 'Присоединиться к кинокомнате', category: 'social', rarity: 'bronze', icon: '🤝', target: 1 },
   { id: 'sync_master', title: 'Синхронизатор данных', desc: 'Синхронизировать или экспортировать библиотеку', category: 'social', rarity: 'silver', icon: '🔄', target: 1 },
 
-  // 5. Коллекционер и архивариус
+  // 6. Коллекционер и архивариус
   { id: 'bookmark_first', title: 'Первая закладка', desc: 'Добавить релиз в закладки', category: 'collection', rarity: 'bronze', icon: '🔖', target: 1 },
   { id: 'bookmark_20', title: 'Личная фильмотека', desc: 'Собрать 20 релизов в закладках', category: 'collection', rarity: 'silver', icon: '📁', target: 20 },
   { id: 'bookmark_50', title: 'Великая коллекция', desc: 'Собрать 50 релизов в закладках', category: 'collection', rarity: 'gold', icon: '🏛️', target: 50 },
+  { id: 'bookmark_100', title: 'Золотой фонд', desc: 'Собрать 100 релизов в закладках', category: 'collection', rarity: 'platinum', icon: '💎', target: 100 },
+  { id: 'status_watching', title: 'В процессе', desc: 'Добавить 3 релиза в статус «Смотрю»', category: 'collection', rarity: 'bronze', icon: '👀', target: 3 },
+  { id: 'status_completed', title: 'Досмотрено до конца', desc: 'Отметить 5 релизов статусом «Просмотрено»', category: 'collection', rarity: 'silver', icon: '✅', target: 5 },
+  { id: 'status_planned', title: 'Большие планы', desc: 'Добавить 5 релизов в «Запланировано»', category: 'collection', rarity: 'bronze', icon: '📅', target: 5 },
   { id: 'list_first', title: 'Куратор списков', desc: 'Создать пользовательский список', category: 'collection', rarity: 'bronze', icon: '📋', target: 1 },
   { id: 'list_pro', title: 'Архитектор коллекций', desc: 'Создать 3 тематических списка', category: 'collection', rarity: 'gold', icon: '📚', target: 3 },
 
-  // 6. Кибер-технологии и секреты
-  { id: 'tech_4k', title: 'Ценитель 4K Ultra HD', desc: 'Запустить фильм в оригинальном качестве 4K', category: 'tech', rarity: 'bronze', icon: '💎', target: 1 },
+  // 7. Кибер-технологии и инновации
+  { id: 'tech_4k', title: 'Ценитель 4K Ultra HD', desc: 'Запустить фильм или серию в качестве 4K Ultra HD', category: 'tech', rarity: 'bronze', icon: '💎', target: 1 },
+  { id: 'tech_4k_ultra', title: 'Абсолютный ультра-четкий', desc: 'Посмотреть 5 релизов в качестве 4K Ultra HD', category: 'tech', rarity: 'gold', icon: '🔮', target: 5 },
+  { id: 'tech_audio_pro', title: 'Аудиофил', desc: 'Включить профессиональный эквалайзер или объемный звук', category: 'tech', rarity: 'silver', icon: '🎧', target: 1 },
+  { id: 'tech_video_pro', title: 'Мастер калибровки', desc: 'Настроить профессиональное видео (HDR, резкость или контраст)', category: 'tech', rarity: 'silver', icon: '🎛️', target: 1 },
+  { id: 'tech_voiceover_fan', title: 'Голосовой гурман', desc: 'Переключить 3 разные студийные озвучки', category: 'tech', rarity: 'bronze', icon: '📻', target: 3 },
+  { id: 'tech_xray', title: 'Рентгеновское зрение', desc: 'Изучить актерский состав через X-Ray', category: 'tech', rarity: 'bronze', icon: '👁️', target: 1 },
   { id: 'tech_torrent', title: 'P2P-пионер', desc: 'Запустить стриминг через WebTorrent', category: 'tech', rarity: 'silver', icon: '🧲', target: 1 },
   { id: 'tech_night', title: 'Ночной охотник', desc: 'Смотреть кино ночью между 02:00 и 05:00', category: 'tech', rarity: 'silver', icon: '🦉', target: 1 },
   { id: 'tech_chameleon', title: 'Хамелеон киберпространства', desc: 'Опробовать все 8 тем оформления', category: 'tech', rarity: 'gold', icon: '🎨', target: 8 },
@@ -1035,12 +1061,38 @@ export function trackUserAction(userId, actionType, meta = {}) {
       tryUnlock('time_50h', hours, true);
       tryUnlock('time_100h', hours, true);
       tryUnlock('time_250h', hours, true);
+      tryUnlock('time_500h', hours, true);
+      break;
+
+    case 'watch_series_episode':
+      tryUnlock('series_first_ep', 1);
+      tryUnlock('series_binge_5', 1);
+      tryUnlock('series_binge_25', 1);
+      break;
+
+    case 'complete_season':
+      tryUnlock('series_season_done', 1);
+      tryUnlock('series_three_seasons', 1);
+      break;
+
+    case 'watch_genre':
+      const genre = (meta.genre || '').toLowerCase();
+      if (genre.includes('фантастик') || genre.includes('космос') || genre.includes('науч')) tryUnlock('genre_scifi', 1);
+      if (genre.includes('боевик') || genre.includes('триллер') || genre.includes('экшен')) tryUnlock('genre_action', 1);
+      if (genre.includes('комед')) tryUnlock('genre_comedy', 1);
+      if (genre.includes('ужас') || genre.includes('хоррор')) tryUnlock('genre_horror', 1);
+      if (genre.includes('драм')) tryUnlock('genre_drama', 1);
+      if (genre.includes('детектив') || genre.includes('криминал')) tryUnlock('genre_detective', 1);
       break;
 
     case 'write_review':
       tryUnlock('review_first', 1);
       tryUnlock('review_3', 1);
       tryUnlock('review_10', 1);
+      break;
+
+    case 'rate_media':
+      tryUnlock('review_rating', 1);
       break;
 
     case 'receive_like':
@@ -1065,6 +1117,16 @@ export function trackUserAction(userId, actionType, meta = {}) {
       tryUnlock('bookmark_first', totalBookmarks, true);
       tryUnlock('bookmark_20', totalBookmarks, true);
       tryUnlock('bookmark_50', totalBookmarks, true);
+      tryUnlock('bookmark_100', totalBookmarks, true);
+      break;
+
+    case 'update_status':
+      const watchingCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId)?.count || 0;
+      if (watchingCnt > 0) tryUnlock('status_watching', watchingCnt, true);
+      const completedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId)?.count || 0;
+      if (completedCnt > 0) tryUnlock('status_completed', completedCnt, true);
+      const plannedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'planned'").get(userId)?.count || 0;
+      if (plannedCnt > 0) tryUnlock('status_planned', plannedCnt, true);
       break;
 
     case 'create_list':
@@ -1075,6 +1137,23 @@ export function trackUserAction(userId, actionType, meta = {}) {
 
     case 'use_4k':
       tryUnlock('tech_4k', 1);
+      tryUnlock('tech_4k_ultra', 1);
+      break;
+
+    case 'use_pro_audio':
+      tryUnlock('tech_audio_pro', 1);
+      break;
+
+    case 'use_pro_video':
+      tryUnlock('tech_video_pro', 1);
+      break;
+
+    case 'switch_voiceover':
+      tryUnlock('tech_voiceover_fan', 1);
+      break;
+
+    case 'use_xray':
+      tryUnlock('tech_xray', 1);
       break;
 
     case 'use_torrent':
@@ -1130,6 +1209,147 @@ export function trackUserAction(userId, actionType, meta = {}) {
   }
 
   return unlockedAchievements;
+}
+
+export function autoSyncUserAchievements(userId, clientState = {}) {
+  if (!userId) return [];
+  const unlockedAchievements = [];
+
+  const tryUnlock = (achId, amount = 1, isSet = false) => {
+    const res = updateAchievementProgress(userId, achId, amount, isSet);
+    if (res && res.unlocked) {
+      unlockedAchievements.push(res.achievement);
+    }
+  };
+
+  // 1. Закладки и коллекции
+  const totalBookmarks = db.prepare('SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ?').get(userId)?.count || 0;
+  if (totalBookmarks > 0) {
+    tryUnlock('bookmark_first', totalBookmarks, true);
+    tryUnlock('bookmark_20', totalBookmarks, true);
+    tryUnlock('bookmark_50', totalBookmarks, true);
+    tryUnlock('bookmark_100', totalBookmarks, true);
+  }
+
+  // 2. Статусы
+  const watchingCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId)?.count || 0;
+  if (watchingCnt > 0) tryUnlock('status_watching', watchingCnt, true);
+  const completedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId)?.count || 0;
+  if (completedCnt > 0) tryUnlock('status_completed', completedCnt, true);
+  const plannedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'planned'").get(userId)?.count || 0;
+  if (plannedCnt > 0) tryUnlock('status_planned', plannedCnt, true);
+
+  // 3. Пользовательские списки
+  const totalLists = db.prepare('SELECT COUNT(*) AS count FROM custom_lists WHERE user_id = ?').get(userId)?.count || 0;
+  if (totalLists > 0) {
+    tryUnlock('list_first', totalLists, true);
+    tryUnlock('list_pro', totalLists, true);
+  }
+
+  // 4. Рецензии и лайки
+  const totalReviews = db.prepare('SELECT COUNT(*) AS count FROM reviews WHERE user_id = ?').get(userId)?.count || 0;
+  if (totalReviews > 0) {
+    tryUnlock('review_first', totalReviews, true);
+    tryUnlock('review_3', totalReviews, true);
+    tryUnlock('review_10', totalReviews, true);
+  }
+
+  const reviewLikes = db.prepare(`
+    SELECT COUNT(*) AS count FROM review_likes rl
+    JOIN reviews r ON rl.review_id = r.id
+    WHERE r.user_id = ? AND rl.is_like = 1
+  `).get(userId)?.count || 0;
+  if (reviewLikes > 0) {
+    tryUnlock('review_liked', reviewLikes, true);
+    tryUnlock('review_popular', reviewLikes, true);
+  }
+
+  // 5. Синхронизация из клиентского хранилища
+  if (clientState.watched_episodes) {
+    tryUnlock('series_first_ep', clientState.watched_episodes, true);
+    tryUnlock('series_binge_5', clientState.watched_episodes, true);
+    tryUnlock('series_binge_25', clientState.watched_episodes, true);
+  }
+  if (clientState.completed_seasons) {
+    tryUnlock('series_season_done', clientState.completed_seasons, true);
+    tryUnlock('series_three_seasons', clientState.completed_seasons, true);
+  }
+  if (clientState.total_watched_hours) {
+    const hours = clientState.total_watched_hours;
+    tryUnlock('time_1h', hours, true);
+    tryUnlock('time_5h', hours, true);
+    tryUnlock('time_20h', hours, true);
+    tryUnlock('time_50h', hours, true);
+    tryUnlock('time_100h', hours, true);
+    tryUnlock('time_250h', hours, true);
+    tryUnlock('time_500h', hours, true);
+  }
+  if (clientState.themes_count) {
+    tryUnlock('tech_chameleon', clientState.themes_count, true);
+  }
+  if (clientState.langs_count) {
+    tryUnlock('tech_polyglot', clientState.langs_count, true);
+  }
+  if (clientState.used_4k_count) {
+    tryUnlock('tech_4k', clientState.used_4k_count, true);
+    tryUnlock('tech_4k_ultra', clientState.used_4k_count, true);
+  }
+  if (clientState.used_pro_audio) {
+    tryUnlock('tech_audio_pro', 1);
+  }
+  if (clientState.used_pro_video) {
+    tryUnlock('tech_video_pro', 1);
+  }
+  if (clientState.voiceovers_count) {
+    tryUnlock('tech_voiceover_fan', clientState.voiceovers_count, true);
+  }
+  if (clientState.used_xray) {
+    tryUnlock('tech_xray', 1);
+  }
+
+  return unlockedAchievements;
+}
+
+export function claimAchievement(userId, achievementId) {
+  if (!userId || !achievementId) return null;
+  const achMeta = ACHIEVEMENTS_CATALOG.find(a => a.id === achievementId);
+  if (!achMeta) return null;
+
+  const existing = db.prepare('SELECT progress, target, unlocked FROM user_achievements WHERE user_id = ? AND achievement_id = ?').get(userId, achievementId);
+  const target = achMeta.target;
+  const now = Date.now();
+
+  if (existing && existing.progress >= target) {
+    db.prepare('UPDATE user_achievements SET unlocked = 1, unlocked_at = COALESCE(unlocked_at, ?) WHERE user_id = ? AND achievement_id = ?').run(now, userId, achievementId);
+    return {
+      unlocked: true,
+      achievement: {
+        ...achMeta,
+        progress: target,
+        unlocked: true,
+        unlocked_at: now
+      }
+    };
+  }
+
+  db.prepare(`
+    INSERT INTO user_achievements (user_id, achievement_id, progress, target, unlocked, unlocked_at)
+    VALUES (?, ?, ?, ?, 1, ?)
+    ON CONFLICT(user_id, achievement_id) DO UPDATE SET
+      progress = excluded.progress,
+      unlocked = 1,
+      unlocked_at = COALESCE(user_achievements.unlocked_at, excluded.unlocked_at)
+  `).run(userId, achievementId, target, target, now);
+
+  return {
+    unlocked: true,
+    achievement: {
+      ...achMeta,
+      progress: target,
+      unlocked: true,
+      unlocked_at: now
+    }
+  };
 }
 
 // ==========================================

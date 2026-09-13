@@ -33,6 +33,8 @@ import {
   getUserAchievements,
   updateAchievementProgress,
   trackUserAction,
+  autoSyncUserAchievements,
+  claimAchievement,
   exportUserData,
   importUserData,
   getOrCreateDefaultUserSession
@@ -1165,6 +1167,194 @@ app.get('/api/media/series-episodes', async (req, res) => {
   }
 });
 
+// ==========================================
+// 5.1 СТИЛИЗОВАННЫЙ ПРОКСИ ПЛЕЕРА И СЕРИЙНЫХ ОПЦИЙ
+// ==========================================
+
+// Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
+app.get('/api/player/fanfilm-embed', async (req, res) => {
+  try {
+    let { url: targetUrl, season, episode, translation } = req.query;
+    if (!targetUrl) {
+      return res.status(400).send('URL плеера не указан');
+    }
+
+    if (!targetUrl.includes('stravers.live') && !targetUrl.includes('fanfilm4k')) {
+      return res.status(403).send('Недопустимый домен плеера');
+    }
+
+    let directIframe = targetUrl;
+    if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
+      const pageRes = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      const pageHtml = await pageRes.text();
+      const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+      if (m) {
+        directIframe = m[1].startsWith('//') ? 'https:' + m[1] : m[1];
+      }
+    }
+
+    const urlObj = new URL(directIframe);
+    if (season !== undefined && season !== null) urlObj.searchParams.set('season', season);
+    if (episode !== undefined && episode !== null) urlObj.searchParams.set('episode', episode);
+    if (translation !== undefined && translation !== null) urlObj.searchParams.set('translation', translation);
+    urlObj.searchParams.set('selector', '0');
+
+    const finalUrl = urlObj.toString();
+
+    const upstreamRes = await fetch(finalUrl, {
+      headers: {
+        'Referer': 'https://v17.fanfilm4k.media/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!upstreamRes.ok) {
+      return res.status(upstreamRes.status).send('Ошибка загрузки потока плеера');
+    }
+
+    let html = await upstreamRes.text();
+    const baseDomain = `${urlObj.protocol}//${urlObj.host}/`;
+
+    const injectedHead = `
+  <base href="${baseDomain}">
+  <style>
+    .select, div[data-select], [data-select], .trailer, .ui.btn.trailer, a.trailer, a.btn.trailer, .selectType1, [data-select-list] {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+  </style>
+`;
+    html = html.replace('<head>', `<head>${injectedHead}`);
+    html = html.replace(/selector:\s*1\s*,/, 'selector: 0,');
+    html = html.replace(/<a[^>]*class="[^"]*trailer[^"]*"[^>]*>[\s\S]*?<\/a>/gi, '');
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.send(html);
+  } catch (err) {
+    console.error('Ошибка прокси плеера:', err.message);
+    res.status(500).send('Ошибка проксирования видеопотока');
+  }
+});
+
+// Получение списка доступных сезонов, серий и студийных озвучек с определением 4K UHD
+app.get('/api/player/series-options', async (req, res) => {
+  try {
+    const { url: targetUrl } = req.query;
+    if (!targetUrl) {
+      return res.status(400).json({ success: false, error: 'URL не указан' });
+    }
+
+    let iframeSrc = targetUrl;
+
+    if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
+      const pageRes = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      const pageHtml = await pageRes.text();
+      const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+      if (m) {
+        iframeSrc = m[1].startsWith('//') ? 'https:' + m[1] : m[1];
+      }
+    }
+
+    const pRes = await fetch(iframeSrc, {
+      headers: {
+        'Referer': 'https://v17.fanfilm4k.media/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const html = await pRes.text();
+    const fileListMatch = html.match(/const fileList = JSON\.parse\('(.*?)'\);/s);
+    if (!fileListMatch) {
+      return res.json({ success: false, error: 'Данные сериала не найдены' });
+    }
+
+    const rawJson = fileListMatch[1].replace(/\\'/g, "'");
+    const parsed = JSON.parse(rawJson);
+
+    if (parsed.type !== 'serial' || !parsed.all) {
+      return res.json({
+        success: true,
+        type: parsed.type || 'movie',
+        seasons: [],
+        active: parsed.active
+      });
+    }
+
+    const seasons = [];
+    const seasonKeys = Object.keys(parsed.all).sort((a, b) => Number(a) - Number(b));
+
+    for (const sNum of seasonKeys) {
+      const epObj = parsed.all[sNum];
+      const epKeys = Object.keys(epObj).sort((a, b) => Number(a) - Number(b));
+      const episodes = [];
+
+      for (const epNum of epKeys) {
+        const transObj = epObj[epNum];
+        const translations = [];
+
+        for (const [key, t] of Object.entries(transObj)) {
+          translations.push({
+            id: t.id_translation,
+            name: t.translation,
+            quality: t.quality || 'WEB-DL',
+            is_uhd: t.uhd === 1,
+            stream_id: t.id
+          });
+        }
+
+        translations.sort((a, b) => {
+          if (a.is_uhd && !b.is_uhd) return -1;
+          if (!a.is_uhd && b.is_uhd) return 1;
+          return a.name.localeCompare(b.name, 'ru');
+        });
+
+        episodes.push({
+          episode: Number(epNum),
+          name: `Серия ${epNum}`,
+          translations
+        });
+      }
+
+      seasons.push({
+        season: Number(sNum),
+        name: `Сезон ${sNum}`,
+        episodes_count: episodes.length,
+        episodes
+      });
+    }
+
+    res.json({
+      success: true,
+      type: 'serial',
+      embed_base: iframeSrc,
+      active: {
+        season: parsed.active?.seasons || 1,
+        episode: parsed.active?.episode || 1,
+        translation: parsed.active?.translation || '',
+        id_translation: parsed.active?.id_translation || null,
+        is_uhd: parsed.active?.uhd === 1
+      },
+      seasons
+    });
+  } catch (err) {
+    console.error('Ошибка получения серийных опций:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Получение всех видео актера или режиссера
 app.get('/api/media/person', async (req, res) => {
   try {
@@ -1444,6 +1634,30 @@ app.post('/api/achievements/track', requireAuth, (req, res) => {
     const { action, meta } = req.body;
     const unlocked = trackUserAction(req.user.id, action, meta || {});
     res.json({ success: true, unlocked });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/achievements/claim', requireAuth, (req, res) => {
+  try {
+    const { achievement_id } = req.body;
+    if (!achievement_id) {
+      return res.status(400).json({ error: 'Укажите ID достижения' });
+    }
+    const result = claimAchievement(req.user.id, achievement_id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/achievements/sync', requireAuth, (req, res) => {
+  try {
+    const { client_state } = req.body;
+    const unlocked = autoSyncUserAchievements(req.user.id, client_state || {});
+    const achievements = getUserAchievements(req.user.id);
+    res.json({ success: true, unlocked, achievements });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
