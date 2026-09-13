@@ -1499,7 +1499,218 @@ body {
 }
 
 /* -------------------------------------------------------------
-   АДАПТИВНОСТЬ (RESPONSIVE BREAKPOINTS)
+   МОБИЛЬНОЕ ВЫДВИЖНОЕ МЕНЮ (MOBILE DRAWER)
+   ------------------------------------------------------------- */
+.storm-mobile-menu-btn {
+  display: none;
+}
+
+.storm-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1200;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.storm-drawer-backdrop.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.storm-mobile-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 86vw;
+  max-width: 360px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1201;
+}
+
+.storm-drawer-backdrop.is-open .storm-mobile-drawer {
+  transform: translateX(0);
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+}
+
+.storm-drawer-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.storm-drawer-close:hover {
+  color: var(--accent);
+}
+
+.mobile-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-drawer-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-drawer-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mobile-drawer-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-drawer-user-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-drawer-user-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-drawer-section-title {
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent);
+  margin-top: 4px;
+  margin-bottom: -4px;
+}
+
+.mobile-drawer-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mobile-drawer-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.mobile-drawer-nav-item:active {
+  transform: scale(0.98);
+  border-color: var(--accent);
+  background: rgba(0, 210, 255, 0.1);
+}
+
+.mobile-nav-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.mobile-nav-texts {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mobile-nav-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.mobile-nav-desc {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-drawer-quick-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+}
+
+.mobile-drawer-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mobile-drawer-setting-row select {
+  max-width: 170px;
+}
+
+/* -------------------------------------------------------------
+   АДАПТИВНОСТЬ (RESPONSIVE BREAKPOINTS: FLAGSHIP MOBILE UI)
    ------------------------------------------------------------- */
 @media (max-width: 900px) {
   .storm-search-box {
@@ -1508,40 +1719,507 @@ body {
 }
 
 @media (max-width: 768px) {
-  .storm-mobile-bottom-bar {
-    display: flex;
+  /* 1. Защита от горизонтального переполнения и полос прокрутки */
+  html, body {
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+    padding-bottom: 74px !important;
   }
-  
-  body {
-    padding-bottom: 60px;
+
+  *, *::before, *::after {
+    box-sizing: border-box !important;
   }
-  
+
+  .storm-sticky-header-container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  }
+
+  /* 2. Компактная мобильная шапка (Header) */
+  .storm-navbar {
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 0 !important;
+  }
+
   .storm-navbar-inner {
-    padding: 10px 16px;
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 8px 12px 10px !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+
+  .storm-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .storm-brand-logo {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .storm-brand-title {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.4px !important;
   }
 
   .storm-brand-sub {
-    display: none;
+    display: none !important;
   }
 
+  /* Действия в шапке: скрываем громоздкие десктопные кнопки, переносим в Drawer */
+  .storm-nav-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+    margin-left: auto !important;
+  }
+
+  .storm-nav-actions #header-remote-btn,
+  .storm-nav-actions #toggle-tv-mode-btn,
+  .storm-nav-actions #header-rooms-btn,
+  .storm-nav-actions #header-family-btn,
+  .storm-nav-actions #header-sync-btn,
+  .storm-nav-actions #header-profile-btn {
+    display: none !important;
+  }
+
+  .storm-nav-actions #header-recommender-btn,
+  .storm-nav-actions #header-calendar-btn {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    border-radius: 8px !important;
+  }
+
+  .storm-nav-actions #header-recommender-btn span:not(:first-child),
+  .storm-nav-actions #header-calendar-btn span:not(:first-child) {
+    display: none !important;
+  }
+
+  .storm-mobile-menu-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    font-size: 17px !important;
+    border-radius: 9px !important;
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
+  }
+
+  #login-modal-btn {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    border-radius: 8px !important;
+  }
+
+  .user-profile-btn {
+    padding: 4px 8px !important;
+  }
+
+  .user-avatar-img {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  #user-name-label {
+    display: none !important;
+  }
+
+  /* Строка поиска на всю ширину мобильного экрана */
   .storm-search-box {
-    max-width: 100%;
-    order: 3;
-    width: 100%;
+    order: 3 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 2px !important;
+    border-radius: 12px !important;
   }
 
-  .storm-navbar-inner {
-    flex-wrap: wrap;
+  .storm-search-input {
+    padding: 9px 72px 9px 36px !important;
+    font-size: 13px !important;
+    border-radius: 12px !important;
   }
 
+  .storm-search-icon {
+    left: 12px !important;
+    font-size: 13px !important;
+  }
+
+  /* 3. Горизонтальная скролл-лента вкладок (Category Chips) */
+  .storm-tabs-bar {
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding: 6px 8px !important;
+  }
+
+  .storm-tabs-bar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .storm-tabs-inner {
+    display: flex !important;
+    width: max-content !important;
+    max-width: none !important;
+    padding: 2px 4px !important;
+    gap: 6px !important;
+  }
+
+  .storm-tab-btn {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    border-radius: 18px !important;
+    flex-shrink: 0 !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+  }
+
+  /* 4. Мобильная панель фильтров (Horizontal Filter Chips) */
+  .storm-toolbar {
+    width: 100% !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+    padding: 6px 10px 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    overflow-x: hidden !important;
+  }
+
+  .storm-toolbar-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    padding-bottom: 2px !important;
+  }
+
+  .storm-toolbar-left::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .storm-toolbar-left .storm-custom-dropdown {
+    min-width: 0 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .storm-toolbar-left .storm-custom-dropdown .storm-btn {
+    padding: 5px 10px !important;
+    font-size: 11.5px !important;
+    border-radius: 16px !important;
+    white-space: nowrap !important;
+    gap: 5px !important;
+  }
+
+  .storm-toolbar-right {
+    flex-shrink: 0 !important;
+  }
+
+  .view-modes-group {
+    border-radius: 6px !important;
+  }
+
+  .view-mode-btn {
+    padding: 5px 8px !important;
+    font-size: 12px !important;
+  }
+
+  .view-mode-btn[data-view="table"],
+  .view-mode-btn[data-view="compact-grid"] {
+    display: none !important;
+  }
+
+  /* Мобильные шторки (Bottom Sheets) для всех выпадающих списков фильтров */
+  .storm-dropdown-menu {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 65vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    border: 1px solid var(--accent) !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.85) !important;
+    z-index: 1500 !important;
+    background: var(--bg-secondary) !important;
+    animation: stormModalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  @keyframes stormModalSlideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  /* 5. Эталонная 2-колоночная сетка медиа-карточек (Flagship 2-Col Grid) */
+  .storm-main-container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 10px 10px 80px 10px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .media-container.view-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .media-card {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-subtle) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+  }
+
+  .media-card:active {
+    transform: scale(0.96) !important;
+  }
+
+  .media-card-poster {
+    border-radius: 11px 11px 0 0 !important;
+    aspect-ratio: 2 / 3 !important;
+  }
+
+  .media-card-content {
+    padding: 7px 8px 9px !important;
+  }
+
+  .media-card-title {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+    -webkit-line-clamp: 2 !important;
+    margin-bottom: 3px !important;
+  }
+
+  .media-card-meta {
+    font-size: 10.5px !important;
+  }
+
+  /* Детальный список на мобильном */
   .media-detailed-card {
-    flex-direction: column;
+    flex-direction: row !important;
+    gap: 12px !important;
+    padding: 10px !important;
+    border-radius: 12px !important;
   }
 
   .media-detailed-poster {
-    width: 100%;
-    max-width: 180px;
-    margin: 0 auto;
+    width: 85px !important;
+    min-width: 85px !important;
+    max-width: 85px !important;
+    aspect-ratio: 2 / 3 !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+  }
+
+  .media-detailed-info {
+    min-width: 0 !important;
+    flex: 1 !important;
+  }
+
+  .media-detailed-title {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+  }
+
+  .media-detailed-desc {
+    font-size: 11.5px !important;
+    -webkit-line-clamp: 2 !important;
+    margin: 4px 0 !important;
+  }
+
+  /* 6. Полноэкранный кинотеатральный мобильный плеер (Mobile Cinema Sheet) */
+  #cinema-modal.storm-modal-backdrop {
+    padding: 0 !important;
+    background: #000000 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    overflow: hidden !important;
+  }
+
+  #cinema-modal .cinema-modal-dialog {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: var(--bg-primary) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  #cinema-modal .storm-modal-header {
+    padding: 8px 12px !important;
+    position: sticky !important;
+    top: 0 !important;
+    background: var(--bg-secondary) !important;
+    z-index: 60 !important;
+    border-bottom: 1px solid var(--border-subtle) !important;
+  }
+
+  #cinema-modal .storm-modal-title {
+    font-size: 14.5px !important;
+    font-weight: 700 !important;
+    max-width: calc(100vw - 90px) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #cinema-modal .storm-modal-body {
+    padding: 0 0 50px 0 !important;
+    flex: 1 !important;
+  }
+
+  #cinema-modal .cinema-layout-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  #cinema-modal .cinema-player-wrapper {
+    border-radius: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    aspect-ratio: 16 / 9 !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 55 !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8) !important;
+  }
+
+  #cinema-modal .player-series-quick-bar {
+    padding: 8px 12px !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+
+  #cinema-modal .player-series-quick-bar .quick-select-dropdown {
+    flex-shrink: 0 !important;
+    min-width: 0 !important;
+  }
+
+  #cinema-modal #player-selector-dropdown-wrap {
+    padding: 0 12px !important;
+    margin-top: 6px !important;
+  }
+
+  #cinema-modal #player-utility-actions {
+    padding: 0 12px !important;
+  }
+
+  #cinema-modal #cinema-modal-desc-wrap {
+    padding: 0 14px !important;
+  }
+
+  #cinema-modal .series-seasons-container {
+    margin: 0 10px !important;
+    border-radius: 12px !important;
+  }
+
+  #cinema-modal .cinema-side-column {
+    margin: 0 10px !important;
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  #cinema-modal .player-progress-area {
+    padding: 0 12px !important;
+  }
+
+  #cinema-modal #player-status-buttons {
+    padding: 0 12px !important;
+    justify-content: flex-start !important;
+  }
+
+  #cinema-modal #player-collection-dropdown {
+    padding: 0 12px !important;
+    width: 100% !important;
+  }
+
+  /* 7. Флагманская нижняя навигационная панель (Bottom Dock Bar) */
+  .storm-mobile-bottom-bar {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 54px !important;
+    padding: 5px 6px calc(env(safe-area-inset-bottom, 0px) + 5px) !important;
+    background: rgba(10, 13, 20, 0.94) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-top: 1px solid var(--border-color) !important;
+    z-index: 700 !important;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.65) !important;
+  }
+
+  .storm-mobile-nav-item {
+    flex: 1 !important;
+    padding: 3px 0 !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    gap: 2px !important;
+    transition: all 0.15s ease !important;
+  }
+
+  .storm-mobile-nav-item span:first-child {
+    font-size: 17px !important;
+  }
+
+  .storm-mobile-nav-item.active {
+    color: var(--accent) !important;
+    transform: scale(1.06) !important;
+  }
+
+  /* Обычные модальные окна (Вход, Профиль, Комнаты) на мобильном */
+  .storm-modal-backdrop {
+    padding: 12px !important;
+  }
+
+  .storm-modal {
+    max-width: 100% !important;
+    width: 100% !important;
+    border-radius: 16px !important;
   }
 }
 

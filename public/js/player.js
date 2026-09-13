@@ -205,6 +205,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const modal = document.getElementById('cinema-modal');
   if (!modal) return;
 
+  // Закрываем мобильное меню и очищаем всплывающие подсказки
+  const drawer = document.getElementById('mobile-drawer-backdrop');
+  if (drawer) drawer.classList.remove('is-open');
+  document.querySelectorAll('.media-hover-preview-popup').forEach(p => p.remove());
+
   const cleanTitle = cleanVideoTitle(mediaItem.title);
 
   // Проверяем ночной просмотр (между 02:00 и 05:00)
