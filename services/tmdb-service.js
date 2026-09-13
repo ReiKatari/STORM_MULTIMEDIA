@@ -141,3 +141,240 @@ export async function searchTmdb(query, page = 1) {
     return { items: [] };
   }
 }
+
+/**
+ * Получение подробной информации о релизе (актеры, режиссеры, жанры, рейтинги, сезоны)
+ */
+export async function getTmdbItemDetails(id, mediaTypeHint = null) {
+  if (!id) return null;
+  const cleanId = String(id).replace('tmdb_', '').trim();
+  const cacheKey = `details_${cleanId}_${mediaTypeHint || 'any'}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached) return cached;
+
+  const isExplicitTv = mediaTypeHint === 'series' || mediaTypeHint === 'tv' || mediaTypeHint === 'cartoon-series' || mediaTypeHint === 'anime-series';
+  const tryEndpoints = isExplicitTv ? ['tv', 'movie'] : ['movie', 'tv'];
+
+  for (const type of tryEndpoints) {
+    try {
+      const url = `${TMDB_BASE}/${type}/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      const isTv = type === 'tv';
+
+      const title = (isTv ? data.name : data.title) || 'Кинофильм';
+      const originalTitle = (isTv ? data.original_name : data.original_title) || '';
+      const dateStr = (isTv ? data.first_air_date : data.release_date) || '';
+      
+      let formattedDate = '';
+      if (dateStr && dateStr.length >= 10) {
+        const [y, m, d] = dateStr.substring(0, 10).split('-');
+        formattedDate = `${d}.${m}.${y}`;
+      } else {
+        formattedDate = dateStr;
+      }
+      const year = dateStr ? dateStr.substring(0, 4) : '';
+
+      // Длительность
+      let durationStr = '';
+      if (isTv) {
+        const epTime = data.episode_run_time?.[0] || (data.last_episode_to_air?.runtime) || 45;
+        durationStr = `${epTime} мин / серия`;
+      } else if (data.runtime) {
+        const h = Math.floor(data.runtime / 60);
+        const m = data.runtime % 60;
+        durationStr = h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+      }
+
+      // Режиссеры
+      const directors = (data.credits?.crew || [])
+        .filter(c => c.job === 'Director')
+        .map(d => ({
+          id: d.id,
+          name: d.name,
+          role: 'Режиссер',
+          photo: d.profile_path ? `${IMAGE_BASE}${d.profile_path}` : 'assets/avatar_default.svg'
+        }));
+
+      // Актеры
+      const cast = (data.credits?.cast || []).slice(0, 16).map(a => ({
+        id: a.id,
+        name: a.name,
+        character: a.character || 'В главных ролях',
+        photo: a.profile_path ? `${IMAGE_BASE}${a.profile_path}` : 'assets/avatar_default.svg'
+      }));
+
+      // Трейлеры
+      const trailers = (data.videos?.results || []).filter(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+      let trailerUrl = null;
+      if (trailers.length > 0) {
+        trailerUrl = `https://www.youtube-nocookie.com/embed/${trailers[0].key}?autoplay=1&rel=0`;
+      }
+
+      // Сезоны для сериалов
+      let seasons = [];
+      if (isTv && Array.isArray(data.seasons)) {
+        seasons = data.seasons
+          .filter(s => s.season_number > 0)
+          .map(s => ({
+            season_number: s.season_number,
+            name: s.name || `Сезон ${s.season_number}`,
+            episode_count: s.episode_count,
+            overview: s.overview || 'Сезон доступен для онлайн-просмотра.',
+            poster: s.poster_path ? `${IMAGE_BASE}${s.poster_path}` : null,
+            air_date: s.air_date
+          }));
+      }
+
+      // Проверка на статус не вышедшего фильма
+      const isUpcoming = dateStr ? new Date(dateStr) > new Date() : false;
+
+      const details = {
+        id: `tmdb_${data.id}`,
+        tmdb_id: data.id,
+        source: 'tmdb',
+        title: title.trim(),
+        original_title: originalTitle.trim(),
+        poster: data.poster_path ? `${IMAGE_BASE}${data.poster_path}` : (data.backdrop_path ? `${IMAGE_BASE}${data.backdrop_path}` : 'assets/favicon.svg'),
+        backdrop: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null,
+        year,
+        release_date: formattedDate,
+        duration: durationStr,
+        runtime_minutes: data.runtime || (data.episode_run_time?.[0] || 0),
+        rating: data.vote_average ? Math.round(data.vote_average * 10) / 10 : 0,
+        rating_tmdb: data.vote_average ? Math.round(data.vote_average * 10) / 10 : 0,
+        rating_kp: data.vote_average ? Math.round((data.vote_average * 0.95 + 0.3) * 10) / 10 : 0,
+        vote_count: data.vote_count || 0,
+        imdb_id: data.external_ids?.imdb_id || '',
+        media_type: isTv ? 'series' : 'movie',
+        is4K: true,
+        genres: (data.genres || []).map(g => g.name),
+        countries: (data.production_countries || []).map(c => c.name),
+        description: data.overview || 'Мировой кинематографический релиз в сверхвысоком качестве.',
+        directors,
+        cast,
+        trailer_url: trailerUrl,
+        is_upcoming: isUpcoming,
+        seasons,
+        players: []
+      };
+
+      setCache('tmdb', cacheKey, details, 3600);
+      return details;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Получение серий сезона сериала с русскими названиями и синопсисами
+ */
+export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
+  const cleanId = String(tvId).replace('tmdb_', '').trim();
+  const cacheKey = `tv_${cleanId}_season_${seasonNumber}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${TMDB_BASE}/tv/${cleanId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=ru-RU`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Season fetch error: ${res.status}`);
+
+    const data = await res.json();
+    const episodes = (data.episodes || []).map(ep => {
+      let formattedDate = '';
+      if (ep.air_date && ep.air_date.length >= 10) {
+        const [y, m, d] = ep.air_date.substring(0, 10).split('-');
+        formattedDate = `${d}.${m}.${y}`;
+      } else {
+        formattedDate = ep.air_date || '';
+      }
+
+      return {
+        episode_number: ep.episode_number,
+        name: ep.name || `Серия ${ep.episode_number}`,
+        overview: ep.overview || 'Серия доступна для онлайн-просмотра в высоком качестве.',
+        still: ep.still_path ? `${IMAGE_BASE}${ep.still_path}` : null,
+        duration: ep.runtime ? `${ep.runtime} мин` : '',
+        air_date: formattedDate
+      };
+    });
+
+    const result = {
+      season_number: data.season_number,
+      name: data.name,
+      overview: data.overview || '',
+      episodes
+    };
+
+    setCache('tmdb', cacheKey, result, 7200);
+    return result;
+  } catch (err) {
+    console.warn('Ошибка загрузки серий сезона:', err.message);
+    return { episodes: [] };
+  }
+}
+
+/**
+ * Получение всех видео актера или режиссера
+ */
+export async function getTmdbPersonMedia(personId) {
+  const cleanId = String(personId).trim();
+  const cacheKey = `person_${cleanId}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${TMDB_BASE}/person/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Person fetch error: ${res.status}`);
+
+    const data = await res.json();
+    const credits = data.combined_credits || {};
+    
+    // Объединяем и дедуплицируем работы
+    const rawItems = [
+      ...(credits.crew || []).filter(c => c.job === 'Director'),
+      ...(credits.cast || [])
+    ];
+
+    const seen = new Set();
+    const items = [];
+
+    for (const item of rawItems) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      const formatted = formatTmdbItem(item);
+      if (formatted && formatted.title) {
+        items.push(formatted);
+      }
+    }
+
+    // Сортируем по популярности
+    items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    const result = {
+      person: {
+        id: data.id,
+        name: data.name,
+        photo: data.profile_path ? `${IMAGE_BASE}${data.profile_path}` : 'assets/avatar_default.svg',
+        biography: data.biography || '',
+        birthday: data.birthday || '',
+        place_of_birth: data.place_of_birth || '',
+        known_for: data.known_for_department === 'Directing' ? 'Режиссер' : 'Актер'
+      },
+      items: items.slice(0, 40)
+    };
+
+    setCache('tmdb', cacheKey, result, 7200);
+    return result;
+  } catch (err) {
+    console.warn('Ошибка загрузки медиа персоны:', err.message);
+    return { person: null, items: [] };
+  }
+}

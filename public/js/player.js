@@ -138,12 +138,21 @@ export async function openPlayerModal(mediaItem) {
     }
     renderScreenshotsGallery(mediaItem, details);
 
+    // Отображаем подробную информацию в боковой колонке (даты, рейтинги, режиссеры, актеры)
+    renderDetailedMediaInfo(currentMedia);
+
+    // Отображаем селектор сезонов и серий для сериалов
+    renderSeriesSeasons(currentMedia);
+
     // Добавляем P2P WebTorrent в список плееров
     currentPlayers.push({
       id: 'webtorrent',
       name: 'P2P WebTorrent (Торрент-стриминг)',
       url: 'webtorrent://direct',
-      badge: 'P2P 4K'
+      badge: 'P2P 4K',
+      quality: '4K UHD / 1080p',
+      status_label: '🟢 P2P Сеть',
+      audio_info: 'Многоголосый дубляж'
     });
 
     renderPlayerSources(currentPlayers);
@@ -202,13 +211,23 @@ export function closePlayerModal() {
       } catch {}
       torrentClient = null;
     }
+
+    const personModal = document.getElementById('person-modal');
+    if (personModal) personModal.classList.remove('is-open');
   }
 }
 
 function renderPlayerSources(players) {
-  const container = document.getElementById('player-sources-bar');
-  if (!container) return;
-  container.innerHTML = '';
+  const dropdown = document.getElementById('player-source-dropdown');
+  const trigger = document.getElementById('player-source-trigger');
+  const menu = document.getElementById('player-source-menu');
+  const list = document.getElementById('player-source-list');
+  const curBadge = document.getElementById('player-current-badge');
+  const curName = document.getElementById('player-current-name');
+  const curQuality = document.getElementById('player-current-quality');
+  const curStatus = document.getElementById('player-current-status');
+
+  if (!dropdown || !list) return;
 
   const validPlayers = (players || []).filter(p => {
     if (!p || !p.url) return false;
@@ -218,6 +237,9 @@ function renderPlayerSources(players) {
     if (lowerName.includes('трейлер') || lowerName.includes('trailer') ||
         lowerBadge.includes('трейлер') || lowerBadge.includes('trailer') ||
         lowerId.includes('trailer')) {
+      if (currentMedia?.is_upcoming || !players.some(op => op.id !== 'official_trailer' && op.url && !op.url.includes('youtube'))) {
+        return true;
+      }
       return false;
     }
     if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
@@ -227,22 +249,86 @@ function renderPlayerSources(players) {
   currentPlayers = validPlayers;
 
   if (validPlayers.length === 0) {
-    container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Плееры для данного видео недоступны</span>';
+    if (curName) curName.textContent = 'Плееры не найдены';
+    if (curBadge) curBadge.textContent = 'ОШИБКА';
+    if (curQuality) curQuality.textContent = '—';
+    if (curStatus) curStatus.textContent = '🔴 Недоступен';
+    list.innerHTML = '<div style="padding: 10px; color: var(--text-muted); font-size: 12px; text-align: center;">Плееры для данного видео временно недоступны</div>';
     return;
   }
 
-  validPlayers.forEach((p, idx) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `player-source-btn ${idx === 0 ? 'active' : ''}`;
-    btn.innerHTML = `<span class="player-source-badge">${p.badge || 'ПЛЕЕР'}</span> <span class="player-source-name">${p.name}</span>`;
-    btn.onclick = () => {
-      container.querySelectorAll('.player-source-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectPlayer(p);
+  // Заполняем выпадающий список стилизованными элементами
+  list.innerHTML = validPlayers.map((p, idx) => {
+    const isAct = currentActivePlayer ? currentActivePlayer.id === p.id : idx === 0;
+    return `
+      <div class="player-dropdown-item ${isAct ? 'active' : ''}" data-idx="${idx}">
+        <div class="player-item-header">
+          <span class="player-source-badge">${p.badge || 'ПЛЕЕР'}</span>
+          <span class="player-item-name">${p.name}</span>
+        </div>
+        <div class="player-item-details">
+          <span class="player-item-quality">${p.quality || '1080p FHD'}</span>
+          <span class="player-item-audio">${p.audio_info || 'Оригинал / дубляж'}</span>
+          <span class="player-item-status">${p.status_label || '🟢 Онлайн'}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Обновляем плашку выбранного плеера
+  const defaultPlayer = currentActivePlayer || validPlayers[0];
+  updatePlayerTriggerInfo(defaultPlayer);
+
+  // Клик по пункту выпадающего списка
+  list.querySelectorAll('.player-dropdown-item').forEach(itemEl => {
+    itemEl.onclick = (e) => {
+      e.stopPropagation();
+      const idx = parseInt(itemEl.dataset.idx, 10);
+      const player = validPlayers[idx];
+      if (player) {
+        list.querySelectorAll('.player-dropdown-item').forEach(el => el.classList.remove('active'));
+        itemEl.classList.add('active');
+        updatePlayerTriggerInfo(player);
+        menu.style.display = 'none';
+        dropdown.classList.remove('is-open');
+        selectPlayer(player);
+      }
     };
-    container.appendChild(btn);
   });
+
+  // Открытие / закрытие выпадающего списка
+  if (trigger) {
+    trigger.onclick = (e) => {
+      e.stopPropagation();
+      const isOpen = menu.style.display === 'block';
+      menu.style.display = isOpen ? 'none' : 'block';
+      dropdown.classList.toggle('is-open', !isOpen);
+    };
+  }
+
+  // Закрытие при клике вне селектора
+  if (!dropdown.dataset.hasOutsideListener) {
+    dropdown.dataset.hasOutsideListener = 'true';
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) {
+        menu.style.display = 'none';
+        dropdown.classList.remove('is-open');
+      }
+    });
+  }
+}
+
+function updatePlayerTriggerInfo(player) {
+  if (!player) return;
+  const curBadge = document.getElementById('player-current-badge');
+  const curName = document.getElementById('player-current-name');
+  const curQuality = document.getElementById('player-current-quality');
+  const curStatus = document.getElementById('player-current-status');
+
+  if (curBadge) curBadge.textContent = player.badge || 'ПЛЕЕР';
+  if (curName) curName.textContent = player.name || 'Плеер';
+  if (curQuality) curQuality.textContent = player.quality || '1080p FHD';
+  if (curStatus) curStatus.textContent = player.status_label || '🟢 Онлайн';
 }
 
 function selectPlayer(player) {
@@ -321,6 +407,10 @@ function playStreamUrl(url) {
       <iframe class="cinema-player-iframe" src="${url}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
+
+  if (ambilightEnabled) {
+    startAmbilightLoop(null);
+  }
 
   // Автоматический трекинг прогресса при воспроизведении через Iframe
   currentWatchTimeSeconds = Math.round(((currentProgressPercent || 0) / 100) * 7200);
@@ -538,9 +628,8 @@ function renderAmbilightSettings(host) {
 
   const updateModeButtons = (activeMode) => {
     ambilightSettings.mode = activeMode;
-    saveAmbilightSettings();
+    applyAmbilightInstantGlow();
     renderAmbilightSettings(host);
-    if (!ambilightEnabled) toggleAmbilight();
   };
 
   if (modeAuto) modeAuto.onclick = () => updateModeButtons('auto');
@@ -552,9 +641,8 @@ function renderAmbilightSettings(host) {
     btn.onclick = () => {
       ambilightSettings.color = btn.dataset.color;
       ambilightSettings.mode = 'preset';
-      saveAmbilightSettings();
+      applyAmbilightInstantGlow();
       renderAmbilightSettings(host);
-      if (!ambilightEnabled) toggleAmbilight();
     };
   });
 
@@ -566,8 +654,7 @@ function renderAmbilightSettings(host) {
       ambilightSettings.color = e.target.value;
       ambilightSettings.mode = 'custom';
       if (hexVal) hexVal.textContent = e.target.value;
-      saveAmbilightSettings();
-      if (!ambilightEnabled) toggleAmbilight();
+      applyAmbilightInstantGlow();
     };
   }
 
@@ -578,7 +665,7 @@ function renderAmbilightSettings(host) {
     intensitySlider.oninput = (e) => {
       ambilightSettings.intensity = parseInt(e.target.value, 10);
       if (intensityVal) intensityVal.textContent = `${ambilightSettings.intensity}%`;
-      saveAmbilightSettings();
+      applyAmbilightInstantGlow();
     };
   }
 
@@ -588,9 +675,43 @@ function renderAmbilightSettings(host) {
     blurSlider.oninput = (e) => {
       ambilightSettings.blur = parseInt(e.target.value, 10);
       if (blurVal) blurVal.textContent = `${ambilightSettings.blur}px`;
-      saveAmbilightSettings();
+      applyAmbilightInstantGlow();
     };
   }
+}
+
+function saveAmbilightSettings() {
+  try {
+    localStorage.setItem('storm_ambilight_settings', JSON.stringify(ambilightSettings));
+  } catch {}
+}
+
+function applyAmbilightInstantGlow() {
+  saveAmbilightSettings();
+  if (!ambilightEnabled) {
+    ambilightEnabled = true;
+    const btn = document.getElementById('toggle-ambilight-btn');
+    if (btn) btn.classList.add('active');
+  }
+
+  const aura = document.getElementById('player-ambilight-aura');
+  if (aura) {
+    let r = 0, g = 210, b = 255;
+    if (ambilightSettings.mode === 'preset' || ambilightSettings.mode === 'custom') {
+      const rgb = hexToRgb(ambilightSettings.color);
+      r = rgb.r;
+      g = rgb.g;
+      b = rgb.b;
+    }
+    const alpha = ambilightSettings.intensity / 100;
+    const blur = ambilightSettings.blur;
+    aura.classList.add('active');
+    aura.style.opacity = `${alpha}`;
+    aura.style.boxShadow = `0 0 ${blur}px rgba(${r}, ${g}, ${b}, 0.9), 0 0 ${Math.round(blur * 1.5)}px rgba(${r}, ${g}, ${b}, 0.55), inset 0 0 ${Math.round(blur * 0.5)}px rgba(${r}, ${g}, ${b}, 0.35)`;
+  }
+
+  const video = document.getElementById('storm-video-player');
+  startAmbilightLoop(video);
 }
 
 function startAmbilightLoop(video) {
@@ -1496,4 +1617,301 @@ function initProgressSlider() {
       });
     }
   };
+}
+
+// ==========================================
+// ПОДРОБНАЯ ИНФОРМАЦИЯ О РЕЛИЗЕ В БОКОВОЙ ПАНЕЛИ
+// ==========================================
+function renderDetailedMediaInfo(mediaDetails) {
+  const container = document.getElementById('cinema-side-info');
+  if (!container || !mediaDetails) return;
+
+  const poster = mediaDetails.poster || 'assets/favicon.svg';
+  const releaseDate = mediaDetails.release_date || (mediaDetails.year ? `01.01.${mediaDetails.year}` : 'Не указана');
+  const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : '1 ч 45 мин');
+  const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
+  const ratingImdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';
+  const genres = (mediaDetails.genres || []).slice(0, 6);
+  const countries = (mediaDetails.countries || []).join(', ') || 'Мировой релиз';
+
+  const directors = mediaDetails.directors || [];
+  const primaryDirector = directors[0] || null;
+  const cast = mediaDetails.cast || [];
+
+  container.innerHTML = `
+    <!-- Постер и ключевые плашки -->
+    <div class="cinema-side-poster-wrap">
+      <img src="${poster}" alt="${mediaDetails.title}" class="cinema-side-poster" onerror="this.src='assets/favicon.svg'">
+      <div class="cinema-side-poster-glow"></div>
+      <div class="cinema-side-badges">
+        <span class="storm-badge storm-badge-4k">4K UHD</span>
+        <span class="storm-badge storm-badge-rating">★ ${ratingKp}</span>
+      </div>
+    </div>
+
+    <!-- Сетка метаданных -->
+    <div class="cinema-meta-grid">
+      <div class="cinema-meta-item">
+        <span class="cinema-meta-label">Премьера</span>
+        <span class="cinema-meta-val">${releaseDate}</span>
+      </div>
+      <div class="cinema-meta-item">
+        <span class="cinema-meta-label">Длительность</span>
+        <span class="cinema-meta-val">${duration}</span>
+      </div>
+      <div class="cinema-meta-item">
+        <span class="cinema-meta-label">Кинопоиск</span>
+        <span class="cinema-meta-val" style="color: var(--color-amber); font-weight: 800;">★ ${ratingKp}</span>
+      </div>
+      <div class="cinema-meta-item">
+        <span class="cinema-meta-label">IMDb и TMDB</span>
+        <span class="cinema-meta-val" style="color: var(--accent); font-weight: 800;">★ ${ratingImdb}</span>
+      </div>
+      <div class="cinema-meta-item" style="grid-column: 1 / -1;">
+        <span class="cinema-meta-label">Страна</span>
+        <span class="cinema-meta-val">${countries}</span>
+      </div>
+      ${genres.length > 0 ? `
+        <div class="cinema-meta-item" style="grid-column: 1 / -1;">
+          <span class="cinema-meta-label">Жанры</span>
+          <div class="cinema-genres-tags">
+            ${genres.map(g => `<span class="cinema-genre-tag">${g}</span>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- Режиссер -->
+    ${primaryDirector ? `
+      <div class="cinema-person-section">
+        <div class="cinema-section-subtitle">
+          <span>🎬</span>
+          <span>Режиссер</span>
+        </div>
+        <div class="cinema-director-card" data-director-id="${primaryDirector.id}" data-director-name="${primaryDirector.name}">
+          <img src="${primaryDirector.photo || 'assets/favicon.svg'}" alt="${primaryDirector.name}" class="cinema-director-photo" onerror="this.src='assets/favicon.svg'">
+          <div class="cinema-director-info">
+            <div class="cinema-director-name">${primaryDirector.name}</div>
+            <div class="cinema-director-role">Постановщик кинокартины</div>
+            <button type="button" class="storm-btn storm-btn-sm cinema-director-btn">
+              <span>Все фильмы режиссера</span> ➔
+            </button>
+          </div>
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- Актерский состав -->
+    ${cast.length > 0 ? `
+      <div class="cinema-person-section">
+        <div class="cinema-section-subtitle">
+          <span>🎭</span>
+          <span>В главных ролях (${cast.length})</span>
+        </div>
+        <div class="cinema-cast-scroll">
+          ${cast.map(actor => `
+            <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
+              <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+              <div class="cinema-actor-info">
+                <div class="cinema-actor-name">${actor.name}</div>
+                <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+  `;
+
+  // Обработчик клика по карточке режиссера
+  const dirCard = container.querySelector('.cinema-director-card');
+  if (dirCard) {
+    dirCard.onclick = () => {
+      openPersonModal(dirCard.dataset.directorId, dirCard.dataset.directorName);
+    };
+  }
+
+  // Обработчики клика по актерам
+  container.querySelectorAll('.cinema-actor-chip').forEach(chip => {
+    chip.onclick = () => {
+      openPersonModal(chip.dataset.actorId, chip.dataset.actorName);
+    };
+  });
+}
+
+// ==========================================
+// МОДАЛЬНОЕ ОКНО ФИЛЬМОГРАФИИ АКТЕРА И РЕЖИССЕРА
+// ==========================================
+export async function openPersonModal(personId, personName) {
+  const modal = document.getElementById('person-modal');
+  const title = document.getElementById('person-modal-title');
+  const body = document.getElementById('person-modal-body');
+  if (!modal || !body) return;
+
+  if (title) title.textContent = personName ? `Фильмография: ${personName}` : 'Фильмография';
+  modal.classList.add('is-open');
+
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text-muted);gap:12px;">
+      <div class="storm-spinner"></div>
+      <span style="font-weight:600;">Загрузка фильмографии...</span>
+    </div>
+  `;
+
+  try {
+    const res = await fetch(`/api/media/person?id=${encodeURIComponent(personId)}`);
+    if (!res.ok) throw new Error('Не удалось загрузить данные персоны');
+    const data = await res.json();
+    const person = data.person || {};
+    const items = data.items || [];
+
+    body.innerHTML = `
+      <div class="person-profile-header">
+        <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="person-profile-photo" onerror="this.src='assets/favicon.svg'">
+        <div class="person-profile-info">
+          <h3 class="person-profile-name">${person.name || personName}</h3>
+          <div class="person-profile-meta">
+            <span>${person.known_for || 'Кинематографист'}</span>
+            ${person.birthday ? `<span>• Дата рождения: ${person.birthday}</span>` : ''}
+            ${person.place_of_birth ? `<span>• ${person.place_of_birth}</span>` : ''}
+          </div>
+          ${person.biography ? `<p class="person-profile-bio">${person.biography}</p>` : ''}
+        </div>
+      </div>
+
+      <div style="font-size:14px;font-weight:800;margin:20px 0 12px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+        <span>🎬</span>
+        <span>Фильмы и сериалы (${items.length})</span>
+      </div>
+
+      <div class="person-filmography-grid">
+        ${items.length === 0 ? `
+          <div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text-muted);">
+            Фильмография не найдена
+          </div>
+        ` : items.map(item => `
+          <div class="person-media-card" data-id="${item.id}" data-source="${item.source || 'tmdb'}">
+            <div class="person-media-poster-box">
+              <img src="${item.poster || 'assets/favicon.svg'}" alt="${item.title}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              <span class="person-media-rating">★ ${item.rating || '—'}</span>
+            </div>
+            <div class="person-media-info">
+              <div class="person-media-title" title="${item.title}">${item.title}</div>
+              <div class="person-media-year">${item.year || ''} • ${item.media_type === 'series' ? 'Сериал' : 'Фильм'}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    body.querySelectorAll('.person-media-card').forEach((card, idx) => {
+      card.onclick = () => {
+        modal.classList.remove('is-open');
+        openPlayerModal(items[idx]);
+      };
+    });
+  } catch (err) {
+    body.innerHTML = `
+      <div style="text-align:center;padding:30px;color:var(--color-red);">
+        Ошибка загрузки: ${err.message}
+      </div>
+    `;
+  }
+}
+
+// ==========================================
+// СЕЛЕКТОР СЕЗОНОВ И СЕРИЙ С РУССКИМИ ОПИСАНИЯМИ
+// ==========================================
+async function renderSeriesSeasons(mediaDetails) {
+  const container = document.getElementById('series-seasons-container');
+  if (!container) return;
+
+  const isSeries = mediaDetails.media_type === 'series' || mediaDetails.category === 'Сериал' || mediaDetails.media_type === 'cartoon-series' || mediaDetails.media_type === 'anime-series';
+  const seasons = mediaDetails.seasons || [];
+
+  if (!isSeries || seasons.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+
+  const tabsContainer = document.getElementById('series-seasons-tabs');
+  const descEl = document.getElementById('series-season-desc');
+  const gridEl = document.getElementById('series-episodes-grid');
+
+  if (!tabsContainer || !gridEl) return;
+
+  // Рендерим плашки сезонов
+  tabsContainer.innerHTML = seasons.map((s, idx) => `
+    <button type="button" class="series-season-tab ${idx === 0 ? 'active' : ''}" data-season-num="${s.season_number}">
+      ${s.name || `Сезон ${s.season_number}`} (${s.episode_count || '?'})
+    </button>
+  `).join('');
+
+  async function loadSeasonEpisodes(seasonNum) {
+    const season = seasons.find(s => s.season_number === seasonNum) || seasons[0];
+    if (descEl) {
+      descEl.textContent = season.overview || `Сезон ${season.season_number} доступен для онлайн-просмотра.`;
+    }
+
+    gridEl.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:10px;">
+        <div class="storm-spinner"></div>
+        <span>Загрузка серий сезона...</span>
+      </div>
+    `;
+
+    try {
+      const tvId = mediaDetails.tmdb_id || String(mediaDetails.id).replace('tmdb_', '');
+      const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}`);
+      if (!res.ok) throw new Error('Не удалось загрузить серии');
+      const data = await res.json();
+      const episodes = data.episodes || [];
+
+      if (episodes.length === 0) {
+        gridEl.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted);">Серии не найдены</div>`;
+        return;
+      }
+
+      gridEl.innerHTML = episodes.map(ep => `
+        <div class="series-episode-card" data-ep-num="${ep.episode_number}">
+          <div class="series-episode-thumb-box">
+            <img src="${ep.still_path || 'assets/favicon.svg'}" alt="${ep.name}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            <span class="series-episode-badge">Серия ${ep.episode_number}</span>
+            ${ep.duration ? `<span class="series-episode-duration">${ep.duration}</span>` : ''}
+          </div>
+          <div class="series-episode-content">
+            <div class="series-episode-title">${ep.name}</div>
+            <div class="series-episode-airdate">${ep.air_date ? 'Дата выхода: ' + ep.air_date : ''}</div>
+            <p class="series-episode-desc">${ep.overview || 'Смотрите серию онлайн в высоком качестве.'}</p>
+          </div>
+        </div>
+      `).join('');
+
+      gridEl.querySelectorAll('.series-episode-card').forEach(card => {
+        card.onclick = () => {
+          gridEl.querySelectorAll('.series-episode-card').forEach(c => c.classList.remove('active'));
+          card.classList.add('active');
+          const epNum = parseInt(card.dataset.epNum, 10);
+          showToast(`Выбрана серия ${epNum}: ${episodes[epNum - 1]?.name || ''}`, 'info');
+          updateProgressState(epNum, episodes.length);
+        };
+      });
+    } catch (err) {
+      gridEl.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--color-red);">Ошибка: ${err.message}</div>`;
+    }
+  }
+
+  tabsContainer.querySelectorAll('.series-season-tab').forEach(tab => {
+    tab.onclick = () => {
+      tabsContainer.querySelectorAll('.series-season-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const sNum = parseInt(tab.dataset.seasonNum, 10);
+      loadSeasonEpisodes(sNum);
+    };
+  });
+
+  // Загружаем первый сезон по умолчанию
+  loadSeasonEpisodes(seasons[0].season_number);
 }

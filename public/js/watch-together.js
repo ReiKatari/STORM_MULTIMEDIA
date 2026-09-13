@@ -148,6 +148,18 @@ function handleSocketMessage(data) {
       }
       break;
 
+    case 'chat_deleted':
+      if (currentRoom) {
+        currentRoom.messages = (currentRoom.messages || []).filter(m => String(m.id) !== String(data.messageId));
+        const el = document.querySelector(`.watch-chat-msg[data-msg-id="${data.messageId}"]`);
+        if (el) {
+          el.style.opacity = '0';
+          el.style.transform = 'scale(0.85)';
+          setTimeout(() => el.remove(), 200);
+        }
+      }
+      break;
+
     case 'error':
       showToast(data.message || 'Ошибка комнаты', 'error');
       break;
@@ -211,7 +223,9 @@ function handleIncomingPlaybackSync(data) {
   updateSyncStatus('synced');
 }
 
-export function sendRoomChatMessage(text) {
+let currentReplyTo = null;
+
+export function sendRoomChatMessage(text, replyTo = null) {
   if (!ws || ws.readyState !== WebSocket.OPEN || !currentRoom) return;
   const clean = text.trim();
   if (!clean) return;
@@ -219,7 +233,21 @@ export function sendRoomChatMessage(text) {
   ws.send(JSON.stringify({
     type: 'chat_message',
     roomCode: currentRoom.code,
-    text: clean
+    text: clean,
+    replyTo: replyTo ? {
+      id: replyTo.id,
+      username: replyTo.username,
+      text: replyTo.text
+    } : null
+  }));
+}
+
+export function deleteRoomChatMessage(messageId) {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !currentRoom) return;
+  ws.send(JSON.stringify({
+    type: 'delete_chat_message',
+    roomCode: currentRoom.code,
+    messageId
   }));
 }
 
@@ -253,8 +281,34 @@ const ROOM_WALLPAPERS = [
 
 let currentRoomWallpaper = localStorage.getItem('storm_room_wallpaper') || 'room-bg-cyberpunk';
 
-// Наборы Telegram стикеров и эмодзи
-const CHAT_EMOJIS = ['😂', '🔥', '🍿', '❤️', '👏', '😱', '🚀', '💀', '🤩', '🎉', '🎬', '👀', '💯', '⚡', '🤖', '🎮', '🪐', '🍕', '🍷', '✨'];
+// Расширенные наборы эмодзи по категориям (100+ эмодзи)
+const CHAT_EMOJI_CATEGORIES = {
+  top: {
+    icon: '🌟',
+    title: 'Популярные',
+    list: ['😂', '🔥', '🍿', '❤️', '👏', '😱', '🚀', '💀', '🤩', '🎉', '🎬', '👀', '💯', '⚡', '🤖', '🎮', '🪐', '🍕', '🍷', '✨']
+  },
+  smiles: {
+    icon: '😊',
+    title: 'Смайлы',
+    list: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😭', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕']
+  },
+  cinema: {
+    icon: '🍿',
+    title: 'Кино и еда',
+    list: ['🍿', '🎬', '🎞️', '📽️', '🎥', '📺', '📻', '🎟️', '🎫', '🏆', '🥇', '🍕', '🍔', '🍟', '🌭', '🥪', '🌮', '🍣', '🍫', '🍦', '🍩', '🍪', '☕', '🧃', '🥤', '🍺', '🍷', '🥂', '🍾']
+  },
+  gestures: {
+    icon: '👋',
+    title: 'Жесты',
+    list: ['👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✌️', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '💪']
+  },
+  hearts: {
+    icon: '💖',
+    title: 'Сердца и магия',
+    list: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '🌟', '⭐', '✨', '⚡', '🔥', '💥', '🌈', '🎉', '🎊']
+  }
+};
 
 const CHAT_STICKER_PACKS = {
   pepe: [
@@ -280,12 +334,38 @@ const CHAT_STICKER_PACKS = {
   ]
 };
 
+// Форматирование Markdown текста в HTML
+function formatChatMessageText(text) {
+  if (!text) return '';
+  let str = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  // Жирный: **текст**
+  str = str.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Курсив: *текст*
+  str = str.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  // Инлайн код: `код`
+  str = str.replace(/`(.*?)`/g, '<code style="background:rgba(0,0,0,0.4);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px;color:var(--accent);">$1</code>');
+  // Зачеркнутый: ~~текст~~
+  str = str.replace(/~~(.*?)~~/g, '<del>$1</del>');
+  // Цитата: > цитата
+  str = str.replace(/^&gt;\s?(.*)$/gm, '<blockquote style="border-left:2px solid var(--accent);padding-left:8px;margin:3px 0;color:var(--text-muted);font-style:italic;">$1</blockquote>');
+  // Подсветка упоминаний: @username
+  str = str.replace(/(@[a-zA-Z0-9_\u0400-\u04FF]+)/g, '<span class="chat-mention">$1</span>');
+
+  return str;
+}
+
 export function renderRoomUi(room) {
   const container = document.getElementById('watch-together-sidebar');
   if (!container) return;
 
   if (!room) {
     container.style.display = 'none';
+    currentReplyTo = null;
     return;
   }
 
@@ -350,19 +430,41 @@ export function renderRoomUi(room) {
     <!-- Поповер эмодзи и стикеров -->
     <div class="watch-chat-stickers-popover" id="chat-stickers-popover" style="display: none;">
       <div class="stickers-tabs-header">
-        <button type="button" class="stickers-tab-btn active" data-tab="emojis">🌟</button>
-        <button type="button" class="stickers-tab-btn" data-tab="pepe">🐸</button>
-        <button type="button" class="stickers-tab-btn" data-tab="cats">🐱</button>
-        <button type="button" class="stickers-tab-btn" data-tab="popcorn">🍿</button>
+        <button type="button" class="stickers-tab-btn active" data-tab="top" title="Популярные">🌟</button>
+        <button type="button" class="stickers-tab-btn" data-tab="smiles" title="Смайлики">😊</button>
+        <button type="button" class="stickers-tab-btn" data-tab="cinema" title="Кино и еда">🍿</button>
+        <button type="button" class="stickers-tab-btn" data-tab="gestures" title="Жесты">👋</button>
+        <button type="button" class="stickers-tab-btn" data-tab="hearts" title="Сердца">💖</button>
+        <button type="button" class="stickers-tab-btn" data-tab="pepe" title="Пепе">🐸</button>
+        <button type="button" class="stickers-tab-btn" data-tab="cats" title="Котики">🐱</button>
+        <button type="button" class="stickers-tab-btn" data-tab="popcorn" title="Попкорн">🥤</button>
       </div>
       <div class="stickers-grid" id="stickers-grid-content"></div>
     </div>
 
+    <!-- Панель ответа на сообщение -->
+    <div id="chat-reply-banner" class="chat-reply-banner" style="display: none;">
+      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;">
+        <span>Ответ для <b id="reply-author-name" style="color: var(--accent);">@user</b>: </span>
+        <span id="reply-text-preview" style="color: var(--text-muted);"></span>
+      </div>
+      <button type="button" id="cancel-reply-btn" class="storm-btn storm-btn-sm" style="padding: 1px 6px; font-size: 10px; margin-left: 6px;">✕</button>
+    </div>
+
+    <!-- Тулбар форматирования текста -->
+    <div class="chat-format-toolbar">
+      <button type="button" class="chat-format-btn" data-tag="bold" title="Жирный шрифт (**текст**)"><b>B</b></button>
+      <button type="button" class="chat-format-btn" data-tag="italic" title="Курсив (*текст*)"><i>I</i></button>
+      <button type="button" class="chat-format-btn" data-tag="code" title="Код (`код`)"><code>&lt;/&gt;</code></button>
+      <button type="button" class="chat-format-btn" data-tag="strike" title="Зачеркнутый (~~текст~~)"><s>S</s></button>
+      <button type="button" class="chat-format-btn" data-tag="quote" title="Цитата (> цитата)">❝</button>
+    </div>
+
     <!-- Форма отправки сообщения -->
     <form class="watch-room-chat-form" id="watch-room-chat-form">
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-stickers-btn" style="padding: 6px 10px;">😊</button>
-      <input type="text" class="storm-input" id="watch-chat-input" placeholder="Написать зрителям..." autocomplete="off" style="font-size: 12px; padding: 6px 10px;">
-      <button type="submit" class="storm-btn storm-btn-primary storm-btn-sm" style="padding: 6px 12px;">➤</button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-stickers-btn" style="padding: 6px 10px;" title="Смайлики и стикеры">😊</button>
+      <input type="text" class="storm-input" id="watch-chat-input" placeholder="Написать зрителям (поддерживается разметка)..." autocomplete="off" style="font-size: 12px; padding: 6px 10px;">
+      <button type="submit" class="storm-btn storm-btn-primary storm-btn-sm" style="padding: 6px 12px;" title="Отправить">➤</button>
     </form>
   `;
 
@@ -428,6 +530,23 @@ export function renderRoomUi(room) {
     };
   }
 
+  // Кнопки форматирования текста
+  container.querySelectorAll('.chat-format-btn').forEach(btn => {
+    btn.onclick = () => {
+      applyTextFormatting(btn.dataset.tag);
+    };
+  });
+
+  // Отмена ответа
+  const cancelReplyBtn = container.querySelector('#cancel-reply-btn');
+  if (cancelReplyBtn) {
+    cancelReplyBtn.onclick = () => {
+      currentReplyTo = null;
+      const banner = document.getElementById('chat-reply-banner');
+      if (banner) banner.style.display = 'none';
+    };
+  }
+
   // Смайлики и стикеры
   const stickersBtn = container.querySelector('#toggle-stickers-btn');
   const stickersPopover = container.querySelector('#chat-stickers-popover');
@@ -436,8 +555,9 @@ export function renderRoomUi(room) {
 
   const renderStickersTab = (tab) => {
     stickersContent.innerHTML = '';
-    if (tab === 'emojis') {
-      CHAT_EMOJIS.forEach(emoji => {
+    if (CHAT_EMOJI_CATEGORIES[tab]) {
+      const category = CHAT_EMOJI_CATEGORIES[tab];
+      category.list.forEach(emoji => {
         const span = document.createElement('div');
         span.className = 'sticker-item';
         span.textContent = emoji;
@@ -456,7 +576,10 @@ export function renderRoomUi(room) {
         div.textContent = st.icon;
         div.title = st.label;
         div.onclick = () => {
-          sendRoomChatMessage(st.icon);
+          sendRoomChatMessage(st.icon, currentReplyTo);
+          currentReplyTo = null;
+          const banner = document.getElementById('chat-reply-banner');
+          if (banner) banner.style.display = 'none';
           stickersPopover.style.display = 'none';
         };
         stickersContent.appendChild(div);
@@ -469,7 +592,7 @@ export function renderRoomUi(room) {
       e.stopPropagation();
       const isVisible = stickersPopover.style.display === 'block';
       stickersPopover.style.display = isVisible ? 'none' : 'block';
-      if (!isVisible) renderStickersTab('emojis');
+      if (!isVisible) renderStickersTab('top');
     };
 
     container.querySelectorAll('.stickers-tab-btn').forEach(tabBtn => {
@@ -487,14 +610,53 @@ export function renderRoomUi(room) {
   if (chatForm && chatInput) {
     chatForm.onsubmit = (e) => {
       e.preventDefault();
-      sendRoomChatMessage(chatInput.value);
+      sendRoomChatMessage(chatInput.value, currentReplyTo);
       chatInput.value = '';
+      currentReplyTo = null;
+      const banner = document.getElementById('chat-reply-banner');
+      if (banner) banner.style.display = 'none';
       if (stickersPopover) stickersPopover.style.display = 'none';
     };
   }
 
   renderParticipants(room.participants);
   renderAllChatMessages(room.messages);
+}
+
+function applyTextFormatting(tag) {
+  const input = document.getElementById('watch-chat-input');
+  if (!input) return;
+
+  const start = input.selectionStart || 0;
+  const end = input.selectionEnd || 0;
+  const sel = input.value.substring(start, end);
+
+  let before = '', after = '';
+  switch (tag) {
+    case 'bold': before = '**'; after = '**'; break;
+    case 'italic': before = '*'; after = '*'; break;
+    case 'code': before = '`'; after = '`'; break;
+    case 'strike': before = '~~'; after = '~~'; break;
+    case 'quote': before = '> '; after = ''; break;
+  }
+
+  const defaultText = tag === 'quote' ? 'Цитата' : 'текст';
+  const replacement = before + (sel || defaultText) + after;
+  input.value = input.value.substring(0, start) + replacement + input.value.substring(end);
+  input.focus();
+  const newStart = start + before.length;
+  const newEnd = newStart + (sel.length || defaultText.length);
+  input.setSelectionRange(newStart, newEnd);
+}
+
+function mentionParticipant(username) {
+  const input = document.getElementById('watch-chat-input');
+  if (!input) return;
+  const mention = `@${username}, `;
+  if (!input.value.includes(mention)) {
+    input.value = mention + input.value;
+  }
+  input.focus();
 }
 
 function renderParticipants(participants) {
@@ -505,7 +667,7 @@ function renderParticipants(participants) {
     <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">Зрители (${participants.length}):</div>
     <div class="participants-avatars-row">
       ${participants.map(p => `
-        <div class="participant-badge" title="${p.username} ${p.isHost ? '(Хост)' : ''}">
+        <div class="participant-badge" data-username="${p.username}" title="${p.username} ${p.isHost ? '(Хост)' : ''} — нажмите для упоминания" style="cursor: pointer;">
           <img src="${p.avatar || 'assets/favicon.svg'}" alt="${p.username}">
           <span>${p.username}</span>
           ${p.isHost ? '<span class="host-crown">👑</span>' : ''}
@@ -513,26 +675,85 @@ function renderParticipants(participants) {
       `).join('')}
     </div>
   `;
+
+  // Клик по участнику для упоминания
+  container.querySelectorAll('.participant-badge').forEach(badge => {
+    badge.onclick = () => {
+      mentionParticipant(badge.dataset.username);
+    };
+  });
 }
 
 function renderAllChatMessages(messages) {
   const container = document.getElementById('watch-room-chat-messages');
   if (!container) return;
   container.innerHTML = '';
-  messages.forEach(appendChatMessage);
+  (messages || []).forEach(appendChatMessage);
 }
 
 function appendChatMessage(msg) {
   const container = document.getElementById('watch-room-chat-messages');
-  if (!container) return;
+  if (!container || !msg) return;
+
+  const currentUser = getUser();
+  const isAuthor = currentUser && (msg.userId === currentUser.id || msg.username === currentUser.username);
+  const canDelete = isAuthor || isHost;
 
   const row = document.createElement('div');
   row.className = 'watch-chat-msg';
+  row.dataset.msgId = msg.id;
+
+  const formattedContent = formatChatMessageText(msg.text);
+
   row.innerHTML = `
-    <span class="chat-msg-time">${msg.time}</span>
-    <span class="chat-msg-author">${msg.username}:</span>
-    <span class="chat-msg-text">${msg.text}</span>
+    ${msg.replyTo ? `
+      <div class="chat-msg-quote">
+        ↩️ <b>@${msg.replyTo.username}:</b> ${msg.replyTo.text}
+      </div>
+    ` : ''}
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <span class="chat-msg-time">${msg.time}</span>
+        <span class="chat-msg-author">${msg.username}:</span>
+        <span class="chat-msg-text">${formattedContent}</span>
+      </div>
+      <div class="chat-msg-actions">
+        <button type="button" class="chat-msg-action-btn reply-btn" title="Ответить / цитировать">💬</button>
+        ${canDelete ? `<button type="button" class="chat-msg-action-btn delete-btn" title="Удалить сообщение">🗑️</button>` : ''}
+      </div>
+    </div>
   `;
+
+  // Кнопка ответить
+  const replyBtn = row.querySelector('.reply-btn');
+  if (replyBtn) {
+    replyBtn.onclick = () => {
+      currentReplyTo = {
+        id: msg.id,
+        username: msg.username,
+        text: msg.text
+      };
+      const banner = document.getElementById('chat-reply-banner');
+      const authorName = document.getElementById('reply-author-name');
+      const textPreview = document.getElementById('reply-text-preview');
+      if (banner && authorName && textPreview) {
+        authorName.textContent = `@${msg.username}`;
+        textPreview.textContent = msg.text.length > 35 ? msg.text.substring(0, 35) + '...' : msg.text;
+        banner.style.display = 'flex';
+      }
+      const chatInput = document.getElementById('watch-chat-input');
+      if (chatInput) chatInput.focus();
+    };
+  }
+
+  // Кнопка удалить
+  const deleteBtn = row.querySelector('.delete-btn');
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      deleteRoomChatMessage(msg.id);
+    };
+  }
+
   container.appendChild(row);
   container.scrollTop = container.scrollHeight;
 }

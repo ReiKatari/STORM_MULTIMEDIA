@@ -17,10 +17,15 @@ let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
 let currentSource = 'all';
 let currentSort = 'popular';
+let currentGenre = 'all';
+let currentYear = 'all';
+let currentRating = 0;
 let currentPage = 1;
 let currentItems = [];
+let rawCatalogItems = [];
 let searchQuery = '';
 let hoverPreviewTimer = null;
+let hoverCloseTimer = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
@@ -30,6 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initViewModes();
   initTabs();
   initSearch();
+  initFilterDropdowns();
   initModals();
   initProfileHandlers();
   initLanguageSwitcher();
@@ -168,8 +174,8 @@ async function loadCurrentTab() {
       season: h.season,
       episode: h.episode
     }));
-    currentItems = deduplicateMediaList(rawItems);
-    renderMediaItems(currentItems);
+    rawCatalogItems = deduplicateMediaList(rawItems);
+    renderFilteredCatalog();
     return;
   }
 
@@ -188,8 +194,8 @@ async function loadCurrentTab() {
       episodes_watched: b.episodes_watched,
       total_episodes: b.total_episodes
     }));
-    currentItems = deduplicateMediaList(rawItems);
-    renderMediaItems(currentItems);
+    rawCatalogItems = deduplicateMediaList(rawItems);
+    renderFilteredCatalog();
     return;
   }
 
@@ -199,8 +205,8 @@ async function loadCurrentTab() {
   const cacheKey = `${category}_${currentPage}_${currentSource}`;
 
   if (clientTabCache.has(cacheKey)) {
-    currentItems = clientTabCache.get(cacheKey);
-    renderMediaItems(currentItems);
+    rawCatalogItems = clientTabCache.get(cacheKey);
+    renderFilteredCatalog();
   } else {
     renderSkeletonGrid();
   }
@@ -209,9 +215,9 @@ async function loadCurrentTab() {
     const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`);
     const data = await res.json();
     const fetchedItems = data.items || [];
-    currentItems = deduplicateMediaList(fetchedItems);
-    clientTabCache.set(cacheKey, currentItems);
-    renderMediaItems(currentItems);
+    rawCatalogItems = deduplicateMediaList(fetchedItems);
+    clientTabCache.set(cacheKey, rawCatalogItems);
+    renderFilteredCatalog();
   } catch (err) {
     if (!clientTabCache.has(cacheKey)) {
       container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-red);">Ошибка загрузки: ${err.message}</div>`;
@@ -247,13 +253,19 @@ function renderMediaItems(items) {
   items = deduplicateMediaList(items);
 
   if (!items || items.length === 0) {
+    const isFiltered = currentGenre !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
     container.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
         <div style="font-size: 42px; margin-bottom: 12px;">📂</div>
         <h3>Ничего не найдено</h3>
-        <p>Попробуйте изменить категорию или поисковый запрос</p>
+        <p>${isFiltered ? 'Попробуйте изменить параметры фильтрации или сбросить активные фильтры' : 'Попробуйте изменить категорию или поисковый запрос'}</p>
+        ${isFiltered ? '<button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="empty-reset-filters-btn" style="margin-top: 14px;">✕ Сбросить фильтры</button>' : ''}
       </div>
     `;
+    const emptyResetBtn = document.getElementById('empty-reset-filters-btn');
+    if (emptyResetBtn) {
+      emptyResetBtn.onclick = () => resetAllFilters();
+    }
     return;
   }
 
@@ -299,15 +311,18 @@ function renderMediaItems(items) {
 
       // Видеопревью при наведении курсора (Video Hover Preview)
       card.onmouseenter = () => {
+        clearTimeout(hoverCloseTimer);
         clearTimeout(hoverPreviewTimer);
         hoverPreviewTimer = setTimeout(() => {
           showCardHoverPreview(card, items[idx]);
-        }, 350);
+        }, 300);
       };
 
       card.onmouseleave = () => {
         clearTimeout(hoverPreviewTimer);
-        hideCardHoverPreview();
+        hoverCloseTimer = setTimeout(() => {
+          hideCardHoverPreview();
+        }, 280);
       };
     });
     return;
@@ -511,8 +526,8 @@ export async function executeSearch(query = null) {
     try {
       const res = await fetch(`/api/media/search?q=${encodeURIComponent(q)}&source=${currentSource}`);
       const data = await res.json();
-      currentItems = data.items || [];
-      renderMediaItems(currentItems);
+      rawCatalogItems = deduplicateMediaList(data.items || []);
+      renderFilteredCatalog();
     } catch (err) {
       const container = document.getElementById('media-render-container');
       if (container) {
@@ -673,6 +688,320 @@ function initSourceFilterDropdown() {
 }
 
 // -------------------------------------------------------------
+// КАРУСЕЛЬ И ВЫПАДАЮЩИЕ ФИЛЬТРЫ (ЖАНРЫ, ГОДА, РЕЙТИНГ, СОРТИРОВКА)
+// -------------------------------------------------------------
+function setupFilterDropdown({ dropdownId, triggerId, labelId, menuId, searchId, listId, items, getActiveVal, onSelect }) {
+  const dropdown = document.getElementById(dropdownId);
+  const trigger = document.getElementById(triggerId);
+  const label = document.getElementById(labelId);
+  const menu = document.getElementById(menuId);
+  const search = searchId ? document.getElementById(searchId) : null;
+  const list = document.getElementById(listId);
+
+  if (!dropdown || !trigger || !menu || !list) return;
+
+  const renderOptions = (query = '') => {
+    const q = query.trim().toLowerCase();
+    const filtered = items.filter(it => it.name.toLowerCase().includes(q));
+    list.innerHTML = '';
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div style="padding:10px;text-align:center;font-size:12px;color:var(--text-muted);">Ничего не найдено</div>';
+      return;
+    }
+
+    filtered.forEach(it => {
+      const el = document.createElement('div');
+      const isActive = String(getActiveVal()) === String(it.id);
+      el.className = `storm-dropdown-item ${isActive ? 'is-active' : ''}`;
+      el.dataset.value = it.id;
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;width:100%;">
+          ${it.icon ? `<span style="font-size:13px;">${it.icon}</span>` : ''}
+          <span style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.name}</span>
+        </div>
+      `;
+      el.onclick = (e) => {
+        e.stopPropagation();
+        if (label) label.textContent = it.name;
+        list.querySelectorAll('.storm-dropdown-item').forEach(child => {
+          child.classList.toggle('is-active', child.dataset.value === String(it.id));
+        });
+        dropdown.classList.remove('is-open');
+        menu.style.display = 'none';
+        onSelect(it.id);
+      };
+      list.appendChild(el);
+    });
+  };
+
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    const isOpen = dropdown.classList.contains('is-open');
+    document.querySelectorAll('.storm-custom-dropdown.is-open').forEach(dd => {
+      if (dd !== dropdown) dd.classList.remove('is-open');
+    });
+    document.querySelectorAll('.storm-dropdown-menu').forEach(m => {
+      if (m !== menu) m.style.display = 'none';
+    });
+
+    if (!isOpen) {
+      dropdown.classList.add('is-open');
+      menu.style.display = 'block';
+      if (search) {
+        search.value = '';
+        renderOptions('');
+        setTimeout(() => search.focus(), 50);
+      } else {
+        renderOptions('');
+      }
+    } else {
+      dropdown.classList.remove('is-open');
+      menu.style.display = 'none';
+    }
+  };
+
+  if (search) {
+    search.oninput = (e) => renderOptions(e.target.value);
+    search.onclick = (e) => e.stopPropagation();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('is-open');
+      menu.style.display = 'none';
+    }
+  });
+
+  renderOptions('');
+}
+
+export function initFilterDropdowns() {
+  // 1. Жанры
+  const genres = [
+    { id: 'all', name: 'Все жанры', icon: '🎭' },
+    { id: 'боевик', name: 'Боевик', icon: '💥' },
+    { id: 'комедия', name: 'Комедия', icon: '😄' },
+    { id: 'драма', name: 'Драма', icon: '🎭' },
+    { id: 'фантастика', name: 'Фантастика', icon: '🚀' },
+    { id: 'триллер', name: 'Триллер', icon: '🔪' },
+    { id: 'ужасы', name: 'Ужасы', icon: '👻' },
+    { id: 'приключения', name: 'Приключения', icon: '🧭' },
+    { id: 'фэнтези', name: 'Фэнтези', icon: '🧙' },
+    { id: 'аниме', name: 'Аниме', icon: '🌸' },
+    { id: 'детектив', name: 'Детектив', icon: '🕵️' },
+    { id: 'мультфильм', name: 'Мультфильм', icon: '🎨' },
+    { id: 'семейный', name: 'Семейный', icon: '👨‍👩‍👧' },
+    { id: 'криминал', name: 'Криминал', icon: '🔫' },
+    { id: 'мелодрама', name: 'Мелодрама', icon: '❤️' },
+    { id: 'военный', name: 'Военный', icon: '🎖️' },
+    { id: 'документальный', name: 'Документальный', icon: '📽️' },
+    { id: 'мистика', name: 'Мистика', icon: '🔮' },
+    { id: 'биография', name: 'Биография', icon: '📜' },
+    { id: 'история', name: 'История', icon: '🏛️' },
+    { id: 'спорт', name: 'Спорт', icon: '🏆' },
+    { id: 'мюзикл', name: 'Мюзикл', icon: '🎵' }
+  ];
+
+  setupFilterDropdown({
+    dropdownId: 'filter-genre-dropdown',
+    triggerId: 'filter-genre-trigger',
+    labelId: 'filter-genre-label',
+    menuId: 'filter-genre-menu',
+    searchId: 'filter-genre-search',
+    listId: 'filter-genre-list',
+    items: genres,
+    getActiveVal: () => currentGenre,
+    onSelect: (id) => {
+      currentGenre = id;
+      renderFilteredCatalog();
+    }
+  });
+
+  // 2. Года
+  const years = [
+    { id: 'all', name: 'Все года', icon: '📅' },
+    { id: '2026', name: '2026 год', icon: '✨' },
+    { id: '2025', name: '2025 год', icon: '✨' },
+    { id: '2024', name: '2024 год', icon: '✨' },
+    { id: '2023', name: '2023 год', icon: '🔹' },
+    { id: '2022', name: '2022 год', icon: '🔹' },
+    { id: '2021', name: '2021 год', icon: '🔹' },
+    { id: '2020', name: '2020 год', icon: '🔹' },
+    { id: '2015_2019', name: '2015 — 2019', icon: '⏳' },
+    { id: '2010_2014', name: '2010 — 2014', icon: '⏳' },
+    { id: '2000_2009', name: '2000 — 2009', icon: '⏳' },
+    { id: '2000_down', name: 'До 2000 года', icon: '🏛️' }
+  ];
+
+  setupFilterDropdown({
+    dropdownId: 'filter-year-dropdown',
+    triggerId: 'filter-year-trigger',
+    labelId: 'filter-year-label',
+    menuId: 'filter-year-menu',
+    listId: 'filter-year-list',
+    items: years,
+    getActiveVal: () => currentYear,
+    onSelect: (id) => {
+      currentYear = id;
+      renderFilteredCatalog();
+    }
+  });
+
+  // 3. Рейтинг
+  const ratings = [
+    { id: '0', name: 'Любой рейтинг', icon: '🌐' },
+    { id: '8', name: '★ 8.0+ Шедевры', icon: '🏆' },
+    { id: '7', name: '★ 7.0+ Отличные', icon: '⭐' },
+    { id: '6', name: '★ 6.0+ Хорошие', icon: '👍' },
+    { id: '5', name: '★ 5.0+ Средние', icon: '👌' }
+  ];
+
+  setupFilterDropdown({
+    dropdownId: 'filter-rating-dropdown',
+    triggerId: 'filter-rating-trigger',
+    labelId: 'filter-rating-label',
+    menuId: 'filter-rating-menu',
+    listId: 'filter-rating-list',
+    items: ratings,
+    getActiveVal: () => currentRating,
+    onSelect: (id) => {
+      currentRating = parseFloat(id) || 0;
+      renderFilteredCatalog();
+    }
+  });
+
+  // 4. Сортировка
+  const sortOptions = [
+    { id: 'popular', name: 'По популярности', icon: '⚡' },
+    { id: 'newest', name: 'Сначала новинки', icon: '🆕' },
+    { id: 'rating', name: 'По рейтингу', icon: '⭐' },
+    { id: 'title', name: 'По названию (А-Я)', icon: '🔤' }
+  ];
+
+  setupFilterDropdown({
+    dropdownId: 'filter-sort-dropdown',
+    triggerId: 'filter-sort-trigger',
+    labelId: 'filter-sort-label',
+    menuId: 'filter-sort-menu',
+    listId: 'filter-sort-list',
+    items: sortOptions,
+    getActiveVal: () => currentSort,
+    onSelect: (id) => {
+      currentSort = id;
+      renderFilteredCatalog();
+    }
+  });
+
+  // Кнопка сброса фильтров
+  const resetBtn = document.getElementById('reset-filters-btn');
+  if (resetBtn) {
+    resetBtn.onclick = () => resetAllFilters();
+  }
+}
+
+export function resetAllFilters() {
+  currentGenre = 'all';
+  currentYear = 'all';
+  currentRating = 0;
+  currentSort = 'popular';
+
+  const genreLabel = document.getElementById('filter-genre-label');
+  if (genreLabel) genreLabel.textContent = 'Все жанры';
+
+  const yearLabel = document.getElementById('filter-year-label');
+  if (yearLabel) yearLabel.textContent = 'Все года';
+
+  const ratingLabel = document.getElementById('filter-rating-label');
+  if (ratingLabel) ratingLabel.textContent = 'Любой рейтинг';
+
+  const sortLabel = document.getElementById('filter-sort-label');
+  if (sortLabel) sortLabel.textContent = 'По популярности';
+
+  const resetBtn = document.getElementById('reset-filters-btn');
+  if (resetBtn) resetBtn.style.display = 'none';
+
+  document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === 'all');
+  });
+  document.querySelectorAll('#filter-year-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === 'all');
+  });
+  document.querySelectorAll('#filter-rating-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === '0');
+  });
+  document.querySelectorAll('#filter-sort-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === 'popular');
+  });
+
+  renderFilteredCatalog();
+}
+
+export function renderFilteredCatalog() {
+  const isFiltered = currentGenre !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
+  const resetBtn = document.getElementById('reset-filters-btn');
+  if (resetBtn) {
+    resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
+  }
+
+  let items = [...rawCatalogItems];
+
+  // 1. Фильтр по жанру
+  if (currentGenre !== 'all') {
+    const targetGenre = currentGenre.toLowerCase();
+    items = items.filter(item => {
+      if (Array.isArray(item.genres)) {
+        return item.genres.some(g => String(g).toLowerCase().includes(targetGenre));
+      }
+      if (typeof item.genres === 'string') {
+        return item.genres.toLowerCase().includes(targetGenre);
+      }
+      if (typeof item.category === 'string') {
+        return item.category.toLowerCase().includes(targetGenre);
+      }
+      if (typeof item.description === 'string') {
+        return item.description.toLowerCase().includes(targetGenre);
+      }
+      return false;
+    });
+  }
+
+  // 2. Фильтр по году
+  if (currentYear !== 'all') {
+    items = items.filter(item => {
+      const year = parseInt(item.year, 10);
+      if (isNaN(year)) return false;
+      if (currentYear === '2000_down') return year < 2000;
+      if (currentYear === '2000_2009') return year >= 2000 && year <= 2009;
+      if (currentYear === '2010_2014') return year >= 2010 && year <= 2014;
+      if (currentYear === '2015_2019') return year >= 2015 && year <= 2019;
+      return String(year) === currentYear;
+    });
+  }
+
+  // 3. Фильтр по рейтингу
+  if (currentRating > 0) {
+    items = items.filter(item => {
+      const rating = parseFloat(item.rating);
+      if (isNaN(rating)) return false;
+      return rating >= currentRating;
+    });
+  }
+
+  // 4. Сортировка
+  if (currentSort === 'newest') {
+    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+  } else if (currentSort === 'rating') {
+    items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
+  } else if (currentSort === 'title') {
+    items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+  }
+
+  currentItems = items;
+  renderMediaItems(currentItems);
+}
+
+// -------------------------------------------------------------
 // МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (MODALS)
 // -------------------------------------------------------------
 function initModals() {
@@ -720,6 +1049,24 @@ function initModals() {
       if (modal) modal.classList.remove('is-open');
       closePlayerModal();
     });
+  });
+
+  // Закрытие всех модальных окон и поповеров через ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const openModals = document.querySelectorAll('.storm-modal-backdrop.is-open');
+      if (openModals.length > 0) {
+        openModals.forEach(m => m.classList.remove('is-open'));
+        closePlayerModal();
+      }
+      hideCardHoverPreview();
+      const popover = document.getElementById('chat-stickers-popover');
+      if (popover) popover.style.display = 'none';
+      const wpPopover = document.getElementById('room-wallpapers-popover');
+      if (wpPopover) wpPopover.style.display = 'none';
+      const ambHost = document.getElementById('ambilight-settings-panel-host');
+      if (ambHost) ambHost.innerHTML = '';
+    }
   });
 
   // Открытие модалки логина
@@ -821,48 +1168,101 @@ function initLanguageSwitcher() {
 let activeHoverPreviewEl = null;
 
 function showCardHoverPreview(card, item) {
+  clearTimeout(hoverCloseTimer);
   hideCardHoverPreview();
 
   const rect = card.getBoundingClientRect();
   const preview = document.createElement('div');
   preview.className = 'media-hover-preview-popup';
-  preview.style.top = `${rect.top + window.scrollY - 10}px`;
-  preview.style.left = `${rect.left + window.scrollX - 10}px`;
-  preview.style.width = `${rect.width + 20}px`;
 
-  const poster = item.poster || 'assets/favicon.svg';
+  const popupWidth = 380;
+  // Умное позиционирование: размещаем рядом с карточкой (справа или слева), не перекрывая обложку
+  let left = rect.right + 12;
+  if (left + popupWidth > window.innerWidth - 12) {
+    left = rect.left - popupWidth - 12;
+  }
+  if (left < 10) {
+    // Если по бокам не помещается, центрируем с безопасными отступами
+    left = Math.max(10, Math.min(window.innerWidth - popupWidth - 10, rect.left + (rect.width - popupWidth) / 2));
+  }
+
+  let top = rect.top + window.scrollY;
+  const maxBottom = window.scrollY + window.innerHeight - 240;
+  if (top > maxBottom) {
+    top = Math.max(window.scrollY + 10, maxBottom);
+  }
+
+  preview.style.top = `${top}px`;
+  preview.style.left = `${left}px`;
+  preview.style.width = `${popupWidth}px`;
+
+  const formattedTitle = formatMediaTitle(item);
+  const sourceName = getSourceName(item);
+  const rawGenres = Array.isArray(item.genres) ? item.genres : (typeof item.genres === 'string' ? item.genres.split(/[,/]/).map(g => g.trim()) : []);
+  const genres = rawGenres.slice(0, 4);
 
   preview.innerHTML = `
-    <div class="hover-preview-media">
-      <img src="${poster}" alt="${item.title}">
-      <div class="hover-preview-overlay">
-        <span class="hover-play-icon">▶</span>
+    <!-- Верхняя строка плашек -->
+    <div class="hover-preview-top-row">
+      <div class="hover-preview-badges-left">
+        ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+        ${getSourceBadge(item)}
+        ${item.user_status ? getStatusBadge(item.user_status) : ''}
+      </div>
+      <div class="hover-preview-badges-right">
+        ${item.year ? `<span class="storm-badge" style="background:var(--bg-tertiary);border-color:var(--border-subtle);color:var(--text-secondary);">${item.year}</span>` : ''}
+        ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
       </div>
     </div>
-    <div class="hover-preview-body">
-      <h4 class="hover-preview-title">${item.title}</h4>
-      <div class="hover-preview-meta">
-        <span>${item.year || ''}</span>
-        ${item.rating ? `<span style="color:var(--color-amber);">★ ${item.rating}</span>` : ''}
-        ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K</span>' : ''}
-      </div>
-      <p class="hover-preview-desc">${item.description || item.genres || 'Превосходное качество видео и профессиональный перевод.'}</p>
-      <div class="hover-preview-actions">
-        <button class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">▶ Смотреть</button>
-        <button class="storm-btn storm-btn-secondary storm-btn-sm hover-room-btn" title="Совместный просмотр">👥</button>
-      </div>
+
+    <!-- Название и оригинальное название -->
+    <div>
+      <h4 class="hover-preview-title" title="${formattedTitle}">${formattedTitle}</h4>
+      ${item.original_title ? `<div class="hover-preview-orig-title">${item.original_title}</div>` : ''}
+    </div>
+
+    <!-- Метаданные и теги жанров -->
+    <div class="hover-preview-meta-row">
+      <span>🌐 ${sourceName}</span>
+      ${item.media_type ? `<span>• ${item.media_type === 'series' || item.category === 'Сериал' ? 'Сериал' : 'Фильм'}</span>` : ''}
+      ${genres.length > 0 ? `
+        <div class="hover-preview-tags">
+          ${genres.map(g => `<span class="hover-preview-tag">${g}</span>`).join('')}
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- Синопсис / описание -->
+    <p class="hover-preview-desc">${item.description || 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.'}</p>
+
+    <!-- Кнопки действий -->
+    <div class="hover-preview-actions">
+      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">▶ Смотреть</button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm hover-room-btn" title="Совместный просмотр в кинозале">👥 Кинозал</button>
     </div>
   `;
 
   document.body.appendChild(preview);
   activeHoverPreviewEl = preview;
 
-  preview.onmouseleave = hideCardHoverPreview;
+  // Удерживаем попап при наведении курсора на него
+  preview.onmouseenter = () => {
+    clearTimeout(hoverCloseTimer);
+  };
+
+  // Закрываем с задержкой при уходе курсора
+  preview.onmouseleave = () => {
+    clearTimeout(hoverCloseTimer);
+    hoverCloseTimer = setTimeout(() => {
+      hideCardHoverPreview();
+    }, 280);
+  };
 
   const watchBtn = preview.querySelector('.hover-watch-btn');
   if (watchBtn) {
     watchBtn.onclick = (e) => {
       e.stopPropagation();
+      clearTimeout(hoverCloseTimer);
       hideCardHoverPreview();
       openPlayerModal(item);
     };
@@ -872,16 +1272,18 @@ function showCardHoverPreview(card, item) {
   if (roomBtn) {
     roomBtn.onclick = async (e) => {
       e.stopPropagation();
+      clearTimeout(hoverCloseTimer);
       hideCardHoverPreview();
       const code = await createWatchRoom(item);
       if (code) {
-        showToast(`Комната создана! Код: ${code}`, 'success');
+        showToast(`Кинокомната создана! Код: ${code}`, 'success');
       }
     };
   }
 }
 
 function hideCardHoverPreview() {
+  clearTimeout(hoverCloseTimer);
   if (activeHoverPreviewEl) {
     activeHoverPreviewEl.remove();
     activeHoverPreviewEl = null;

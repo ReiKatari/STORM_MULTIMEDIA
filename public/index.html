@@ -99,7 +99,7 @@
   <div class="storm-toolbar">
     <div class="storm-toolbar-left">
       <!-- Стилизованный выпадающий список источников с поиском (15+ источников) -->
-      <div class="storm-custom-dropdown" id="catalog-source-dropdown" style="min-width: 250px;">
+      <div class="storm-custom-dropdown" id="catalog-source-dropdown" style="min-width: 210px;">
         <button type="button" class="storm-btn storm-btn-secondary" id="catalog-source-trigger" style="width: 100%; justify-content: space-between; padding: 8px 14px;">
           <span style="display: flex; align-items: center; gap: 8px;">
             <span id="catalog-source-badge">🌐</span>
@@ -117,6 +117,70 @@
         </div>
       </div>
       <input type="hidden" id="source-filter-select" value="all">
+
+      <!-- Фильтр по жанрам с поиском -->
+      <div class="storm-custom-dropdown" id="filter-genre-dropdown" style="min-width: 170px;">
+        <button type="button" class="storm-btn storm-btn-secondary" id="filter-genre-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span>🎭</span>
+            <span id="filter-genre-label" style="font-weight: 600;">Все жанры</span>
+          </span>
+          <span class="storm-dropdown-arrow">▼</span>
+        </button>
+        <div class="storm-dropdown-menu" id="filter-genre-menu" style="display: none; width: 220px; left: 0; right: auto;">
+          <div class="storm-dropdown-search-wrap">
+            <input type="text" class="storm-dropdown-search" id="filter-genre-search" placeholder="🔍 Поиск жанра..." autocomplete="off">
+          </div>
+          <div class="storm-dropdown-list" id="filter-genre-list"></div>
+        </div>
+      </div>
+
+      <!-- Фильтр по году выхода -->
+      <div class="storm-custom-dropdown" id="filter-year-dropdown" style="min-width: 145px;">
+        <button type="button" class="storm-btn storm-btn-secondary" id="filter-year-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span>📅</span>
+            <span id="filter-year-label" style="font-weight: 600;">Все года</span>
+          </span>
+          <span class="storm-dropdown-arrow">▼</span>
+        </button>
+        <div class="storm-dropdown-menu" id="filter-year-menu" style="display: none; width: 175px; left: 0; right: auto;">
+          <div class="storm-dropdown-list" id="filter-year-list"></div>
+        </div>
+      </div>
+
+      <!-- Фильтр по рейтингу -->
+      <div class="storm-custom-dropdown" id="filter-rating-dropdown" style="min-width: 165px;">
+        <button type="button" class="storm-btn storm-btn-secondary" id="filter-rating-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: var(--color-amber);">★</span>
+            <span id="filter-rating-label" style="font-weight: 600;">Любой рейтинг</span>
+          </span>
+          <span class="storm-dropdown-arrow">▼</span>
+        </button>
+        <div class="storm-dropdown-menu" id="filter-rating-menu" style="display: none; width: 190px; left: 0; right: auto;">
+          <div class="storm-dropdown-list" id="filter-rating-list"></div>
+        </div>
+      </div>
+
+      <!-- Сортировка -->
+      <div class="storm-custom-dropdown" id="filter-sort-dropdown" style="min-width: 175px;">
+        <button type="button" class="storm-btn storm-btn-secondary" id="filter-sort-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span>⚡</span>
+            <span id="filter-sort-label" style="font-weight: 600;">По популярности</span>
+          </span>
+          <span class="storm-dropdown-arrow">▼</span>
+        </button>
+        <div class="storm-dropdown-menu" id="filter-sort-menu" style="display: none; width: 200px; left: 0; right: auto;">
+          <div class="storm-dropdown-list" id="filter-sort-list"></div>
+        </div>
+      </div>
+
+      <!-- Кнопка быстрого сброса фильтров -->
+      <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="reset-filters-btn" style="display: none; padding: 8px 12px;" title="Сбросить все фильтры и сортировку">
+        <span>✕ Сброс</span>
+      </button>
     </div>
 
     <div class="storm-toolbar-right">
@@ -188,80 +252,134 @@
       </div>
 
       <div class="storm-modal-body">
-        <!-- Фрейм видеоплеера -->
-        <div class="cinema-player-wrapper" id="cinema-player-wrapper">
-          <!-- Заполняется динамически -->
-        </div>
-
-        <!-- Переключатель плееров / источников -->
-        <div class="player-sources-bar" id="player-sources-bar">
-          <!-- Заполняется динамически -->
-        </div>
-
-        <!-- Утилитарные действия: Ambilight, PiP, Кинокомната, Субтитры -->
-        <div id="player-utility-actions" style="margin-top: 10px;"></div>
-
-        <!-- Специфичные элементы AniXart (озвучки и серии) -->
-        <div class="episodes-selector-container" id="anixart-controls-container" style="display: none;">
-          <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary);" data-i18n="player_voiceover">Озвучка:</div>
-          <div class="voiceovers-pills" id="voiceovers-pills"></div>
-
-          <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 6px;" data-i18n="player_series">Серии:</div>
-          <div class="episodes-grid" id="episodes-grid"></div>
-        </div>
-
-        <!-- Панель действий: Индикатор прогресса, статусы и коллекция -->
-        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
-          <!-- Прогресс просмотра -->
-          <div>
-            <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
-              <span data-i18n="player_progress">Прогресс просмотра:</span>
-              <span id="player-progress-label" style="color: var(--accent);">0%</span>
-            </div>
-            <input type="range" class="storm-slider" id="player-progress-slider" min="0" max="100" value="0">
-          </div>
-
-          <!-- Кнопки статуса просмотра и добавление в список -->
-          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;" id="player-status-buttons">
+        <div class="cinema-layout-grid">
+          <!-- Основная левая колонка -->
+          <div class="cinema-main-column">
+            <!-- Фрейм видеоплеера -->
+            <div class="cinema-player-wrapper" id="cinema-player-wrapper">
               <!-- Заполняется динамически -->
             </div>
 
-            <!-- Кастомный объемный выпадающий список коллекций с живым поиском и созданием -->
-            <div class="storm-custom-dropdown" id="player-collection-dropdown">
-              <button type="button" class="storm-dropdown-trigger" id="player-collection-trigger">
-                <span>📁</span>
-                <span id="player-collection-trigger-text" data-i18n="add_to_list">+ Добавить в коллекцию...</span>
-                <span class="storm-dropdown-arrow">▼</span>
-              </button>
-              <div class="storm-dropdown-menu" id="player-collection-menu" style="display: none;">
-                <div class="storm-dropdown-search-wrap">
-                  <input type="text" class="storm-dropdown-search" id="player-collection-search" placeholder="Поиск или новая коллекция..." autocomplete="off">
-                </div>
-                <div class="storm-dropdown-list" id="player-collection-list">
-                  <!-- Заполняется JS -->
-                </div>
-                <div class="storm-dropdown-create-wrap" id="player-collection-create-wrap" style="display: none;">
-                  <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="player-collection-create-btn" style="width: 100%;">
-                    ➕ Создать коллекцию и добавить
-                  </button>
+            <!-- Компактный 3D Выпадающий список выбора плеера со статусами и озвучками -->
+            <div class="player-selector-dropdown-wrap" id="player-selector-dropdown-wrap">
+              <div class="storm-custom-dropdown player-custom-dropdown" id="player-source-dropdown">
+                <button type="button" class="storm-dropdown-trigger player-dropdown-trigger" id="player-source-trigger">
+                  <div class="player-trigger-info">
+                    <span class="player-source-badge" id="player-current-badge">ПЛЕЕР</span>
+                    <span class="player-current-name" id="player-current-name">Загрузка плееров...</span>
+                    <span class="player-current-quality" id="player-current-quality">1080p FHD</span>
+                    <span class="player-current-status" id="player-current-status">🟢 Онлайн</span>
+                  </div>
+                  <span class="storm-dropdown-arrow">▼</span>
+                </button>
+                <div class="storm-dropdown-menu player-dropdown-menu" id="player-source-menu" style="display: none;">
+                  <div class="player-dropdown-list" id="player-source-list">
+                    <!-- Заполняется JS -->
+                  </div>
                 </div>
               </div>
             </div>
+
+            <!-- Утилитарные действия: Ambilight, Цвета, PiP, Кинокомната, Субтитры -->
+            <div id="player-utility-actions" style="margin-top: 10px;"></div>
+            <div id="ambilight-settings-panel-host"></div>
+
+            <!-- Селектор сезонов и серий для сериалов (с описаниями каждого сезона и серии на русском языке) -->
+            <div class="series-seasons-container" id="series-seasons-container" style="display: none;">
+              <div class="series-seasons-header">
+                <div style="font-size: 13px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                  <span>📺</span>
+                  <span>Сезоны и серии</span>
+                </div>
+                <div class="series-seasons-tabs" id="series-seasons-tabs"></div>
+              </div>
+              <div class="series-season-info-box" id="series-season-info-box">
+                <div class="series-season-desc" id="series-season-desc"></div>
+              </div>
+              <div class="series-episodes-grid" id="series-episodes-grid"></div>
+            </div>
+
+            <!-- Специфичные элементы AniXart (озвучки и серии) -->
+            <div class="episodes-selector-container" id="anixart-controls-container" style="display: none;">
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary);" data-i18n="player_voiceover">Озвучка:</div>
+              <div class="voiceovers-pills" id="voiceovers-pills"></div>
+
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 6px;" data-i18n="player_series">Серии:</div>
+              <div class="episodes-grid" id="episodes-grid"></div>
+            </div>
+
+            <!-- Панель действий: Индикатор прогресса, статусы и коллекция -->
+            <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
+              <!-- Прогресс просмотра -->
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
+                  <span data-i18n="player_progress">Прогресс просмотра:</span>
+                  <span id="player-progress-label" style="color: var(--accent);">0%</span>
+                </div>
+                <input type="range" class="storm-slider" id="player-progress-slider" min="0" max="100" value="0">
+              </div>
+
+              <!-- Кнопки статуса просмотра и добавление в список -->
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;" id="player-status-buttons">
+                  <!-- Заполняется динамически -->
+                </div>
+
+                <!-- Кастомный объемный выпадающий список коллекций с живым поиском и созданием -->
+                <div class="storm-custom-dropdown" id="player-collection-dropdown">
+                  <button type="button" class="storm-dropdown-trigger" id="player-collection-trigger">
+                    <span>📁</span>
+                    <span id="player-collection-trigger-text" data-i18n="add_to_list">+ Добавить в коллекцию...</span>
+                    <span class="storm-dropdown-arrow">▼</span>
+                  </button>
+                  <div class="storm-dropdown-menu" id="player-collection-menu" style="display: none;">
+                    <div class="storm-dropdown-search-wrap">
+                      <input type="text" class="storm-dropdown-search" id="player-collection-search" placeholder="Поиск или новая коллекция..." autocomplete="off">
+                    </div>
+                    <div class="storm-dropdown-list" id="player-collection-list">
+                      <!-- Заполняется JS -->
+                    </div>
+                    <div class="storm-dropdown-create-wrap" id="player-collection-create-wrap" style="display: none;">
+                      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="player-collection-create-btn" style="width: 100%;">
+                        ➕ Создать коллекцию и добавить
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Описание фильма / аниме -->
+              <p id="cinema-modal-desc" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px;"></p>
+
+              <!-- Галерея скриншотов и кадров -->
+              <div id="cinema-modal-screenshots-container" style="margin-top: 14px; display: none;">
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="player_frames_title">Кадры и скриншоты</div>
+                <div class="cinema-screenshots-gallery" id="cinema-modal-screenshots"></div>
+              </div>
+            </div>
+
+            <!-- Секция рецензий зрителей со спойлер-блоками -->
+            <div id="cinema-reviews-container" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);"></div>
           </div>
 
-          <!-- Описание фильма / аниме -->
-          <p id="cinema-modal-desc" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-top: 8px;"></p>
-
-          <!-- Галерея скриншотов и кадров -->
-          <div id="cinema-modal-screenshots-container" style="margin-top: 14px; display: none;">
-            <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="player_frames_title">Кадры и скриншоты</div>
-            <div class="cinema-screenshots-gallery" id="cinema-modal-screenshots"></div>
+          <!-- Правая колонка подробной информации о релизе (актеры, режиссеры, рейтинги, даты) -->
+          <div class="cinema-side-column" id="cinema-side-info">
+            <!-- Заполняется динамически в player.js -->
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- Секция рецензий зрителей со спойлер-блоками -->
-        <div id="cinema-reviews-container" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);"></div>
+  <!-- Модальное окно фильмографии актера / режиссера -->
+  <div class="storm-modal-backdrop" id="person-modal">
+    <div class="storm-modal person-modal-dialog">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title" id="person-modal-title">Фильмография</h3>
+        <button type="button" class="storm-modal-close" title="Закрыть">✕</button>
+      </div>
+      <div class="storm-modal-body" id="person-modal-body">
+        <!-- Заполняется динамически -->
       </div>
     </div>
   </div>

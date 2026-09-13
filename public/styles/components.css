@@ -189,24 +189,11 @@ input[type="checkbox"]:hover {
 input[type="checkbox"]:checked {
   background: var(--accent) !important;
   border-color: var(--accent) !important;
-  box-shadow: 0 0 12px var(--accent-glow), inset 0 0 6px rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 14px var(--accent-glow), inset 0 0 4px rgba(255, 255, 255, 0.4) !important;
 }
 
 input[type="checkbox"]::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: #05070a;
-  opacity: 0;
-  transform: scale(0.5);
-  transition: all 0.15s ease;
-  position: absolute;
-}
-
-input[type="checkbox"]:checked::after {
-  opacity: 1;
-  transform: scale(1);
+  display: none !important;
 }
 
 .storm-checkbox-label {
@@ -251,28 +238,15 @@ input[type="checkbox"]:checked::after {
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* Активное состояние: сплошной неоновый квадрат */
+/* Активное состояние: 100% сплошной неоновый квадрат */
 .storm-checkbox-label input[type="checkbox"]:checked + .storm-checkbox-box {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 12px var(--accent-glow), inset 0 0 6px rgba(255, 255, 255, 0.4);
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 14px var(--accent-glow), inset 0 0 4px rgba(255, 255, 255, 0.4) !important;
 }
 
-/* Внутренний акцентный светодиод */
 .storm-checkbox-box::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: #05070a;
-  opacity: 0;
-  transform: scale(0.5);
-  transition: all 0.15s ease;
-}
-
-.storm-checkbox-label input[type="checkbox"]:checked + .storm-checkbox-box::after {
-  opacity: 1;
-  transform: scale(1);
+  display: none !important;
 }
 
 /* -------------------------------------------------------------
@@ -1477,22 +1451,32 @@ input[type="checkbox"]:checked::after {
 /* ==========================================================================
    ВСПЛЫВАЮЩЕЕ ПРЕВЬЮ ПРИ НАВЕДЕНИИ (VIDEO HOVER PREVIEW)
    ========================================================================== */
+/* ==========================================================================
+   ВСПЛЫВАЮЩЕЕ ПРЕВЬЮ ПРИ НАВЕДЕНИИ (COMPACT 3D HOVER PREVIEW)
+   ========================================================================== */
 .media-hover-preview-popup {
   position: absolute;
-  z-index: 1000;
-  background: var(--bg-secondary);
-  border: 1px solid var(--accent);
-  border-radius: 14px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
-  overflow: hidden;
-  animation: hoverPreviewIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  z-index: 1200;
+  width: 380px !important;
+  max-width: 90vw;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--accent) !important;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.92), 0 0 24px var(--accent-glow) !important;
+  backdrop-filter: blur(16px);
+  padding: 14px 16px;
+  animation: hoverPreviewIn 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
   pointer-events: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 @keyframes hoverPreviewIn {
   from {
     opacity: 0;
-    transform: scale(0.92) translateY(8px);
+    transform: scale(0.95) translateY(6px);
   }
   to {
     opacity: 1;
@@ -1500,85 +1484,86 @@ input[type="checkbox"]:checked::after {
   }
 }
 
-.hover-preview-media {
-  position: relative;
-  width: 100%;
-  height: 160px;
-  overflow: hidden;
-}
-
-.hover-preview-media img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.4s ease;
-}
-
-.hover-preview-media:hover img {
-  transform: scale(1.08);
-}
-
-.hover-preview-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(to top, var(--bg-secondary) 5%, transparent 60%);
+.hover-preview-top-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.hover-play-icon {
-  width: 44px;
-  height: 44px;
-  background: var(--accent-gradient);
-  color: #000;
-  border-radius: 50%;
+.hover-preview-badges-left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  box-shadow: 0 0 16px var(--accent-glow);
+  gap: 6px;
 }
 
-.hover-preview-body {
-  padding: 12px 14px;
+.hover-preview-badges-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .hover-preview-title {
-  margin: 0 0 4px 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 15px;
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-primary);
+  line-height: 1.35;
 }
 
-.hover-preview-meta {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.hover-preview-orig-title {
   font-size: 11px;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-top: -4px;
+}
+
+.hover-preview-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.hover-preview-tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.hover-preview-tag {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .hover-preview-desc {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.35;
-  margin: 0 0 10px 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.45;
+  margin: 0;
+  max-height: 80px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 4px;
 }
 
 .hover-preview-actions {
   display: flex;
   gap: 8px;
+  margin-top: 4px;
+}
+
+.hover-preview-actions .storm-btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 7px 12px;
 }
 
 /* ==========================================================================
@@ -1783,6 +1768,573 @@ input[type="checkbox"]:checked::after {
   0% { opacity: 0.6; }
   50% { opacity: 1; }
   100% { opacity: 0.6; }
+}
+
+/* ==========================================================================
+   3D ВЫПАДАЮЩИЙ СПИСОК ВЫБОРА ПЛЕЕРА (PLAYER SELECTOR DROPDOWN)
+   ========================================================================== */
+.player-selector-dropdown-wrap {
+  margin-top: 14px;
+  width: 100%;
+}
+
+.player-custom-dropdown {
+  width: 100%;
+}
+
+.player-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.player-dropdown-trigger:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 14px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.player-trigger-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.player-current-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.player-current-quality {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--accent);
+}
+
+.player-current-status {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.player-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-glow);
+  overflow: hidden;
+  max-height: 420px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.player-dropdown-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.player-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.player-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.player-dropdown-item:hover {
+  background: var(--bg-tertiary);
+  transform: translateX(4px);
+}
+
+.player-dropdown-item.active {
+  background: rgba(0, 210, 255, 0.12);
+  border-left: 3px solid var(--accent);
+}
+
+.player-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.player-item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   СЕРИАЛЫ: СЕЗОНЫ И СЕРИИ С ОПИСАНИЯМИ НА РУССКОМ ЯЗЫКЕ
+   ========================================================================== */
+.series-seasons-container {
+  margin-top: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.series-seasons-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.series-seasons-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.series-season-tab {
+  padding: 5px 12px;
+  border-radius: 7px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.series-season-tab:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.series-season-tab.active {
+  background: var(--accent);
+  border-color: #ffffff;
+  color: #030712;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.series-season-info-box {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.series-season-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.series-episodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 4px;
+}
+
+.series-episode-card {
+  display: flex;
+  gap: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.series-episode-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 10px var(--accent-glow);
+}
+
+.series-episode-card.active {
+  border-color: var(--accent);
+  background: rgba(0, 210, 255, 0.08);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.episode-thumb-wrap {
+  position: relative;
+  width: 90px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+}
+
+.episode-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.episode-duration-pill {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.75);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #ffffff;
+}
+
+.episode-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.episode-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.episode-overview {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   БОКОВАЯ ПАНЕЛЬ ПОДРОБНОЙ ИНФОРМАЦИИ (CINEMA SIDE INFO)
+   ========================================================================== */
+.cinema-side-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border-subtle);
+}
+
+.cinema-side-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cinema-meta-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cinema-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.cinema-meta-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.cinema-meta-val {
+  color: var(--text-primary);
+  font-weight: 700;
+  text-align: right;
+}
+
+.cinema-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cinema-meta-tag {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Режиссер */
+.cinema-director-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cinema-director-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px var(--accent-glow);
+  transform: translateY(-2px);
+}
+
+.cinema-director-photo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--accent);
+}
+
+/* В главных ролях (Актёры) */
+.cinema-cast-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cinema-cast-scroll {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 4px;
+}
+
+.cinema-actor-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cinema-actor-chip:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px var(--accent-glow);
+}
+
+.cinema-actor-photo {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+}
+
+.cinema-actor-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cinema-actor-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cinema-actor-char {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   МОДАЛЬНОЕ ОКНО ФИЛЬМОГРАФИИ АКТЕРА / РЕЖИССЕРА
+   ========================================================================== */
+.person-modal-dialog {
+  max-width: 1040px;
+  width: 94vw;
+}
+
+.person-profile-header {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 20px;
+  background: var(--bg-tertiary);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+.person-profile-photo {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.person-profile-info h3 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.person-filmography-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  max-height: 520px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* ==========================================================================
+   УЛУЧШЕННЫЙ КИБЕР-ЧАТ КИНОКОМНАТЫ (ФОРМАТИРОВАНИЕ, ОТВЕТЫ, УДАЛЕНИЕ)
+   ========================================================================== */
+.chat-reply-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.chat-format-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.chat-format-btn {
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chat-format-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.watch-chat-msg {
+  position: relative;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.watch-chat-msg:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.watch-chat-msg:hover .chat-msg-actions {
+  display: flex;
+}
+
+.chat-msg-actions {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  gap: 4px;
+}
+
+.chat-msg-action-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.chat-msg-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.chat-msg-quote {
+  padding: 3px 8px;
+  margin-bottom: 4px;
+  border-left: 2px solid var(--accent);
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.chat-mention {
+  color: var(--accent);
+  font-weight: 700;
+  background: rgba(0, 210, 255, 0.15);
+  padding: 1px 4px;
+  border-radius: 4px;
 }
 
 
