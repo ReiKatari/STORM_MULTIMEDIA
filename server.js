@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,7 +43,12 @@ import {
   getUserFamilyProfiles,
   saveUserFamilyProfiles,
   getCache,
-  setCache
+  setCache,
+  saveWatchRoomDb,
+  getWatchRoomDb,
+  getAllWatchRoomsDb,
+  deleteWatchRoomDb,
+  checkpointWal
 } from './db.js';
 
 import {
@@ -93,8 +99,30 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3900;
 
-// Хранилище комнат совместного просмотра в памяти
+// Хранилище комнат совместного просмотра в памяти с сохранением в SQLite
 const watchRooms = new Map();
+
+// Восстановление активных комнат из SQLite
+try {
+  const savedRooms = getAllWatchRoomsDb();
+  for (const r of savedRooms) {
+    watchRooms.set(r.id, {
+      code: r.id,
+      name: r.name,
+      hostUserId: r.hostId,
+      hostName: r.hostName,
+      media: r.currentMedia,
+      playback: { isPlaying: r.isPlaying, currentTime: r.currentTime, updatedAt: r.updated_at },
+      participants: new Map(),
+      messages: []
+    });
+  }
+} catch (e) {
+  console.warn('Ошибка восстановления комнат совместного просмотра:', e.message);
+}
+
+// Регулярное усечение WAL лога SQLite каждые 30 минут
+setInterval(checkpointWal, 1000 * 60 * 30);
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -366,6 +394,7 @@ wss.on('connection', (ws) => {
           setTimeout(() => {
             if (room.participants.size === 0) {
               watchRooms.delete(currentRoomCode);
+              deleteWatchRoomDb(currentRoomCode);
             }
           }, 900000);
         } else {
@@ -384,6 +413,7 @@ wss.on('connection', (ws) => {
   });
 });
 
+app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -1981,6 +2011,15 @@ app.post('/api/rooms/create', (req, res) => {
       messages: []
     };
     watchRooms.set(code, newRoom);
+    saveWatchRoomDb({
+      id: code,
+      name: `Комната ${newRoom.hostName}`,
+      hostId: newRoom.hostUserId,
+      hostName: newRoom.hostName,
+      currentMedia: newRoom.media,
+      isPlaying: false,
+      currentTime: 0
+    });
 
     if (req.user) {
       trackUserAction(req.user.id, 'room_host');

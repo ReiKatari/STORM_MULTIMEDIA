@@ -2312,22 +2312,57 @@ export function applySavedPlaybackSpeed(video) {
   updateInPlayerSpeedDisplay(speed);
 }
 
+export const AVAILABLE_PLAYBACK_SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.5, 0.75];
+
+export function cyclePlaybackSpeed() {
+  const curSpeed = parseFloat(localStorage.getItem('storm_playback_speed') || '1');
+  let idx = AVAILABLE_PLAYBACK_SPEEDS.findIndex(s => Math.abs(s - curSpeed) < 0.01);
+  if (idx === -1) idx = 0;
+  const nextSpeed = AVAILABLE_PLAYBACK_SPEEDS[(idx + 1) % AVAILABLE_PLAYBACK_SPEEDS.length];
+  setGlobalPlaybackSpeed(nextSpeed);
+  return nextSpeed;
+}
+
 export function setGlobalPlaybackSpeed(speed) {
   const sp = parseFloat(speed) || 1;
   localStorage.setItem('storm_playback_speed', String(sp));
 
-  const video = document.getElementById('storm-video-player');
-  if (video) {
+  // 1. Применение ко всем HTML5 <video> в документе
+  document.querySelectorAll('video').forEach(video => {
     try {
       video.playbackRate = sp;
     } catch {}
-  }
+  });
 
-  document.querySelectorAll('.cinema-player-iframe').forEach(iframe => {
+  // 2. Доступ к DOM видео внутри доступных iframes
+  document.querySelectorAll('.cinema-player-iframe, #cinema-player-wrapper iframe, iframe').forEach(iframe => {
     try {
-      iframe.contentWindow?.postMessage({ event: 'speed', value: sp }, '*');
-      iframe.contentWindow?.postMessage({ api: 'speed', val: sp }, '*');
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        doc.querySelectorAll('video').forEach(v => {
+          v.playbackRate = sp;
+        });
+      }
     } catch {}
+  });
+
+  // 3. Отправка postMessage во все поддерживаемые типы сторонних плееров
+  const msgs = [
+    { event: 'speed', value: sp },
+    { api: 'speed', val: sp },
+    { api: 'speed', set: sp },
+    { api: 'playbackRate', set: sp },
+    { action: 'speed', rate: sp },
+    { key: 'kodik_player_api', value: { action: 'speed', rate: sp } },
+    { type: 'SET_SPEED', speed: sp }
+  ];
+  document.querySelectorAll('.cinema-player-iframe, #cinema-player-wrapper iframe, iframe').forEach(iframe => {
+    msgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(msg, '*');
+        iframe.contentWindow?.postMessage(JSON.stringify(msg), '*');
+      } catch {}
+    });
   });
 
   updateInPlayerSpeedDisplay(sp);
@@ -2744,7 +2779,7 @@ export function mountInPlayerOverlay(videoBox) {
           <span class="inplayer-series-name" id="inplayer-series-name"></span>
         </div>
         <div class="inplayer-top-actions">
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-speed-btn" title="Скорость воспроизведения">
+          <button type="button" class="inplayer-ctrl-btn" id="inplayer-speed-btn" title="Скорость воспроизведения (нажмите для переключения)">
             ⚡ 1x
           </button>
           <div class="inplayer-speed-menu" id="inplayer-speed-menu">
@@ -2762,10 +2797,13 @@ export function mountInPlayerOverlay(videoBox) {
           <button type="button" class="inplayer-ctrl-btn inplayer-icon-btn" id="inplayer-fs-btn" title="Полноэкранный режим (F)">
             ⛶
           </button>
+          <button type="button" class="inplayer-ctrl-btn inplayer-icon-btn inplayer-close-btn" id="inplayer-close-btn" title="Закрыть кинотеатр">
+            ✕
+          </button>
         </div>
       </div>
 
-      <!-- Нижняя полоса быстрого переключения серий -->
+      <!-- Нижняя полоса быстрого переключения серий: компактные парящие капсулы -->
       <div class="inplayer-bottom-bar" id="inplayer-bottom-bar">
         <button type="button" class="inplayer-episode-nav-btn" id="inplayer-prev-ep-btn" title="Предыдущая серия">
           ⏮ <span>Пред. серия</span>
@@ -2798,9 +2836,24 @@ export function mountInPlayerOverlay(videoBox) {
       };
     }
 
+    const closeBtn = overlay.querySelector('#inplayer-close-btn');
+    if (closeBtn) {
+      closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        closePlayerModal();
+      };
+    }
+
     const speedBtn = overlay.querySelector('#inplayer-speed-btn');
     if (speedBtn) {
+      // Одиночный клик: мгновенное циклическое переключение скорости (1x -> 1.25x -> 1.5x -> 2x...)
       speedBtn.onclick = (e) => {
+        e.stopPropagation();
+        cyclePlaybackSpeed();
+      };
+      // Правый клик / контекстное меню: открытие выпадающего списка
+      speedBtn.oncontextmenu = (e) => {
+        e.preventDefault();
         e.stopPropagation();
         toggleInPlayerSpeedMenu(overlay);
       };
@@ -2851,8 +2904,7 @@ export function mountInPlayerOverlay(videoBox) {
     }
 
     let hideTimer = null;
-    const showControls = () => {
-      videoBox.classList.add('controls-visible');
+    const resetHideTimer = () => {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
         const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
@@ -2860,18 +2912,35 @@ export function mountInPlayerOverlay(videoBox) {
         if (!sheet?.classList.contains('is-open') && !spMenu?.classList.contains('is-open')) {
           videoBox.classList.remove('controls-visible');
         }
-      }, 3500);
+      }, 2800);
+    };
+
+    const showControls = () => {
+      videoBox.classList.add('controls-visible');
+      resetHideTimer();
     };
 
     videoBox.addEventListener('mousemove', showControls);
+    videoBox.addEventListener('pointermove', showControls);
+
+    // Тап/клик по видео: переключение видимости оверлея
+    videoBox.addEventListener('click', (e) => {
+      if (e.target.closest('.inplayer-top-bar') || e.target.closest('.inplayer-bottom-bar') || e.target.closest('.player-inplayer-episodes-sheet') || e.target.closest('.inplayer-speed-menu')) {
+        resetHideTimer();
+        return;
+      }
+      const isVis = videoBox.classList.contains('controls-visible');
+      if (isVis) {
+        videoBox.classList.remove('controls-visible');
+        clearTimeout(hideTimer);
+      } else {
+        showControls();
+      }
+    });
+
     videoBox.addEventListener('touchstart', (e) => {
       if (!e.target.closest('.inplayer-ctrl-btn') && !e.target.closest('.player-inplayer-episodes-sheet') && !e.target.closest('.inplayer-speed-menu')) {
-        const isOpen = videoBox.classList.contains('controls-visible');
-        if (isOpen) {
-          videoBox.classList.remove('controls-visible');
-        } else {
-          showControls();
-        }
+        resetHideTimer();
       }
     }, { passive: true });
 

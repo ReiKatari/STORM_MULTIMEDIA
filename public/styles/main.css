@@ -657,22 +657,93 @@ body {
 }
 
 .media-play-icon {
-  width: 48px;
-  height: 48px;
-  background: var(--accent);
-  color: #05070a;
+  position: relative;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  box-shadow: 0 0 16px var(--accent-glow);
-  transform: scale(0.9);
-  transition: transform 0.2s ease;
+  color: #ffffff;
+  background: linear-gradient(135deg, #00f0ff 0%, #0099ff 50%, #0055cc 100%);
+  box-shadow: 
+    0 10px 25px rgba(0, 0, 0, 0.75),
+    0 0 20px rgba(0, 210, 255, 0.45),
+    inset 0 2px 4px rgba(255, 255, 255, 0.65),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  transform: scale(0.92);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, filter 0.28s ease;
+  z-index: 2;
+  cursor: pointer;
 }
 
-.media-card:hover .media-play-icon {
-  transform: scale(1.1);
+/* Вращающаяся разноцветная неоновая аура вокруг кнопки запуска */
+.media-play-icon::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #00f0ff, #7928ca, #ff007f, #f59e0b, #00ff66, #00f0ff);
+  filter: blur(8px);
+  opacity: 0.35;
+  z-index: -1;
+  animation: rotateRainbowAura 3s linear infinite;
+  transition: opacity 0.3s ease, filter 0.3s ease, inset 0.3s ease;
+}
+
+/* Дополнительное ультратонкое радужное кольцо */
+.media-play-icon::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #00f0ff, #7928ca, #ff007f, #f59e0b, #00ff66, #00f0ff);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #fff calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #fff calc(100% - 2px));
+  opacity: 0.6;
+  z-index: -1;
+  animation: rotateRainbowAura 3s linear infinite;
+  transition: opacity 0.3s ease;
+}
+
+@keyframes rotateRainbowAura {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.media-card:hover .media-play-icon,
+.media-play-icon:hover {
+  transform: scale(1.18) translateY(-2px);
+  box-shadow: 
+    0 14px 32px rgba(0, 0, 0, 0.85),
+    0 0 30px rgba(0, 210, 255, 0.8),
+    inset 0 2px 5px rgba(255, 255, 255, 0.85),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.5);
+  filter: brightness(1.12);
+}
+
+.media-card:hover .media-play-icon::before,
+.media-play-icon:hover::before {
+  opacity: 1;
+  filter: blur(12px) brightness(1.4);
+  inset: -8px;
+  animation: rotateRainbowAura 1.8s linear infinite;
+}
+
+.media-card:hover .media-play-icon::after,
+.media-play-icon:hover::after {
+  opacity: 1;
+  animation: rotateRainbowAura 1.8s linear infinite;
+}
+
+.media-play-icon:active {
+  transform: scale(1.04) translateY(1.5px);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.7),
+    0 0 16px rgba(0, 210, 255, 0.5),
+    inset 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .media-card-progress {
@@ -2283,21 +2354,25 @@ body {
   flex-direction: column;
   justify-content: space-between;
   opacity: 0;
-  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  visibility: hidden;
+  transition: opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.32s ease;
 }
 
-.player-video-box:hover .storm-inplayer-overlay,
+/* Оверлей отображается ИСКЛЮЧИТЕЛЬНО при наличии класса активности controls-visible */
 .player-video-box.controls-visible .storm-inplayer-overlay {
   opacity: 1;
+  visibility: visible;
 }
 
-/* Верхняя панель оверлея */
+/* Верхняя компактная панель оверлея */
 .inplayer-top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
-  background: linear-gradient(180deg, rgba(5, 8, 15, 0.9) 0%, rgba(5, 8, 15, 0.4) 60%, transparent 100%);
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(5, 8, 15, 0.85) 0%, rgba(5, 8, 15, 0.3) 70%, transparent 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   pointer-events: auto;
   gap: 8px;
 }
@@ -2314,21 +2389,21 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgba(0, 210, 255, 0.15);
-  border: 1px solid rgba(0, 210, 255, 0.4);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 210, 255, 0.18);
+  border: 1px solid rgba(0, 210, 255, 0.45);
   color: #ffffff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   white-space: nowrap;
-  box-shadow: 0 0 12px rgba(0, 210, 255, 0.25);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.25);
 }
 
 .inplayer-series-name {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.95);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2338,7 +2413,7 @@ body {
 .inplayer-top-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
   position: relative;
 }
@@ -2347,14 +2422,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 12px;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: #ffffff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -2365,7 +2441,7 @@ body {
 
 .inplayer-ctrl-btn:hover {
   border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.2);
+  background: rgba(0, 210, 255, 0.22);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px var(--accent-glow);
 }
@@ -2375,17 +2451,31 @@ body {
 }
 
 .inplayer-icon-btn {
-  width: 34px;
+  width: 32px;
   padding: 0;
-  font-size: 15px;
+  font-size: 14px;
+}
+
+.inplayer-close-btn {
+  width: 32px;
+  padding: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.inplayer-close-btn:hover {
+  background: rgba(239, 68, 68, 0.3) !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
 }
 
 /* Меню выбора скорости воспроизведения */
 .inplayer-speed-menu {
   position: absolute;
-  top: 42px;
+  top: 40px;
   right: 80px;
   background: rgba(12, 16, 25, 0.96);
+  backdrop-filter: blur(16px);
   border: 1px solid var(--accent);
   border-radius: 10px;
   padding: 6px;
@@ -2430,47 +2520,55 @@ body {
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
-/* Нижняя панель быстрой навигации по сериям */
+/* Нижняя полоса быстрой навигации: компактные парящие капсулы НАД панелью плеера */
 .inplayer-bottom-bar {
+  position: absolute;
+  bottom: 58px;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding: 10px 14px;
-  background: linear-gradient(0deg, rgba(5, 8, 15, 0.88) 0%, rgba(5, 8, 15, 0.35) 60%, transparent 100%);
-  pointer-events: auto;
+  gap: 12px;
+  padding: 0;
+  background: transparent !important;
+  pointer-events: none;
+  z-index: 50;
 }
 
 .inplayer-episode-nav-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 16px;
+  padding: 6px 14px;
   border-radius: 20px;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(12, 16, 26, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: #ffffff;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
+  user-select: none;
 }
 
 .inplayer-episode-nav-btn:hover:not(:disabled) {
   border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.22);
+  background: rgba(0, 210, 255, 0.25);
   transform: translateY(-1.5px);
   box-shadow: 0 6px 16px var(--accent-glow);
 }
 
 .inplayer-episode-nav-btn:active:not(:disabled) {
-  transform: translateY(1px) scale(0.97);
+  transform: translateY(1px) scale(0.96);
 }
 
 .inplayer-episode-nav-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.25;
   cursor: not-allowed;
   transform: none !important;
 }
@@ -2834,4 +2932,131 @@ body {
   0% { height: 25%; }
   100% { height: 100%; }
 }
+
+/* =============================================================
+   МОБИЛЬНЫЙ АЛЬБОМНЫЙ РЕЖИМ (100vw x 100vh CINEMA MODE)
+   Полное разворачивание плеера на весь экран смартфона без отступов и рамок
+   ============================================================= */
+@media (max-height: 600px) and (orientation: landscape),
+       (max-width: 960px) and (orientation: landscape) {
+  #cinema-modal.storm-modal-backdrop {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    background: #000000 !important;
+    border-radius: 0 !important;
+  }
+
+  #cinema-modal .cinema-modal-dialog {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: #000000 !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+  }
+
+  /* В альбомном режиме смартфона внешняя шапка скрывается: управление переходит в оверлей плеера */
+  #cinema-modal .storm-modal-header {
+    display: none !important;
+  }
+
+  #cinema-modal .storm-modal-body {
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: 1 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: #000000 !important;
+  }
+
+  #cinema-modal .cinema-layout-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #cinema-modal .cinema-main-column {
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: #000000 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  #cinema-modal .cinema-player-wrapper {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    aspect-ratio: unset !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    flex: 1 !important;
+    background: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  #cinema-modal .player-video-box {
+    width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    background: #000000 !important;
+  }
+
+  #cinema-modal .cinema-player-iframe,
+  #cinema-modal #storm-video-player {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    object-fit: contain !important;
+    background: #000000 !important;
+  }
+
+  /* Скрытие второстепенных блоков информации в альбомном режиме для непрерывного просмотра */
+  #cinema-modal .player-series-quick-bar,
+  #cinema-modal #player-utility-actions,
+  #cinema-modal #cinema-modal-desc-wrap,
+  #cinema-modal .series-seasons-container,
+  #cinema-modal .cinema-side-column,
+  #cinema-modal .player-progress-area,
+  #cinema-modal #player-status-buttons,
+  #cinema-modal #player-collection-dropdown,
+  #cinema-modal #cinema-reviews-container,
+  #cinema-modal #cinema-modal-screenshots-container {
+    display: none !important;
+  }
+
+  .storm-mobile-bottom-bar {
+    display: none !important;
+  }
+}
+
 

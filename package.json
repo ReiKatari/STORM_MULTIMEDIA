@@ -23,6 +23,7 @@
   "dependencies": {
     "anixapi": "^0.3.2",
     "cheerio": "^1.0.0",
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "ws": "^8.21.3"

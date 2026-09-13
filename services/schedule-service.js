@@ -425,12 +425,198 @@ const VERIFIED_SCHEDULE_ITEMS = [
   }
 ];
 
+// Живой парсинг RSS LostFilm с актуальными сериями
+async function fetchLostFilmSchedule() {
+  try {
+    const res = await fetch('https://www.lostfilm.tv/rss.xml', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/rss+xml, text/xml, application/xml'
+      },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const itemBlocks = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
+    const items = [];
+
+    for (const block of itemBlocks) {
+      const titleMatch = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/i) || block.match(/<title>(.*?)<\/title>/i);
+      const linkMatch = block.match(/<link><!\[CDATA\[(.*?)\]\]><\/link>/i) || block.match(/<link>(.*?)<\/link>/i);
+      const pubDateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/i);
+
+      if (!titleMatch) continue;
+      const rawTitle = titleMatch[1].trim();
+      const link = linkMatch ? linkMatch[1].trim() : '';
+      const pubDate = pubDateMatch ? new Date(pubDateMatch[1].trim()) : new Date();
+      const dayOfWeek = isNaN(pubDate.getDay()) ? 1 : pubDate.getDay();
+
+      // Разбор: "Джентльмены (The Gentlemen). Принеси мне голову. (S02E08)"
+      const parseRegex = /^(.*?)(?:\s*\((.*?)\))?\.\s*(.*?)(?:\s*\((S\d+E\d+)\))?$/i;
+      const m = rawTitle.match(parseRegex);
+
+      let title = rawTitle;
+      let origTitle = '';
+      let epTitle = 'Новая серия';
+      let season = 1;
+      let episode = 1;
+
+      if (m) {
+        title = (m[1] || rawTitle).trim();
+        origTitle = (m[2] || '').trim();
+        epTitle = (m[3] || 'Новая серия').trim();
+        if (m[4]) {
+          const se = m[4].match(/S(\d+)E(\d+)/i);
+          if (se) {
+            season = parseInt(se[1], 10) || 1;
+            episode = parseInt(se[2], 10) || 1;
+          }
+        }
+      }
+
+      const hours = String(pubDate.getHours()).padStart(2, '0');
+      const mins = String(pubDate.getMinutes()).padStart(2, '0');
+
+      items.push({
+        id: `lostfilm_${season}_${episode}_${title.toLowerCase().replace(/[^a-zа-я0-9]/gi, '_')}`,
+        title,
+        original_title: origTitle,
+        poster: 'https://image.tmdb.org/t/p/w500/vbpA5L3n6z720aGSm5U1QZ2VqXG.jpg',
+        year: String(pubDate.getFullYear() || 2026),
+        season,
+        episode,
+        episode_title: epTitle,
+        day_of_week: dayOfWeek,
+        air_time: `${hours}:${mins} МСК`,
+        studio: 'LostFilm',
+        quality: '4K UHD',
+        is4K: true,
+        rating: 8.5,
+        genres: 'Сериал, Драма, Криминал',
+        source: 'fanfilm4k',
+        link,
+        description: `Свежий студийный дубляж LostFilm: ${title}, сезон ${season}, серия ${episode} («${epTitle}»).`
+      });
+    }
+
+    return items;
+  } catch (err) {
+    console.warn('Не удалось обновить RSS LostFilm:', err.message);
+    return [];
+  }
+}
+
+// Живое расписание онгоингов из официального API AniLibria
+async function fetchAniLibriaSchedule() {
+  try {
+    const res = await fetch('https://anilibria.top/api/v1/anime/schedule/week', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!res.ok) return [];
+    const releases = await res.json();
+    if (!Array.isArray(releases)) return [];
+
+    const items = [];
+    for (const item of releases) {
+      const rel = item.release;
+      if (!rel) continue;
+
+      const publishDayVal = rel.publish_day?.value;
+      // В AniLibria: 1 = Пн, ..., 7 = Вс. В JS Date: 0 = Вс, 1 = Пн, ..., 6 = Сб.
+      const dayOfWeek = publishDayVal === 7 ? 0 : (publishDayVal || 1);
+
+      const title = rel.name?.main || rel.name?.english || 'Аниме-онгоинг';
+      const origTitle = rel.name?.english || '';
+      const posterPath = rel.poster?.optimized?.src || rel.poster?.src;
+      const posterUrl = posterPath ? (posterPath.startsWith('http') ? posterPath : `https://anilibria.top${posterPath}`) : '';
+      const genresStr = Array.isArray(rel.genres) ? rel.genres.map(g => g.name).join(', ') : 'Аниме';
+      const ratingVal = rel.shikimori?.rating || 8.0;
+      const nextEp = item.next_release_episode_number || 1;
+
+      items.push({
+        id: `anilibria_${rel.id || rel.alias}`,
+        title,
+        original_title: origTitle,
+        poster: posterUrl,
+        year: String(rel.year || 2026),
+        season: 1,
+        episode: nextEp,
+        episode_title: `Серия ${nextEp}`,
+        day_of_week: dayOfWeek,
+        air_time: '19:00 МСК',
+        studio: 'AniLibria',
+        quality: '1080p FHD',
+        is4K: false,
+        rating: ratingVal,
+        genres: genresStr,
+        source: 'anilibria',
+        description: rel.description ? rel.description.slice(0, 200) + '...' : 'Выход новой серии в эфире.'
+      });
+    }
+
+    return items;
+  } catch (err) {
+    console.warn('Не удалось обновить расписание AniLibria:', err.message);
+    return [];
+  }
+}
+
 export async function getAggregatedSchedule() {
-  const cacheKey = 'aggregated_schedule_v2';
+  const cacheKey = 'aggregated_schedule_v3';
   const cached = getCache('schedule', cacheKey);
   if (cached) return cached;
 
-  // Возвращаем верифицированные данные с кэшированием на 30 минут
-  setCache('schedule', cacheKey, VERIFIED_SCHEDULE_ITEMS, 1800);
-  return VERIFIED_SCHEDULE_ITEMS;
+  try {
+    const [liveLostFilm, liveAniLibria] = await Promise.allSettled([
+      fetchLostFilmSchedule(),
+      fetchAniLibriaSchedule()
+    ]);
+
+    const lfItems = liveLostFilm.status === 'fulfilled' ? liveLostFilm.value : [];
+    const aniItems = liveAniLibria.status === 'fulfilled' ? liveAniLibria.value : [];
+
+    let combined = [];
+
+    // Добавляем свежие релизы LostFilm
+    if (lfItems.length > 0) {
+      combined.push(...lfItems);
+    }
+
+    // Добавляем актуальные серии AniLibria
+    if (aniItems.length > 0) {
+      combined.push(...aniItems.slice(0, 30));
+    }
+
+    // Если внешние сети недоступны или данных мало — подмешиваем верифицированный каталог
+    if (combined.length < 10) {
+      combined.push(...VERIFIED_SCHEDULE_ITEMS);
+    }
+
+    // Дедупликация по ID / названию
+    const seen = new Set();
+    const uniqueItems = [];
+    for (const it of combined) {
+      const key = `${it.title.toLowerCase()}_${it.day_of_week}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueItems.push(it);
+      }
+    }
+
+    // Сортировка по дню недели (1..6, 0)
+    uniqueItems.sort((a, b) => {
+      const dayA = a.day_of_week === 0 ? 7 : a.day_of_week;
+      const dayB = b.day_of_week === 0 ? 7 : b.day_of_week;
+      return dayA - dayB;
+    });
+
+    setCache('schedule', cacheKey, uniqueItems, 1800);
+    return uniqueItems;
+  } catch (err) {
+    console.error('Ошибка агрегации расписания:', err.message);
+    return VERIFIED_SCHEDULE_ITEMS;
+  }
 }

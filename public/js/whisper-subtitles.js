@@ -107,8 +107,7 @@ function startWhisperEngine(video) {
     }
   }, 180);
 
-  // Подключение браузерного Web Speech API для живого распознавания речи
-  setupSpeechRecognition();
+  // Режим Whisper AI работает строго с медиа-потоком фильма и декодированными субтитрами (без микрофона пользователя)
 }
 
 function setupVoiceActivityDetector(video) {
@@ -125,7 +124,14 @@ function setupVoiceActivityDetector(video) {
 
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (AudioContext && video && !video.crossOrigin) {
-      // Игнорируем ошибки CORS для iframe
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaElementSource(video);
+      analyserNode = audioCtx.createAnalyser();
+      analyserNode.fftSize = 256;
+      analyserNode.smoothingTimeConstant = 0.6;
+      source.connect(analyserNode);
+      analyserNode.connect(audioCtx.destination);
+      audioDataArray = new Uint8Array(analyserNode.frequencyBinCount);
     }
   } catch (e) {
     analyserNode = null;
@@ -147,49 +153,6 @@ function checkAudioLevel(video) {
   } catch {
     isAudioSpeaking = false;
   }
-}
-
-function setupSpeechRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return;
-
-  try {
-    recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'ru-RU';
-
-    recognition.onresult = (e) => {
-      let transcriptText = '';
-      for (let i = e.resultIndex; i < e.results.length; ++i) {
-        transcriptText += e.results[i][0].transcript;
-      }
-
-      const cleanText = transcriptText.trim();
-      if (cleanText && subtitleOverlay && isWhisperActive) {
-        lastSpeechTimestamp = Date.now();
-        renderSubtitleLine(cleanText, false);
-        subtitleOverlay.style.opacity = '1';
-
-        clearTimeout(fadeTimer);
-        fadeTimer = setTimeout(() => {
-          if (subtitleOverlay) {
-            subtitleOverlay.style.opacity = '0';
-          }
-        }, 2800);
-      }
-    };
-
-    recognition.onerror = () => {};
-
-    recognition.onend = () => {
-      if (isWhisperActive && recognition) {
-        try { recognition.start(); } catch {}
-      }
-    };
-
-    recognition.start();
-  } catch {}
 }
 
 function renderSubtitleLine(text, isStatus = false) {

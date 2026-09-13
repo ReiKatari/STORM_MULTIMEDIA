@@ -5,6 +5,7 @@
 
 import { getUser, showToast } from './auth.js';
 import { trackClientAction } from './achievements.js';
+import { openPlayerModal } from './player.js';
 
 let ws = null;
 let currentRoom = null;
@@ -118,6 +119,9 @@ function handleSocketMessage(data) {
       showToast(`Вы подключились к комнате ${data.roomCode}!`, 'success');
       renderRoomUi(currentRoom);
       updateSyncStatus('synced');
+      if (data.media && !document.getElementById('cinema-modal')?.classList.contains('is-open')) {
+        openPlayerModal(data.media);
+      }
       break;
 
     case 'participant_update':
@@ -137,7 +141,10 @@ function handleSocketMessage(data) {
     case 'media_changed':
       if (currentRoom) {
         currentRoom.media = data.media;
-        showToast(`Хост переключил видео: ${data.media?.title || 'Новый релиз'}`, 'info');
+        showToast(`Хост запустил просмотр: ${data.media?.title || 'Новый релиз'}`, 'info');
+        if (data.media) {
+          openPlayerModal(data.media);
+        }
       }
       break;
 
