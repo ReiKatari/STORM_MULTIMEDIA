@@ -1828,12 +1828,21 @@ input[type="checkbox"]::after {
    3D ВЫПАДАЮЩИЙ СПИСОК ВЫБОРА ПЛЕЕРА (PLAYER SELECTOR DROPDOWN)
    ========================================================================== */
 .player-selector-dropdown-wrap {
+  position: relative;
+  z-index: 80;
   margin-top: 14px;
   width: 100%;
 }
 
+.player-selector-dropdown-wrap.is-open,
+.player-selector-dropdown-wrap:has(.is-open),
+.player-custom-dropdown.is-open {
+  z-index: 1500;
+}
+
 .player-custom-dropdown {
   width: 100%;
+  position: relative;
 }
 
 .player-dropdown-trigger {
@@ -1888,21 +1897,34 @@ input[type="checkbox"]::after {
 
 .player-dropdown-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
+  top: auto;
   left: 0 !important;
   right: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  z-index: 1000;
+  z-index: 1500;
   background: var(--bg-secondary);
   border: 1px solid var(--accent);
   border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
   overflow: hidden;
-  max-height: 480px;
+  max-height: 440px;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+.player-dropdown-menu.open-down {
+  bottom: auto;
+  top: calc(100% + 8px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
+}
+
+.player-dropdown-menu.open-up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.9), 0 0 24px var(--accent-glow);
 }
 
 .player-dropdown-list {
@@ -3872,13 +3894,15 @@ input[type="checkbox"]::after {
    3D БЫСТРАЯ ПАНЕЛЬ СЕРИАЛОВ (СЕЗОНЫ, СЕРИИ, ОЗВУЧКА С 4K UHD)
    ========================================================================== */
 .player-series-quick-bar {
+  position: relative;
+  z-index: 100;
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 12px;
   padding: 8px 12px;
-  background: rgba(13, 16, 23, 0.85);
+  background: rgba(13, 16, 23, 0.95);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
@@ -3889,6 +3913,10 @@ input[type="checkbox"]::after {
   position: relative;
   flex: 1;
   min-width: 140px;
+}
+
+.quick-select-dropdown.is-open {
+  z-index: 120;
 }
 
 .quick-dropdown-trigger {
@@ -3961,19 +3989,38 @@ input[type="checkbox"]::after {
   top: calc(100% + 6px);
   left: 0;
   min-width: 100%;
-  max-height: 300px;
+  max-height: 320px;
   overflow-y: auto;
-  z-index: 1050;
+  z-index: 1200;
   background: rgba(15, 18, 26, 0.98);
   backdrop-filter: blur(16px);
   border: 1px solid var(--accent);
   border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7), 0 0 20px var(--accent-glow);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 20px var(--accent-glow);
   padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+
+.quick-dropdown-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.quick-dropdown-menu::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
 }
 
 .quick-dropdown-menu-wide {
-  min-width: 270px;
+  min-width: 280px;
+  max-width: 420px;
+  right: 0;
+  left: auto;
+}
+
+body.quick-dropdown-active .cinema-player-iframe,
+body.player-dropdown-active .cinema-player-iframe {
+  pointer-events: none;
 }
 
 .quick-dropdown-list {
