@@ -255,6 +255,87 @@ wss.on('connection', (ws) => {
           break;
         }
 
+        case 'live_reaction': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const reactionMsg = JSON.stringify({
+            type: 'live_reaction',
+            emoji: data.emoji,
+            user: data.user || currentUser?.username || 'Зритель'
+          });
+
+          for (const [client] of room.participants) {
+            if (client.readyState === 1) {
+              client.send(reactionMsg);
+            }
+          }
+          break;
+        }
+
+        case 'storm_remote_action': {
+          const targetRoomCode = data.session || currentRoomCode;
+          if (!targetRoomCode) return;
+          const room = watchRooms.get(targetRoomCode);
+          if (!room) return;
+
+          const remoteMsg = JSON.stringify({
+            type: 'storm_remote_action',
+            action: data.action,
+            query: data.query,
+            sender: currentUser?.username || 'Пульт'
+          });
+
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(remoteMsg);
+            }
+          }
+          break;
+        }
+
+        case 'voice_signal': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const signalMsg = JSON.stringify({
+            type: 'voice_signal',
+            signal: data.signal,
+            senderId: currentUser?.id,
+            targetId: data.targetId
+          });
+
+          for (const [client, pUser] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              if (!data.targetId || pUser.id === data.targetId) {
+                client.send(signalMsg);
+              }
+            }
+          }
+          break;
+        }
+
+        case 'p2p_chunk_signal': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const chunkSignalMsg = JSON.stringify({
+            type: 'p2p_chunk_signal',
+            chunkData: data.chunkData,
+            senderId: currentUser?.id
+          });
+
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(chunkSignalMsg);
+            }
+          }
+          break;
+        }
+
         default:
           break;
       }

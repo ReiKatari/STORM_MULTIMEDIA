@@ -160,6 +160,14 @@ function handleSocketMessage(data) {
       }
       break;
 
+    case 'live_reaction':
+      renderFloatingReaction(data.emoji, data.user);
+      break;
+
+    case 'storm_remote_action':
+      import('./storm-remote.js').then(m => m.handleIncomingRemoteAction(data)).catch(() => {});
+      break;
+
     case 'error':
       showToast(data.message || 'Ошибка комнаты', 'error');
       break;
@@ -451,6 +459,19 @@ export function renderRoomUi(room) {
       <button type="button" id="cancel-reply-btn" class="storm-btn storm-btn-sm" style="padding: 1px 6px; font-size: 10px; margin-left: 6px;">✕</button>
     </div>
 
+    <!-- Живые совместные реакции на экране -->
+    <div class="watch-room-reactions-bar" id="watch-room-reactions-bar">
+      <span style="font-size: 11px; color: var(--text-muted); margin-right: 4px;">Реакция:</span>
+      <button type="button" class="reaction-trigger-btn" data-emoji="❤️" title="Любовь">❤️</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="🔥" title="Огонь">🔥</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="😂" title="Смех">😂</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="😱" title="Шок">😱</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="👏" title="Аплодисменты">👏</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="🍿" title="Попкорн">🍿</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="🚀" title="Взлёт">🚀</button>
+      <button type="button" class="reaction-trigger-btn" data-emoji="💎" title="Шедевр">💎</button>
+    </div>
+
     <!-- Тулбар форматирования текста -->
     <div class="chat-format-toolbar">
       <button type="button" class="chat-format-btn" data-tag="bold" title="Жирный шрифт (**текст**)"><b>B</b></button>
@@ -463,6 +484,7 @@ export function renderRoomUi(room) {
     <!-- Форма отправки сообщения -->
     <form class="watch-room-chat-form" id="watch-room-chat-form">
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-stickers-btn" style="padding: 6px 10px;" title="Смайлики и стикеры">😊</button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-voice-mic-btn" style="padding: 6px 10px;" title="Голосовой чат (Микрофон)">🎙️</button>
       <input type="text" class="storm-input" id="watch-chat-input" placeholder="Написать зрителям (поддерживается разметка)..." autocomplete="off" style="font-size: 12px; padding: 6px 10px;">
       <button type="submit" class="storm-btn storm-btn-primary storm-btn-sm" style="padding: 6px 12px;" title="Отправить">➤</button>
     </form>
@@ -526,8 +548,21 @@ export function renderRoomUi(room) {
       const video = attachedVideoElement || document.getElementById('storm-video-player');
       const time = video ? video.currentTime : 0;
       broadcastPlaybackState(video ? !video.paused : true, time);
-      showToast('Таймкод синхронизирован со всеми зрителями!', 'success');
+      showToast('Текущая секунда синхронизирована с участниками', 'info');
     };
+  }
+
+  // Обработка живых реакций
+  container.querySelectorAll('.reaction-trigger-btn').forEach(btn => {
+    btn.onclick = () => {
+      sendLiveReaction(btn.dataset.emoji);
+    };
+  });
+
+  // Микрофон для голосового чата
+  const micBtn = container.querySelector('#toggle-voice-mic-btn');
+  if (micBtn) {
+    micBtn.onclick = () => toggleVoiceChatMic(micBtn);
   }
 
   // Кнопки форматирования текста
@@ -757,3 +792,71 @@ function appendChatMessage(msg) {
   container.appendChild(row);
   container.scrollTop = container.scrollHeight;
 }
+
+// ==========================================
+// ЖИВЫЕ РЕАКЦИИ И ГОЛОСОВОЙ ЧАТ В КИНОКОМНАТЕ
+// ==========================================
+export function sendLiveReaction(emoji) {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !currentRoom) {
+    renderFloatingReaction(emoji, 'Вы');
+    return;
+  }
+  const user = getUser();
+  ws.send(JSON.stringify({
+    type: 'live_reaction',
+    roomCode: currentRoom.code,
+    emoji,
+    user: user ? user.username : 'Гость'
+  }));
+  renderFloatingReaction(emoji, user ? user.username : 'Вы');
+}
+
+export function renderFloatingReaction(emoji, username = '') {
+  const container = document.getElementById('cinema-player-wrapper') || document.body;
+  const el = document.createElement('div');
+  el.className = 'floating-live-reaction';
+  el.innerHTML = `
+    <span class="reaction-emoji">${emoji}</span>
+    ${username ? `<span class="reaction-user">${username}</span>` : ''}
+  `;
+
+  const randomLeft = 15 + Math.random() * 70;
+  el.style.left = `${randomLeft}%`;
+  el.style.bottom = '90px';
+
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 2400);
+}
+
+let localAudioStream = null;
+let isMicMuted = true;
+
+export async function toggleVoiceChatMic(btn = null) {
+  if (!localAudioStream) {
+    try {
+      localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      isMicMuted = false;
+      showToast('🎙️ Микрофон включен в кинокомнате', 'success');
+      if (btn) {
+        btn.classList.add('storm-btn-primary');
+        btn.classList.remove('storm-btn-secondary');
+        btn.title = 'Микрофон включен (нажмите, чтобы выключить)';
+      }
+    } catch (err) {
+      showToast('Доступ к микрофону отклонен или отсутствует устройство', 'warning');
+      return;
+    }
+  } else {
+    isMicMuted = !isMicMuted;
+    localAudioStream.getAudioTracks().forEach(track => {
+      track.enabled = !isMicMuted;
+    });
+    showToast(`Микрофон ${isMicMuted ? 'выключен' : 'включен'}`, 'info');
+    if (btn) {
+      btn.classList.toggle('storm-btn-primary', !isMicMuted);
+      btn.classList.toggle('storm-btn-secondary', isMicMuted);
+      btn.title = isMicMuted ? 'Микрофон выключен (нажмите, чтобы включить)' : 'Микрофон включен';
+    }
+  }
+}
+

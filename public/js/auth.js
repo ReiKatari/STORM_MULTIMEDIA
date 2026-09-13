@@ -495,3 +495,107 @@ export function initProfileHandlers() {
     });
   }
 }
+
+// ==========================================
+// МНОГОПРОФИЛЬНОСТЬ И СЕМЕЙНЫЙ АККАУНТ
+// ==========================================
+const DEFAULT_PROFILES = [
+  { id: 'primary', name: 'Основной профиль', avatar: 'assets/favicon.svg', isKid: false },
+  { id: 'family', name: 'Семейный просмотр', avatar: 'assets/favicon.svg', isKid: false },
+  { id: 'kids', name: 'Детский профиль (18+ Blocked)', avatar: 'assets/favicon.svg', isKid: true, pin: '0000' }
+];
+
+let familyProfiles = DEFAULT_PROFILES;
+try {
+  const saved = localStorage.getItem('storm_family_profiles');
+  if (saved) familyProfiles = JSON.parse(saved);
+} catch {}
+
+let activeProfileId = localStorage.getItem('storm_active_profile_id') || 'primary';
+
+export function getActiveProfile() {
+  return familyProfiles.find(p => p.id === activeProfileId) || familyProfiles[0];
+}
+
+export function isKidModeActive() {
+  const p = getActiveProfile();
+  return Boolean(p && p.isKid);
+}
+
+export function switchFamilyProfile(profileId, pin = null) {
+  const current = getActiveProfile();
+  const target = familyProfiles.find(p => p.id === profileId);
+  if (!target) return false;
+
+  // Если выходим из детского режима - проверяем PIN
+  if (current.isKid && !target.isKid) {
+    const requiredPin = current.pin || '0000';
+    if (pin !== requiredPin) {
+      const entered = prompt('Введите родительский PIN для выхода из детского режима (по умолчанию 0000):');
+      if (entered !== requiredPin) {
+        showToast('Неверный PIN-код родительского контроля', 'error');
+        return false;
+      }
+    }
+  }
+
+  activeProfileId = target.id;
+  localStorage.setItem('storm_active_profile_id', activeProfileId);
+  showToast(`Переключен профиль: ${target.name}`, 'success');
+  updateAuthUI();
+  notifyAuthChanged();
+  window.location.reload();
+  return true;
+}
+
+export function openProfileSwitcherModal() {
+  let modal = document.getElementById('family-profiles-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'storm-modal-backdrop';
+    modal.id = 'family-profiles-modal';
+    modal.innerHTML = `
+      <div class="storm-modal" style="max-width: 560px; text-align: center;">
+        <div class="storm-modal-header" style="justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">👥</span>
+            <h3 style="margin: 0;">Кто смотрит? (Семейные профили)</h3>
+          </div>
+          <button type="button" class="storm-modal-close" id="close-profiles-modal-btn">✕</button>
+        </div>
+        <div class="storm-modal-body" id="family-profiles-modal-body" style="padding: 24px;"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeBtn = modal.querySelector('#close-profiles-modal-btn');
+    if (closeBtn) closeBtn.onclick = () => modal.classList.remove('is-open');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('is-open'); };
+  }
+
+  modal.classList.add('is-open');
+  const body = document.getElementById('family-profiles-modal-body');
+  const active = getActiveProfile();
+
+  body.innerHTML = `
+    <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+      ${familyProfiles.map(p => `
+        <div class="storm-card profile-card-item ${p.id === active.id ? 'is-active' : ''}" data-id="${p.id}" style="width: 140px; padding: 16px 10px; display: flex; flex-direction: column; align-items: center; cursor: pointer; border-radius: 12px; border: 2px solid ${p.id === active.id ? 'var(--accent)' : 'var(--border-subtle)'}; background: ${p.id === active.id ? 'rgba(0, 210, 255, 0.08)' : 'var(--bg-secondary)'};">
+          <div style="width: 64px; height: 64px; border-radius: 50%; background: ${p.isKid ? 'linear-gradient(135deg,#ff007f,#a855f7)' : 'linear-gradient(135deg,#00d2ff,#0072ff)'}; display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 10px;">
+            ${p.isKid ? '🦄' : (p.id === 'family' ? '👨‍👩‍👧' : '👑')}
+          </div>
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: ${p.id === active.id ? 'var(--accent)' : '#fff'};">${p.name}</div>
+          <div style="font-size: 11px; color: var(--text-muted);">${p.isKid ? '🔒 Детский (0+)' : 'Полный доступ'}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  body.querySelectorAll('.profile-card-item').forEach(card => {
+    card.onclick = () => {
+      const pid = card.dataset.id;
+      modal.classList.remove('is-open');
+      switchFamilyProfile(pid);
+    };
+  });
+}

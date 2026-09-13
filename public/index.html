@@ -45,6 +45,21 @@
 
       <!-- Действия: Темы и аккаунт -->
       <div class="storm-nav-actions">
+        <!-- Кнопка ИИ-советника (Neural Recommender) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-recommender-btn" title="Персональный ИИ-советник на вечер">
+          <span>🧠</span> Советник
+        </button>
+
+        <!-- Кнопка Календаря релизов -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-calendar-btn" title="Календарь выхода новых эпизодов">
+          <span>📅</span> Календарь
+        </button>
+
+        <!-- Кнопка Пульта со смартфона (STORM Remote) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-remote-btn" title="Пульт управления со смартфона (QR-код)">
+          <span>📱</span> Пульт
+        </button>
+
         <!-- Кнопка Smart TV режима -->
         <button class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-tv-mode-btn" title="Режим Smart TV">
           <span>📺</span> ТВ-режим
@@ -53,6 +68,11 @@
         <!-- Кнопка Кинокомнаты (Watch Together) -->
         <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-rooms-btn" title="Комната совместного просмотра">
           <span>👥</span> Кинозал
+        </button>
+
+        <!-- Кнопка Профилей семьи и детского режима -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-family-btn" title="Семейные профили и детский режим">
+          <span id="active-profile-avatar-icon">👑</span> <span id="active-profile-name-label">Семья</span>
         </button>
 
         <!-- Кнопка Синхронизации (Shikimori, MAL, Кинопоиск и бэкап) -->
@@ -92,6 +112,7 @@
       <button class="storm-tab-btn" data-tab="anime-series" data-i18n="tab_anime_series">Аниме-сериалы</button>
       <button class="storm-tab-btn" data-tab="continue" data-i18n="tab_continue">Продолжить просмотр</button>
       <button class="storm-tab-btn" data-tab="bookmarks" data-i18n="tab_bookmarks">Мои списки и закладки</button>
+      <button class="storm-tab-btn" data-tab="offline" title="Сохраненные релизы в IndexedDB">💾 Офлайн</button>
     </div>
   </nav>
 
@@ -311,12 +332,26 @@
             <!-- Панель действий: Индикатор прогресса, статусы и коллекция -->
             <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
               <!-- Прогресс просмотра -->
-              <div>
+              <div class="player-progress-area" style="position: relative;">
                 <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
                   <span data-i18n="player_progress">Прогресс просмотра:</span>
-                  <span id="player-progress-label" style="color: var(--accent);">0%</span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="player-chapter-badge" class="storm-badge" style="display: none; font-size: 10px; background: rgba(0, 210, 255, 0.15); color: var(--accent);">Глава</span>
+                    <span id="player-progress-label" style="color: var(--accent);">0%</span>
+                  </div>
                 </div>
-                <input type="range" class="storm-slider" id="player-progress-slider" min="0" max="100" value="0">
+                <div style="position: relative; width: 100%;">
+                  <input type="range" class="storm-slider" id="player-progress-slider" min="0" max="100" value="0">
+                  <div id="player-chapters-track" class="player-chapters-track"></div>
+                  <!-- Покадровое всплывающее превью (Thumbnail Scrubber) -->
+                  <div id="player-scrubber-preview" class="player-scrubber-preview" style="display: none;">
+                    <div class="scrubber-thumb-wrap">
+                      <canvas id="scrubber-thumb-canvas" width="148" height="84"></canvas>
+                    </div>
+                    <div id="scrubber-thumb-time" class="scrubber-thumb-time">00:00</div>
+                    <div id="scrubber-thumb-chapter" class="scrubber-thumb-chapter">Сцена фильма</div>
+                  </div>
+                </div>
               </div>
 
               <!-- Кнопки статуса просмотра и добавление в список -->

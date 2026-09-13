@@ -4,7 +4,7 @@
 
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers } from './auth.js';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 import { trackClientAction, renderProfileAchievements } from './achievements.js';
@@ -12,6 +12,10 @@ import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
 import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
 import { renderSyncModalContent } from './sync-service.js';
 import { joinWatchRoom, createWatchRoom } from './watch-together.js';
+import { openNeuralRecommenderModal } from './neural-recommender.js';
+import { openReleaseCalendarModal } from './release-calendar.js';
+import { openRemoteQrModal } from './storm-remote.js';
+import { renderOfflineLibrary } from './offline-storage.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -40,8 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initProfileHandlers();
   initLanguageSwitcher();
   initNewCyberFeatures();
+  updateFamilyProfileHeader();
 
   onAuthChanged(() => {
+    updateFamilyProfileHeader();
     if (currentTab === 'bookmarks' || currentTab === 'continue') {
       loadCurrentTab();
     }
@@ -160,6 +166,11 @@ export function formatMediaTitle(item) {
 async function loadCurrentTab() {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+
+  if (currentTab === 'offline') {
+    renderOfflineLibrary(container);
+    return;
+  }
 
   if (currentTab === 'continue') {
     renderSkeletonGrid();
@@ -946,6 +957,15 @@ export function renderFilteredCatalog() {
 
   let items = [...rawCatalogItems];
 
+  // 0. Детский режим (семейный контроль и фильтрация 18+)
+  if (isKidModeActive()) {
+    const blockedTerms = ['18+', 'эротика', 'ужасы', 'хоррор', 'порно', 'триллер', 'криминал'];
+    items = items.filter(item => {
+      const text = `${item.title || ''} ${item.description || ''} ${Array.isArray(item.genres) ? item.genres.join(' ') : (item.genres || '')} ${item.age_rating || ''}`.toLowerCase();
+      return !blockedTerms.some(term => text.includes(term));
+    });
+  }
+
   // 1. Фильтр по жанру
   if (currentGenre !== 'all') {
     const targetGenre = currentGenre.toLowerCase();
@@ -1438,5 +1458,41 @@ function initNewCyberFeatures() {
         trackClientAction('switch_lang', { langs_count: history.length });
       } catch {}
     });
+  }
+
+  // 5. ИИ-советник (STORM Neural Recommender)
+  const recBtn = document.getElementById('header-recommender-btn');
+  if (recBtn) {
+    recBtn.onclick = () => openNeuralRecommenderModal();
+  }
+
+  // 6. Календарь релизов и расписание серий
+  const calBtn = document.getElementById('header-calendar-btn');
+  if (calBtn) {
+    calBtn.onclick = () => openReleaseCalendarModal();
+  }
+
+  // 7. STORM Remote (пульт со смартфона)
+  const remBtn = document.getElementById('header-remote-btn');
+  if (remBtn) {
+    remBtn.onclick = () => openRemoteQrModal();
+  }
+
+  // 8. Семейные профили и детский режим
+  const famBtn = document.getElementById('header-family-btn');
+  if (famBtn) {
+    famBtn.onclick = () => openProfileSwitcherModal();
+  }
+}
+
+export function updateFamilyProfileHeader() {
+  const profile = getActiveProfile();
+  const iconEl = document.getElementById('active-profile-avatar-icon');
+  const labelEl = document.getElementById('active-profile-name-label');
+  if (iconEl && profile) {
+    iconEl.textContent = profile.isKid ? '🦄' : (profile.id === 'family' ? '👨‍👩‍👧' : '👑');
+  }
+  if (labelEl && profile) {
+    labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Семья';
   }
 }
