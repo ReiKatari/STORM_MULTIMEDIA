@@ -2030,89 +2030,161 @@ input[type="checkbox"]::after {
 
 .series-episodes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-  max-height: 380px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  max-height: 400px;
   overflow-y: auto;
   scrollbar-width: thin;
-  padding-right: 4px;
+  padding: 10px 8px 14px 6px;
+  box-sizing: border-box;
 }
 
 .series-episode-card {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: 9px;
-  padding: 8px;
+  padding: 10px;
   cursor: pointer;
+  position: relative;
   transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .series-episode-card:hover {
   border-color: var(--accent);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 10px var(--accent-glow);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 12px var(--accent-glow);
 }
 
 .series-episode-card.active {
   border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.08);
-  box-shadow: 0 0 12px var(--accent-glow);
+  background: rgba(0, 210, 255, 0.09);
+  box-shadow: 0 0 14px var(--accent-glow);
 }
 
+.series-episode-card.watched {
+  border-color: rgba(0, 255, 102, 0.4);
+}
+
+.series-episode-thumb-box,
 .episode-thumb-wrap {
   position: relative;
-  width: 90px;
-  height: 60px;
+  width: 105px;
+  height: 72px;
   flex-shrink: 0;
   border-radius: 6px;
   overflow: hidden;
   background: #000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
+.series-episode-thumb,
 .episode-thumb-wrap img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
+.series-episode-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(4px);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  line-height: 1.2;
+}
+
+.series-episode-duration,
 .episode-duration-pill {
   position: absolute;
-  bottom: 2px;
-  right: 2px;
-  background: rgba(0, 0, 0, 0.75);
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(4px);
   color: #ffffff;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1.2;
 }
 
+.series-episode-content,
 .episode-info {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
+  flex: 1;
 }
 
+.series-episode-title,
 .episode-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   margin-bottom: 3px;
-}
-
-.episode-overview {
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.3;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.series-episode-airdate {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.series-episode-desc,
+.episode-overview {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.season-status-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+}
+
+.season-status-chip.completed {
+  background: rgba(0, 255, 102, 0.15);
+  color: #00ff66;
+  border: 1px solid rgba(0, 255, 102, 0.35);
+}
+
+.season-status-chip.watching {
+  background: rgba(0, 210, 255, 0.15);
+  color: #00d2ff;
+  border: 1px solid rgba(0, 210, 255, 0.35);
+}
+
+.season-status-chip.planned {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
 }
 
 /* ==========================================================================

@@ -1128,11 +1128,13 @@ app.get('/api/media/item', async (req, res) => {
           allPlayers.push(p);
         }
       });
+      allPlayers = allPlayers.filter(p => !p.is_trailer && p.id !== 'official_trailer' && !p.name?.toLowerCase().includes('трейлер') && !p.name?.toLowerCase().includes('trailer') && !p.badge?.toLowerCase().includes('трейлер') && !p.badge?.toLowerCase().includes('trailer'));
       if (!allPlayers.some(p => p.is_recommended) && allPlayers.length > 0) {
         allPlayers[0].is_recommended = true;
         allPlayers[0].recommended_badge = '🔥 Рекомендуемый';
       }
     }
+    mediaDetails.trailer_url = null;
 
     let userBookmark = null;
     if (req.user) {

@@ -61,24 +61,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const yearParam = releaseYear ? `&year=${releaseYear}&strict=1` : '&strict=1';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
-  // 1. Если фильм еще не вышел в цифровой прокат — доступен только официальный трейлер!
-  const resolvedTrailer = trailer_url || `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent((cleanTitle || rawTitle) + ' русский трейлер 4K')}`;
   if (isUpcoming) {
-    return [{
-      id: 'official_trailer',
-      name: 'Официальный 4K Трейлер / Тизер',
-      type: 'iframe',
-      quality: '4K UHD',
-      badge: 'ТРЕЙЛЕР',
-      status: 'working',
-      status_label: `🟢 4K Трейлер (${releaseYear || 'Скоро'})`,
-      audio_info: 'Официальный дубляж и оригинальный звук',
-      speed: '⚡ Мгновенный показ',
-      url: resolvedTrailer,
-      is_trailer: true,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
-    }];
+    return [];
   }
 
   // 2. FanFilm 4K Ultra HD (если доступен — высший приоритет)
@@ -258,21 +242,6 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       url: baseKodikUrl
     });
   }
-
-  // Официальный трейлер всегда доступен как альтернатива
-  players.push({
-    id: 'official_trailer',
-    name: 'Официальный 4K Трейлер / Тизер',
-    type: 'iframe',
-    quality: '4K UHD',
-    badge: 'ТРЕЙЛЕР',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Официальный дубляж и оригинальный звук',
-    speed: '⚡ Мгновенный показ',
-    url: resolvedTrailer,
-    is_trailer: true
-  });
 
   // Гарантируем, что ровно один плеер отмечен как рекомендуемый
   if (!players.some(p => p.is_recommended) && players.length > 0) {

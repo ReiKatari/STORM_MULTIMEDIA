@@ -184,6 +184,20 @@
         </div>
       </div>
 
+      <!-- Фильтр по статусу просмотра -->
+      <div class="storm-custom-dropdown" id="filter-status-dropdown" style="min-width: 165px;">
+        <button type="button" class="storm-btn storm-btn-secondary" id="filter-status-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span id="filter-status-badge">🏷️</span>
+            <span id="filter-status-label" style="font-weight: 600;">Все статусы</span>
+          </span>
+          <span class="storm-dropdown-arrow">▼</span>
+        </button>
+        <div class="storm-dropdown-menu" id="filter-status-menu" style="display: none; width: 195px; left: 0; right: auto;">
+          <div class="storm-dropdown-list" id="filter-status-list"></div>
+        </div>
+      </div>
+
       <!-- Сортировка -->
       <div class="storm-custom-dropdown" id="filter-sort-dropdown" style="min-width: 175px;">
         <button type="button" class="storm-btn storm-btn-secondary" id="filter-sort-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">

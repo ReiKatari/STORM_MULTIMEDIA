@@ -227,11 +227,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
     } else {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
-        // Для ожидаемых фильмов всегда по умолчанию выбираем официальный трейлер
-        const defaultPlayer = currentMedia.is_upcoming
-          ? (currentPlayers.find(p => p.is_trailer || p.id === 'official_trailer') || currentPlayers[0])
-          : (options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) || currentPlayers[0] : currentPlayers[0]);
+        const defaultPlayer = (options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null)
+          || currentPlayers.find(p => p.is_recommended)
+          || currentPlayers[0];
         selectPlayer(defaultPlayer);
+      } else if (currentMedia.is_upcoming) {
+        selectPlayer({
+          is_upcoming: true,
+          upcoming_notice: `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`
+        });
       }
     }
 
@@ -292,15 +296,13 @@ function renderPlayerSources(players) {
 
   const validPlayers = (players || []).filter(p => {
     if (!p || !p.url) return false;
+    if (p.is_trailer || p.id === 'official_trailer') return false;
     const lowerName = (p.name || '').toLowerCase();
     const lowerBadge = (p.badge || '').toLowerCase();
     const lowerId = (p.id || '').toLowerCase();
     if (lowerName.includes('трейлер') || lowerName.includes('trailer') ||
         lowerBadge.includes('трейлер') || lowerBadge.includes('trailer') ||
         lowerId.includes('trailer')) {
-      if (currentMedia?.is_upcoming || !players.some(op => op.id !== 'official_trailer' && op.url && !op.url.includes('youtube'))) {
-        return true;
-      }
       return false;
     }
     if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
@@ -419,26 +421,13 @@ function selectPlayer(player) {
   if (player.is_upcoming || !player.url) {
     if (player.upcoming_notice || currentMedia?.is_upcoming) {
       const notice = player.upcoming_notice || `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`;
-      const trailer = currentPlayers.find(p => p.is_trailer || p.id === 'official_trailer');
       container.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.85);border-radius:12px;gap:14px;">
           <div style="font-size:42px;">🎬</div>
           <div style="font-size:18px;font-weight:800;color:var(--text-primary);">Премьера еще не состоялась</div>
           <div style="max-width:560px;font-size:13px;line-height:1.6;color:var(--text-secondary);">${notice}</div>
-          ${trailer ? `
-            <button type="button" class="storm-btn storm-btn-primary" id="switch-to-trailer-btn" style="margin-top:8px;">
-              ▶ Смотреть официальный 4K Трейлер
-            </button>
-          ` : ''}
         </div>
       `;
-      const switchBtn = container.querySelector('#switch-to-trailer-btn');
-      if (switchBtn && trailer) {
-        switchBtn.onclick = () => {
-          selectPlayer(trailer);
-          updatePlayerTriggerInfo(trailer);
-        };
-      }
       return;
     }
 
@@ -2028,10 +2017,14 @@ function renderPlayerUtilityButtons() {
 // ==========================================================================
 // СИСТЕМА ОТСЛЕЖИВАНИЯ ПРОСМОТРЕННЫХ СЕРИЙ И ПОДСКАЗОК
 // ==========================================================================
-function getWatchedEpisodes(mediaId) {
+function getWatchedEpisodes(mediaId, seasonNum = 1) {
   if (!mediaId) return new Set();
   try {
-    const raw = localStorage.getItem(`storm_watched_eps_${mediaId}`);
+    const sNum = Number(seasonNum) || 1;
+    let raw = localStorage.getItem(`storm_watched_eps_${mediaId}_s${sNum}`);
+    if (!raw && sNum === 1) {
+      raw = localStorage.getItem(`storm_watched_eps_${mediaId}`);
+    }
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) return new Set(arr.map(Number));
@@ -2040,26 +2033,109 @@ function getWatchedEpisodes(mediaId) {
   return new Set();
 }
 
-function markEpisodeWatched(mediaId, episodeNum) {
-  if (!mediaId || !episodeNum) return;
+function markEpisodeWatched(mediaId, seasonOrEp, maybeEpisode, maybeWatched) {
+  if (!mediaId) return;
+  let seasonNum = 1;
+  let episodeNum = 1;
+  let watched = true;
+
+  if (maybeEpisode !== undefined) {
+    seasonNum = Number(seasonOrEp) || 1;
+    episodeNum = Number(maybeEpisode) || 1;
+    if (maybeWatched !== undefined) watched = Boolean(maybeWatched);
+  } else {
+    episodeNum = Number(seasonOrEp) || 1;
+  }
+
   try {
-    const watched = getWatchedEpisodes(mediaId);
-    watched.add(Number(episodeNum));
-    localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(Array.from(watched)));
+    const sKey = `storm_watched_eps_${mediaId}_s${seasonNum}`;
+    const watchedSet = getWatchedEpisodes(mediaId, seasonNum);
+    if (watched) {
+      watchedSet.add(episodeNum);
+    } else {
+      watchedSet.delete(episodeNum);
+    }
+    const arr = Array.from(watchedSet);
+    localStorage.setItem(sKey, JSON.stringify(arr));
+    if (seasonNum === 1) {
+      localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(arr));
+    }
   } catch {}
 }
 
-function toggleAllEpisodesWatched(mediaId, totalEpisodes) {
-  if (!mediaId || !totalEpisodes) return;
+function toggleEpisodeWatched(mediaId, seasonNum = 1, episodeNum = 1) {
+  const sNum = Number(seasonNum) || 1;
+  const epNum = Number(episodeNum);
+  const watchedSet = getWatchedEpisodes(mediaId, sNum);
+  const isWatched = watchedSet.has(epNum);
+  markEpisodeWatched(mediaId, sNum, epNum, !isWatched);
+  return !isWatched;
+}
+
+function toggleAllSeasonEpisodesWatched(mediaId, seasonNum = 1, totalEpisodes = 0) {
+  if (!mediaId || !totalEpisodes) return false;
   try {
-    const watched = getWatchedEpisodes(mediaId);
+    const sNum = Number(seasonNum) || 1;
+    const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
+    const watched = getWatchedEpisodes(mediaId, sNum);
     if (watched.size >= totalEpisodes) {
-      localStorage.removeItem(`storm_watched_eps_${mediaId}`);
+      localStorage.removeItem(sKey);
+      if (sNum === 1) localStorage.removeItem(`storm_watched_eps_${mediaId}`);
+      return false;
     } else {
       const all = Array.from({ length: totalEpisodes }, (_, i) => i + 1);
-      localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(all));
+      localStorage.setItem(sKey, JSON.stringify(all));
+      if (sNum === 1) localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(all));
+      return true;
     }
   } catch {}
+  return false;
+}
+
+function toggleAllEpisodesWatched(mediaId, totalEpisodes) {
+  return toggleAllSeasonEpisodesWatched(mediaId, 1, totalEpisodes);
+}
+
+function getSeasonStatusInfo(mediaId, seasonNum = 1, totalEpisodes = 0) {
+  const total = Number(totalEpisodes) || 0;
+  const watched = getWatchedEpisodes(mediaId, seasonNum);
+  const count = watched.size;
+  if (total > 0 && count >= total) {
+    return { status: 'completed', label: '✓ Просмотрен', count, total };
+  }
+  if (count > 0) {
+    return { status: 'watching', label: `▶ ${count}/${total || '?'}`, count, total };
+  }
+  return { status: 'planned', label: 'В планах', count: 0, total };
+}
+
+async function syncOverallSeriesProgress(mediaDetails) {
+  if (!mediaDetails) return;
+  const seasons = mediaDetails.seasons || [];
+  if (seasons.length === 0) return;
+
+  let totalEps = 0;
+  let totalWatched = 0;
+  seasons.forEach(s => {
+    const count = s.episode_count || 0;
+    totalEps += count;
+    const watched = getWatchedEpisodes(mediaDetails.id, s.season_number);
+    totalWatched += watched.size;
+  });
+
+  if (totalEps > 0 && totalWatched >= totalEps) {
+    if (mediaDetails.user_status !== 'completed') {
+      mediaDetails.user_status = 'completed';
+      await saveBookmarkStatus(mediaDetails, 'completed');
+      renderStatusButtons('completed');
+    }
+  } else if (totalWatched > 0) {
+    if (mediaDetails.user_status !== 'watching' && mediaDetails.user_status !== 'completed') {
+      mediaDetails.user_status = 'watching';
+      await saveBookmarkStatus(mediaDetails, 'watching');
+      renderStatusButtons('watching');
+    }
+  }
 }
 
 function getVoiceoverStats(name, index = 0) {
@@ -3118,7 +3194,7 @@ export async function openPersonModal(personId, personName) {
 }
 
 // ==========================================
-// СЕЛЕКТОР СЕЗОНОВ И СЕРИЙ С РУССКИМИ ОПИСАНИЯМИ
+// СЕЛЕКТОР СЕЗОНОВ И СЕРИЙ С ДИНАМИЧЕСКИМИ ОПИСАНИЯМИ И СТАТУСАМИ
 // ==========================================
 async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEpisode = null) {
   const container = document.getElementById('series-seasons-container');
@@ -3135,25 +3211,61 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   container.style.display = 'block';
 
   const tabsContainer = document.getElementById('series-seasons-tabs');
-  const descEl = document.getElementById('series-season-desc');
+  const infoBox = document.getElementById('series-season-info-box');
   const gridEl = document.getElementById('series-episodes-grid');
 
   if (!tabsContainer || !gridEl) return;
 
-  const activeSeasonNum = initialSeason ? parseInt(initialSeason, 10) : seasons[0].season_number;
+  let activeSeasonNum = initialSeason ? parseInt(initialSeason, 10) : seasons[0].season_number;
+  let activeEpisodeNum = initialEpisode ? parseInt(initialEpisode, 10) : 1;
 
-  // Рендерим плашки сезонов
-  tabsContainer.innerHTML = seasons.map(s => `
-    <button type="button" class="series-season-tab ${s.season_number === activeSeasonNum ? 'active' : ''}" data-season-num="${s.season_number}">
-      ${s.name || `Сезон ${s.season_number}`} (${s.episode_count || '?'})
-    </button>
-  `).join('');
+  function updateEpisodeSynopsis(ep) {
+    const modalDesc = document.getElementById('cinema-modal-desc');
+    if (!modalDesc) return;
+    if (!ep) {
+      modalDesc.textContent = mediaDetails.description || '';
+      return;
+    }
+    const epTitle = ep.name || `Серия ${ep.episode_number}`;
+    const epOverview = ep.overview || 'Смотрите серию онлайн в высоком качестве.';
+    modalDesc.innerHTML = `
+      <div style="background: rgba(0, 210, 255, 0.08); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
+        <div style="font-weight: 800; color: var(--text-primary); font-size: 13px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+          <span>${epTitle}</span>
+          ${ep.air_date ? `<span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">Дата выхода: ${ep.air_date}</span>` : ''}
+        </div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">${epOverview}</div>
+      </div>
+      <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45;">${mediaDetails.description || ''}</div>
+    `;
+  }
+
+  function renderSeasonTabs() {
+    tabsContainer.innerHTML = seasons.map(s => {
+      const sStatus = getSeasonStatusInfo(mediaDetails.id, s.season_number, s.episode_count || 0);
+      const isAct = s.season_number === activeSeasonNum;
+      return `
+        <button type="button" class="series-season-tab ${isAct ? 'active' : ''}" data-season-num="${s.season_number}">
+          <span>${s.name || `Сезон ${s.season_number}`}</span>
+          <span class="season-status-chip ${sStatus.status}" style="font-size: 9px; padding: 1px 5px; margin-left: 4px;">${sStatus.label}</span>
+        </button>
+      `;
+    }).join('');
+
+    tabsContainer.querySelectorAll('.series-season-tab').forEach(tab => {
+      tab.onclick = () => {
+        const sNum = parseInt(tab.dataset.seasonNum, 10);
+        activeSeasonNum = sNum;
+        activeEpisodeNum = 1;
+        renderSeasonTabs();
+        loadSeasonEpisodes(sNum, 1);
+        updatePlayerUrl(mediaDetails, sNum, 1, currentActivePlayer);
+      };
+    });
+  }
 
   async function loadSeasonEpisodes(seasonNum, targetEpisodeNum = null) {
     const season = seasons.find(s => s.season_number === seasonNum) || seasons[0];
-    if (descEl) {
-      descEl.textContent = season.overview || `Сезон ${season.season_number} доступен для онлайн-просмотра.`;
-    }
 
     gridEl.innerHTML = `
       <div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:10px;">
@@ -3174,21 +3286,66 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         return;
       }
 
-      const watchedSet = getWatchedEpisodes(mediaDetails.id);
+      const seasonOverview = data.overview || season.overview || `${season.name || `Сезон ${seasonNum}`}: официальный сезон из ${episodes.length} серий в высоком разрешении.`;
+      const sStatus = getSeasonStatusInfo(mediaDetails.id, seasonNum, episodes.length);
+      const isSeasonAllWatched = sStatus.status === 'completed';
+
+      if (infoBox) {
+        infoBox.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 13px; color: var(--text-primary);">${season.name || `Сезон ${seasonNum}`}</strong>
+              <span class="season-status-chip ${sStatus.status}">${sStatus.label}</span>
+            </div>
+            <button type="button" class="storm-btn storm-btn-sm ${isSeasonAllWatched ? 'storm-btn-secondary' : 'storm-btn-primary'}" id="toggle-season-btn" style="font-size: 11px; padding: 4px 10px;">
+              ${isSeasonAllWatched ? '✕ Снять отметку' : '✓ Отметить весь сезон'}
+            </button>
+          </div>
+          <div class="series-season-desc" id="series-season-desc">${seasonOverview}</div>
+        `;
+
+        const toggleBtn = infoBox.querySelector('#toggle-season-btn');
+        if (toggleBtn) {
+          toggleBtn.onclick = async () => {
+            const marked = toggleAllSeasonEpisodesWatched(mediaDetails.id, seasonNum, episodes.length);
+            showToast(marked ? `Сезон ${seasonNum} отмечен как просмотренный` : `Отметка снята с сезона ${seasonNum}`, 'info');
+            renderSeasonTabs();
+            await syncOverallSeriesProgress(mediaDetails);
+            loadSeasonEpisodes(seasonNum, activeEpisodeNum || 1);
+          };
+        }
+      }
+
+      const watchedSet = getWatchedEpisodes(mediaDetails.id, seasonNum);
       const effectiveTargetEp = targetEpisodeNum ? parseInt(targetEpisodeNum, 10) : 1;
+      activeEpisodeNum = effectiveTargetEp;
+
+      // Первичное обновление синопсиса активной серии
+      const initialEp = episodes.find(e => e.episode_number === effectiveTargetEp) || episodes[0];
+      if (initialEp) {
+        updateEpisodeSynopsis(initialEp);
+      }
 
       gridEl.innerHTML = episodes.map(ep => {
         const isEpActive = ep.episode_number === effectiveTargetEp;
         const isWatched = watchedSet.has(ep.episode_number);
+        const epStatusLabel = isWatched ? '✓ Просмотрено' : (isEpActive ? '▶ Смотрю' : 'Не просмотрено');
+        const epStatusClass = isWatched ? 'completed' : (isEpActive ? 'watching' : 'planned');
+
         return `
-        <div class="series-episode-card ${isEpActive ? 'active' : ''} ${isWatched ? 'watched' : ''}" data-ep-num="${ep.episode_number}" title="${isWatched ? 'Просмотрено (100%) ✓' : 'Нажмите для просмотра'}">
+        <div class="series-episode-card ${isEpActive ? 'active' : ''} ${isWatched ? 'watched' : ''}" data-ep-num="${ep.episode_number}">
           <div class="series-episode-thumb-box">
-            <img src="${ep.still_path || 'assets/favicon.svg'}" alt="${ep.name}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
-            <span class="series-episode-badge">Серия ${ep.episode_number} ${isWatched ? '✓' : ''}</span>
+            <img src="${ep.still || ep.still_path || 'assets/favicon.svg'}" alt="${ep.name}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            <span class="series-episode-badge">Серия ${ep.episode_number}</span>
             ${ep.duration ? `<span class="series-episode-duration">${ep.duration}</span>` : ''}
           </div>
           <div class="series-episode-content">
-            <div class="series-episode-title">${ep.name} ${isWatched ? '<span style="color:#00ff66;font-size:11px;margin-left:6px;">✓ Просмотрено</span>' : ''}</div>
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 6px;">
+              <div class="series-episode-title">${ep.name}</div>
+              <span class="season-status-chip ${epStatusClass} ep-status-toggle" data-ep-num="${ep.episode_number}" title="Нажмите для переключения статуса серии" style="font-size: 9px; padding: 1px 6px; cursor: pointer; flex-shrink: 0;">
+                ${epStatusLabel}
+              </span>
+            </div>
             <div class="series-episode-airdate">${ep.air_date ? 'Дата выхода: ' + ep.air_date : ''}</div>
             <p class="series-episode-desc">${ep.overview || 'Смотрите серию онлайн в высоком качестве.'}</p>
           </div>
@@ -3197,14 +3354,33 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       }).join('');
 
       gridEl.querySelectorAll('.series-episode-card').forEach(card => {
-        card.onclick = () => {
+        card.onclick = async (evt) => {
+          const epNum = parseInt(card.dataset.epNum, 10);
+          const epObj = episodes.find(e => e.episode_number === epNum) || episodes[epNum - 1];
+
+          // Если клик по плашке статуса - переключаем статус серии
+          if (evt.target.closest('.ep-status-toggle')) {
+            evt.stopPropagation();
+            const nowWatched = toggleEpisodeWatched(mediaDetails.id, seasonNum, epNum);
+            showToast(nowWatched ? `Серия ${epNum} отмечена как просмотренная` : `Отметка снята с серии ${epNum}`, 'info');
+            renderSeasonTabs();
+            await syncOverallSeriesProgress(mediaDetails);
+            loadSeasonEpisodes(seasonNum, activeEpisodeNum);
+            return;
+          }
+
           gridEl.querySelectorAll('.series-episode-card').forEach(c => c.classList.remove('active'));
           card.classList.add('active');
-          const epNum = parseInt(card.dataset.epNum, 10);
-          markEpisodeWatched(mediaDetails.id, epNum);
+          activeEpisodeNum = epNum;
+
+          markEpisodeWatched(mediaDetails.id, seasonNum, epNum, true);
           card.classList.add('watched');
-          showToast(`Выбрана серия ${epNum}: ${episodes[epNum - 1]?.name || ''}`, 'info');
+          updateEpisodeSynopsis(epObj);
+
+          showToast(`Выбрана серия ${epNum}: ${epObj?.name || ''}`, 'info');
           updateProgressState(epNum, episodes.length);
+          renderSeasonTabs();
+          await syncOverallSeriesProgress(mediaDetails);
           updatePlayerUrl(mediaDetails, seasonNum, epNum, currentActivePlayer);
         };
       });
@@ -3220,16 +3396,6 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
     }
   }
 
-  tabsContainer.querySelectorAll('.series-season-tab').forEach(tab => {
-    tab.onclick = () => {
-      tabsContainer.querySelectorAll('.series-season-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const sNum = parseInt(tab.dataset.seasonNum, 10);
-      loadSeasonEpisodes(sNum, 1);
-      updatePlayerUrl(mediaDetails, sNum, 1, currentActivePlayer);
-    };
-  });
-
-  // Загружаем начальный сезон и строго 1-ю серию (если не задан начальный параметр)
+  renderSeasonTabs();
   loadSeasonEpisodes(activeSeasonNum, initialEpisode || 1);
 }

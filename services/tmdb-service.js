@@ -248,14 +248,18 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null) {
       if (isTv && Array.isArray(data.seasons)) {
         seasons = data.seasons
           .filter(s => s.season_number > 0)
-          .map(s => ({
-            season_number: s.season_number,
-            name: s.name || `Сезон ${s.season_number}`,
-            episode_count: s.episode_count,
-            overview: s.overview || 'Сезон доступен для онлайн-просмотра.',
-            poster: s.poster_path ? `${IMAGE_BASE}${s.poster_path}` : null,
-            air_date: s.air_date
-          }));
+          .map(s => {
+            const epCountText = s.episode_count ? ` (${s.episode_count} серий)` : '';
+            const fallbackOverview = `${s.name || `Сезон ${s.season_number}`}${epCountText}. Официальный сезон сериала «${title.trim()}», включающий все вышедшие серии в высоком разрешении.`;
+            return {
+              season_number: s.season_number,
+              name: s.name || `Сезон ${s.season_number}`,
+              episode_count: s.episode_count,
+              overview: (s.overview && s.overview.trim()) ? s.overview.trim() : fallbackOverview,
+              poster: s.poster_path ? `${IMAGE_BASE}${s.poster_path}` : null,
+              air_date: s.air_date
+            };
+          });
       }
 
       // Проверка на статус не вышедшего фильма
@@ -335,7 +339,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = null) {
         soundtrack,
         trivia,
         cast,
-        trailer_url: trailerUrl,
+        trailer_url: null,
         is_upcoming: isUpcoming,
         seasons,
         players: []
@@ -366,6 +370,20 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
     if (!res.ok) throw new Error(`Season fetch error: ${res.status}`);
 
     const data = await res.json();
+
+    // Фоллбэк на en-US при отсутствии описаний
+    let enData = null;
+    const hasMissingOverviews = !data.overview || (data.episodes || []).some(ep => !ep.overview);
+    if (hasMissingOverviews) {
+      try {
+        const enUrl = `${TMDB_BASE}/tv/${cleanId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=en-US`;
+        const enRes = await fetch(enUrl);
+        if (enRes.ok) {
+          enData = await enRes.json();
+        }
+      } catch {}
+    }
+
     const episodes = (data.episodes || []).map(ep => {
       let formattedDate = '';
       if (ep.air_date && ep.air_date.length >= 10) {
@@ -375,20 +393,43 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
         formattedDate = ep.air_date || '';
       }
 
+      let overview = (ep.overview && ep.overview.trim()) ? ep.overview.trim() : '';
+      if (!overview && enData?.episodes) {
+        const enEp = enData.episodes.find(e => e.episode_number === ep.episode_number);
+        if (enEp && enEp.overview) {
+          overview = enEp.overview.trim();
+        }
+      }
+      if (!overview) {
+        const epTitle = (ep.name && ep.name !== `Серия ${ep.episode_number}` && ep.name !== `Episode ${ep.episode_number}`) ? `«${ep.name}»` : `серии ${ep.episode_number}`;
+        overview = `Эпизод ${epTitle}. Развитие сюжетной линии ${seasonNumber}-го сезона, ключевые события и взаимоотношения персонажей в высоком качестве.`;
+      }
+
+      const stillUrl = ep.still_path ? `${IMAGE_BASE}${ep.still_path}` : null;
+
       return {
         episode_number: ep.episode_number,
         name: ep.name || `Серия ${ep.episode_number}`,
-        overview: ep.overview || 'Серия доступна для онлайн-просмотра в высоком качестве.',
-        still: ep.still_path ? `${IMAGE_BASE}${ep.still_path}` : null,
+        overview,
+        still: stillUrl,
+        still_path: stillUrl,
         duration: ep.runtime ? `${ep.runtime} мин` : '',
         air_date: formattedDate
       };
     });
 
+    let seasonOverview = (data.overview && data.overview.trim()) ? data.overview.trim() : '';
+    if (!seasonOverview && enData?.overview) {
+      seasonOverview = enData.overview.trim();
+    }
+    if (!seasonOverview) {
+      seasonOverview = `${data.name || `Сезон ${seasonNumber}`}: официальный сезон из ${episodes.length} серий. Полная сюжетная арка с качественным дублированным переводом и субтитрами.`;
+    }
+
     const result = {
       season_number: data.season_number,
-      name: data.name,
-      overview: data.overview || '',
+      name: data.name || `Сезон ${seasonNumber}`,
+      overview: seasonOverview,
       episodes
     };
 

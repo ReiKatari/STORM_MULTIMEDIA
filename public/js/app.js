@@ -25,6 +25,7 @@ let currentGenre = 'all';
 let currentCountry = 'all';
 let currentYear = 'all';
 let currentRating = 0;
+let currentStatusFilter = 'all';
 let currentPage = 1;
 let currentItems = [];
 let rawCatalogItems = [];
@@ -1003,6 +1004,32 @@ export function initFilterDropdowns() {
     }
   });
 
+  // 3.5. Статус просмотра
+  const statuses = [
+    { id: 'all', name: 'Все статусы', icon: '🏷️' },
+    { id: 'watching', name: 'Смотрю', icon: '👁️' },
+    { id: 'planned', name: 'В планах', icon: '📋' },
+    { id: 'completed', name: 'Просмотрено', icon: '✅' },
+    { id: 'favorite', name: 'Любимое', icon: '❤️' },
+    { id: 'on_hold', name: 'Отложено', icon: '⏸️' },
+    { id: 'dropped', name: 'Заброшено', icon: '🛑' },
+    { id: 'wont_watch', name: 'Не буду смотреть', icon: '🚫' }
+  ];
+
+  setupFilterDropdown({
+    dropdownId: 'filter-status-dropdown',
+    triggerId: 'filter-status-trigger',
+    labelId: 'filter-status-label',
+    menuId: 'filter-status-menu',
+    listId: 'filter-status-list',
+    items: statuses,
+    getActiveVal: () => currentStatusFilter,
+    onSelect: (id) => {
+      currentStatusFilter = id;
+      renderFilteredCatalog();
+    }
+  });
+
   // 4. Сортировка
   const sortOptions = [
     { id: 'popular', name: 'По популярности', icon: '⚡' },
@@ -1037,6 +1064,7 @@ export function resetAllFilters() {
   currentCountry = 'all';
   currentYear = 'all';
   currentRating = 0;
+  currentStatusFilter = 'all';
   currentSort = 'popular';
 
   const genreLabel = document.getElementById('filter-genre-label');
@@ -1047,6 +1075,9 @@ export function resetAllFilters() {
 
   const ratingLabel = document.getElementById('filter-rating-label');
   if (ratingLabel) ratingLabel.textContent = 'Любой рейтинг';
+
+  const statusLabel = document.getElementById('filter-status-label');
+  if (statusLabel) statusLabel.textContent = 'Все статусы';
 
   const sortLabel = document.getElementById('filter-sort-label');
   if (sortLabel) sortLabel.textContent = 'По популярности';
@@ -1063,6 +1094,9 @@ export function resetAllFilters() {
   document.querySelectorAll('#filter-rating-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === '0');
   });
+  document.querySelectorAll('#filter-status-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === 'all');
+  });
   document.querySelectorAll('#filter-sort-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === 'popular');
   });
@@ -1071,7 +1105,7 @@ export function resetAllFilters() {
 }
 
 export function renderFilteredCatalog() {
-  const isFiltered = currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
+  const isFiltered = currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentStatusFilter !== 'all' || currentSort !== 'popular';
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) {
     resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
@@ -1147,6 +1181,21 @@ export function renderFilteredCatalog() {
       const rating = parseFloat(item.rating);
       if (isNaN(rating)) return false;
       return rating >= currentRating;
+    });
+  }
+
+  // 3.5. Фильтр по статусу просмотра
+  if (currentStatusFilter !== 'all') {
+    items = items.filter(item => {
+      const status = item.user_status;
+      if (!status) return false;
+      if (currentStatusFilter === 'plan' || currentStatusFilter === 'planned') {
+        return status === 'plan' || status === 'planned';
+      }
+      if (currentStatusFilter === 'hold' || currentStatusFilter === 'on_hold') {
+        return status === 'hold' || status === 'on_hold';
+      }
+      return status === currentStatusFilter;
     });
   }
 
