@@ -4,53 +4,67 @@
  * и маскирования/вырезания рекламных логотипов (1XBET, Winline, Мелбет и др.)
  */
 
-// Конфигурация пресетов водяных знаков
+// Конфигурация пресетов водяных знаков с точной калибровкой под реальные релизы
 export const WATERMARK_PRESETS = {
-  '1xbet_left': {
-    id: '1xbet_left',
-    name: '🎯 1XBET (Слева)',
-    desc: 'Классическое размещение логотипа 1XBET у левого края видео',
-    coords: { top: '34%', left: '2.5%', width: '145px', height: '52px' }
+  '1xbet_mid': {
+    id: '1xbet_mid',
+    name: '🎯 1XBET (Слева по центру)',
+    desc: 'Точное положение логотипа на высоте 41% (скриншот 2)',
+    coords: { top: '39.5%', left: '6.2%', width: '135px', height: '44px' }
+  },
+  '1xbet_low': {
+    id: '1xbet_low',
+    name: '🎯 1XBET (Слева ниже)',
+    desc: 'Положение логотипа на высоте 50% (скриншот 1)',
+    coords: { top: '48.5%', left: '6.2%', width: '135px', height: '44px' }
+  },
+  '1xbet_band': {
+    id: '1xbet_band',
+    name: '🌊 1XBET (Адаптивная зона)',
+    desc: 'Мягкая вертикальная линза 38–54%, перекрывает оба смещения',
+    coords: { top: '38%', left: '5.5%', width: '140px', height: '96px' }
   },
   'top_left': {
     id: 'top_left',
     name: '📐 Вверху слева',
     desc: 'Логотипы студий и спонсоров в верхнем левом углу',
-    coords: { top: '4%', left: '3%', width: '150px', height: '46px' }
+    coords: { top: '4%', left: '3%', width: '140px', height: '40px' }
   },
   'top_right': {
     id: 'top_right',
     name: '📐 Вверху справа',
-    desc: 'Водяные знаки каналов и спонсоров в верхнем правом углу',
-    coords: { top: '4%', right: '3%', width: '150px', height: '46px' }
+    desc: 'Водяные знаки каналов в верхнем правом углу',
+    coords: { top: '4%', right: '3%', width: '140px', height: '40px' }
   },
   'ticker_bottom': {
     id: 'ticker_bottom',
     name: '➖ Бегущая строка',
     desc: 'Нижняя полоса промокодов и ставок на спорт',
-    coords: { bottom: '12%', left: '5%', width: '90%', height: '44px' }
+    coords: { bottom: '12%', left: '5%', width: '90%', height: '40px' }
   },
   'custom': {
     id: 'custom',
     name: '✋ Своя область',
-    desc: 'Интерактивная рамка с настройкой положения и размера мышью',
-    coords: { top: '34%', left: '2.5%', width: '160px', height: '60px' }
+    desc: 'Ручная настройка положения и размера',
+    coords: { top: '40%', left: '6.2%', width: '135px', height: '44px' }
   }
 };
 
 const DEFAULT_SETTINGS = {
   adSkipperEnabled: true,
-  watermarkMaskEnabled: true,
-  activePreset: '1xbet_left',
-  maskStyle: 'blur', // 'blur' или 'blackout'
-  customCoords: { top: '34%', left: '2.5%', width: '145px', height: '52px' },
-  isCustomizing: false
+  watermarkMaskEnabled: false, // по умолчанию выключена, пользователь включает при обнаружении водяного знака
+  activePreset: '1xbet_mid',
+  maskStyle: 'blur', // 'blur' (бесшовное размытие) или 'blackout' (черная плашка)
+  customCoords: { top: '40%', left: '6.2%', width: '135px', height: '44px' },
+  isCustomizing: false,
+  isAiming: false
 };
 
 let currentSettings = { ...DEFAULT_SETTINGS };
 let maskElement = null;
 let currentContainer = null;
 let adWatchInterval = null;
+let aimOverlayElement = null;
 
 /**
  * Загрузка сохраненных настроек из localStorage
@@ -60,7 +74,7 @@ export function loadCleanViewSettings() {
     const raw = localStorage.getItem('storm_cleanview_settings');
     if (raw) {
       const parsed = JSON.parse(raw);
-      currentSettings = { ...DEFAULT_SETTINGS, ...parsed, isCustomizing: false };
+      currentSettings = { ...DEFAULT_SETTINGS, ...parsed, isCustomizing: false, isAiming: false };
     }
   } catch (e) {
     currentSettings = { ...DEFAULT_SETTINGS };
@@ -112,7 +126,7 @@ export function mountCleanViewOverlay(videoBox) {
   // Добавляем маркеры изменения размера для режима интерактивной настройки
   maskElement.innerHTML = `
     <div class="storm-mask-core"></div>
-    <div class="storm-mask-label">1XBET MASK</div>
+    <div class="storm-mask-label">МАСКА 1XBET</div>
     <div class="storm-mask-handle handle-br" title="Потяните для изменения размера"></div>
     <div class="storm-mask-handle handle-drag" title="Перетащите область мышью">✥</div>
   `;
@@ -135,10 +149,12 @@ export function applyMaskSettings() {
 
   if (!currentSettings.watermarkMaskEnabled) {
     maskElement.style.display = 'none';
+    updateBadgeState(false);
     return;
   }
 
   maskElement.style.display = 'flex';
+  updateBadgeState(true);
 
   // Очищаем предыдущие позиционирования
   maskElement.style.top = '';
@@ -146,7 +162,7 @@ export function applyMaskSettings() {
   maskElement.style.left = '';
   maskElement.style.right = '';
 
-  const preset = WATERMARK_PRESETS[currentSettings.activePreset] || WATERMARK_PRESETS['1xbet_left'];
+  const preset = WATERMARK_PRESETS[currentSettings.activePreset] || WATERMARK_PRESETS['1xbet_mid'];
   const coords = currentSettings.activePreset === 'custom'
     ? (currentSettings.customCoords || preset.coords)
     : preset.coords;
@@ -156,8 +172,8 @@ export function applyMaskSettings() {
     bottom: coords.bottom || '',
     left: coords.left || '',
     right: coords.right || '',
-    width: coords.width || '150px',
-    height: coords.height || '50px'
+    width: coords.width || '135px',
+    height: coords.height || '44px'
   });
 
   // Стиль маски: Умное размытие (Smart Blur) или Черная плашка (Blackout)
@@ -168,9 +184,119 @@ export function applyMaskSettings() {
   const labelEl = maskElement.querySelector('.storm-mask-label');
   if (labelEl) {
     labelEl.textContent = currentSettings.isCustomizing
-      ? 'Настройка маски (перетащите)'
-      : (preset.name.replace(/[^a-zA-Z0-9]/g, '') || 'MASK');
+      ? 'Настройка (потяните ✥)'
+      : (preset.name.replace(/[^a-zA-Z0-9а-яА-ЯёЁ\s]/g, '').trim() || 'МАСКА');
   }
+}
+
+/**
+ * Обновление индикатора на бейдже
+ */
+function updateBadgeState(isActive) {
+  const badge = document.querySelector('#storm-cleanview-floating-trigger .badge-dot');
+  if (badge) {
+    badge.classList.toggle('active', isActive);
+  }
+}
+
+/**
+ * Режим клик-наведения на водяной знак (Click-to-Aim)
+ */
+export function startAimMode() {
+  if (!currentContainer) return;
+  currentSettings.isAiming = true;
+
+  // Закрываем модальное окно настроек
+  const modal = document.getElementById('storm-cleanview-panel');
+  if (modal) modal.classList.remove('is-open');
+
+  // Создаем слой-прицел поверх видео
+  const oldAim = document.getElementById('storm-cleanview-aim-layer');
+  if (oldAim) oldAim.remove();
+
+  aimOverlayElement = document.createElement('div');
+  aimOverlayElement.id = 'storm-cleanview-aim-layer';
+  aimOverlayElement.className = 'storm-cleanview-aim-layer';
+  aimOverlayElement.innerHTML = `
+    <div class="aim-hint-banner">
+      <span class="aim-hint-icon">🎯</span>
+      <span class="aim-hint-text">Кликните прямо по рекламной надписи на видео для точного наведения</span>
+      <button type="button" class="aim-cancel-btn" id="aim-cancel-btn">Отмена</button>
+    </div>
+  `;
+
+  currentContainer.appendChild(aimOverlayElement);
+
+  const cancelBtn = aimOverlayElement.querySelector('#aim-cancel-btn');
+  const cancelAim = (e) => {
+    e?.stopPropagation();
+    currentSettings.isAiming = false;
+    if (aimOverlayElement) aimOverlayElement.remove();
+    aimOverlayElement = null;
+  };
+
+  if (cancelBtn) cancelBtn.onclick = cancelAim;
+
+  aimOverlayElement.onclick = (e) => {
+    if (e.target === cancelBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = currentContainer.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    const w = 135;
+    const h = 44;
+
+    const leftPx = Math.max(0, Math.min(rect.width - w, clickX - (w / 2)));
+    const topPx = Math.max(0, Math.min(rect.height - h, clickY - (h / 2)));
+
+    const leftPercent = ((leftPx / rect.width) * 100).toFixed(1) + '%';
+    const topPercent = ((topPx / rect.height) * 100).toFixed(1) + '%';
+
+    currentSettings.customCoords = {
+      left: leftPercent,
+      top: topPercent,
+      width: `${w}px`,
+      height: `${h}px`,
+      right: '',
+      bottom: ''
+    };
+    currentSettings.activePreset = 'custom';
+    currentSettings.watermarkMaskEnabled = true;
+    currentSettings.isAiming = false;
+
+    saveCleanViewSettings();
+    applyMaskSettings();
+
+    if (aimOverlayElement) aimOverlayElement.remove();
+    aimOverlayElement = null;
+
+    showCleanViewFeedback('🎯 Маска точно наведена на выбранную область!');
+  };
+}
+
+/**
+ * Небольшое всплывающее уведомление CleanView
+ */
+function showCleanViewFeedback(text) {
+  const oldToast = document.getElementById('storm-cleanview-toast');
+  if (oldToast) oldToast.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'storm-cleanview-toast';
+  toast.className = 'storm-cleanview-toast';
+  toast.textContent = text;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('show');
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 2400);
+  }, 50);
 }
 
 /**
@@ -356,7 +482,6 @@ function scanAndSkipAds(container) {
       try {
         if (btn && btn.offsetParent !== null) {
           btn.click();
-          console.log('🛡️ STORM CleanView автоматически нажал кнопку пропуска рекламы');
         }
       } catch (e) {}
     });
@@ -385,7 +510,7 @@ function mountFloatingCleanViewBadge(videoBox) {
     badge.innerHTML = `
       <span class="badge-icon">🛡️</span>
       <span class="badge-text">CleanView</span>
-      <span class="badge-dot active"></span>
+      <span class="badge-dot ${currentSettings.watermarkMaskEnabled ? 'active' : ''}"></span>
     `;
     badge.title = 'STORM CleanView: Очистка рекламы и скрытие водяных знаков';
     badge.onclick = (e) => {
@@ -425,12 +550,16 @@ export function toggleCleanViewModal() {
  * Рендеринг содержимого панели управления CleanView
  */
 function renderCleanViewPanelContent(panel) {
+  const currentCoords = currentSettings.activePreset === 'custom'
+    ? currentSettings.customCoords
+    : (WATERMARK_PRESETS[currentSettings.activePreset]?.coords || currentSettings.customCoords);
+
   panel.innerHTML = `
     <div class="cleanview-card">
       <div class="cleanview-header">
         <div class="cleanview-title-group">
           <div class="cleanview-title">🛡️ STORM CleanView™ и AdShield</div>
-          <div class="cleanview-subtitle">Интеллектуальная фильтрация рекламы и маскирование логотипов</div>
+          <div class="cleanview-subtitle">Интеллектуальная фильтрация рекламы и бесшовное маскирование логотипов</div>
         </div>
         <button type="button" class="cleanview-close-btn" id="cleanview-close-btn">✕</button>
       </div>
@@ -452,7 +581,7 @@ function renderCleanViewPanelContent(panel) {
         <div class="cleanview-feature-row">
           <div class="feature-info">
             <div class="feature-title">✂️ Скрыть рекламные надписи и логотипы</div>
-            <div class="feature-desc">Накладывает адаптивную маску на вшитые в видео логотипы (1XBET, Winline, Мелбет и др.)</div>
+            <div class="feature-desc">Бесшовное оптическое размытие без тёмных пятен и искажения цветов видеоряда</div>
           </div>
           <label class="storm-toggle-switch">
             <input type="checkbox" id="cleanview-mask-toggle" ${currentSettings.watermarkMaskEnabled ? 'checked' : ''}>
@@ -460,9 +589,17 @@ function renderCleanViewPanelContent(panel) {
           </label>
         </div>
 
-        <!-- Блок 3: Выбор пресета размещения -->
+        <!-- Блок 3: Инструмент точного наведения кликом -->
+        <div class="cleanview-aim-toolbar" style="${currentSettings.watermarkMaskEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="cleanview-aim-btn" style="width: 100%; justify-content: center; gap: 8px; font-weight: 700;">
+            <span>🎯 Указать надпись на видео кликом</span>
+          </button>
+          <div class="aim-quick-desc">Если логотип сместился, нажмите кнопку и кликните прямо по нему на экране</div>
+        </div>
+
+        <!-- Блок 4: Выбор пресета размещения -->
         <div class="cleanview-section" id="cleanview-presets-section" style="${currentSettings.watermarkMaskEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
-          <div class="cleanview-section-label">Выберите зону размещения логотипа:</div>
+          <div class="cleanview-section-label">Готовые зоны для 1XBET и букмекеров:</div>
           <div class="cleanview-presets-grid">
             ${Object.values(WATERMARK_PRESETS).map(p => `
               <button type="button" class="cleanview-preset-btn ${currentSettings.activePreset === p.id ? 'active' : ''}" data-preset="${p.id}">
@@ -473,32 +610,35 @@ function renderCleanViewPanelContent(panel) {
           </div>
         </div>
 
-        <!-- Блок 4: Стиль маски (Размытие / Затемнение) -->
+        <!-- Блок 5: Микро-подгонка джойстиком -->
+        <div class="cleanview-nudge-box" style="${currentSettings.watermarkMaskEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+          <div class="cleanview-section-label">Микро-подгонка положения маски:</div>
+          <div class="nudge-controls">
+            <button type="button" class="nudge-btn" id="nudge-up-btn" title="Сдвинуть выше">▲ Вверх</button>
+            <div class="nudge-row">
+              <button type="button" class="nudge-btn" id="nudge-left-btn" title="Сдвинуть влево">◀ Влево</button>
+              <button type="button" class="nudge-btn" id="nudge-right-btn" title="Сдвинуть вправо">Вправо ▶</button>
+            </div>
+            <button type="button" class="nudge-btn" id="nudge-down-btn" title="Сдвинуть ниже">▼ Вниз</button>
+          </div>
+        </div>
+
+        <!-- Блок 6: Стиль маски (Размытие / Затемнение) -->
         <div class="cleanview-section" id="cleanview-style-section" style="${currentSettings.watermarkMaskEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
           <div class="cleanview-section-label">Стиль маскирования:</div>
           <div class="cleanview-styles-row">
             <button type="button" class="cleanview-style-chip ${currentSettings.maskStyle === 'blur' ? 'active' : ''}" id="style-blur-btn">
-              <span>💧 Умное размытие (Smart Blur)</span>
+              <span>💧 Бесшовное размытие (Без пятен)</span>
             </button>
             <button type="button" class="cleanview-style-chip ${currentSettings.maskStyle === 'blackout' ? 'active' : ''}" id="style-blackout-btn">
-              <span>⬛ Черная плашка (Blackout)</span>
+              <span>⬛ Чёрная плашка (Для черных полос)</span>
             </button>
-          </div>
-        </div>
-
-        <!-- Блок 5: Интерактивная подгонка -->
-        <div class="cleanview-customize-box" style="${currentSettings.watermarkMaskEnabled ? '' : 'display: none;'}">
-          <button type="button" class="storm-btn ${currentSettings.isCustomizing ? 'storm-btn-primary' : 'storm-btn-secondary'} storm-btn-sm" id="cleanview-customize-toggle-btn">
-            ${currentSettings.isCustomizing ? '✓ Зафиксировать область' : '✋ Переместить и изменить размер маски мышью'}
-          </button>
-          <div class="customize-hint">
-            ${currentSettings.isCustomizing ? 'Потяните за значок ✥ для перемещения или за правый нижний угол для изменения размера' : 'Вы можете идеально спозиционировать маску под размер водяного знака прямо на видео'}
           </div>
         </div>
       </div>
 
       <div class="cleanview-footer">
-        <span class="cleanview-status-label">🟢 Защита CleanView активна</span>
+        <span class="cleanview-status-label">${currentSettings.watermarkMaskEnabled ? '🟢 Маска активна' : '⚪ Маска выключена'}</span>
         <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="cleanview-done-btn">Готово</button>
       </div>
     </div>
@@ -509,9 +649,9 @@ function renderCleanViewPanelContent(panel) {
   const doneBtn = panel.querySelector('#cleanview-done-btn');
   const skipperToggle = panel.querySelector('#cleanview-ad-skipper-toggle');
   const maskToggle = panel.querySelector('#cleanview-mask-toggle');
+  const aimBtn = panel.querySelector('#cleanview-aim-btn');
   const styleBlurBtn = panel.querySelector('#style-blur-btn');
   const styleBlackoutBtn = panel.querySelector('#style-blackout-btn');
-  const customizeBtn = panel.querySelector('#cleanview-customize-toggle-btn');
 
   const closeHandler = () => {
     panel.classList.remove('is-open');
@@ -540,21 +680,53 @@ function renderCleanViewPanelContent(panel) {
     };
   }
 
+  if (aimBtn) {
+    aimBtn.onclick = () => {
+      startAimMode();
+    };
+  }
+
   // Кнопки пресетов
   panel.querySelectorAll('.cleanview-preset-btn').forEach(btn => {
     btn.onclick = () => {
       const presetId = btn.dataset.preset;
       currentSettings.activePreset = presetId;
-      if (presetId === 'custom') {
-        currentSettings.isCustomizing = true;
-      } else {
-        currentSettings.isCustomizing = false;
-      }
+      currentSettings.watermarkMaskEnabled = true;
+      currentSettings.isCustomizing = (presetId === 'custom');
       saveCleanViewSettings();
       applyMaskSettings();
       renderCleanViewPanelContent(panel);
     };
   });
+
+  // Джойстик микро-подгонки
+  const nudgeStep = (axis, delta) => {
+    const coords = { ...(currentSettings.customCoords || WATERMARK_PRESETS['1xbet_mid'].coords) };
+    if (axis === 'top') {
+      const curTop = parseFloat(coords.top || '40');
+      coords.top = `${Math.max(2, Math.min(92, curTop + delta)).toFixed(1)}%`;
+      coords.bottom = '';
+    } else if (axis === 'left') {
+      const curLeft = parseFloat(coords.left || '6.2');
+      coords.left = `${Math.max(1, Math.min(90, curLeft + delta)).toFixed(1)}%`;
+      coords.right = '';
+    }
+    currentSettings.customCoords = coords;
+    currentSettings.activePreset = 'custom';
+    currentSettings.watermarkMaskEnabled = true;
+    saveCleanViewSettings();
+    applyMaskSettings();
+  };
+
+  const nudgeUp = panel.querySelector('#nudge-up-btn');
+  const nudgeDown = panel.querySelector('#nudge-down-btn');
+  const nudgeLeft = panel.querySelector('#nudge-left-btn');
+  const nudgeRight = panel.querySelector('#nudge-right-btn');
+
+  if (nudgeUp) nudgeUp.onclick = () => nudgeStep('top', -2.0);
+  if (nudgeDown) nudgeDown.onclick = () => nudgeStep('top', 2.0);
+  if (nudgeLeft) nudgeLeft.onclick = () => nudgeStep('left', -1.2);
+  if (nudgeRight) nudgeRight.onclick = () => nudgeStep('left', 1.2);
 
   if (styleBlurBtn) {
     styleBlurBtn.onclick = () => {
@@ -568,18 +740,6 @@ function renderCleanViewPanelContent(panel) {
   if (styleBlackoutBtn) {
     styleBlackoutBtn.onclick = () => {
       currentSettings.maskStyle = 'blackout';
-      saveCleanViewSettings();
-      applyMaskSettings();
-      renderCleanViewPanelContent(panel);
-    };
-  }
-
-  if (customizeBtn) {
-    customizeBtn.onclick = () => {
-      currentSettings.isCustomizing = !currentSettings.isCustomizing;
-      if (currentSettings.isCustomizing) {
-        currentSettings.activePreset = 'custom';
-      }
       saveCleanViewSettings();
       applyMaskSettings();
       renderCleanViewPanelContent(panel);
