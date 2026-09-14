@@ -1726,10 +1726,6 @@ function playStreamUrl(url) {
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
       <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
-      <div class="storm-player-vpn-assist" id="storm-player-vpn-assist" style="display:none;position:absolute;bottom:16px;right:16px;z-index:10;background:rgba(15,23,42,0.92);border:1px solid rgba(0,210,255,0.4);box-shadow:0 8px 24px rgba(0,0,0,0.7);padding:8px 14px;border-radius:10px;align-items:center;gap:10px;backdrop-filter:blur(8px);">
-        <span style="font-size:12px;color:#94a3b8;">🛡️ Не загружается через VPN?</span>
-        <button type="button" id="storm-vpn-switch-now-btn" class="storm-btn storm-btn-primary storm-btn-sm" style="padding:4px 10px;font-size:11px;font-weight:700;">Переключить на HDRezka / Резерв</button>
-      </div>
     </div>
   `;
 
@@ -1739,32 +1735,13 @@ function playStreamUrl(url) {
     mountCleanViewOverlay(iframeBox);
   }
 
-  const vpnAssist = container.querySelector('#storm-player-vpn-assist');
-  const vpnBtn = container.querySelector('#storm-vpn-switch-now-btn');
-  if (vpnBtn) {
-    vpnBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (vpnAssist) vpnAssist.style.display = 'none';
-      switchToNextSource();
-    };
-  }
-
-  // VPN Watchdog: если через 5 секунд видео не запустилось из-за блокировки DNS провайдером VPN, предлагаем резервный плеер
-  const vpnWatchdogTimer = setTimeout(() => {
-    if (vpnAssist && container.querySelector('.cinema-player-iframe')) {
-      vpnAssist.style.display = 'inline-flex';
-    }
-  }, 5000);
-
   const iframeEl = container.querySelector('.cinema-player-iframe');
   if (iframeEl) {
     iframeEl.onload = () => {
-      clearTimeout(vpnWatchdogTimer);
       applySavedPlaybackSpeed();
       applyProAudioSettings();
     };
     iframeEl.onerror = () => {
-      clearTimeout(vpnWatchdogTimer);
       switchToNextSource();
     };
   }
