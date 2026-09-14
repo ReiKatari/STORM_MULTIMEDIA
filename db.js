@@ -42,6 +42,7 @@ db.exec(`
     original_title TEXT,
     poster_url TEXT,
     media_type TEXT NOT NULL,
+    year TEXT,
     status TEXT NOT NULL, -- 'watching', 'plan', 'completed', 'hold', 'dropped', 'favorite'
     episodes_watched INTEGER DEFAULT 0,
     total_episodes INTEGER DEFAULT 0,
@@ -159,6 +160,34 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_achievements_user ON user_achievements(user_id, unlocked);
   CREATE INDEX IF NOT EXISTS idx_watch_rooms_updated ON watch_rooms(updated_at);
 `);
+
+// Безопасные миграции схемы базы данных
+try { db.exec('ALTER TABLE bookmarks ADD COLUMN year TEXT;'); } catch {}
+try { db.exec('ALTER TABLE watch_history ADD COLUMN year TEXT;'); } catch {}
+
+// Автоматическое заполнение отсутствующих годов в существующих закладках
+try {
+  const emptyBookmarks = db.prepare("SELECT id, title, original_title FROM bookmarks WHERE year IS NULL OR year = ''").all();
+  if (emptyBookmarks && emptyBookmarks.length > 0) {
+    const updateStmt = db.prepare("UPDATE bookmarks SET year = ? WHERE id = ?");
+    for (const b of emptyBookmarks) {
+      const text = `${b.title || ''} ${b.original_title || ''}`;
+      let yr = '';
+      if (text.toLowerCase().includes('бегущий по лезвию 2049')) yr = '2017';
+      else {
+        const ym = text.match(/\b(19\d\d|20\d\d)\b/);
+        if (ym) yr = ym[1];
+      }
+      if (!yr) {
+        if (text.includes('Мэйдэй') || text.includes('Человек-паук: Новый день')) yr = '2026';
+        else if (text.includes('Дюна: Часть вторая') || text.includes('Аркейн') || text.includes('Джентльмены') || text.includes('Сёгун') || text.includes('Фоллаут')) yr = '2024';
+        else if (text.includes('Оппенгеймер') || text.includes('Паутина вселенных') || text.includes('Укрытие')) yr = '2023';
+        else yr = '2024';
+      }
+      if (yr) updateStmt.run(yr, b.id);
+    }
+  }
+} catch {}
 
 // Очистка и усечение WAL лога SQLite
 export function checkpointWal() {
@@ -453,45 +482,45 @@ export function ensureUserInitialData(userId) {
   if (bCount === 0) {
     const seedBookmarks = [
       // В процессе (watching)
-      { media_id: 'tmdb_gentlemen', source: 'fanfilm4k', title: 'Джентльмены', original_title: 'The Gentlemen', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvbpA5L3n6z720aGSm5U1QZ2VqXG.jpg', media_type: 'series', status: 'watching', episodes_watched: 5, total_episodes: 8, progress_percent: 62.5, last_time_seconds: 2800 },
-      { media_id: '693134', source: 'tmdb', title: 'Дюна: Часть вторая', original_title: 'Dune: Part Two', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FczembW0RJJ1rboOmCY2eo9NjhbL.jpg', media_type: 'movie', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 78.5, last_time_seconds: 7800 },
-      { media_id: '94605', source: 'tmdb', title: 'Аркейн', original_title: 'Arcane', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Ffqldf2t8ztc9aiwn397rWW2vAwh.jpg', media_type: 'series', status: 'watching', episodes_watched: 6, total_episodes: 9, progress_percent: 66.0, last_time_seconds: 2400 },
-      { media_id: '569094', source: 'tmdb', title: 'Человек-паук: Паутина вселенных', original_title: 'Spider-Man: Across the Spider-Verse', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8cdWjvZQUExUUTzyp4t6EDMubfO.jpg', media_type: 'cartoons', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 45.0, last_time_seconds: 3800 },
-      { media_id: 'rhs_silo', source: 'tmdb', title: 'Укрытие / Бункер', original_title: 'Silo', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F6A7r9bW0u0vYV80FjA4M0k8mKxZ.jpg', media_type: 'series', status: 'watching', episodes_watched: 7, total_episodes: 10, progress_percent: 70.0, last_time_seconds: 3200 },
+      { media_id: 'tmdb_gentlemen', source: 'fanfilm4k', title: 'Джентльмены', original_title: 'The Gentlemen', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvbpA5L3n6z720aGSm5U1QZ2VqXG.jpg', media_type: 'series', year: '2024', status: 'watching', episodes_watched: 5, total_episodes: 8, progress_percent: 62.5, last_time_seconds: 2800 },
+      { media_id: '693134', source: 'tmdb', title: 'Дюна: Часть вторая', original_title: 'Dune: Part Two', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FczembW0RJJ1rboOmCY2eo9NjhbL.jpg', media_type: 'movie', year: '2024', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 78.5, last_time_seconds: 7800 },
+      { media_id: '94605', source: 'tmdb', title: 'Аркейн', original_title: 'Arcane', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Ffqldf2t8ztc9aiwn397rWW2vAwh.jpg', media_type: 'series', year: '2024', status: 'watching', episodes_watched: 6, total_episodes: 9, progress_percent: 66.0, last_time_seconds: 2400 },
+      { media_id: '569094', source: 'tmdb', title: 'Человек-паук: Паутина вселенных', original_title: 'Spider-Man: Across the Spider-Verse', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8cdWjvZQUExUUTzyp4t6EDMubfO.jpg', media_type: 'cartoons', year: '2023', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 45.0, last_time_seconds: 3800 },
+      { media_id: 'rhs_silo', source: 'tmdb', title: 'Укрытие / Бункер', original_title: 'Silo', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F6A7r9bW0u0vYV80FjA4M0k8mKxZ.jpg', media_type: 'series', year: '2023', status: 'watching', episodes_watched: 7, total_episodes: 10, progress_percent: 70.0, last_time_seconds: 3200 },
 
       // В планах (planned)
-      { media_id: '82529_spider_man_new_day', source: 'fanfilm4k', title: 'Человек-паук: Новый день', original_title: 'Spider-Man: A New Day', poster_url: 'https://v17.fanfilm4k.media/uploads/posts/2024-04/1713531393_chelovek-pauk-novyj-den.jpg', media_type: 'movie', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'mayday_2026', source: 'tmdb', title: 'Мэйдэй', original_title: 'Mayday', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F2cxhvwyEwRlysAmRH4iodkvo0z5.jpg', media_type: 'movie', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'severance_s2', source: 'tmdb', title: 'Разделение', original_title: 'Severance', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', media_type: 'series', status: 'planned', episodes_watched: 0, total_episodes: 10, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'last_of_us_s2', source: 'tmdb', title: 'Одни из нас', original_title: 'The Last of Us', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FuKvVjK19szUZ4t53vgvgXq65Hqv.jpg', media_type: 'series', status: 'planned', episodes_watched: 0, total_episodes: 8, progress_percent: 0, last_time_seconds: 0 },
+      { media_id: '82529_spider_man_new_day', source: 'fanfilm4k', title: 'Человек-паук: Новый день', original_title: 'Spider-Man: A New Day', poster_url: 'https://v17.fanfilm4k.media/uploads/posts/2024-04/1713531393_chelovek-pauk-novyj-den.jpg', media_type: 'movie', year: '2026', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
+      { media_id: 'mayday_2026', source: 'tmdb', title: 'Мэйдэй', original_title: 'Mayday', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F2cxhvwyEwRlysAmRH4iodkvo0z5.jpg', media_type: 'movie', year: '2026', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
+      { media_id: 'severance_s2', source: 'tmdb', title: 'Разделение', original_title: 'Severance', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 10, progress_percent: 0, last_time_seconds: 0 },
+      { media_id: 'last_of_us_s2', source: 'tmdb', title: 'Одни из нас', original_title: 'The Last of Us', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FuKvVjK19szUZ4t53vgvgXq65Hqv.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 8, progress_percent: 0, last_time_seconds: 0 },
 
       // Завершено (completed)
-      { media_id: '872585', source: 'tmdb', title: 'Оппенгеймер', original_title: 'Oppenheimer', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg', media_type: 'movie', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10800 },
-      { media_id: '157336', source: 'tmdb', title: 'Интерстеллар', original_title: 'Interstellar', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgEU2QniE6E77NI6lCU6MxlNBvIx.jpg', media_type: 'movie', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
-      { media_id: '105248', source: 'tmdb', title: 'Киберпанк: Бегущие по краю', original_title: 'Cyberpunk: Edgerunners', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgeCRueV3ElhRTr0xtJuqoJ8UQOW.jpg', media_type: 'anime-series', status: 'completed', episodes_watched: 10, total_episodes: 10, progress_percent: 100.0, last_time_seconds: 14400 },
+      { media_id: '872585', source: 'tmdb', title: 'Оппенгеймер', original_title: 'Oppenheimer', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg', media_type: 'movie', year: '2023', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10800 },
+      { media_id: '157336', source: 'tmdb', title: 'Интерстеллар', original_title: 'Interstellar', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgEU2QniE6E77NI6lCU6MxlNBvIx.jpg', media_type: 'movie', year: '2014', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
+      { media_id: '105248', source: 'tmdb', title: 'Киберпанк: Бегущие по краю', original_title: 'Cyberpunk: Edgerunners', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgeCRueV3ElhRTr0xtJuqoJ8UQOW.jpg', media_type: 'anime-series', year: '2022', status: 'completed', episodes_watched: 10, total_episodes: 10, progress_percent: 100.0, last_time_seconds: 14400 },
       { media_id: '335984', source: 'tmdb', title: 'Бегущий по лезвию 2049', original_title: 'Blade Runner 2049', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', media_type: 'movie', year: '2017', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 9800 },
 
       // Любимые (favorite)
-      { media_id: 'fav_interstellar', source: 'tmdb', title: 'Интерстеллар (Коллекционное 4K)', original_title: 'Interstellar IMAX', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgEU2QniE6E77NI6lCU6MxlNBvIx.jpg', media_type: 'movie', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
-      { media_id: 'fav_arcane', source: 'tmdb', title: 'Аркейн (Золотая коллекция)', original_title: 'Arcane UHD', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Ffqldf2t8ztc9aiwn397rWW2vAwh.jpg', media_type: 'series', status: 'favorite', episodes_watched: 9, total_episodes: 9, progress_percent: 100.0, last_time_seconds: 3600 },
+      { media_id: 'fav_interstellar', source: 'tmdb', title: 'Интерстеллар (Коллекционное 4K)', original_title: 'Interstellar IMAX', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgEU2QniE6E77NI6lCU6MxlNBvIx.jpg', media_type: 'movie', year: '2014', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
+      { media_id: 'fav_arcane', source: 'tmdb', title: 'Аркейн (Золотая коллекция)', original_title: 'Arcane UHD', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Ffqldf2t8ztc9aiwn397rWW2vAwh.jpg', media_type: 'series', year: '2024', status: 'favorite', episodes_watched: 9, total_episodes: 9, progress_percent: 100.0, last_time_seconds: 3600 },
 
       // Отложено (on_hold)
-      { media_id: 'rings_power', source: 'tmdb', title: 'Властелин колец: Кольца власти', original_title: 'The Lord of the Rings: The Rings of Power', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FmYLOqiStMxDK3fYZFsCw9qwzW9.jpg', media_type: 'series', status: 'on_hold', episodes_watched: 3, total_episodes: 8, progress_percent: 37.5, last_time_seconds: 3900 },
-      { media_id: 'house_dragon', source: 'tmdb', title: 'Дом Дракона', original_title: 'House of the Dragon', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F1X4h40fcB4WWUmIBK0auT4zZZga.jpg', media_type: 'series', status: 'on_hold', episodes_watched: 4, total_episodes: 8, progress_percent: 50.0, last_time_seconds: 3600 },
+      { media_id: 'rings_power', source: 'tmdb', title: 'Властелин колец: Кольца власти', original_title: 'The Lord of the Rings: The Rings of Power', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FmYLOqiStMxDK3fYZFsCw9qwzW9.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 3, total_episodes: 8, progress_percent: 37.5, last_time_seconds: 3900 },
+      { media_id: 'house_dragon', source: 'tmdb', title: 'Дом Дракона', original_title: 'House of the Dragon', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F1X4h40fcB4WWUmIBK0auT4zZZga.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 4, total_episodes: 8, progress_percent: 50.0, last_time_seconds: 3600 },
 
       // Заброшено (dropped)
-      { media_id: 'madame_web', source: 'tmdb', title: 'Мадам Паутина', original_title: 'Madame Web', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FjDQPkg0KDZhPQjNxMPz5vH0G2Xw.jpg', media_type: 'movie', status: 'dropped', episodes_watched: 0, total_episodes: 0, progress_percent: 22.0, last_time_seconds: 1500 },
+      { media_id: 'madame_web', source: 'tmdb', title: 'Мадам Паутина', original_title: 'Madame Web', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FjDQPkg0KDZhPQjNxMPz5vH0G2Xw.jpg', media_type: 'movie', year: '2024', status: 'dropped', episodes_watched: 0, total_episodes: 0, progress_percent: 22.0, last_time_seconds: 1500 },
 
       // Не буду смотреть (wont_watch)
-      { media_id: 'borderlands_film', source: 'tmdb', title: 'Бордерлендс', original_title: 'Borderlands', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg', media_type: 'movie', status: 'wont_watch', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 }
+      { media_id: 'borderlands_film', source: 'tmdb', title: 'Бордерлендс', original_title: 'Borderlands', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg', media_type: 'movie', year: '2024', status: 'wont_watch', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 }
     ];
 
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, year, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     seedBookmarks.forEach(b => {
-      stmt.run(userId, b.media_id, b.source, b.title, b.original_title, b.poster_url, b.media_type, b.status, b.episodes_watched, b.total_episodes, b.progress_percent, b.last_time_seconds, now);
+      stmt.run(userId, b.media_id, b.source, b.title, b.original_title, b.poster_url, b.media_type, b.year || '2024', b.status, b.episodes_watched, b.total_episodes, b.progress_percent, b.last_time_seconds, now);
     });
   }
 
@@ -680,6 +709,7 @@ export function setBookmark(userId, data) {
     original_title = '',
     poster_url = '',
     media_type = 'movie',
+    year = '',
     status = 'watching',
     episodes_watched = 0,
     total_episodes = 0,
@@ -712,6 +742,7 @@ export function setBookmark(userId, data) {
         original_title = ?,
         poster_url = COALESCE(NULLIF(?, ''), poster_url),
         media_type = ?,
+        year = COALESCE(NULLIF(?, ''), year),
         status = ?,
         episodes_watched = ?,
         total_episodes = ?,
@@ -726,6 +757,7 @@ export function setBookmark(userId, data) {
       original_title,
       poster_url,
       media_type,
+      year,
       status,
       episodes_watched,
       total_episodes,
@@ -747,9 +779,9 @@ export function setBookmark(userId, data) {
   // Новая закладка
   const insert = db.prepare(`
     INSERT INTO bookmarks (
-      user_id, media_id, source, title, original_title, poster_url, media_type,
+      user_id, media_id, source, title, original_title, poster_url, media_type, year,
       status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   insert.run(
@@ -760,6 +792,7 @@ export function setBookmark(userId, data) {
     original_title,
     poster_url,
     media_type,
+    year,
     status,
     episodes_watched,
     total_episodes,
@@ -804,6 +837,7 @@ export function logWatchProgress(userId, data) {
     title,
     poster_url = '',
     media_type = 'movie',
+    year = '',
     season = 1,
     episode = 1,
     time_seconds = 0,
@@ -821,10 +855,11 @@ export function logWatchProgress(userId, data) {
   // Сохраняем в историю
   const upsertHistory = db.prepare(`
     INSERT INTO watch_history (
-      user_id, media_id, source, title, poster_url, media_type,
+      user_id, media_id, source, title, poster_url, media_type, year,
       season, episode, time_seconds, duration_seconds, progress_percent, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
+      year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
       time_seconds = excluded.time_seconds,
       duration_seconds = excluded.duration_seconds,
       progress_percent = excluded.progress_percent,
@@ -838,6 +873,7 @@ export function logWatchProgress(userId, data) {
     title,
     poster_url,
     media_type,
+    year,
     season,
     episode,
     time_seconds,

@@ -894,6 +894,7 @@ async function loadCurrentTab() {
         title: h.title,
         poster: h.poster_url,
         media_type: h.media_type,
+        year: h.year || '',
         progress_percent: h.progress_percent,
         user_status: h.status || 'watching',
         season: h.season,
@@ -914,6 +915,7 @@ async function loadCurrentTab() {
       original_title: b.original_title,
       poster: b.poster_url,
       media_type: b.media_type,
+      year: b.year || '',
       user_status: b.status,
       progress_percent: b.progress_percent,
       episodes_watched: b.episodes_watched,
@@ -1031,6 +1033,60 @@ function normalizeMediaTitle(title, originalTitle = '') {
   return clean(originalTitle);
 }
 
+export function getMediaYear(item) {
+  if (!item) return '';
+  if (item.year && String(item.year).trim()) {
+    const ym = String(item.year).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) return ym[1];
+    return String(item.year).trim();
+  }
+  if (item.release_date) {
+    const ym = String(item.release_date).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) return ym[1];
+  }
+  if (item.premiere) {
+    const ym = String(item.premiere).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) return ym[1];
+  }
+  if (item.title) {
+    const ym = String(item.title).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) {
+      const yr = parseInt(ym[1], 10);
+      if (yr >= 1920 && yr <= 2028 && yr !== 2049) return ym[1];
+    }
+  }
+  return '';
+}
+
+export function getMediaCategoryLabel(item, fallbackCategory = '') {
+  if (!item) return 'Фильм';
+  const type = String(item.media_type || '').toLowerCase();
+  const cat = String(fallbackCategory || currentTab || '').toLowerCase();
+  const title = String(item.title || item.name || '').toLowerCase();
+  const source = String(item.source || '').toLowerCase();
+
+  if (type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
+    return 'Аниме-сериал';
+  }
+  if (type === 'anime-movie' || type === 'anime' || source === 'anixart' || source === 'anilibria' || source === 'shikimori' || cat === 'anime' || cat === 'anime-movies' || cat === 'anime-series') {
+    if (type.includes('series') || title.includes('сезон') || title.includes('сериал')) return 'Аниме-сериал';
+    return 'Аниме';
+  }
+  if (type === 'cartoon-series' || (type.includes('series') && (cat === 'cartoons' || type.includes('cartoon')))) {
+    return 'Мультсериал';
+  }
+  if (type === 'cartoon' || cat === 'cartoons' || title.includes('мульт')) {
+    return 'Мультфильм';
+  }
+  if (type === 'tv' || type === 'series' || cat === 'series' || title.includes('сериал') || title.includes('сезон')) {
+    return 'Сериал';
+  }
+  if (type === 'show' || cat === 'shows') {
+    return 'Шоу';
+  }
+  return 'Фильм';
+}
+
 // Утилита дедупликации релизов (полностью исключает дубли одного фильма из разных источников и баз)
 function deduplicateMediaList(items) {
   if (!Array.isArray(items)) return [];
@@ -1059,6 +1115,9 @@ function deduplicateMediaList(items) {
       const merged = isNewBetter ? {
         ...existing,
         ...item,
+        year: item.year || existing.year || '',
+        media_type: item.media_type || existing.media_type || '',
+        release_date: item.release_date || existing.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
         is4K: has4K,
         quality: has4K ? '4K Ultra HD' : (item.quality || existing.quality),
@@ -1068,6 +1127,9 @@ function deduplicateMediaList(items) {
       } : {
         ...item,
         ...existing,
+        year: existing.year || item.year || '',
+        media_type: existing.media_type || item.media_type || '',
+        release_date: existing.release_date || item.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
         is4K: has4K,
         quality: has4K ? '4K Ultra HD' : (existing.quality || item.quality),
@@ -1310,6 +1372,9 @@ function createRailCardHtml(item, idx, isWide = false) {
   const poster = item.poster || 'assets/favicon.svg';
   const formattedTitle = formatMediaTitle(item);
   const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+  const yr = getMediaYear(item);
+  const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
+  const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
 
   return `
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
@@ -1334,7 +1399,7 @@ function createRailCardHtml(item, idx, isWide = false) {
         <div class="media-card-content">
           <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
           <div class="media-card-meta">
-            <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' || item.source === 'anilibria' ? 'Аниме' : 'Фильм')}</span>
+            <span>${metaText}</span>
             ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
           </div>
         </div>
@@ -1606,6 +1671,9 @@ function renderMediaItems(items) {
       const poster = item.poster || 'assets/favicon.svg';
       const formattedTitle = formatMediaTitle(item);
       const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+      const yr = getMediaYear(item);
+      const catLabel = getMediaCategoryLabel(item, currentTab);
+      const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
 
       return `
       <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
@@ -1629,7 +1697,7 @@ function renderMediaItems(items) {
         <div class="media-card-content">
           <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
           <div class="media-card-meta">
-            <span>${item.year || (item.source === 'anixart' || item.source === 'shikimori' || item.source === 'anilibria' ? 'Аниме' : 'Фильм')}</span>
+            <span>${metaText}</span>
             ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
           </div>
         </div>
@@ -1734,7 +1802,7 @@ function renderMediaItems(items) {
             </div>
           ` : ''}
           <div class="media-detailed-footer">
-            <span style="font-size:12px;color:var(--text-muted);">${item.year || ''} • ${sourceName}</span>
+            <span style="font-size:12px;color:var(--text-muted);">${getMediaYear(item) ? `${getMediaYear(item)} • ` : ''}${getMediaCategoryLabel(item, currentTab)} • ${sourceName}</span>
             <div style="display:flex;gap:8px;align-items:center;">
               <button type="button" class="storm-btn storm-btn-primary storm-btn-sm play-btn">▶ Смотреть</button>
               <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm card-options-btn" title="Опции">⋮</button>
@@ -1793,7 +1861,7 @@ function renderMediaItems(items) {
               <td class="td-center"><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
               <td><strong>${formattedTitle}</strong></td>
               <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
-              <td class="td-center">${item.year || '—'}</td>
+              <td class="td-center">${getMediaYear(item) || '—'}</td>
               <td class="td-center" style="font-weight: 700; color: var(--color-amber);">${item.rating ? `★ ${item.rating}` : '—'}</td>
               <td class="td-center">${item.user_status ? getStatusBadge(item.user_status) : '—'}</td>
               <td class="td-center" style="min-width:110px;">
