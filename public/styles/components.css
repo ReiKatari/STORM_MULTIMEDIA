@@ -417,7 +417,7 @@ input[type="checkbox"]::after {
 .media-card-rating {
   position: absolute;
   top: 8px;
-  right: 8px;
+  right: 42px;
   z-index: 5;
 }
 

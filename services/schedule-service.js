@@ -7,6 +7,8 @@
  */
 
 import { getCache, setCache } from '../db.js';
+import { getShikimoriCalendar } from './shikimori-service.js';
+import { getTmdbOnTheAir } from './tmdb-service.js';
 
 export function wrapPoster(url) {
   if (!url) return 'assets/favicon.svg';
@@ -899,7 +901,7 @@ export const VERIFIED_SCHEDULE_ITEMS = CURRENT_WEEK_ITEMS;
  * @param {'current' | 'next'} week
  */
 export async function getAggregatedSchedule(week = 'current') {
-  const cacheKey = `schedule_v2026_w2_${week}`;
+  const cacheKey = `schedule_v2026_w3_${week}`;
   const cached = getCache('schedule', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) {
     return {
@@ -910,10 +912,76 @@ export async function getAggregatedSchedule(week = 'current') {
     };
   }
 
-  const baseItems = week === 'next' ? NEXT_WEEK_ITEMS : CURRENT_WEEK_ITEMS;
+  const baseItems = week === 'next' ? [...NEXT_WEEK_ITEMS] : [...CURRENT_WEEK_ITEMS];
 
-  // Сохраняем в кэш на 1 час
-  setCache('schedule', cacheKey, baseItems, 3600);
+  const curDates = {
+    1: '14.09.2026',
+    2: '15.09.2026',
+    3: '16.09.2026',
+    4: '17.09.2026',
+    5: '18.09.2026',
+    6: '19.09.2026',
+    0: '20.09.2026'
+  };
+  const nxtDates = {
+    1: '21.09.2026',
+    2: '22.09.2026',
+    3: '23.09.2026',
+    4: '24.09.2026',
+    5: '25.09.2026',
+    6: '26.09.2026',
+    0: '27.09.2026'
+  };
+  const dateMap = week === 'next' ? nxtDates : curDates;
+
+  try {
+    const [shikiItems, tmdbItems] = await Promise.allSettled([
+      getShikimoriCalendar(),
+      getTmdbOnTheAir(week === 'next' ? 2 : 1)
+    ]);
+
+    const liveShiki = shikiItems.status === 'fulfilled' && Array.isArray(shikiItems.value) ? shikiItems.value : [];
+    const liveTmdb = tmdbItems.status === 'fulfilled' && Array.isArray(tmdbItems.value) ? tmdbItems.value : [];
+
+    const existingTitles = new Set(baseItems.map(i => (i.title || '').toLowerCase().trim()));
+
+    for (const sh of liveShiki) {
+      const lower = (sh.title || '').toLowerCase().trim();
+      if (!lower || existingTitles.has(lower)) continue;
+      existingTitles.add(lower);
+
+      const dOfWeek = typeof sh.day_of_week === 'number' ? sh.day_of_week : 1;
+      baseItems.push({
+        ...sh,
+        poster: wrapPoster(sh.poster),
+        release_date: dateMap[dOfWeek] || '14.09.2026'
+      });
+    }
+
+    for (const tm of liveTmdb) {
+      const lower = (tm.title || '').toLowerCase().trim();
+      if (!lower || existingTitles.has(lower)) continue;
+      existingTitles.add(lower);
+
+      const dOfWeek = typeof tm.day_of_week === 'number' ? tm.day_of_week : 2;
+      baseItems.push({
+        ...tm,
+        poster: wrapPoster(tm.poster),
+        release_date: dateMap[dOfWeek] || '15.09.2026'
+      });
+    }
+  } catch (err) {
+    console.warn('[Schedule Aggregation] Ошибка объединения онгоингов:', err.message);
+  }
+
+  baseItems.sort((a, b) => {
+    const dayA = a.day_of_week === 0 ? 7 : (a.day_of_week || 1);
+    const dayB = b.day_of_week === 0 ? 7 : (b.day_of_week || 1);
+    if (dayA !== dayB) return dayA - dayB;
+    return (a.air_time || '').localeCompare(b.air_time || '');
+  });
+
+  setCache('schedule', cacheKey, baseItems, 1800);
 
   return {
     week,

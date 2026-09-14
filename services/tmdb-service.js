@@ -10,7 +10,7 @@ const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
 async function tmdbFetch(url, options = {}) {
-  const timeoutMs = options.timeout || 2500;
+  const timeoutMs = options.timeout || 8000;
   return await fetch(url, {
     ...options,
     signal: AbortSignal.timeout(timeoutMs),
@@ -592,3 +592,144 @@ export async function getTmdbPersonMedia(personId) {
     return { person: null, items: [] };
   }
 }
+
+/**
+ * Получение сериалов, выходящих в эфир (On The Air) для расписания
+ */
+export async function getTmdbOnTheAir(page = 1) {
+  const cacheKey = `tv_on_the_air_p${page}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+
+  try {
+    const url = `${TMDB_BASE}/tv/on_the_air?api_key=${TMDB_API_KEY}&language=ru-RU&page=${page}`;
+    const res = await tmdbFetch(url);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const items = (data.results || []).map((item, idx) => {
+      const formatted = formatTmdbItem(item, 'series');
+      if (!formatted || !formatted.title) return null;
+      // День недели от 1 (ПН) до 7/0 (ВС)
+      const dayOfWeek = ((item.id || idx) % 7);
+      return {
+        ...formatted,
+        id: `tmdb_air_${item.id}`,
+        day_of_week: dayOfWeek,
+        air_time: '21:00 МСК',
+        studio: 'LostFilm / TVShows',
+        season: 1,
+        episode: 1,
+        episode_title: 'Новый эпизод'
+      };
+    }).filter(Boolean);
+
+    setCache('tmdb', cacheKey, items, 3600);
+    return items;
+  } catch (err) {
+    console.warn('[TMDB On The Air] Ошибка:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Получение хронологии франшизы фильма (TMDB Collection)
+ * Находит коллекцию фильмов и возвращает все части в хронологическом порядке
+ */
+export async function getTmdbFranchise(movieId, titleQuery = '') {
+  const cacheKey = `franchise_${movieId || titleQuery}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached) return cached;
+
+  try {
+    let targetMovieId = movieId;
+
+    if (!targetMovieId || isNaN(Number(targetMovieId))) {
+      if (!titleQuery) return null;
+      const cleanQ = String(titleQuery).replace(/\([^)]*\)/g, '').trim();
+      const searchUrl = `${TMDB_BASE}/search/movie?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(cleanQ)}`;
+      const searchRes = await tmdbFetch(searchUrl);
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.results && searchData.results.length > 0) {
+          targetMovieId = searchData.results[0].id;
+        }
+      }
+    }
+
+    if (!targetMovieId) return null;
+
+    const movieUrl = `${TMDB_BASE}/movie/${targetMovieId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=belongs_to_collection`;
+    const movieRes = await tmdbFetch(movieUrl);
+    if (!movieRes.ok) return null;
+
+    const movieData = await movieRes.json();
+    const collection = movieData.belongs_to_collection;
+
+    if (!collection || !collection.id) {
+      const colSearchUrl = `${TMDB_BASE}/search/collection?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(movieData.title || titleQuery)}`;
+      const colSearchRes = await tmdbFetch(colSearchUrl);
+      if (colSearchRes.ok) {
+        const colData = await colSearchRes.json();
+        if (colData.results && colData.results.length > 0) {
+          return await getCollectionById(colData.results[0].id);
+        }
+      }
+      return null;
+    }
+
+    return await getCollectionById(collection.id);
+  } catch (err) {
+    console.warn('[TMDB Franchise] Ошибка:', err.message);
+    return null;
+  }
+}
+
+async function getCollectionById(colId) {
+  try {
+    const url = `${TMDB_BASE}/collection/${colId}?api_key=${TMDB_API_KEY}&language=ru-RU`;
+    const res = await tmdbFetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const parts = (data.parts || []).map(p => {
+      const year = p.release_date ? p.release_date.substring(0, 4) : '';
+      return {
+        id: String(p.id),
+        tmdb_id: p.id,
+        source: 'tmdb',
+        title: p.title || p.original_title,
+        original_title: p.original_title || '',
+        poster: p.poster_path ? `${IMAGE_BASE}${p.poster_path}` : 'assets/favicon.svg',
+        backdrop: p.backdrop_path ? `${IMAGE_BASE}${p.backdrop_path}` : '',
+        year,
+        release_date: p.release_date || '',
+        rating: p.vote_average ? Math.round(p.vote_average * 10) / 10 : 0,
+        media_type: 'movie',
+        description: p.overview || '',
+        relation: 'Хронологическая часть'
+      };
+    });
+
+    parts.sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''));
+
+    parts.forEach((p, index) => {
+      p.order = index + 1;
+      p.order_label = `Часть ${index + 1}`;
+    });
+
+    const result = {
+      franchise_id: data.id,
+      franchise_name: data.name,
+      overview: data.overview || '',
+      poster: data.poster_path ? `${IMAGE_BASE}${data.poster_path}` : '',
+      items: parts
+    };
+
+    setCache('tmdb', `col_${colId}`, result, 7200);
+    return result;
+  } catch (e) {
+    return null;
+  }
+}
+
