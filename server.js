@@ -1047,25 +1047,45 @@ app.get('/api/media/catalog', async (req, res) => {
 
         // 1. Прямой источник: The Movie Database (TMDB)
         if (source === 'tmdb') {
-          const tmdbRes = await getTmdbCatalog(category, page);
-          fetchedItems = tmdbRes.items;
-          fetchedTotal = tmdbRes.total_items;
+          const tmdbPage1 = page * 2 - 1;
+          const tmdbPage2 = page * 2;
+          const [res1, res2] = await Promise.allSettled([
+            getTmdbCatalog(category, tmdbPage1),
+            getTmdbCatalog(category, tmdbPage2)
+          ]);
+          const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
+          const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
+          fetchedItems = [...items1, ...items2];
+          fetchedTotal = res1.status === 'fulfilled' ? res1.value?.total_items || fetchedItems.length : fetchedItems.length;
         }
         // 2. Прямой источник: AniLibria
         else if (source === 'anilibria') {
-          const aLibRes = await getAniLibriaCatalog(category, page);
-          fetchedItems = aLibRes.items;
-          fetchedTotal = aLibRes.total_items;
+          const [aLibRes1, aLibRes2] = await Promise.allSettled([
+            getAniLibriaCatalog(category, page * 2 - 1),
+            getAniLibriaCatalog(category, page * 2)
+          ]);
+          const items1 = aLibRes1.status === 'fulfilled' ? aLibRes1.value?.items || [] : [];
+          const items2 = aLibRes2.status === 'fulfilled' ? aLibRes2.value?.items || [] : [];
+          fetchedItems = [...items1, ...items2];
+          fetchedTotal = aLibRes1.status === 'fulfilled' ? aLibRes1.value?.total_items || fetchedItems.length : fetchedItems.length;
         }
         // 3. Стриминговые и торрент провайдеры
         else if (['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox', 'vidsrc', 'kinobaza', 'kinogo', 'webtorrent', 'rutracker', 'nnmclub', 'rutor', 'lostfilm', 'redheadsound', 'animevost'].includes(source)) {
-          const tmdbRes = await getTmdbCatalog(category, page);
-          fetchedItems = tmdbRes.items.map(i => ({
+          const tmdbPage1 = page * 2 - 1;
+          const tmdbPage2 = page * 2;
+          const [res1, res2] = await Promise.allSettled([
+            getTmdbCatalog(category, tmdbPage1),
+            getTmdbCatalog(category, tmdbPage2)
+          ]);
+          const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
+          const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
+          const combined = [...items1, ...items2];
+          fetchedItems = combined.map(i => ({
             ...i,
             source: source,
             provider_name: source.toUpperCase()
           }));
-          fetchedTotal = tmdbRes.total_items;
+          fetchedTotal = res1.status === 'fulfilled' ? res1.value?.total_items || fetchedItems.length : fetchedItems.length;
         }
         // 4. Прямой источник: FanFilm4K
         else if (source === 'fanfilm4k') {
@@ -1077,9 +1097,14 @@ app.get('/api/media/catalog', async (req, res) => {
         // 5. Прямой источник: AniXart
         else if (source === 'anixart') {
           const cat = category === 'home' ? 'popular' : category;
-          const anixRes = await getAnixartDiscover(cat, page - 1);
-          fetchedItems = anixRes.items;
-          fetchedTotal = anixRes.items.length;
+          const [anixRes1, anixRes2] = await Promise.allSettled([
+            getAnixartDiscover(cat, (page - 1) * 2),
+            getAnixartDiscover(cat, (page - 1) * 2 + 1)
+          ]);
+          const items1 = anixRes1.status === 'fulfilled' ? anixRes1.value?.items || [] : [];
+          const items2 = anixRes2.status === 'fulfilled' ? anixRes2.value?.items || [] : [];
+          fetchedItems = [...items1, ...items2];
+          fetchedTotal = Math.max(items1.length + items2.length, 300);
         }
         // 6. Прямой источник: Shikimori
         else if (source === 'shikimori') {

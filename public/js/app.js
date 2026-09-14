@@ -66,7 +66,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Динамическое автоматическое обновление закладок и списков без перезагрузки
   window.addEventListener('storm:bookmarks-updated', (e) => {
-    if (currentTab === 'bookmarks' || currentTab === 'continue') {
+    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+    if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
       loadCurrentTab();
     } else if (e.detail?.deleted) {
       const deletedId = String(e.detail.mediaId || '');
@@ -1663,7 +1664,8 @@ function renderCatalogPagination(shownCount) {
   const host = document.getElementById('storm-pagination-host');
   if (!host) return;
 
-  if (['home', 'continue', 'bookmarks', 'offline'].includes(currentTab)) {
+  const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+  if (['home', 'continue', 'bookmarks', 'offline'].includes(currentTab) || isSearching) {
     host.innerHTML = '';
     host.style.display = 'none';
     return;
@@ -1862,6 +1864,9 @@ export async function executeSearch(query = null) {
       const res = await fetch(`/api/media/search?q=${encodeURIComponent(q)}&source=${currentSource}`);
       const data = await res.json();
       rawCatalogItems = deduplicateMediaList(data.items || []);
+      totalCatalogItems = rawCatalogItems.length;
+      totalCatalogPages = 1;
+      currentPage = 1;
       renderFilteredCatalog();
     } catch (err) {
       const container = document.getElementById('media-render-container');
@@ -2319,7 +2324,8 @@ export function resetAllFilters() {
 }
 
 export function renderFilteredCatalog() {
-  const isFiltered = currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentStatusFilter !== 'all' || currentSort !== 'popular';
+  const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+  const isFiltered = (!isSearching && (currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentStatusFilter !== 'all')) || currentSort !== 'popular';
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) {
     resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
@@ -2337,8 +2343,8 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 1. Фильтр по жанру
-  if (currentGenre !== 'all') {
+  // 1. Фильтр по жанру (только для каталога категорий, не для результатов поиска)
+  if (!isSearching && currentGenre !== 'all') {
     const targetGenre = currentGenre.toLowerCase();
     items = items.filter(item => {
       if (Array.isArray(item.genres)) {
@@ -2357,8 +2363,8 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 1.5 Фильтр по стране
-  if (currentCountry !== 'all') {
+  // 1.5 Фильтр по стране (только для каталога категорий)
+  if (!isSearching && currentCountry !== 'all') {
     const targetCountry = currentCountry.toLowerCase();
     items = items.filter(item => {
       if (Array.isArray(item.countries)) {
@@ -2377,8 +2383,8 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 2. Фильтр по году
-  if (currentYear !== 'all') {
+  // 2. Фильтр по году (только для каталога категорий)
+  if (!isSearching && currentYear !== 'all') {
     items = items.filter(item => {
       const year = parseInt(item.year, 10);
       if (isNaN(year)) return false;
@@ -2390,8 +2396,8 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 3. Фильтр по рейтингу
-  if (currentRating > 0) {
+  // 3. Фильтр по рейтингу (только для каталога категорий)
+  if (!isSearching && currentRating > 0) {
     items = items.filter(item => {
       const rating = parseFloat(item.rating);
       if (isNaN(rating)) return false;
@@ -2399,8 +2405,8 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 3.5. Фильтр по статусу просмотра
-  if (currentStatusFilter !== 'all') {
+  // 3.5. Фильтр по статусу просмотра (только для каталога категорий)
+  if (!isSearching && currentStatusFilter !== 'all') {
     items = items.filter(item => {
       const status = item.user_status;
       if (!status) return false;
@@ -2882,8 +2888,8 @@ function showCardHoverPreview(card, item) {
             if (oldCardBadge) oldCardBadge.remove();
           }
 
-          // Мгновенное динамическое удаление карточки из DOM во вкладке закладок
-          if (currentTab === 'bookmarks') {
+          // Мгновенное динамическое удаление карточки из DOM во вкладке закладок (только если не активен поиск)
+          if (currentTab === 'bookmarks' && (!searchQuery || searchQuery.trim().length < 2)) {
             hideCardHoverPreview();
             card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
             card.style.opacity = '0';
