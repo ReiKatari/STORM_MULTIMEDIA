@@ -26,15 +26,250 @@ async function fetchHtml(url, options = {}) {
   return await response.text();
 }
 
+export const KNOWN_RELEASE_YEARS = {
+  // Новинки 2025-2027
+  'мэйдэй': '2026',
+  'mayday': '2026',
+  'человек-паук: новый день': '2026',
+  'человек паук новый день': '2026',
+  'spider-man: brand new day': '2026',
+  'spider-man 4': '2026',
+  'аватар: пламя и пепел': '2025',
+  'аватар 3: пламя и пепел': '2025',
+  'аватар 3': '2025',
+  'хитрый койот': '2026',
+  'зверополис 2': '2025',
+  'миньоны и монстры': '2026',
+  'бэтмен: падение рыцаря': '2026',
+  'бэтмен падение рыцаря': '2026',
+  'аватар аанг: последний маг воздуха': '2026',
+  'легенда об аанге': '2026',
+  'прыгуны': '2026',
+  'человек-бензопила. фильм: история резе': '2025',
+  'человек-бензопила: история резе': '2025',
+  'история резе': '2025',
+  'робоцып. спецвыпуск adult swim': '2026',
+  'goat: мечтай по-крупному': '2026',
+  'история игрушек 5': '2026',
+  'одиссея': '2026',
+  'мандалорец и грогу': '2026',
+  'мстители: судный день': '2026',
+  'мстители: секретные войны': '2027',
+  'бэтмен. часть 2': '2026',
+  'бэтмен 2': '2026',
+  'дэдпул и росомаха': '2024',
+  'дюна: часть вторая': '2024',
+  'гладиатор 2': '2024',
+  'дикий робот': '2024',
+  'головоломка 2': '2024',
+  'кунг-фу панда 4': '2024',
+
+  // Мультфильмы и классика
+  'тачки 1': '2006',
+  'тачки': '2006',
+  'тачки 2': '2011',
+  'тачки 3': '2017',
+  'суперсемейка': '2004',
+  'суперсемейка 2': '2018',
+  'кот в сапогах': '2011',
+  'кот в сапогах 2: последнее желание': '2022',
+  'кот в сапогах 2': '2022',
+  'angry birds в кино': '2016',
+  'angry birds 2 в кино': '2019',
+  'скуби-ду: шалость или сладость': '2022',
+  'зверополис': '2016',
+  'человек-паук: через вселенные': '2018',
+  'человек-паук: паутина вселенных': '2023',
+  'человек-паук: за пределами вселенных': '2026',
+  'властелин колец: война рохирримов': '2024',
+  'война рохирримов': '2024',
+  'братья вентура: сияющая кровь сердца бабуина': '2023',
+  'меч в камне': '1963',
+  'турбо': '2013',
+  'делай ноги': '2006',
+  'делай ноги 2': '2011',
+  'босс-молокосос': '2017',
+  'босс-молокосос 2': '2021',
+  'храбрая сердцем': '2012',
+  'спящая красавица': '1959',
+  'стальной гигант': '1999',
+  'ледниковый период': '2002',
+  'ледниковый период 2: глобальное потепление': '2006',
+  'ледниковый период 3: эра динозавров': '2009',
+  'ледниковый период 4: континентальный дрейф': '2012',
+  'ледниковый период 5: столкновение неизбежно': '2016',
+  'геркулес': '1997',
+  'ральф': '2012',
+  'ральф против интернета': '2018',
+  'семейка крудс': '2013',
+  'семейка крудс 2: новоселье': '2020',
+  'холодное сердце': '2013',
+  'холодное сердце 2': '2019',
+  'в поисках немо': '2003',
+  'в поисках дори': '2016',
+  'рапунцель: запутанная история': '2010',
+  'базз лайтер': '2022',
+  'история игрушек': '1995',
+  'история игрушек 2': '1999',
+  'история игрушек 3: большой побег': '2010',
+  'история игрушек 4': '2019',
+  'монстры на каникулах': '2012',
+  'монстры на каникулах 2': '2015',
+  'монстры на каникулах 3: море зовёт': '2018',
+  'монстры на каникулах 4: трансформания': '2022',
+  'миньоны': '2015',
+  'миньоны: грювитация': '2022',
+  'гадкий я': '2010',
+  'гадкий я 2': '2013',
+  'гадкий я 3': '2017',
+  'гадкий я 4': '2024',
+  'кунг-фу панда': '2008',
+  'кунг-фу панда 2': '2011',
+  'кунг-фу панда 3': '2016',
+  'шрек': '2001',
+  'шрек 2': '2004',
+  'шрек третий': '2007',
+  'шрек навсегда': '2010',
+  'как приручить дракона': '2010',
+  'как приручить дракона 2': '2014',
+  'как приручить дракона 3': '2019',
+  'рататуй': '2007',
+  'вверх': '2009',
+  'валли': '2008',
+  'король лев': '1994',
+  'головоломка': '2015',
+  'тайная жизнь домашних животных': '2016',
+  'тайная жизнь домашних животных 2': '2019',
+  'миграция': '2023',
+  'моана': '2016',
+  'моана 2': '2024',
+
+  // Фильмы
+  'троя': '2004',
+  'начало': '2010',
+  'королевство': '2007',
+  'интерстеллар': '2014',
+  'темный рыцарь': '2008',
+  'тёмный рыцарь': '2008',
+  'темный рыцарь: возрождение легенды': '2012',
+  'бэтмен: начало': '2005',
+  'гладиатор': '2000',
+  'матрица': '1999',
+  'матрица: перезагрузка': '2003',
+  'матрица: революция': '2003',
+  'титаник': '1997',
+  'аватар': '2009',
+  'аватар: путь воды': '2022',
+  'человек-паук': '2002',
+  'человек-паук 2': '2004',
+  'человек-паук 3: враг в отражении': '2007',
+  'новый человек-паук': '2012',
+  'новый человек-паук: высокое напряжение': '2014',
+  'человек-паук: возвращение домой': '2017',
+  'человек-паук: вдали от дома': '2019',
+  'человек-паук: нет пути домой': '2021',
+
+  // Аниме
+  'сад изящных слов': '2013',
+  'призрак в доспехах': '1995',
+  'акира': '1988',
+  'форма голоса': '2016',
+  'твоё имя': '2016',
+  'твое имя': '2016',
+  'дитя погоды': '2019',
+  'судзумэ, закрывающая двери': '2022',
+  'судзумэ': '2022',
+  'ходячий замок': '2004',
+  'унесённые призраками': '2001',
+  'унесенные призраками': '2001',
+  'мой сосед тоторо': '1988',
+  'принцесса мононоке': '1997',
+  'ветер крепчает': '2013',
+  'навсикая из долины ветров': '1984',
+  'могила светлячков': '1988',
+  'шепот сердца': '1995',
+  'рыбка поньо на утесе': '2008'
+};
+
+export function resolveMediaYear(title = '', link = '', poster = '', tagYear = '') {
+  const cleanT = String(title || '').toLowerCase().replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
+  const sortedEntries = Object.entries(KNOWN_RELEASE_YEARS).sort((a, b) => b[0].length - a[0].length);
+  for (const [key, yr] of sortedEntries) {
+    if (cleanT === key || cleanT.startsWith(key) || String(title || '').toLowerCase().includes(key)) {
+      return yr;
+    }
+  }
+
+  // 1. Из ссылки FanFilm4K: -(\d{4})(?:-|\.html)
+  if (link) {
+    const lm = String(link).match(/-(\d{4})(?:-|\.html)/);
+    if (lm && parseInt(lm[1], 10) >= 1950 && parseInt(lm[1], 10) <= 2030) {
+      return lm[1];
+    }
+  }
+
+  // 2. Из тега .tag.top-left
+  if (tagYear) {
+    const tm = String(tagYear).match(/\b(19\d\d|20\d\d)\b/);
+    if (tm) return tm[1];
+  }
+
+  // 3. Из заголовка
+  const ym = String(title || '').match(/\b(19\d\d|20\d\d)\b/);
+  if (ym) return ym[1];
+
+  // 4. Из даты загрузки постера: /uploads/posts/(20\d\d)-
+  if (poster) {
+    const pm = String(poster).match(/\/uploads\/posts\/(20\d\d)-/);
+    if (pm && parseInt(pm[1], 10) >= 2020) return pm[1];
+  }
+
+  return '';
+}
+
+export function isAnimeLinkOrTitle(title = '', link = '', category = '') {
+  const t = `${title} ${link} ${category}`.toLowerCase();
+  if (t.includes('-anime.html') || t.includes('/anime/') || t.includes('аниме') || t.includes('anime')) return true;
+  const animeKeywords = [
+    'человек-бензопила', 'chainsaw man', 'резе', 'reze',
+    'сад изящных слов', 'garden of words', 'kotonoha no niwa',
+    'призрак в доспехах', 'ghost in the shell',
+    'война рохирримов', 'war of the rohirrim',
+    'форма голоса', 'silent voice', 'koe no katachi',
+    'твоё имя', 'твое имя', 'your name', 'kimi no na wa',
+    'судзумэ', 'suzume',
+    'ходячий замок', 'howl\'s moving castle',
+    'унесённые призраками', 'унесенные призраками', 'spirited away',
+    'мой сосед тоторо', 'my neighbor totoro',
+    'принцесса мононоке', 'princess mononoke',
+    'ветер крепчает', 'wind rises',
+    'акира', 'akira',
+    'евангелион', 'evangelion',
+    'клинок, рассекающий', 'клинок рассекающий', 'demon slayer',
+    'магическая битва', 'jujutsu kaisen',
+    'атака титанов', 'attack on titan'
+  ];
+  return animeKeywords.some(kw => t.includes(kw));
+}
+
 /**
  * Парсинг списка медиа карточек из HTML FanFilm4K
  */
-function parseMediaList(html) {
+function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
   const $ = cheerio.load(html);
   const items = [];
 
-  // Селекторы карточек в карусели и в основном каталоге
-  $('.top, .card, .pmovie__rel-item, .custom-poster').each((_, element) => {
+  // На страницах конкретных категорий или при page > 1 парсим только карточки каталога #dle-content,
+  // чтобы исключить повторение 24 карточек верхнего сквозного слайдера сайта .top
+  let selector = '#dle-content .card';
+  if ($('#dle-content .card').length === 0) {
+    selector = '.card';
+  }
+  if (category === 'popular' && page === 1) {
+    selector = '.top, ' + selector;
+  }
+
+  $(selector).each((_, element) => {
     const el = $(element);
     
     // Ссылка на страницу фильма
@@ -47,17 +282,19 @@ function parseMediaList(html) {
     const id = idMatch ? idMatch[1] : link;
 
     // Название
-    let title = el.find('.top__title, .card__title, .poster__title, h2, h3').first().text().trim();
+    let title = el.find('.infoca a').first().text().trim() ||
+                el.find('.top__title, .card__title, .poster__title, h2, h3').first().text().trim();
     if (!title) {
       title = el.find('img').first().attr('alt') || el.find('img').first().attr('title') || '';
     }
     if (!title) return;
 
-    // Очистка от "постер 4К", "постер", "4K"
+    // Очистка от "постер 4К", "постер", "4K", "смотреть"
     title = title
       .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
       .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
       .replace(/\s*\(?(?:фильм|сериал)\)?\s*$/i, '')
+      .replace(/\s*смотреть(?:\s+онлайн)?/gi, '')
       .trim();
 
     // Картинка постера
@@ -69,26 +306,24 @@ function parseMediaList(html) {
     const is4K = true;
     const quality = isTS ? 'TS / Экранка' : '4K Ultra HD';
 
-    // Год и рейтинг (на карточках FanFilm4K находятся в .hover-tags .tag.top-left / top-right)
-    let yearText = el.find('.tag.top-left, .hover-tags .tag, .card__year, .top__year, .poster__year').first().text().trim();
-    const ym = (yearText || el.text() || title).match(/\b(19\d\d|20\d\d)\b/);
-    if (ym) yearText = ym[1];
+    // Точный год выпуска
+    const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
+    const realYear = resolveMediaYear(title, link, poster, tagLeft);
 
-    let ratingText = el.find('.tag.top-right, .hover-tags .tag, .card__rating, .rating, .top__rating').first().text().replace(/[^\d\.]/g, '').trim();
+    // Рейтинг (строго из правого тега, без смешивания с годом)
+    let ratingText = el.find('.tag.top-right').first().text().replace(/[^\d\.]/g, '').trim();
     if (!ratingText) {
       const rm = el.text().match(/(?:⭐|★|рейтинг:?)\s*([\d\.]+)/i);
       if (rm) ratingText = rm[1];
     }
 
-    // Тип медиа
+    // Классификация типа медиа с защитой от попадания аниме в мультфильмы
     let mediaType = 'movie';
-    const lowerLink = link.toLowerCase();
-    const lowerTitle = title.toLowerCase();
-    if (lowerLink.includes('anime') || lowerLink.includes('-anime.html') || lowerTitle.includes('аниме')) {
-      mediaType = lowerLink.includes('serial') || lowerLink.includes('multserialy') ? 'anime-series' : 'anime-movie';
-    } else if (lowerLink.includes('serial') || lowerLink.includes('fan-serials') || lowerTitle.includes('сериал')) {
+    if (isAnimeLinkOrTitle(title, link, category)) {
+      mediaType = link.includes('serial') || link.includes('multserialy') ? 'anime-series' : 'anime-movie';
+    } else if (link.includes('serial') || link.includes('fan-serials') || title.toLowerCase().includes('сериал')) {
       mediaType = 'series';
-    } else if (lowerLink.includes('mult') || lowerTitle.includes('мульт')) {
+    } else if (link.includes('mult') || title.toLowerCase().includes('мульт') || category.includes('cartoon')) {
       mediaType = 'cartoon';
     }
 
@@ -103,7 +338,7 @@ function parseMediaList(html) {
         poster,
         quality,
         is4K,
-        year: yearText || '2024',
+        year: realYear || '2025',
         rating: parseFloat(ratingText) || 0,
         media_type: mediaType
       });
@@ -149,7 +384,7 @@ export async function getFanFilmCatalog(category = 'popular', page = 1) {
 
   try {
     const html = await fetchHtml(`${BASE_URL}${path}`);
-    const items = parseMediaList(html);
+    const items = parseMediaList(html, { category, page });
 
     const result = {
       page,
@@ -187,7 +422,7 @@ export async function searchFanFilm(query) {
         poster: details.poster,
         quality: details.quality || '4K Ultra HD',
         is4K: true,
-        year: details.year || '2026',
+        year: details.year || resolveMediaYear(details.title, cleanQuery, details.poster) || '2026',
         rating: details.rating || 8.0,
         media_type: details.media_type || 'movie',
         description: details.description || ''
@@ -213,7 +448,7 @@ export async function searchFanFilm(query) {
       }
     });
 
-    const items = parseMediaList(html);
+    const items = parseMediaList(html, { category: 'search', page: 1 });
     setCache('fanfilm4k', cacheKey, items, 900); // 15 минут
     return items;
   } catch (err) {
@@ -262,6 +497,9 @@ export async function getFanFilmDetails(idOrUrl) {
     let year = '';
     const ym = subcolsText.match(/\|\s*(\d{4})\b/) || subcolsText.match(/\b(19\d\d|20\d\d)\b/);
     if (ym) year = ym[1];
+    if (!year) {
+      year = resolveMediaYear(title, url, poster);
+    }
 
     // Рейтинг
     let rating = 0;

@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v2.6';
+const CACHE_NAME = 'storm-multimedia-v2.7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -71,39 +71,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для API-запросов: Network-First с защитой от зависания и кэшированием каталога
+  // Для API-запросов: прямой сетевой запрос к серверу без тайм-аута с мягким кэшированием
   if (url.pathname.startsWith('/api/')) {
-    if (url.pathname === '/api/media/catalog') {
-      event.respondWith(
-        (async () => {
-          try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 2000);
-            const netRes = await fetch(event.request, { signal: controller.signal });
-            clearTimeout(timer);
-            if (netRes && netRes.status === 200) {
-              const cache = await caches.open(CACHE_NAME);
-              cache.put(event.request, netRes.clone());
-              return netRes;
-            }
-          } catch (e) {}
-          const cached = await caches.match(event.request);
-          if (cached) return cached;
+    event.respondWith(
+      fetch(event.request).then((netRes) => {
+        if (netRes && netRes.status === 200 && url.pathname === '/api/media/catalog') {
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, netRes.clone())).catch(() => {});
+        }
+        return netRes;
+      }).catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        if (url.pathname === '/api/media/catalog') {
           return new Response(JSON.stringify({ items: [], total_items: 0 }), {
             headers: { 'Content-Type': 'application/json' }
           });
-        })()
-      );
-      return;
-    }
-
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match(event.request).then((cached) => {
-          if (cached) return cached;
-          return new Response(JSON.stringify({ error: 'Автономный режим: нет подключения к сети' }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
+        }
+        return new Response(JSON.stringify({ error: 'Автономный режим: нет подключения к сети' }), {
+          headers: { 'Content-Type': 'application/json' }
         });
       })
     );

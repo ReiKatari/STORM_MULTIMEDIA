@@ -44,7 +44,7 @@ export const translations = {
     // Сортировка
     sort_popular: "По популярности",
     sort_rating: "По рейтингу",
-    sort_date: "По дате добавления",
+    sort_date: "По дате",
     sort_name: "По названию",
     
     // Фильтры

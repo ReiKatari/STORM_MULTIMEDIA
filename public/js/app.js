@@ -22,7 +22,7 @@ import { getBaselineCatalog } from './catalog-baseline.js';
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
 let currentSource = 'all';
-let currentSort = 'popular';
+let currentSort = 'newest';
 let currentGenre = 'all';
 let currentCountry = 'all';
 let currentYear = 'all';
@@ -392,7 +392,7 @@ function populateFilterSheet() {
   const sortContainer = document.getElementById('filter-sheet-sorts');
   if (sortContainer) {
     sortContainer.querySelectorAll('.filter-chip').forEach(c => {
-      c.classList.toggle('is-active', (c.dataset.sort || 'popular') === currentSort);
+      c.classList.toggle('is-active', (c.dataset.sort || 'newest') === currentSort);
     });
   }
 
@@ -490,12 +490,12 @@ function syncDesktopFilterLabels() {
   const sortLabel = document.getElementById('filter-sort-label');
   if (sortLabel) {
     const sortMap = {
+      newest: t('sort_date') || t('sort_newest') || 'По дате',
       popular: t('sort_popular'),
-      newest: t('sort_newest'),
       rating: t('sort_rating'),
       title: t('sort_title')
     };
-    sortLabel.textContent = sortMap[currentSort] || t('sort_popular');
+    sortLabel.textContent = sortMap[currentSort] || t('sort_date') || 'По дате';
   }
 
   // Обновляем визуальный активный класс в выпадающих списках десктопа
@@ -521,7 +521,7 @@ function updateFilterBadge() {
   if (currentCountry !== 'all') count++;
   if (currentYear !== 'all') count++;
   if (currentRating > 0) count++;
-  if (currentSort !== 'popular') count++;
+  if (currentSort !== 'newest') count++;
 
   if (count > 0) {
     badge.textContent = String(count);
@@ -751,10 +751,11 @@ export function formatMediaTitle(item) {
     const ym = `${item.title || ''} ${item.original_title || ''}`.match(/\b(19\d\d|20\d\d)\b/);
     if (ym) itemYear = ym[1];
   }
-  const finalYear = itemYear && itemYear !== '0' && itemYear !== '—' ? itemYear : '2024';
-  item.year = finalYear;
+  if (itemYear && itemYear !== '0' && itemYear !== '—') {
+    item.year = itemYear;
+  }
 
-  // Удаляем год из исходного заголовка, чтобы не дублировать скобки
+  // Очищаем скобки с годом из заголовка, так как год отображается в строке метаданных карточки
   rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
   let seasonsText = '';
@@ -765,7 +766,72 @@ export function formatMediaTitle(item) {
     }
   }
 
-  return `${rawTitle} (${finalYear})${seasonsText}`;
+  return `${rawTitle}${seasonsText}`;
+}
+
+export function isAnimeItemClient(item) {
+  if (!item) return false;
+  if (['anixart', 'shikimori', 'anilibria', 'animevost'].includes(item.source)) return true;
+  if (item.media_type === 'anime-movie' || item.media_type === 'anime-series' || item.media_type === 'anime') return true;
+  if (item.original_language === 'ja') return true;
+  if (Array.isArray(item.origin_country) && item.origin_country.includes('JP')) return true;
+  if (typeof item.country === 'string' && /япон|japan/i.test(item.country)) return true;
+  if (Array.isArray(item.countries) && item.countries.some(c => /япон|japan/i.test(String(c)))) return true;
+  if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(item.original_title || '')) return true;
+
+  const link = (item.link || item.url || '').toLowerCase();
+  if (link.includes('-anime.html') || link.includes('/anime/') || link.includes('anime')) return true;
+  if (typeof item.category === 'string' && item.category.toLowerCase().includes('аниме')) return true;
+
+  const title = `${item.title || ''} ${item.original_title || ''}`.toLowerCase();
+  const animeKeywords = [
+    'аниме', 'anime',
+    'человек-бензопила', 'chainsaw man', 'резе', 'reze',
+    'сад изящных слов', 'garden of words', 'kotonoha no niwa',
+    'призрак в доспехах', 'ghost in the shell',
+    'война рохирримов', 'war of the rohirrim',
+    'клинок, рассекающий', 'клинок рассекающий', 'demon slayer', 'kimetsu',
+    'атака титанов', 'attack on titan', 'shingeki',
+    'магическая битва', 'jujutsu kaisen',
+    'форма голоса', 'silent voice', 'koe no katachi',
+    'твоё имя', 'твое имя', 'your name', 'kimi no na wa',
+    'дитя погоды', 'weathering with you',
+    'судзумэ', 'suzume',
+    'ходячий замок', 'howl\'s moving castle',
+    'унесённые призраками', 'унесенные призраками', 'spirited away',
+    'мой сосед тоторо', 'my neighbor totoro',
+    'принцесса мононоке', 'princess mononoke',
+    'ветер крепчает', 'wind rises',
+    'навсикая', 'nausicaa',
+    'могила светлячков', 'grave of the fireflies',
+    'шепот сердца', 'шёпот сердца', 'whisper of the heart',
+    'рыбка поньо', 'ponyo',
+    'акира', 'akira',
+    'евангелион', 'evangelion',
+    'ван-пис', 'ван пис', 'one piece',
+    'наруто', 'naruto', 'боруто', 'boruto',
+    'блич', 'bleach',
+    'тетрадь смерти', 'death note',
+    'берсерк', 'berserk',
+    'врата штейна', 'steins;gate',
+    'ковбой бибоп', 'cowboy bebop',
+    'хвост феи', 'fairy tail',
+    'семья шпиона', 'spy x family',
+    'дандадан', 'dandadan',
+    'кайджу № 8', 'кайджу 8', 'kaiju no. 8',
+    'гинтама', 'gintama',
+    'хантер х хантер', 'hunter x hunter',
+    'чёрный клевер', 'черный клевер', 'black clover',
+    'сейлор мун', 'sailor moon',
+    'токийский гуль', 'tokyo ghoul'
+  ];
+
+  if (animeKeywords.some(kw => title.includes(kw))) return true;
+
+  const genres = Array.isArray(item.genres) ? item.genres : (typeof item.genres === 'string' ? item.genres.split(',') : []);
+  if (genres.some(g => typeof g === 'string' && /аниме|anime/i.test(g))) return true;
+
+  return false;
 }
 
 async function loadCurrentTab() {
@@ -844,12 +910,16 @@ async function loadCurrentTab() {
     }
     renderFilteredCatalog();
   } else {
-    const baselineItems = getBaselineCatalog(category);
-    if (baselineItems && baselineItems.length > 0) {
-      rawCatalogItems = deduplicateMediaList(baselineItems);
-      totalCatalogPages = defPages;
-      totalCatalogItems = defPages * 20;
-      renderFilteredCatalog();
+    if (currentPage === 1) {
+      const baselineItems = getBaselineCatalog(category);
+      if (baselineItems && baselineItems.length > 0) {
+        rawCatalogItems = deduplicateMediaList(baselineItems);
+        totalCatalogPages = defPages;
+        totalCatalogItems = defPages * 20;
+        renderFilteredCatalog();
+      } else {
+        renderSkeletonGrid();
+      }
     } else {
       renderSkeletonGrid();
     }
@@ -891,7 +961,7 @@ async function loadCurrentTab() {
         }
       } catch {}
 
-      if (!rawCatalogItems || rawCatalogItems.length === 0) {
+      if (currentPage === 1 && (!rawCatalogItems || rawCatalogItems.length === 0)) {
         rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
         totalCatalogPages = defPages;
         totalCatalogItems = defPages * 20;
@@ -899,7 +969,7 @@ async function loadCurrentTab() {
       }
     }
   } catch (err) {
-    if (!rawCatalogItems || rawCatalogItems.length === 0) {
+    if (currentPage === 1 && (!rawCatalogItems || rawCatalogItems.length === 0)) {
       rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
       totalCatalogPages = defPages;
       totalCatalogItems = defPages * 20;
@@ -2323,8 +2393,8 @@ export function initFilterDropdowns() {
 
   // 4. Сортировка
   const sortOptions = [
+    { id: 'newest', name: 'По дате', icon: '📅' },
     { id: 'popular', name: 'По популярности', icon: '⚡' },
-    { id: 'newest', name: 'Сначала новинки', icon: '🆕' },
     { id: 'rating', name: 'По рейтингу', icon: '⭐' },
     { id: 'title', name: 'По названию (А-Я)', icon: '🔤' }
   ];
@@ -2356,11 +2426,11 @@ export function resetAllFilters() {
   currentYear = 'all';
   currentRating = 0;
   currentStatusFilter = 'all';
-  currentSort = 'popular';
+  currentSort = 'newest';
   currentFilterSheetGenre = 'all';
   currentFilterSheetYear = 'all';
   currentFilterSheetRating = 0;
-  currentFilterSheetSort = 'popular';
+  currentFilterSheetSort = 'newest';
   currentFilterSheetSource = 'all';
 
   const genreLabel = document.getElementById('filter-genre-label');
@@ -2376,7 +2446,7 @@ export function resetAllFilters() {
   if (statusLabel) statusLabel.textContent = 'Все статусы';
 
   const sortLabel = document.getElementById('filter-sort-label');
-  if (sortLabel) sortLabel.textContent = 'По популярности';
+  if (sortLabel) sortLabel.textContent = 'По дате';
 
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) resetBtn.style.display = 'none';
@@ -2394,7 +2464,7 @@ export function resetAllFilters() {
     el.classList.toggle('is-active', el.dataset.value === 'all');
   });
   document.querySelectorAll('#filter-sort-list .storm-dropdown-item').forEach(el => {
-    el.classList.toggle('is-active', el.dataset.value === 'popular');
+    el.classList.toggle('is-active', el.dataset.value === 'newest');
   });
 
   updateFilterBadge();
@@ -2403,7 +2473,7 @@ export function resetAllFilters() {
 
 export function renderFilteredCatalog() {
   const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-  const isFiltered = (!isSearching && (currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentStatusFilter !== 'all')) || currentSort !== 'popular';
+  const isFiltered = (!isSearching && (currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentStatusFilter !== 'all')) || currentSort !== 'newest';
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) {
     resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
@@ -2411,6 +2481,11 @@ export function renderFilteredCatalog() {
   updateFilterBadge();
 
   let items = [...rawCatalogItems];
+
+  // Исключаем аниме из Мультфильмов и Мультсериалов
+  if (currentTab === 'cartoons' || currentTab === 'cartoon-series') {
+    items = items.filter(item => !isAnimeItemClient(item));
+  }
 
   // 0. Детский режим (семейный контроль и фильтрация 18+)
   if (isKidModeActive()) {
@@ -2498,12 +2573,14 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 4. Сортировка: при поиске и фильтрах по умолчанию автоматически от новых к старым
+  // 4. Сортировка: по умолчанию ВЕЗДЕ по дате (от новых к старым)
   if (isSearching) {
     if (currentSort === 'rating') {
       items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
     } else if (currentSort === 'title') {
       items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+    } else if (currentSort === 'popular') {
+      items.sort((a, b) => (parseFloat(b.popularity || b.rating) || 0) - (parseFloat(a.popularity || a.rating) || 0));
     } else {
       items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
     }
@@ -2512,11 +2589,13 @@ export function renderFilteredCatalog() {
       items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
     } else if (currentSort === 'title') {
       items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+    } else if (currentSort === 'popular') {
+      items.sort((a, b) => (parseFloat(b.popularity || b.rating) || 0) - (parseFloat(a.popularity || a.rating) || 0));
     } else {
       items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
     }
-  } else if (currentSort === 'newest') {
-    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+  } else if (currentSort === 'popular') {
+    items.sort((a, b) => (parseFloat(b.popularity || b.rating) || 0) - (parseFloat(a.popularity || a.rating) || 0));
   } else if (currentSort === 'rating') {
     items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
   } else if (currentSort === 'title') {
@@ -2543,6 +2622,9 @@ export function renderFilteredCatalog() {
       if (diff !== 0) return diff;
       return (b.updated_at || 0) - (a.updated_at || 0);
     });
+  } else {
+    // По умолчанию ВЕЗДЕ по дате (новые первыми)
+    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
   }
 
   currentItems = items;
