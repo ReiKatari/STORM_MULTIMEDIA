@@ -17,6 +17,7 @@ import { toggleWhisperAiSubtitles } from './whisper-subtitles.js';
 import { saveMediaForOffline } from './offline-storage.js';
 import { renderTorrServerSettings } from './torrserver-client.js';
 import { applyProVideoSettings, initProAudioEngine, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -1061,25 +1062,8 @@ function renderQuickBarDropdowns() {
       const sStatusInfo = curMediaId ? getSeasonStatusInfo(curMediaId, s.season, totalEp, s.episodes) : { status: 'planned' };
       const curSeasonStatus = sStatusInfo.status;
       const isAllWatched = curSeasonStatus === 'completed' || (totalEp > 0 && watchedCount >= totalEp);
-
-      let statusIcon = '⚪';
-      let statusBadge = '';
-      if (isAllWatched) {
-        statusIcon = '✅';
-        statusBadge = `<span class="quick-status-pill pill-watched">✓ Просмотрен (${watchedCount}/${totalEp})</span>`;
-      } else if (watchedCount > 0) {
-        statusIcon = '⏳';
-        statusBadge = `<span class="quick-status-pill pill-progress">⏳ ${watchedCount}/${totalEp} сер.</span>`;
-      } else if (curSeasonStatus === 'on_hold') {
-        statusIcon = '⏸️';
-        statusBadge = `<span class="quick-status-pill pill-progress">⏸️ Отложен</span>`;
-      } else if (curSeasonStatus === 'dropped') {
-        statusIcon = '🛑';
-        statusBadge = `<span class="quick-status-pill pill-progress">🛑 Заброшен</span>`;
-      } else {
-        statusIcon = '⚪';
-        statusBadge = `<span class="quick-status-pill pill-new">⚪ ${totalEp} сер.</span>`;
-      }
+      const effectiveStatus = isAllWatched ? 'completed' : (curSeasonStatus || 'not_started');
+      const curStatusSvg = getStatusIconSvg(effectiveStatus, { size: 15, animated: true });
 
       return `
         <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-season="${s.season}">
@@ -1088,14 +1072,20 @@ function renderQuickBarDropdowns() {
           </div>
           <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0;">
             <span class="quick-count-badge" title="Просмотрено ${watchedCount} из ${totalEp} серий">${watchedCount}/${totalEp}</span>
-            <select class="storm-select quick-season-status-select-icon" data-season="${s.season}" title="Статус сезона" style="font-size: 12px; padding: 2px 4px; height: 26px; width: 36px; text-align: center; border-radius: 6px; background: rgba(18, 22, 34, 0.95); color: var(--text-primary); border: 1px solid var(--border-subtle); cursor: pointer;">
-              <option value="planned" ${curSeasonStatus === 'planned' ? 'selected' : ''} title="В планах">📋</option>
-              <option value="watching" ${curSeasonStatus === 'watching' ? 'selected' : ''} title="Смотрю">▶</option>
-              <option value="completed" ${curSeasonStatus === 'completed' || isAllWatched ? 'selected' : ''} title="Просмотрен">✓</option>
-              <option value="on_hold" ${curSeasonStatus === 'on_hold' ? 'selected' : ''} title="Отложен">⏸️</option>
-              <option value="dropped" ${curSeasonStatus === 'dropped' ? 'selected' : ''} title="Заброшен">🛑</option>
-              <option value="not_started" ${(!curSeasonStatus || curSeasonStatus === 'not_started') && !isAllWatched ? 'selected' : ''} title="Не начат">⚪</option>
-            </select>
+            <div class="quick-status-custom-dropdown" data-season="${s.season}">
+              <button type="button" class="quick-status-custom-trigger" title="Статус сезона: ${getStatusLabel(effectiveStatus)}">
+                ${curStatusSvg}
+                <span class="quick-status-arrow">▼</span>
+              </button>
+              <div class="quick-status-custom-menu" style="display: none;">
+                ${STATUS_LIST.map(st => `
+                  <button type="button" class="quick-status-option ${st.id === effectiveStatus ? 'active' : ''}" data-status="${st.id}">
+                    ${getStatusIconSvg(st.id, { size: 14, animated: false })}
+                    <span>${st.label}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
             <button type="button" class="quick-season-watch-toggle ${isAllWatched ? 'active' : ''}" data-toggle-season="${s.season}" title="${isAllWatched ? 'Снять отметку со всего сезона' : 'Отметить весь сезон просмотренным'}">
               ${isAllWatched ? '✖' : '✓'}
             </button>
@@ -1106,7 +1096,7 @@ function renderQuickBarDropdowns() {
 
     seasonList.querySelectorAll('.quick-dropdown-item').forEach(item => {
       item.onclick = (e) => {
-        if (e.target.closest('.quick-season-status-select-icon') || e.target.closest('.quick-season-watch-toggle')) {
+        if (e.target.closest('.quick-status-custom-dropdown') || e.target.closest('.quick-season-watch-toggle')) {
           return;
         }
         e.stopPropagation();
@@ -1118,22 +1108,49 @@ function renderQuickBarDropdowns() {
       };
     });
 
-    seasonList.querySelectorAll('.quick-season-status-select-icon').forEach(sel => {
-      sel.onclick = (e) => e.stopPropagation();
-      sel.onchange = async (e) => {
-        e.stopPropagation();
-        const sNum = parseInt(sel.dataset.season, 10);
-        const newStat = sel.value;
-        const targetSeason = quickBarSeriesData.seasons.find(x => x.season === sNum);
-        applySeasonStatus(curMediaId, sNum, newStat, targetSeason?.episodes || []);
-        if (newStat === 'completed') {
-          showToast(`Сезон ${sNum}: все серии отмечены как просмотренные`, 'success');
-        } else {
-          showToast(`Сезон ${sNum}: статус обновлен`, 'info');
-        }
-        await syncOverallSeriesProgress(currentMedia);
-        renderQuickBarDropdowns();
-      };
+    seasonList.querySelectorAll('.quick-status-custom-dropdown').forEach(dd => {
+      const trigger = dd.querySelector('.quick-status-custom-trigger');
+      const menu = dd.querySelector('.quick-status-custom-menu');
+      const sNum = parseInt(dd.dataset.season, 10);
+
+      if (trigger && menu) {
+        trigger.onclick = (e) => {
+          e.stopPropagation();
+          const isOpen = dd.classList.contains('is-open');
+          seasonList.querySelectorAll('.quick-status-custom-dropdown').forEach(other => {
+            if (other !== dd) {
+              other.classList.remove('is-open');
+              const om = other.querySelector('.quick-status-custom-menu');
+              if (om) om.style.display = 'none';
+            }
+          });
+          if (isOpen) {
+            dd.classList.remove('is-open');
+            menu.style.display = 'none';
+          } else {
+            dd.classList.add('is-open');
+            menu.style.display = 'flex';
+          }
+        };
+
+        menu.querySelectorAll('.quick-status-option').forEach(opt => {
+          opt.onclick = async (e) => {
+            e.stopPropagation();
+            const newStat = opt.dataset.status;
+            dd.classList.remove('is-open');
+            menu.style.display = 'none';
+            const targetSeason = quickBarSeriesData.seasons.find(x => x.season === sNum);
+            applySeasonStatus(curMediaId, sNum, newStat, targetSeason?.episodes || []);
+            if (newStat === 'completed') {
+              showToast(`Сезон ${sNum}: все серии отмечены как просмотренные`, 'success');
+            } else {
+              showToast(`Сезон ${sNum}: статус обновлен`, 'info');
+            }
+            await syncOverallSeriesProgress(currentMedia);
+            renderQuickBarDropdowns();
+          };
+        });
+      }
     });
 
     seasonList.querySelectorAll('.quick-season-watch-toggle').forEach(btn => {
@@ -1191,13 +1208,13 @@ function renderQuickBarDropdowns() {
 
       let statusIconBadge = '';
       if (isAct && isWatched) {
-        statusIconBadge = `<span class="quick-ep-status-icon is-current-watched" title="Текущая воспроизводимая серия (Просмотрено)">▶✓</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-current-watched" title="Текущая воспроизводимая серия (Просмотрено)">${getStatusIconSvg('completed', { size: 14, animated: true })}</span>`;
       } else if (isAct) {
-        statusIconBadge = `<span class="quick-ep-status-icon is-current" title="Текущая воспроизводимая серия">▶</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-current" title="Текущая воспроизводимая серия">${getStatusIconSvg('watching', { size: 14, animated: true })}</span>`;
       } else if (isWatched) {
-        statusIconBadge = `<span class="quick-ep-status-icon is-watched" title="Просмотрено">✓</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-watched" title="Просмотрено">${getStatusIconSvg('completed', { size: 14, animated: false })}</span>`;
       } else {
-        statusIconBadge = `<span class="quick-ep-status-icon is-unwatched" title="Не начата">⚪</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-unwatched" title="Не начата">${getStatusIconSvg('not_started', { size: 13, animated: false })}</span>`;
       }
 
       return `
@@ -1339,6 +1356,13 @@ function closeOtherQuickDropdowns(activeDropdownId) {
       }
     }
   });
+
+  document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(dd => {
+    dd.classList.remove('is-open');
+    const m = dd.querySelector('.quick-status-custom-menu');
+    if (m) m.style.display = 'none';
+  });
+
   if (!activeDropdownId) {
     document.body.classList.remove('quick-dropdown-active');
   }
@@ -1349,6 +1373,13 @@ function setupQuickBarOutsideListeners() {
   document.body.dataset.hasQuickBarListener = 'true';
 
   document.addEventListener('click', (e) => {
+    if (!e.target.closest('.quick-status-custom-dropdown')) {
+      document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(dd => {
+        dd.classList.remove('is-open');
+        const m = dd.querySelector('.quick-status-custom-menu');
+        if (m) m.style.display = 'none';
+      });
+    }
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar && !quickBar.contains(e.target)) {
       closeOtherQuickDropdowns(null);
@@ -4622,24 +4653,15 @@ function renderStatusButtons(currentStatus) {
   if (!statusContainer) return;
   statusContainer.innerHTML = '';
 
-  const statuses = [
-    { id: 'watching', icon: '👁️', label: t('status_watching') },
-    { id: 'planned', icon: '📋', label: t('status_plan') },
-    { id: 'completed', icon: '✅', label: t('status_completed') },
-    { id: 'favorite', icon: '❤️', label: t('status_favorite') },
-    { id: 'on_hold', icon: '⏸️', label: t('status_hold') },
-    { id: 'dropped', icon: '🛑', label: t('status_dropped') },
-    { id: 'wont_watch', icon: '🚫', label: t('status_wont_watch') }
-  ];
-
   const normStatus = currentStatus === 'plan' ? 'planned' : (currentStatus === 'hold' ? 'on_hold' : currentStatus);
 
-  statuses.forEach(s => {
+  STATUS_LIST.forEach(s => {
     const btn = document.createElement('button');
     btn.type = 'button';
     const isActive = normStatus === s.id;
     btn.className = `storm-btn storm-btn-sm ${isActive ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
-    btn.innerHTML = `<span style="font-size: 13px; line-height: 1;">${s.icon}</span> <span>${s.label}</span>`;
+    const svgIcon = getStatusIconSvg(s.id, { size: 15, animated: isActive });
+    btn.innerHTML = `<span style="display: inline-flex; align-items: center; justify-content: center; line-height: 1;">${svgIcon}</span> <span>${s.label}</span>`;
     btn.onclick = async () => {
       if (isActive) {
         // Повторный клик: отменяем статус и удаляем закладку
