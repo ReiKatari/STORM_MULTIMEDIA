@@ -236,9 +236,10 @@ function initBottomNav() {
         switchTab('bookmarks');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'more') {
-        const drawer = document.getElementById('mobile-drawer');
-        if (drawer) {
-          drawer.classList.add('is-open');
+        const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
+        if (drawerBackdrop) {
+          drawerBackdrop.classList.add('is-open');
+          updateMobileDrawerUser();
         }
       }
     });

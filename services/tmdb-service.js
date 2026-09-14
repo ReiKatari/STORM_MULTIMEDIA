@@ -742,3 +742,30 @@ async function getCollectionById(colId) {
   }
 }
 
+/**
+ * Поиск сериала по названию в базе TMDB для обогащения метаданными серий
+ */
+export async function findTmdbTvId(title) {
+  if (!title) return null;
+  const clean = String(title).replace(/\s*[\(\[]?\s*(4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+  if (!clean) return null;
+  const cacheKey = `tmdb_tv_search_${clean.toLowerCase()}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached) return cached;
+  try {
+    const url = `${TMDB_BASE}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(clean)}&language=ru-RU`;
+    const res = await tmdbFetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const id = String(data.results[0].id);
+        setCache('tmdb', cacheKey, id, 86400);
+        return id;
+      }
+    }
+  } catch (err) {
+    console.warn('Ошибка поиска сериала в TMDB:', err.message);
+  }
+  return null;
+}
+

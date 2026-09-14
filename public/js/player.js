@@ -962,7 +962,10 @@ async function initSeriesQuickBar(playerUrl) {
 
   quickBarBaseUrl = playerUrl;
   try {
-    const res = await fetch(`/api/player/series-options?url=${encodeURIComponent(playerUrl)}`);
+    const curMediaId = currentMedia?.id || '';
+    const mediaTitle = currentMedia?.title || currentMedia?.name || '';
+    const mediaTmdbId = currentMedia?.tmdb_id || '';
+    const res = await fetch(`/api/player/series-options?url=${encodeURIComponent(playerUrl)}&title=${encodeURIComponent(mediaTitle)}&mediaId=${encodeURIComponent(curMediaId)}&tmdbId=${encodeURIComponent(mediaTmdbId)}`);
     if (!res.ok) {
       quickBar.style.display = 'none';
       return;
@@ -976,8 +979,8 @@ async function initSeriesQuickBar(playerUrl) {
     quickBarSeriesData = data;
     quickBar.style.display = 'flex';
 
-    quickBarActiveSeason = data.active?.season || data.seasons[0].season || 1;
-    quickBarActiveEpisode = data.active?.episode || 1;
+    quickBarActiveSeason = (data.active?.season !== undefined && Number.isFinite(data.active.season)) ? data.active.season : (data.seasons[0].season || 1);
+    quickBarActiveEpisode = (data.active?.episode !== undefined && Number.isFinite(data.active.episode)) ? data.active.episode : 1;
     quickBarActiveTranslationId = data.active?.id_translation || null;
 
     // Умный выбор озвучки: проверяем любимую студию пользователя
@@ -1119,7 +1122,7 @@ function renderQuickBarDropdowns() {
   const curEpWatched = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).has(quickBarActiveEpisode) : false;
   const epIconEl = epTrigger ? epTrigger.querySelector('.quick-dropdown-icon') : null;
   if (epIconEl) {
-    epIconEl.textContent = curEpWatched ? '✅' : '🎬';
+    epIconEl.textContent = '🎬';
   }
   if (epVal) {
     epVal.textContent = currentEpisodeObj ? currentEpisodeObj.name : `${quickBarActiveEpisode} серия`;
@@ -1132,24 +1135,29 @@ function renderQuickBarDropdowns() {
       const isWatched = watchedEpisodes.has(ep.episode);
       const isAct = ep.episode === quickBarActiveEpisode;
 
-      let statusIcon = '⚪';
+      let statusIcon = '🎬';
       let statusBadge = '';
       if (isAct) {
-        statusIcon = isWatched ? '✅' : '▶️';
-        statusBadge = `<span class="quick-status-pill pill-current">▶ Текущая</span>${isWatched ? ' <span class="quick-status-pill pill-watched">✓</span>' : ''}`;
+        statusIcon = '▶️';
+        statusBadge = `<span class="quick-status-pill pill-current">▶ Текущая</span>`;
       } else if (isWatched) {
-        statusIcon = '✅';
+        statusIcon = '🎬';
         statusBadge = `<span class="quick-status-pill pill-watched">✓ Просмотрено</span>`;
       } else {
-        statusIcon = '⚪';
+        statusIcon = '🎬';
         statusBadge = `<span class="quick-status-pill pill-unwatched">⚪ Не начата</span>`;
       }
+
+      const epDesc = ep.overview ? `<span class="quick-item-sub" style="font-size:11px;color:var(--text-muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;line-height:1.2;margin-top:2px;">${ep.overview}</span>` : '';
 
       return `
         <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-episode="${ep.episode}">
           <div class="quick-item-left">
             <span class="quick-item-icon">${statusIcon}</span>
-            <span class="quick-item-title">${ep.name}</span>
+            <div style="min-width: 0; flex: 1;">
+              <span class="quick-item-title">${ep.name}</span>
+              ${epDesc}
+            </div>
           </div>
           <div class="quick-item-right">
             ${statusBadge}
@@ -4064,11 +4072,11 @@ function markEpisodeWatched(mediaId, seasonOrEp, maybeEpisode, maybeWatched) {
   let watched = true;
 
   if (maybeEpisode !== undefined) {
-    seasonNum = Number(seasonOrEp) || 1;
-    episodeNum = Number(maybeEpisode) || 1;
+    seasonNum = (seasonOrEp !== undefined && !isNaN(Number(seasonOrEp))) ? Number(seasonOrEp) : 1;
+    episodeNum = (maybeEpisode !== undefined && !isNaN(Number(maybeEpisode))) ? Number(maybeEpisode) : 1;
     if (maybeWatched !== undefined) watched = Boolean(maybeWatched);
   } else {
-    episodeNum = Number(seasonOrEp) || 1;
+    episodeNum = (seasonOrEp !== undefined && !isNaN(Number(seasonOrEp))) ? Number(seasonOrEp) : 1;
   }
 
   try {
@@ -4088,8 +4096,8 @@ function markEpisodeWatched(mediaId, seasonOrEp, maybeEpisode, maybeWatched) {
 }
 
 function toggleEpisodeWatched(mediaId, seasonNum = 1, episodeNum = 1) {
-  const sNum = Number(seasonNum) || 1;
-  const epNum = Number(episodeNum);
+  const sNum = (seasonNum !== undefined && !isNaN(Number(seasonNum))) ? Number(seasonNum) : 1;
+  const epNum = (episodeNum !== undefined && !isNaN(Number(episodeNum))) ? Number(episodeNum) : 1;
   const watchedSet = getWatchedEpisodes(mediaId, sNum);
   const isWatched = watchedSet.has(epNum);
   markEpisodeWatched(mediaId, sNum, epNum, !isWatched);
