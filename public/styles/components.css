@@ -5905,6 +5905,366 @@ body.player-dropdown-active .cinema-player-iframe {
   }
 }
 
+/* ==========================================================================
+   STORM CleanView™ & AdShield Styles
+   ========================================================================== */
+
+.storm-cleanview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.storm-watermark-mask {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+}
+
+.storm-watermark-mask.mode-blur {
+  backdrop-filter: blur(18px) contrast(0.85) brightness(0.9);
+  -webkit-backdrop-filter: blur(18px) contrast(0.85) brightness(0.9);
+  background: rgba(10, 11, 16, 0.5);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.7);
+}
+
+.storm-watermark-mask.mode-blackout {
+  background: #000000;
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.85);
+}
+
+.storm-watermark-mask .storm-mask-label {
+  display: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #00d2ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.storm-watermark-mask.is-customizing {
+  pointer-events: auto;
+  border: 2px dashed #00d2ff;
+  background: rgba(0, 210, 255, 0.15) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 24px rgba(0, 210, 255, 0.4);
+  cursor: move;
+}
+
+.storm-watermark-mask.is-customizing .storm-mask-label {
+  display: block;
+}
+
+.storm-watermark-mask .storm-mask-handle {
+  display: none;
+  position: absolute;
+}
+
+.storm-watermark-mask.is-customizing .storm-mask-handle {
+  display: flex;
+}
+
+.storm-watermark-mask .handle-drag {
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  background: #00d2ff;
+  color: #000;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: bold;
+  align-items: center;
+  justify-content: center;
+  cursor: move;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.storm-watermark-mask .handle-br {
+  right: -5px;
+  bottom: -5px;
+  width: 14px;
+  height: 14px;
+  background: #00d2ff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: se-resize;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Плавающий бейдж CleanView в оверлее плеера */
+.storm-cleanview-floating-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  border-radius: 20px;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 210, 255, 0.2);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s, box-shadow 0.2s;
+  pointer-events: auto;
+}
+
+.storm-cleanview-floating-badge:hover {
+  transform: translateY(-1px) scale(1.03);
+  border-color: #00d2ff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 210, 255, 0.4);
+}
+
+.storm-cleanview-floating-badge .badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+  transition: background-color 0.2s;
+}
+
+.storm-cleanview-floating-badge .badge-dot.active {
+  background: #00ff66;
+  box-shadow: 0 0 8px #00ff66;
+}
+
+/* Модальная панель настроек CleanView */
+.storm-cleanview-panel {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  background: rgba(5, 7, 12, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: stormFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.storm-cleanview-panel.is-open {
+  display: flex;
+}
+
+.storm-cleanview-panel .cleanview-card {
+  width: 100%;
+  max-width: 540px;
+  background: linear-gradient(180deg, rgba(20, 27, 45, 0.96) 0%, rgba(10, 15, 26, 0.98) 100%);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 210, 255, 0.15);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.storm-cleanview-panel .cleanview-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.storm-cleanview-panel .cleanview-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+
+.storm-cleanview-panel .cleanview-subtitle {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+.storm-cleanview-panel .cleanview-close-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.storm-cleanview-panel .cleanview-close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.storm-cleanview-panel .cleanview-body {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.storm-cleanview-panel .cleanview-feature-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 16px;
+  border-radius: 12px;
+}
+
+.storm-cleanview-panel .feature-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.storm-cleanview-panel .feature-desc {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.storm-cleanview-panel .cleanview-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+.storm-cleanview-panel .cleanview-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.storm-cleanview-panel .cleanview-preset-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.storm-cleanview-panel .cleanview-preset-btn:hover {
+  background: rgba(0, 210, 255, 0.08);
+  border-color: rgba(0, 210, 255, 0.3);
+}
+
+.storm-cleanview-panel .cleanview-preset-btn.active {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: #00d2ff;
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.25);
+}
+
+.storm-cleanview-panel .preset-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.storm-cleanview-panel .preset-desc {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.storm-cleanview-panel .cleanview-styles-row {
+  display: flex;
+  gap: 10px;
+}
+
+.storm-cleanview-panel .cleanview-style-chip {
+  flex: 1;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.storm-cleanview-panel .cleanview-style-chip:hover {
+  border-color: rgba(0, 210, 255, 0.3);
+  color: #fff;
+}
+
+.storm-cleanview-panel .cleanview-style-chip.active {
+  background: rgba(0, 210, 255, 0.16);
+  border-color: #00d2ff;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
+}
+
+.storm-cleanview-panel .cleanview-customize-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 210, 255, 0.04);
+  border: 1px dashed rgba(0, 210, 255, 0.25);
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.storm-cleanview-panel .customize-hint {
+  font-size: 10.5px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.storm-cleanview-panel .cleanview-footer {
+  padding: 14px 22px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.storm-cleanview-panel .cleanview-status-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #00ff66;
+}
+
 
 
 

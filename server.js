@@ -2560,7 +2560,26 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                   applySpeedToPlayerJS(sp);
                 }
               }
-            });
+            // STORM CleanView: In-Iframe Ad Neutralizer
+            (function() {
+              setInterval(function() {
+                try {
+                  var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"]');
+                  for (var i = 0; i < skipBtns.length; i++) {
+                    if (skipBtns[i].offsetParent !== null) skipBtns[i].click();
+                  }
+                  var vids = document.querySelectorAll('video');
+                  for (var j = 0; j < vids.length; j++) {
+                    var v = vids[j];
+                    if (v.duration && v.duration < 65 && v.duration > 2) {
+                      v.muted = true;
+                      v.playbackRate = 16;
+                      if (v.currentTime < v.duration - 0.4) v.currentTime = v.duration - 0.2;
+                    }
+                  }
+                } catch(e) {}
+              }, 300);
+            })();
           })();
           </script>
           <style>

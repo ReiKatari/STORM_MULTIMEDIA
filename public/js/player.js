@@ -18,6 +18,7 @@ import { saveMediaForOffline } from './offline-storage.js';
 import { renderTorrServerSettings } from './torrserver-client.js';
 import { applyProVideoSettings, initProAudioEngine, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js';
 import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -624,6 +625,9 @@ export function closePlayerModal() {
 
     const personModal = document.getElementById('person-modal');
     if (personModal) personModal.classList.remove('is-open');
+
+    const cvPanel = document.getElementById('storm-cleanview-panel');
+    if (cvPanel) cvPanel.classList.remove('is-open');
   }
 }
 
@@ -1732,6 +1736,7 @@ function playStreamUrl(url) {
   const iframeBox = container.querySelector('.player-video-box');
   if (iframeBox) {
     mountInPlayerOverlay(iframeBox);
+    mountCleanViewOverlay(iframeBox);
   }
 
   const vpnAssist = container.querySelector('#storm-player-vpn-assist');
@@ -1843,6 +1848,9 @@ function setupVideoFeatures(video, wrapper) {
   // 6. Профессиональный движок видео и звука (HDR, CAS, Dolby Atmos 3D, EQ)
   applyProVideoSettings(video);
   initProAudioEngine(video);
+
+  // 7. STORM CleanView & AdShield
+  mountCleanViewOverlay(wrapper);
 
   // 7. X-Ray режим на паузе
   setupXRayMode(video, wrapper);
@@ -3913,6 +3921,10 @@ function renderPlayerUtilityButtons() {
             <span class="studio-tab-icon">👥</span>
             <span class="studio-tab-text">Кинокомната</span>
           </button>
+          <button type="button" class="studio-tab-btn" id="studio-tab-cleanview" title="STORM CleanView: автоматический пропуск рекламы и вырезание водяных знаков">
+            <span class="studio-tab-icon">🛡️</span>
+            <span class="studio-tab-text">CleanView</span>
+          </button>
         </div>
 
         <div class="studio-quick-actions">
@@ -4241,6 +4253,14 @@ function renderPlayerUtilityButtons() {
           shareBtn.onclick = () => copyMediaShareLink();
         }
       });
+    };
+  }
+
+  // 7. STORM CleanView & AdShield
+  const tabCleanView = container.querySelector('#studio-tab-cleanview');
+  if (tabCleanView) {
+    tabCleanView.onclick = () => {
+      toggleCleanViewModal();
     };
   }
 
