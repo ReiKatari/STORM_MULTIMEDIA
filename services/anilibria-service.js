@@ -73,7 +73,7 @@ export async function getAniLibriaCatalog(category = 'popular', page = 1) {
     let url = `${ANILIBRIA_BASE}/anime/catalog/releases?page=${pageNum}&limit=30`;
 
     if (category === 'new') {
-      url = `${ANILIBRIA_BASE}/anime/releases/latest?limit=30`;
+      url = `${ANILIBRIA_BASE}/anime/catalog/releases?page=${pageNum}&limit=30`;
     } else if (category === 'anime-movies') {
       url = `${ANILIBRIA_BASE}/anime/catalog/releases?types=MOVIE&page=${pageNum}&limit=30`;
     } else if (category === 'anime-series') {

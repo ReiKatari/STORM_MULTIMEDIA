@@ -2099,15 +2099,43 @@ button:active .storm-status-svg {
 }
 
 /* ==========================================================================
-   СКЕЛЕТОНЫ ЗАГРУЗКИ (SKELETON CARDS UI)
+   СКЕЛЕТОНЫ И ПЛАВНАЯ АНИМАЦИЯ КАРТОЧЕК (SKELETON CARDS AND ENTRANCE)
    ========================================================================== */
+.media-card,
+.storm-card,
+.media-detailed-card {
+  animation: stormCardEntrance 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes stormCardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .storm-skeleton-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-  animation: stormShimmer 1.5s infinite ease-in-out;
+  animation: stormSkeletonFade 0.2s ease both, stormShimmer 1.5s infinite ease-in-out;
+}
+
+@keyframes stormSkeletonFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .storm-skeleton-poster {
