@@ -903,14 +903,23 @@ export function logWatchProgress(userId, data) {
 
 export function getContinueWatching(userId, limit = 12) {
   const query = `
-    SELECT * FROM watch_history
-    WHERE user_id = ? AND progress_percent < 95
-    ORDER BY updated_at DESC
+    SELECT w.*, b.status as bookmark_status FROM watch_history w
+    LEFT JOIN bookmarks b ON b.user_id = w.user_id AND (
+      (b.media_id = w.media_id AND b.source = w.source) OR
+      (LOWER(TRIM(b.title)) = LOWER(TRIM(w.title)))
+    )
+    WHERE w.user_id = ? 
+      AND w.progress_percent < 95
+      AND (b.status IS NULL OR b.status NOT IN ('completed', 'dropped', 'wont_watch'))
+    ORDER BY w.updated_at DESC
   `;
   const allRows = db.prepare(query).all(userId);
 
   const canonicalMap = new Map();
   for (const row of allRows) {
+    if (row.bookmark_status && ['completed', 'dropped', 'wont_watch'].includes(row.bookmark_status)) {
+      continue;
+    }
     const key = normalizeMediaKey(row.title) || `${row.source}_${row.media_id}`;
     if (!canonicalMap.has(key)) {
       canonicalMap.set(key, row);
