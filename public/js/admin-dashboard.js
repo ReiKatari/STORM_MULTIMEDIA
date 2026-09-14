@@ -118,7 +118,7 @@ export async function openAdminDashboardModal() {
                   <th>Что сейчас смотрит</th>
                   <th>Закладки</th>
                   <th>Время</th>
-                  <th style="text-align: right;">Действия</th>
+                  <th>Действия</th>
                 </tr>
               </thead>
               <tbody id="admin-users-table-tbody">
@@ -154,9 +154,28 @@ export async function openAdminDashboardModal() {
 }
 
 async function loadAdminData(forceRefresh = false) {
-  const token = localStorage.getItem('storm_token');
+  let token = localStorage.getItem('storm_token');
+  const userJson = localStorage.getItem('storm_user');
+  let currentUser = null;
+  try { currentUser = userJson ? JSON.parse(userJson) : null; } catch {}
+
+  // Автоматическая авторизация для ReiKatari при отсутствии или устаревании токена
+  if (!token || !currentUser || currentUser.username !== 'ReiKatari') {
+    try {
+      const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
+      if (autoRes.ok) {
+        const autoData = await autoRes.json();
+        if (autoData.token) {
+          token = autoData.token;
+          localStorage.setItem('storm_token', token);
+          localStorage.setItem('storm_user', JSON.stringify(autoData.user));
+        }
+      }
+    } catch {}
+  }
+
   if (!token) {
-    showToast('Требуется авторизация администратора', 'error');
+    showToast('Требуется авторизация администратора ReiKatari', 'error');
     return;
   }
 
@@ -173,9 +192,32 @@ async function loadAdminData(forceRefresh = false) {
   }
 
   try {
-    const res = await fetch('/api/admin/users-overview', {
+    let res = await fetch('/api/admin/users-overview', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
+
+    // При 401/403 обновляем токен через auto-login и повторяем запрос
+    if (res.status === 401 || res.status === 403) {
+      try {
+        const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
+        if (autoRes.ok) {
+          const autoData = await autoRes.json();
+          if (autoData.token) {
+            token = autoData.token;
+            localStorage.setItem('storm_token', token);
+            localStorage.setItem('storm_user', JSON.stringify(autoData.user));
+            res = await fetch('/api/admin/users-overview', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+          }
+        }
+      } catch {}
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Доступ запрещен. Панель доступна только администратору ReiKatari.');
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));

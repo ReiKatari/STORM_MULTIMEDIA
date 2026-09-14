@@ -5203,22 +5203,39 @@ body.player-dropdown-active .cinema-player-iframe {
 .admin-users-table th {
   padding: 12px 16px;
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  text-align: center !important;
   position: sticky;
   top: 0;
   z-index: 5;
 }
 
+.admin-users-table th:last-child {
+  border-right: none;
+}
+
 .admin-users-table td {
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--border-subtle);
   vertical-align: middle;
   font-size: 13px;
+}
+
+.admin-users-table td:last-child {
+  border-right: none;
+}
+
+[data-theme="STORM DAY"] .admin-users-table th,
+[data-theme="STORM DAY"] .admin-users-table td {
+  border-right: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .admin-user-row:hover {

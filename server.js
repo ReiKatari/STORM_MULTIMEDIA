@@ -78,7 +78,8 @@ import {
   getTmdbItemDetails,
   getTmdbSeasonEpisodes,
   getTmdbPersonMedia,
-  getTmdbFranchise
+  getTmdbFranchise,
+  findTmdbTvId
 } from './services/tmdb-service.js';
 
 import {
@@ -1760,7 +1761,8 @@ app.get('/api/media/series-episodes', async (req, res) => {
     if (!tvId) {
       return res.status(400).json({ error: 'Укажите tvId' });
     }
-    const data = await getTmdbSeasonEpisodes(tvId, parseInt(season, 10) || 1);
+    const sNum = (season !== undefined && !isNaN(parseInt(season, 10))) ? parseInt(season, 10) : 1;
+    const data = await getTmdbSeasonEpisodes(tvId, sNum);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1833,21 +1835,6 @@ app.get('/api/media/franchise', async (req, res) => {
     return res.json({ franchise_name: null, total: 0, items: [] });
   } catch (err) {
     console.error('[Franchise Endpoint Error]:', err.message);
-    res.status(500).json({ error: err.message, items: [] });
-  }
-});
-
-// ==========================================
-// РАСПИСАНИЕ ВЫХОДА СЕРИЙ И ОНГОИНГОВ
-// ==========================================
-
-// Получение актуального расписания выхода серий и онгоингов на 2 недели
-app.get('/api/media/schedule', async (req, res) => {
-  try {
-    const week = req.query.week === 'next' ? 'next' : 'current';
-    const result = await getAggregatedSchedule(week);
-    res.json(result);
-  } catch (err) {
     res.status(500).json({ error: err.message, items: [] });
   }
 });
@@ -2271,7 +2258,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 // Получение списка доступных сезонов, серий и студийных озвучек с определением 4K UHD
 app.get('/api/player/series-options', async (req, res) => {
   try {
-    const { url: targetUrl } = req.query;
+    const { url: targetUrl, title: mediaTitle, mediaId, tmdbId } = req.query;
     if (!targetUrl) {
       return res.status(400).json({ success: false, error: 'URL не указан' });
     }
@@ -2373,6 +2360,15 @@ app.get('/api/player/series-options', async (req, res) => {
       });
     }
 
+    // Определение TMDB ID сериала для обогащения метаданными эпизодов
+    let resolvedTvId = tmdbId ? String(tmdbId).replace('tmdb_', '').trim() : null;
+    if (!resolvedTvId && mediaId && String(mediaId).startsWith('tmdb_')) {
+      resolvedTvId = String(mediaId).replace('tmdb_', '').trim();
+    }
+    if (!resolvedTvId && mediaTitle) {
+      resolvedTvId = await findTmdbTvId(mediaTitle);
+    }
+
     const seasons = [];
     const seasonKeys = Object.keys(parsed.all).sort((a, b) => Number(a) - Number(b));
 
@@ -2381,10 +2377,24 @@ app.get('/api/player/series-options', async (req, res) => {
       const epKeys = Object.keys(epObj).sort((a, b) => Number(a) - Number(b));
       const episodes = [];
 
+      let tmdbEpisodesMap = new Map();
+      if (resolvedTvId) {
+        try {
+          const tmdbSeasonData = await getTmdbSeasonEpisodes(resolvedTvId, Number(sNum));
+          if (tmdbSeasonData && Array.isArray(tmdbSeasonData.episodes)) {
+            for (const ep of tmdbSeasonData.episodes) {
+              tmdbEpisodesMap.set(ep.episode_number, ep);
+            }
+          }
+        } catch {}
+      }
+
       for (const epNum of epKeys) {
         const transObj = epObj[epNum];
-        const translations = [];
+        const numEp = Number(epNum);
+        const tmdbEp = tmdbEpisodesMap.get(numEp);
 
+        const translations = [];
         for (const [key, t] of Object.entries(transObj)) {
           translations.push({
             id: t.id_translation,
@@ -2401,9 +2411,17 @@ app.get('/api/player/series-options', async (req, res) => {
           return a.name.localeCompare(b.name, 'ru');
         });
 
+        const epTitle = (tmdbEp && tmdbEp.name && tmdbEp.name !== `Серия ${numEp}`)
+          ? `${numEp}. ${tmdbEp.name}`
+          : `Серия ${numEp}`;
+
         episodes.push({
-          episode: Number(epNum),
-          name: `Серия ${epNum}`,
+          episode: numEp,
+          name: epTitle,
+          overview: tmdbEp?.overview || '',
+          still: tmdbEp?.still || '',
+          duration: tmdbEp?.duration || '',
+          air_date: tmdbEp?.air_date || '',
           translations
         });
       }
