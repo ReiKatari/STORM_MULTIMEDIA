@@ -171,20 +171,19 @@ async function loadAdminData(forceRefresh = false) {
   let currentUser = null;
   try { currentUser = userJson ? JSON.parse(userJson) : null; } catch {}
 
-  // Автоматическая авторизация для ReiKatari / ReiKatari@outlook.com
   if (!token || !currentUser || !isReiKatariAdminUser(currentUser)) {
-    try {
-      const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
-      if (autoRes.ok) {
-        const autoData = await autoRes.json();
-        if (autoData.token) {
-          token = autoData.token;
-          localStorage.setItem('storm_token', token);
-          localStorage.setItem('storm_user', JSON.stringify(autoData.user));
-          currentUser = autoData.user;
-        }
-      }
-    } catch {}
+    const tbody = document.getElementById('admin-users-table-tbody');
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 40px; color: #ff3366;">
+            🔒 Доступ ограничен. Войдите под учётной записью администратора.
+          </td>
+        </tr>
+      `;
+    }
+    showToast('Требуется авторизация администратора', 'error');
+    return;
   }
 
   const tbody = document.getElementById('admin-users-table-tbody');
@@ -200,40 +199,12 @@ async function loadAdminData(forceRefresh = false) {
   }
 
   try {
-    if (!token) {
-      try {
-        const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
-        if (autoRes.ok) {
-          const autoData = await autoRes.json();
-          if (autoData.token) {
-            token = autoData.token;
-            localStorage.setItem('storm_token', token);
-            localStorage.setItem('storm_user', JSON.stringify(autoData.user));
-          }
-        }
-      } catch {}
-    }
-
     let res = await fetch('/api/admin/users-overview', {
       headers: { 'Authorization': `Bearer ${token || ''}` }
     });
 
-    // При 401/403 или ошибке доступа выполняем переавторизацию ReiKatari и повторяем
     if (res.status === 401 || res.status === 403) {
-      try {
-        const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
-        if (autoRes.ok) {
-          const autoData = await autoRes.json();
-          if (autoData.token) {
-            token = autoData.token;
-            localStorage.setItem('storm_token', token);
-            localStorage.setItem('storm_user', JSON.stringify(autoData.user));
-            res = await fetch('/api/admin/users-overview', {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-          }
-        }
-      } catch {}
+      throw new Error('Сессия администратора истекла или нет прав доступа');
     }
 
     const contentType = res.headers.get('content-type') || '';

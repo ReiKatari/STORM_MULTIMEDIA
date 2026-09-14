@@ -506,13 +506,23 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
-app.post('/api/auth/auto-login', (req, res) => {
-  try {
-    const session = getOrCreateDefaultUserSession();
-    res.json(session);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+app.post('/api/admin/restart', (req, res) => {
+  const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
+  let currentUser = req.user;
+  const isAdmin = currentUser && (
+    (currentUser.username || '').toLowerCase() === 'reikatari' ||
+    (currentUser.role || '').toLowerCase() === 'admin'
+  );
+
+  if (!isLocal && !isAdmin) {
+    return res.status(403).json({ error: 'Access denied' });
   }
+
+  res.json({ success: true, message: 'Server process restarting' });
+  setTimeout(() => {
+    console.log('[Server] Restart requested. Exiting process...');
+    process.exit(0);
+  }, 400);
 });
 
 app.post('/api/auth/logout', (req, res) => {

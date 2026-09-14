@@ -63,24 +63,8 @@ export function showToast(message, type = 'info') {
 
 export async function checkAuth() {
   if (!currentToken) {
-    // Попытка автоматической авторизации владельца/администратора
-    try {
-      const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
-      if (autoRes.ok) {
-        const autoData = await autoRes.json();
-        if (autoData && autoData.token && autoData.user) {
-          currentToken = autoData.token;
-          currentUser = autoData.user;
-          localStorage.setItem('storm_token', currentToken);
-          localStorage.setItem('storm_user', JSON.stringify(currentUser));
-          updateAuthUI();
-          notifyAuthChanged();
-          return currentUser;
-        }
-      }
-    } catch {}
-
     currentUser = null;
+    localStorage.removeItem('storm_token');
     localStorage.removeItem('storm_user');
     updateAuthUI();
     notifyAuthChanged();
