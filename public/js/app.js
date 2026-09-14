@@ -270,6 +270,43 @@ function initBottomNav() {
 }
 
 // -------------------------------------------------------------
+// ВСЕ ЖАНРЫ КАТАЛОГА МЕДИА (ALL CATALOG GENRES)
+// -------------------------------------------------------------
+export const ALL_CATALOG_GENRES = [
+  { id: 'all', name: 'Все жанры', label: 'Все жанры', icon: '🎭' },
+  { id: 'боевик', name: 'Боевик', label: 'Боевик', icon: '💥' },
+  { id: 'комедия', name: 'Комедия', label: 'Комедия', icon: '😄' },
+  { id: 'драма', name: 'Драма', label: 'Драма', icon: '🎭' },
+  { id: 'фантастика', name: 'Фантастика', label: 'Фантастика', icon: '🚀' },
+  { id: 'триллер', name: 'Триллер', label: 'Триллер', icon: '🔪' },
+  { id: 'ужасы', name: 'Ужасы', label: 'Ужасы', icon: '👻' },
+  { id: 'приключения', name: 'Приключения', label: 'Приключения', icon: '🧭' },
+  { id: 'фэнтези', name: 'Фэнтези', label: 'Фэнтези', icon: '🧙' },
+  { id: 'аниме', name: 'Аниме', label: 'Аниме', icon: '🌸' },
+  { id: 'детектив', name: 'Детектив', label: 'Детектив', icon: '🕵️' },
+  { id: 'мультфильм', name: 'Мультфильм', label: 'Мультфильм', icon: '🎨' },
+  { id: 'семейный', name: 'Семейный', label: 'Семейный', icon: '👨‍👩‍👧' },
+  { id: 'криминал', name: 'Криминал', label: 'Криминал', icon: '🔫' },
+  { id: 'мелодрама', name: 'Мелодрама', label: 'Мелодрама', icon: '❤️' },
+  { id: 'военный', name: 'Военный', label: 'Военный', icon: '🎖️' },
+  { id: 'документальный', name: 'Документальный', label: 'Документальный', icon: '📽️' },
+  { id: 'мистика', name: 'Мистика', label: 'Мистика', icon: '🔮' },
+  { id: 'биография', name: 'Биография', label: 'Биография', icon: '📜' },
+  { id: 'история', name: 'История', label: 'История', icon: '🏛️' },
+  { id: 'спорт', name: 'Спорт', label: 'Спорт', icon: '🏆' },
+  { id: 'мюзикл', name: 'Мюзикл', label: 'Мюзикл', icon: '🎵' },
+  { id: 'музыка', name: 'Музыка', label: 'Музыка', icon: '🎶' },
+  { id: 'вестерн', name: 'Вестерн', label: 'Вестерн', icon: '🤠' },
+  { id: 'короткометражка', name: 'Короткометражка', label: 'Короткометражка', icon: '⏱️' },
+  { id: 'фильм-нуар', name: 'Фильм-нуар', label: 'Фильм-нуар', icon: '🕶️' },
+  { id: 'сказка', name: 'Сказка', label: 'Сказка', icon: '🦄' },
+  { id: 'детский', name: 'Детский', label: 'Детский', icon: '🧸' },
+  { id: 'реальное тв', name: 'Реальное ТВ', label: 'Реальное ТВ', icon: '📺' },
+  { id: 'ток-шоу', name: 'Ток-шоу', label: 'Ток-шоу', icon: '🎙️' },
+  { id: 'игра', name: 'Игра', label: 'Игра', icon: '🎮' }
+];
+
+// -------------------------------------------------------------
 // МОБИЛЬНАЯ ШТОРКА ФИЛЬТРОВ И СОРТИРОВКИ (FILTER BOTTOM SHEET)
 // -------------------------------------------------------------
 let currentFilterSheetSort = 'popular';
@@ -343,18 +380,23 @@ function initFilterSheet() {
 
   if (applyBtn) {
     applyBtn.addEventListener('click', () => {
+      const prevSource = currentSource;
       currentSort = currentFilterSheetSort;
       currentRating = currentFilterSheetRating;
       currentYear = currentFilterSheetYear;
       currentGenre = currentFilterSheetGenre;
-      if (currentFilterSheetSource !== 'all') {
-        currentSource = currentFilterSheetSource;
-      }
-      
+      currentSource = currentFilterSheetSource;
+
       syncDesktopFilterLabels();
       updateFilterBadge();
       closeFilterSheet();
-      renderFilteredCatalog();
+
+      if (currentSource !== prevSource) {
+        currentPage = 1;
+        loadCatalog(currentTab, 1);
+      } else {
+        renderFilteredCatalog();
+      }
     });
   }
 
@@ -435,35 +477,41 @@ function populateFilterSheet() {
   }
 
   const genresContainer = document.getElementById('filter-sheet-genres');
-  if (genresContainer && rawCatalogItems && rawCatalogItems.length > 0) {
-    const genreCounts = new Map();
-    rawCatalogItems.forEach(item => {
-      if (Array.isArray(item.genres)) {
-        item.genres.forEach(g => {
-          if (typeof g === 'string') {
-            const name = g.trim();
-            if (name) genreCounts.set(name, (genreCounts.get(name) || 0) + 1);
-          }
-        });
-      } else if (typeof item.genres === 'string') {
-        item.genres.split(/[,/]/).forEach(g => {
-          const name = g.trim();
-          if (name) genreCounts.set(name, (genreCounts.get(name) || 0) + 1);
-        });
-      }
+  if (genresContainer) {
+    const genreMap = new Map();
+    ALL_CATALOG_GENRES.forEach(g => {
+      genreMap.set(g.id.toLowerCase(), {
+        id: g.id,
+        label: g.label || g.name,
+        icon: g.icon || '🎬'
+      });
     });
 
-    const topGenres = Array.from(genreCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 18)
-      .map(([name]) => name);
+    if (Array.isArray(rawCatalogItems) && rawCatalogItems.length > 0) {
+      rawCatalogItems.forEach(item => {
+        const itemGenres = Array.isArray(item.genres) ? item.genres : (typeof item.genres === 'string' ? item.genres.split(/[,/]/) : []);
+        itemGenres.forEach(g => {
+          if (typeof g === 'string') {
+            const clean = g.trim();
+            const id = clean.toLowerCase();
+            if (id && !genreMap.has(id)) {
+              genreMap.set(id, {
+                id,
+                label: clean.charAt(0).toUpperCase() + clean.slice(1),
+                icon: '🎬'
+              });
+            }
+          }
+        });
+      });
+    }
 
-    genresContainer.innerHTML = [
-      `<button type="button" class="filter-chip ${currentGenre === 'all' ? 'is-active' : ''}" data-genre="all">Все жанры</button>`,
-      ...topGenres.map(g => `
-        <button type="button" class="filter-chip ${currentGenre.toLowerCase() === g.toLowerCase() ? 'is-active' : ''}" data-genre="${g.toLowerCase()}">${g.charAt(0).toUpperCase() + g.slice(1)}</button>
-      `)
-    ].join('');
+    const allGenresList = Array.from(genreMap.values());
+    genresContainer.innerHTML = allGenresList.map(g => `
+      <button type="button" class="filter-chip ${currentFilterSheetGenre.toLowerCase() === g.id.toLowerCase() ? 'is-active' : ''}" data-genre="${g.id}">
+        ${g.icon ? `<span class="filter-chip-icon">${g.icon}</span> ` : ''}${g.label}
+      </button>
+    `).join('');
 
     genresContainer.querySelectorAll('.filter-chip').forEach(chip => {
       chip.addEventListener('click', () => {
@@ -732,12 +780,19 @@ function renderSkeletonGrid() {
 export function cleanVideoTitle(str) {
   if (!str) return '';
   let s = String(str).trim();
-  s = s.replace(/\s*постер\s*4[KkКк]/gi, '');
+  // Постер
+  s = s.replace(/\s*постер\s*4[\u004B\u006B\u041A\u043A]/gi, '');
   s = s.replace(/\s*постер/gi, '');
-  s = s.replace(/\s*[\(\[]?\s*(?:4[KkКк]|Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\s*[\)\]]?/gi, '');
-  s = s.replace(/\b(?:4[KkКк]|UHD|Ultra\s*HD|2160p|1080p|720p|480p|HDR|HDR10\+?|Remux|WEB-DL|BDRip|DVDRip)\b/gi, '');
-  s = s.replace(/\s*[\(\[]?\s*(?:фильм|сериал)\s*[\)\]]?/gi, '');
-  s = s.replace(/[-–—/]\s*$/, '').trim();
+  // Качество в скобках [4K], (1080p), [4К Ultra HD], (UHD 4K)
+  s = s.replace(/\s*[\(\[]\s*(?:4[\u004B\u006B\u041A\u043A]|Ultra\s*HD|UHD|2160[\u0050\u0070\u0420\u0440]|1080[\u0050\u0070\u0420\u0440]|720[\u0050\u0070\u0420\u0440]|480[\u0050\u0070\u0420\u0440]|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip|\s*[-/|]\s*)*\s*[\)\]]/gi, '');
+  // Качество отдельными словами/суффиксами
+  s = s.replace(/(?:^|\s+)4[\u004B\u006B\u041A\u043A](?:\s+(?:Ultra\s*HD|UHD))?(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
+  s = s.replace(/(?:^|\s+)(?:2160|1080|720|480)[\u0050\u0070\u0420\u0440](?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
+  s = s.replace(/(?:^|\s+)(?:Ultra\s*HD|UHD|HDR10\+?|HDR|Dolby\s*Vision|BDRip|DVDRip|WEB-DL|Remux)(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
+  // фильм / сериал в скобках
+  s = s.replace(/\s*[\(\[]\s*(?:фильм|сериал)\s*[\)\]]/gi, '');
+  // Хвостовые разделители
+  s = s.replace(/[-–—/|•]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -2363,31 +2418,6 @@ function setupFilterDropdown({ dropdownId, triggerId, labelId, menuId, searchId,
 
 export function initFilterDropdowns() {
   // 1. Жанры
-  const genres = [
-    { id: 'all', name: 'Все жанры', icon: '🎭' },
-    { id: 'боевик', name: 'Боевик', icon: '💥' },
-    { id: 'комедия', name: 'Комедия', icon: '😄' },
-    { id: 'драма', name: 'Драма', icon: '🎭' },
-    { id: 'фантастика', name: 'Фантастика', icon: '🚀' },
-    { id: 'триллер', name: 'Триллер', icon: '🔪' },
-    { id: 'ужасы', name: 'Ужасы', icon: '👻' },
-    { id: 'приключения', name: 'Приключения', icon: '🧭' },
-    { id: 'фэнтези', name: 'Фэнтези', icon: '🧙' },
-    { id: 'аниме', name: 'Аниме', icon: '🌸' },
-    { id: 'детектив', name: 'Детектив', icon: '🕵️' },
-    { id: 'мультфильм', name: 'Мультфильм', icon: '🎨' },
-    { id: 'семейный', name: 'Семейный', icon: '👨‍👩‍👧' },
-    { id: 'криминал', name: 'Криминал', icon: '🔫' },
-    { id: 'мелодрама', name: 'Мелодрама', icon: '❤️' },
-    { id: 'военный', name: 'Военный', icon: '🎖️' },
-    { id: 'документальный', name: 'Документальный', icon: '📽️' },
-    { id: 'мистика', name: 'Мистика', icon: '🔮' },
-    { id: 'биография', name: 'Биография', icon: '📜' },
-    { id: 'история', name: 'История', icon: '🏛️' },
-    { id: 'спорт', name: 'Спорт', icon: '🏆' },
-    { id: 'мюзикл', name: 'Мюзикл', icon: '🎵' }
-  ];
-
   setupFilterDropdown({
     dropdownId: 'filter-genre-dropdown',
     triggerId: 'filter-genre-trigger',
@@ -2395,7 +2425,7 @@ export function initFilterDropdowns() {
     menuId: 'filter-genre-menu',
     searchId: 'filter-genre-search',
     listId: 'filter-genre-list',
-    items: genres,
+    items: ALL_CATALOG_GENRES,
     getActiveVal: () => currentGenre,
     onSelect: (id) => {
       currentGenre = id;
@@ -2512,12 +2542,14 @@ export function initFilterDropdowns() {
 }
 
 export function resetAllFilters() {
+  const prevSource = currentSource;
   currentGenre = 'all';
   currentCountry = 'all';
   currentYear = 'all';
   currentRating = 0;
   currentStatusFilter = 'all';
   currentSort = 'newest';
+  currentSource = 'all';
   currentFilterSheetGenre = 'all';
   currentFilterSheetYear = 'all';
   currentFilterSheetRating = 0;
@@ -2559,7 +2591,12 @@ export function resetAllFilters() {
   });
 
   updateFilterBadge();
-  renderFilteredCatalog();
+  if (prevSource !== 'all') {
+    currentPage = 1;
+    loadCatalog(currentTab, 1);
+  } else {
+    renderFilteredCatalog();
+  }
 }
 
 export function renderFilteredCatalog() {
@@ -2589,41 +2626,41 @@ export function renderFilteredCatalog() {
 
   // 1. Фильтр по жанру (только для каталога категорий, не для результатов поиска)
   if (!isSearching && currentGenre !== 'all') {
-    const targetGenre = currentGenre.toLowerCase();
+    const targetGenre = currentGenre.toLowerCase().trim();
     items = items.filter(item => {
-      if (Array.isArray(item.genres)) {
-        return item.genres.some(g => String(g).toLowerCase().includes(targetGenre));
-      }
-      if (typeof item.genres === 'string') {
-        return item.genres.toLowerCase().includes(targetGenre);
-      }
-      if (typeof item.category === 'string') {
-        return item.category.toLowerCase().includes(targetGenre);
-      }
-      if (typeof item.description === 'string') {
-        return item.description.toLowerCase().includes(targetGenre);
-      }
-      return false;
+      if (targetGenre === 'мультфильм' && (item.media_type === 'cartoons' || item.media_type === 'cartoon-series' || item.category === 'cartoons' || item.category === 'cartoon-series')) return true;
+      if (targetGenre === 'аниме' && (item.media_type === 'anime-movies' || item.media_type === 'anime-series' || item.category === 'anime-series' || item.category === 'anime-movies')) return true;
+      if (targetGenre === 'сериал' && (item.media_type === 'series' || item.media_type === 'cartoon-series' || item.media_type === 'anime-series' || item.category === 'series')) return true;
+
+      const checkGenre = (val) => {
+        if (!val) return false;
+        if (Array.isArray(val)) {
+          return val.some(g => String(g).toLowerCase().includes(targetGenre));
+        }
+        return String(val).toLowerCase().includes(targetGenre);
+      };
+
+      return checkGenre(item.genres) ||
+             checkGenre(item.genre) ||
+             checkGenre(item.category) ||
+             checkGenre(item.description);
     });
   }
 
   // 1.5 Фильтр по стране (только для каталога категорий)
   if (!isSearching && currentCountry !== 'all') {
-    const targetCountry = currentCountry.toLowerCase();
+    const targetCountry = currentCountry.toLowerCase().trim();
     items = items.filter(item => {
-      if (Array.isArray(item.countries)) {
-        return item.countries.some(c => String(c).toLowerCase().includes(targetCountry));
-      }
-      if (typeof item.countries === 'string') {
-        return item.countries.toLowerCase().includes(targetCountry);
-      }
-      if (typeof item.country === 'string') {
-        return item.country.toLowerCase().includes(targetCountry);
-      }
-      if (typeof item.description === 'string') {
-        return item.description.toLowerCase().includes(targetCountry);
-      }
-      return false;
+      const checkCountry = (val) => {
+        if (!val) return false;
+        if (Array.isArray(val)) {
+          return val.some(c => String(c).toLowerCase().includes(targetCountry));
+        }
+        return String(val).toLowerCase().includes(targetCountry);
+      };
+      return checkCountry(item.countries) ||
+             checkCountry(item.country) ||
+             checkCountry(item.description);
     });
   }
 
@@ -2633,9 +2670,11 @@ export function renderFilteredCatalog() {
       const year = parseInt(item.year, 10);
       if (isNaN(year)) return false;
       if (currentYear === '2000_down') return year < 2000;
-      if (currentYear === '2000_2009') return year >= 2000 && year <= 2009;
+      if (currentYear === '2000-2009' || currentYear === '2000_2009') return year >= 2000 && year <= 2009;
+      if (currentYear === '2010-2019' || currentYear === '2010_2019') return year >= 2010 && year <= 2019;
       if (currentYear === '2010_2014') return year >= 2010 && year <= 2014;
       if (currentYear === '2015_2019') return year >= 2015 && year <= 2019;
+      if (currentYear === '2020-2023' || currentYear === '2020_2023') return year >= 2020 && year <= 2023;
       return String(year) === currentYear;
     });
   }

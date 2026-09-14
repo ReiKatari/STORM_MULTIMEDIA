@@ -672,6 +672,23 @@ button:active .storm-status-svg {
   transform: rotate(180deg);
 }
 
+.quick-status-floating-portal {
+  position: fixed;
+  min-width: 165px;
+  background: rgba(13, 16, 25, 0.98) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 210, 255, 0.4) !important;
+  border-radius: 8px;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.95), 0 0 20px rgba(0, 210, 255, 0.25);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 99999999 !important;
+  animation: stormFadeInDown 0.16s ease-out;
+}
+
 .quick-status-custom-menu {
   position: absolute;
   top: 100%;

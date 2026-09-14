@@ -365,7 +365,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 }
 
 export async function openPlayerModal(mediaItem, options = {}) {
-  currentMedia = mediaItem;
+  const cleanTitle = cleanVideoTitle(mediaItem?.title || '');
+  currentMedia = { ...mediaItem, title: cleanTitle };
   quickBarSeriesData = null;
   currentEpisodes = [];
   currentEpisodeIndex = 1;
@@ -378,9 +379,6 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const drawer = document.getElementById('mobile-drawer-backdrop');
   if (drawer) drawer.classList.remove('is-open');
   document.querySelectorAll('.media-hover-preview-popup').forEach(p => p.remove());
-
-  const cleanTitle = cleanVideoTitle(mediaItem.title);
-
   // Проверяем ночной просмотр (между 02:00 и 05:00)
   const currentHour = new Date().getHours();
   if (currentHour >= 2 && currentHour < 5) {
@@ -481,7 +479,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
       };
     }
 
-    currentMedia = { ...mediaItem, ...details };
+    currentMedia = { ...mediaItem, ...details, title: cleanVideoTitle(details?.title || mediaItem?.title || '') };
 
     // 🛡️ ОБЪЕДИНЕНИЕ СЕРВЕРНЫХ И УНИВЕРСАЛЬНЫХ ПЛЕЕРОВ:
     // Ни один онлайн источник не теряется
@@ -1012,6 +1010,34 @@ async function initSeriesQuickBar(playerUrl) {
   }
 }
 
+function getOrCreateQuickStatusPortal() {
+  let portal = document.getElementById('quick-status-floating-portal');
+  if (!portal) {
+    portal = document.createElement('div');
+    portal.id = 'quick-status-floating-portal';
+    portal.className = 'quick-status-floating-portal';
+    portal.style.display = 'none';
+    document.body.appendChild(portal);
+
+    document.addEventListener('click', (e) => {
+      if (!portal.contains(e.target) && !e.target.closest('.quick-status-custom-trigger')) {
+        portal.style.display = 'none';
+        portal.dataset.currentSeason = '';
+        document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        portal.style.display = 'none';
+        portal.dataset.currentSeason = '';
+        document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+      }
+    });
+  }
+  return portal;
+}
+
 function renderQuickBarDropdowns() {
   if (!quickBarSeriesData || !quickBarSeriesData.seasons) return;
 
@@ -1072,19 +1098,11 @@ function renderQuickBarDropdowns() {
           </div>
           <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0;">
             <span class="quick-count-badge" title="Просмотрено ${watchedCount} из ${totalEp} серий">${watchedCount}/${totalEp}</span>
-            <div class="quick-status-custom-dropdown" data-season="${s.season}">
+            <div class="quick-status-custom-dropdown" data-season="${s.season}" data-current-status="${effectiveStatus}">
               <button type="button" class="quick-status-custom-trigger" title="Статус сезона: ${getStatusLabel(effectiveStatus)}">
                 ${curStatusSvg}
                 <span class="quick-status-arrow">▼</span>
               </button>
-              <div class="quick-status-custom-menu" style="display: none;">
-                ${STATUS_LIST.map(st => `
-                  <button type="button" class="quick-status-option ${st.id === effectiveStatus ? 'active' : ''}" data-status="${st.id}">
-                    ${getStatusIconSvg(st.id, { size: 14, animated: false })}
-                    <span>${st.label}</span>
-                  </button>
-                `).join('')}
-              </div>
             </div>
             <button type="button" class="quick-season-watch-toggle ${isAllWatched ? 'active' : ''}" data-toggle-season="${s.season}" title="${isAllWatched ? 'Снять отметку со всего сезона' : 'Отметить весь сезон просмотренным'}">
               ${isAllWatched ? '✖' : '✓'}
@@ -1093,6 +1111,18 @@ function renderQuickBarDropdowns() {
         </div>
       `;
     }).join('');
+
+    if (seasonMenu && !seasonMenu.dataset.hasScrollListener) {
+      seasonMenu.dataset.hasScrollListener = 'true';
+      seasonMenu.addEventListener('scroll', () => {
+        const p = document.getElementById('quick-status-floating-portal');
+        if (p) {
+          p.style.display = 'none';
+          p.dataset.currentSeason = '';
+        }
+        document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+      });
+    }
 
     seasonList.querySelectorAll('.quick-dropdown-item').forEach(item => {
       item.onclick = (e) => {
@@ -1110,46 +1140,80 @@ function renderQuickBarDropdowns() {
 
     seasonList.querySelectorAll('.quick-status-custom-dropdown').forEach(dd => {
       const trigger = dd.querySelector('.quick-status-custom-trigger');
-      const menu = dd.querySelector('.quick-status-custom-menu');
       const sNum = parseInt(dd.dataset.season, 10);
+      const curStat = dd.dataset.currentStatus || 'not_started';
 
-      if (trigger && menu) {
+      if (trigger) {
         trigger.onclick = (e) => {
           e.stopPropagation();
-          const isOpen = dd.classList.contains('is-open');
-          seasonList.querySelectorAll('.quick-status-custom-dropdown').forEach(other => {
-            if (other !== dd) {
-              other.classList.remove('is-open');
-              const om = other.querySelector('.quick-status-custom-menu');
-              if (om) om.style.display = 'none';
-            }
-          });
-          if (isOpen) {
-            dd.classList.remove('is-open');
-            menu.style.display = 'none';
-          } else {
-            dd.classList.add('is-open');
-            menu.style.display = 'flex';
-          }
-        };
+          const portal = getOrCreateQuickStatusPortal();
+          const wasOpenForThis = portal.style.display === 'flex' && portal.dataset.currentSeason === String(sNum);
 
-        menu.querySelectorAll('.quick-status-option').forEach(opt => {
-          opt.onclick = async (e) => {
-            e.stopPropagation();
-            const newStat = opt.dataset.status;
-            dd.classList.remove('is-open');
-            menu.style.display = 'none';
-            const targetSeason = quickBarSeriesData.seasons.find(x => x.season === sNum);
-            applySeasonStatus(curMediaId, sNum, newStat, targetSeason?.episodes || []);
-            if (newStat === 'completed') {
-              showToast(`Сезон ${sNum}: все серии отмечены как просмотренные`, 'success');
-            } else {
-              showToast(`Сезон ${sNum}: статус обновлен`, 'info');
-            }
-            await syncOverallSeriesProgress(currentMedia);
-            renderQuickBarDropdowns();
-          };
-        });
+          document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(other => {
+            other.classList.remove('is-open');
+          });
+
+          if (wasOpenForThis) {
+            portal.style.display = 'none';
+            portal.dataset.currentSeason = '';
+            return;
+          }
+
+          dd.classList.add('is-open');
+          portal.dataset.currentSeason = String(sNum);
+          portal.innerHTML = STATUS_LIST.map(st => `
+            <button type="button" class="quick-status-option ${st.id === curStat ? 'active' : ''}" data-status="${st.id}">
+              ${getStatusIconSvg(st.id, { size: 14, animated: false })}
+              <span>${st.label}</span>
+            </button>
+          `).join('');
+
+          portal.style.display = 'flex';
+          portal.style.visibility = 'hidden';
+
+          const rect = trigger.getBoundingClientRect();
+          const portalRect = portal.getBoundingClientRect();
+          const portalWidth = portalRect.width || 170;
+          const portalHeight = portalRect.height || 215;
+
+          const spaceBelow = window.innerHeight - rect.bottom;
+          let topPos = 0;
+          if (spaceBelow < portalHeight + 10 && rect.top > portalHeight + 10) {
+            topPos = rect.top - portalHeight - 4;
+          } else {
+            topPos = rect.bottom + 4;
+          }
+
+          let leftPos = rect.right - portalWidth;
+          if (leftPos < 10) leftPos = 10;
+          if (leftPos + portalWidth > window.innerWidth - 10) {
+            leftPos = window.innerWidth - portalWidth - 10;
+          }
+
+          portal.style.top = `${Math.round(topPos)}px`;
+          portal.style.left = `${Math.round(leftPos)}px`;
+          portal.style.visibility = 'visible';
+
+          portal.querySelectorAll('.quick-status-option').forEach(opt => {
+            opt.onclick = async (optEvent) => {
+              optEvent.stopPropagation();
+              const newStat = opt.dataset.status;
+              portal.style.display = 'none';
+              portal.dataset.currentSeason = '';
+              dd.classList.remove('is-open');
+
+              const targetSeason = quickBarSeriesData.seasons.find(x => x.season === sNum);
+              applySeasonStatus(curMediaId, sNum, newStat, targetSeason?.episodes || []);
+              if (newStat === 'completed') {
+                showToast(`Сезон ${sNum}: все серии отмечены как просмотренные`, 'success');
+              } else {
+                showToast(`Сезон ${sNum}: статус обновлен`, 'info');
+              }
+              await syncOverallSeriesProgress(currentMedia);
+              renderQuickBarDropdowns();
+            };
+          });
+        };
       }
     });
 
@@ -1359,9 +1423,13 @@ function closeOtherQuickDropdowns(activeDropdownId) {
 
   document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(dd => {
     dd.classList.remove('is-open');
-    const m = dd.querySelector('.quick-status-custom-menu');
-    if (m) m.style.display = 'none';
   });
+
+  const portal = document.getElementById('quick-status-floating-portal');
+  if (portal) {
+    portal.style.display = 'none';
+    portal.dataset.currentSeason = '';
+  }
 
   if (!activeDropdownId) {
     document.body.classList.remove('quick-dropdown-active');
@@ -1373,15 +1441,18 @@ function setupQuickBarOutsideListeners() {
   document.body.dataset.hasQuickBarListener = 'true';
 
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('.quick-status-custom-dropdown')) {
+    const portal = document.getElementById('quick-status-floating-portal');
+    if (!e.target.closest('.quick-status-custom-dropdown') && (!portal || !portal.contains(e.target))) {
       document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(dd => {
         dd.classList.remove('is-open');
-        const m = dd.querySelector('.quick-status-custom-menu');
-        if (m) m.style.display = 'none';
       });
+      if (portal) {
+        portal.style.display = 'none';
+        portal.dataset.currentSeason = '';
+      }
     }
     const quickBar = document.getElementById('player-series-quick-bar');
-    if (quickBar && !quickBar.contains(e.target)) {
+    if (quickBar && !quickBar.contains(e.target) && (!portal || !portal.contains(e.target))) {
       closeOtherQuickDropdowns(null);
     }
   });
@@ -2999,7 +3070,7 @@ export function updateInPlayerEpisodeInfo() {
 
   const isSeries = checkIfMediaIsSeries(currentMedia);
 
-  let titleText = currentMedia?.title || '';
+  let titleText = cleanVideoTitle(currentMedia?.title || '');
   let epText = '';
   let hasPrev = false;
   let hasNext = false;
@@ -4862,13 +4933,19 @@ function initProgressSlider() {
 export function cleanVideoTitle(str) {
   if (!str) return '';
   let s = String(str).trim();
-  s = s.replace(/\s*постер\s*4[KkКк]/gi, '');
+  // Постер
+  s = s.replace(/\s*постер\s*4[\u004B\u006B\u041A\u043A]/gi, '');
   s = s.replace(/\s*постер/gi, '');
-  s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
-  s = s.replace(/\s*[\(\[]?\s*(?:Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip)\s*[\)\]]?/gi, '');
-  s = s.replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '');
-  s = s.replace(/\s*[\(\[]?\s*(?:фильм|сериал)\s*[\)\]]?/gi, '');
-  s = s.replace(/[-–—/]\s*$/, '').trim();
+  // Качество в скобках [4K], (1080p), [4К Ultra HD], (UHD 4K)
+  s = s.replace(/\s*[\(\[]\s*(?:4[\u004B\u006B\u041A\u043A]|Ultra\s*HD|UHD|2160[\u0050\u0070\u0420\u0440]|1080[\u0050\u0070\u0420\u0440]|720[\u0050\u0070\u0420\u0440]|480[\u0050\u0070\u0420\u0440]|HDR|HDR10\+?|Dolby\s*Vision|DV|Remux|WEB-DL|BDRip|DVDRip|\s*[-/|]\s*)*\s*[\)\]]/gi, '');
+  // Качество отдельными словами/суффиксами
+  s = s.replace(/(?:^|\s+)4[\u004B\u006B\u041A\u043A](?:\s+(?:Ultra\s*HD|UHD))?(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
+  s = s.replace(/(?:^|\s+)(?:2160|1080|720|480)[\u0050\u0070\u0420\u0440](?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
+  s = s.replace(/(?:^|\s+)(?:Ultra\s*HD|UHD|HDR10\+?|HDR|Dolby\s*Vision|BDRip|DVDRip|WEB-DL|Remux)(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
+  // фильм / сериал в скобках
+  s = s.replace(/\s*[\(\[]\s*(?:фильм|сериал)\s*[\)\]]/gi, '');
+  // Хвостовые разделители
+  s = s.replace(/[-–—/|•]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
 }
 

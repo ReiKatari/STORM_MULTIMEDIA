@@ -22,6 +22,36 @@ async function tmdbFetch(url, options = {}) {
   });
 }
 
+const TMDB_GENRES_RU = {
+  28: 'Боевик',
+  12: 'Приключения',
+  16: 'Мультфильм',
+  35: 'Комедия',
+  80: 'Криминал',
+  99: 'Документальный',
+  18: 'Драма',
+  10751: 'Семейный',
+  14: 'Фэнтези',
+  36: 'История',
+  27: 'Ужасы',
+  10402: 'Музыка',
+  9648: 'Детектив',
+  10749: 'Мелодрама',
+  878: 'Фантастика',
+  10770: 'Телефильм',
+  53: 'Триллер',
+  10752: 'Военный',
+  37: 'Вестерн',
+  10759: 'Боевик',
+  10762: 'Детский',
+  10763: 'Новости',
+  10764: 'Реалити-шоу',
+  10765: 'Фантастика',
+  10766: 'Мелодрама',
+  10767: 'Ток-шоу',
+  10768: 'Военный'
+};
+
 function formatTmdbItem(item, mediaTypeHint = null) {
   if (!item) return null;
 
@@ -55,6 +85,11 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     }
   }
 
+  const mappedGenres = genreIds.map(id => TMDB_GENRES_RU[id]).filter(Boolean);
+  if (isJapanese && !mappedGenres.includes('Аниме')) {
+    mappedGenres.unshift('Аниме');
+  }
+
   return {
     id: String(item.id),
     source: 'tmdb',
@@ -64,6 +99,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     year: verifiedYear || year || '2025',
     rating: item.vote_average ? Math.round(item.vote_average * 10) / 10 : 0,
     media_type: mediaType,
+    genres: mappedGenres,
     quality: '4K Ultra HD',
     is4K: true,
     description: item.overview || 'Мировой кинематографический релиз в сверхвысоком качестве.',
