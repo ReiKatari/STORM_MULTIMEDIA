@@ -249,6 +249,9 @@
         <h2>Инициализация портала STORM MULTIMEDIA...</h2>
       </div>
     </div>
+
+    <!-- Панель пагинации, ВСЕГДА закрепленная у нижней границы -->
+    <div id="storm-pagination-host" class="storm-pagination-host"></div>
   </main>
 
   <!-- Подвал сайта -->
@@ -998,13 +1001,6 @@
             <span class="action-sheet-btn-desc">Запустить в кинотеатре</span>
           </div>
         </button>
-        <button type="button" class="action-sheet-btn" id="action-sheet-status-btn">
-          <span class="action-sheet-btn-icon">📑</span>
-          <div class="action-sheet-btn-text">
-            <span class="action-sheet-btn-title" data-i18n="card_menu_bookmark">Статус закладки</span>
-            <span class="action-sheet-btn-desc">Смотрю, в планах, любимое</span>
-          </div>
-        </button>
         <button type="button" class="action-sheet-btn" id="action-sheet-room-btn">
           <span class="action-sheet-btn-icon">👥</span>
           <div class="action-sheet-btn-text">
@@ -1019,6 +1015,11 @@
             <span class="action-sheet-btn-desc">Сохранить для просмотра без сети</span>
           </div>
         </button>
+      </div>
+      <!-- Секция выбора статуса просмотра -->
+      <div class="action-sheet-status-section">
+        <div class="action-sheet-status-title">Статус закладки</div>
+        <div class="action-sheet-status-chips" id="action-sheet-status-chips"></div>
       </div>
     </div>
   </div>

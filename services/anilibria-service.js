@@ -26,7 +26,11 @@ function formatAniLibriaRelease(rel) {
 
   const title = rel.name?.main || rel.name?.english || rel.name?.alternative || 'Аниме релиз';
   const originalTitle = rel.name?.english || rel.name?.alternative || '';
-  const year = String(rel.year || '');
+  let year = String(rel.year || rel.season?.year || '').trim();
+  if (!year || year === '0') {
+    const ym = `${title} ${originalTitle} ${rel.description || ''}`.match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) year = ym[1];
+  }
 
   let poster = 'assets/favicon.svg';
   const posterPath = rel.poster?.src || rel.poster?.preview || rel.poster?.thumbnail;
@@ -43,7 +47,7 @@ function formatAniLibriaRelease(rel) {
     title: title.trim(),
     original_title: originalTitle.trim(),
     poster,
-    year,
+    year: year || '2024',
     rating: rel.shikimori?.rating || 0,
     media_type: isMovie ? 'anime-movie' : 'anime-series',
     quality: '1080p FHD',
