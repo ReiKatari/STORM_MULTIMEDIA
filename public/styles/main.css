@@ -562,9 +562,19 @@ body {
   max-width: 100%;
   width: 100%;
   margin: 0;
-  padding: 14px 24px 40px 24px;
+  padding: 14px 24px 0 24px;
   box-sizing: border-box;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 140px);
+  position: relative;
+}
+
+.media-container {
+  width: 100%;
+  flex: 1;
+  box-sizing: border-box;
 }
 
 /* -------------------------------------------------------------
@@ -630,7 +640,7 @@ body {
 .media-card-rating {
   position: absolute;
   top: 8px;
-  right: 42px;
+  right: 8px;
   z-index: 4;
 }
 
@@ -804,6 +814,34 @@ body {
   width: 36px;
   height: 36px;
   font-size: 16px;
+}
+
+.media-container.view-compact-grid .media-card-rating {
+  top: 6px;
+  right: 6px;
+}
+
+.media-container.view-compact-grid .media-card-menu-btn {
+  bottom: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+}
+
+.media-container.view-compact-grid .media-card-badges {
+  top: 6px;
+  left: 6px;
+}
+
+.media-container.view-compact-grid .media-card-status-badge {
+  bottom: 6px;
+  left: 6px;
+}
+
+.media-container.view-compact-grid .storm-badge {
+  font-size: 10px;
+  padding: 2px 6px;
 }
 
 /* 3. ДЕТАЛЬНЫЙ СПИСОК (DETAILED LIST) */
@@ -3536,7 +3574,7 @@ body {
 
 .media-card-menu-btn {
   position: absolute;
-  top: 8px;
+  bottom: 8px;
   right: 8px;
   width: 28px;
   height: 28px;
@@ -4134,5 +4172,337 @@ body {
   justify-content: space-between;
 }
 
+/* =============================================================
+   ДЕЙСТВИЯ ТАБЛИЦЫ (TABLE ACTIONS FIX)
+   ============================================================= */
+.media-table-table th:last-child,
+.media-table-table td:last-child {
+  border-right: none;
+  white-space: nowrap;
+  min-width: 150px;
+}
 
+.media-table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
 
+/* =============================================================
+   ЭКРАН БЫСТРЫХ ДЕЙСТВИЙ КАРТОЧКИ (CARD ACTION SHEET MODAL)
+   ============================================================= */
+.card-action-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.card-action-sheet-overlay.is-open {
+  display: flex;
+  opacity: 1;
+}
+
+.card-action-sheet-card {
+  width: 100%;
+  max-width: 540px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 20px 20px 0 0;
+  padding: 24px;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 210, 255, 0.15);
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-action-sheet-overlay.is-open .card-action-sheet-card {
+  transform: translateY(0);
+}
+
+.action-sheet-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+
+.action-sheet-thumb {
+  width: 58px;
+  height: 84px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.action-sheet-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-sheet-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action-sheet-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.action-sheet-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.action-sheet-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-sheet-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent);
+  transform: translateY(-1.5px);
+  box-shadow: var(--shadow-md), 0 0 10px var(--accent-subtle);
+}
+
+.action-sheet-status-section {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-subtle);
+}
+
+.action-sheet-status-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.action-sheet-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.action-sheet-status-chip {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-sheet-status-chip:hover,
+.action-sheet-status-chip.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--text-primary);
+  font-weight: 700;
+  box-shadow: 0 0 8px var(--accent-subtle);
+}
+
+.action-sheet-close-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-sheet-close-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* =============================================================
+   ОБЪЁМНАЯ 3D-ПАГИНАЦИЯ (STORM VOLUMETRIC PAGINATION)
+   ============================================================= */
+.storm-pagination-host {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 450;
+  margin-top: auto;
+  padding: 12px 0 16px 0;
+  background: linear-gradient(180deg, rgba(10, 11, 16, 0) 0%, rgba(10, 11, 16, 0.88) 30%, rgba(10, 11, 16, 0.98) 100%);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.storm-pagination-container {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(18, 22, 34, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.65), 0 0 15px rgba(0, 210, 255, 0.08);
+}
+
+.storm-pagination-info {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.storm-pagination-info strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.storm-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.storm-page-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-sm), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  user-select: none;
+  min-width: 36px;
+  text-align: center;
+}
+
+.storm-page-btn:hover:not(:disabled) {
+  background: var(--bg-card-hover);
+  border-color: var(--accent);
+  transform: translateY(-1.5px);
+  box-shadow: var(--shadow-md), 0 0 12px var(--accent-subtle);
+}
+
+.storm-page-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.storm-page-btn.active {
+  background: linear-gradient(135deg, #00d2ff 0%, #0072ff 100%);
+  border-color: #00d2ff;
+  color: #000000;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 210, 255, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+}
+
+.storm-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.storm-pagination-ellipsis {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.storm-pagination-jump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.storm-page-jump-input {
+  width: 60px;
+  padding: 7px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.storm-page-jump-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-subtle);
+}
+
+@media (max-width: 768px) {
+  .storm-pagination-host {
+    bottom: 64px;
+    padding: 8px 12px 12px 12px;
+  }
+
+  .storm-pagination-container {
+    padding: 10px 14px;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .storm-pagination-info {
+    width: 100%;
+    text-align: center;
+  }
+}

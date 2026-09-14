@@ -26,20 +26,27 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
     if (!res.ok) throw new Error(`Shikimori error ${res.status}`);
 
     const data = await res.json();
-    const items = data.map(item => ({
-      id: String(item.id),
-      source: 'shikimori',
-      title: item.russian || item.name,
-      original_title: item.name,
-      poster: item.image?.original ? `${SHIKIMORI_BASE}${item.image.original}` : 'assets/favicon.svg',
-      year: item.aired_on ? item.aired_on.substring(0, 4) : '',
-      rating: parseFloat(item.score) || 0,
-      media_type: item.kind === 'movie' ? 'anime-movie' : 'anime-series',
-      quality: 'HD 1080p',
-      status: item.status === 'released' ? 'Вышел' : 'Онгоинг',
-      episodes_total: item.episodes || 0,
-      episodes_released: item.episodes_aired || item.episodes || 0
-    }));
+    const items = data.map(item => {
+      let year = item.aired_on ? item.aired_on.substring(0, 4) : (item.released_on ? item.released_on.substring(0, 4) : '');
+      if (!year) {
+        const ym = `${item.russian || ''} ${item.name || ''}`.match(/\b(19\d\d|20\d\d)\b/);
+        if (ym) year = ym[1];
+      }
+      return {
+        id: String(item.id),
+        source: 'shikimori',
+        title: item.russian || item.name,
+        original_title: item.name,
+        poster: item.image?.original ? `${SHIKIMORI_BASE}${item.image.original}` : 'assets/favicon.svg',
+        year: year || '2024',
+        rating: parseFloat(item.score) || 0,
+        media_type: item.kind === 'movie' ? 'anime-movie' : 'anime-series',
+        quality: 'HD 1080p',
+        status: item.status === 'released' ? 'Вышел' : 'Онгоинг',
+        episodes_total: item.episodes || 0,
+        episodes_released: item.episodes_aired || item.episodes || 0
+      };
+    });
 
     const result = { page, category, items, total_items: items.length };
     setCache('shikimori', cacheKey, result, 1800);

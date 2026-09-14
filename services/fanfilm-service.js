@@ -82,9 +82,13 @@ function parseMediaList(html) {
 
     // Тип медиа
     let mediaType = 'movie';
-    if (link.includes('serial') || link.includes('fan-serials') || title.toLowerCase().includes('сериал')) {
+    const lowerLink = link.toLowerCase();
+    const lowerTitle = title.toLowerCase();
+    if (lowerLink.includes('anime') || lowerLink.includes('-anime.html') || lowerTitle.includes('аниме')) {
+      mediaType = lowerLink.includes('serial') || lowerLink.includes('multserialy') ? 'anime-series' : 'anime-movie';
+    } else if (lowerLink.includes('serial') || lowerLink.includes('fan-serials') || lowerTitle.includes('сериал')) {
       mediaType = 'series';
-    } else if (link.includes('mult') || title.toLowerCase().includes('мульт')) {
+    } else if (lowerLink.includes('mult') || lowerTitle.includes('мульт')) {
       mediaType = 'cartoon';
     }
 
@@ -99,7 +103,7 @@ function parseMediaList(html) {
         poster,
         quality,
         is4K,
-        year: yearText || '',
+        year: yearText || '2024',
         rating: parseFloat(ratingText) || 0,
         media_type: mediaType
       });

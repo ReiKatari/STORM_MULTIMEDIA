@@ -45,13 +45,19 @@ function formatAnimeRelease(rel) {
     ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`
     : 'assets/favicon.svg';
 
+  let year = String(rel.year || '').trim();
+  if (!year || year === '0') {
+    const ym = `${cleanTitle} ${cleanOrig} ${rel.description || ''}`.match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) year = ym[1];
+  }
+
   return {
     id: String(rel.id),
     source: 'anixart',
     title: cleanTitle,
     original_title: origTitle.trim(),
     poster,
-    year: String(rel.year || ''),
+    year: year || '2024',
     rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : (typeof rel.rating === 'number' ? Math.round(rel.rating / 1000) / 10 : 0),
     media_type: rel.category?.name === 'Фильм' ? 'anime-movie' : 'anime-series',
     quality: 'HD 1080p',

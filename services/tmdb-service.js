@@ -27,8 +27,12 @@ function formatTmdbItem(item, mediaTypeHint = null) {
   const isTv = item.media_type === 'tv' || mediaTypeHint === 'series' || mediaTypeHint === 'cartoon-series' || (!item.title && !!item.name);
   const title = (isTv ? item.name : item.title) || 'Кинофильм';
   const originalTitle = (isTv ? item.original_name : item.original_title) || '';
-  const dateStr = (isTv ? item.first_air_date : item.release_date) || '';
-  const year = dateStr ? dateStr.substring(0, 4) : '';
+  const dateStr = (isTv ? item.first_air_date : item.release_date) || item.release_date || item.first_air_date || '';
+  let year = dateStr ? dateStr.substring(0, 4) : '';
+  if (!year) {
+    const ym = `${title} ${originalTitle} ${item.overview || ''}`.match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) year = ym[1];
+  }
 
   let poster = 'assets/favicon.svg';
   if (item.poster_path) {
@@ -37,11 +41,16 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     poster = `${IMAGE_BASE}${item.backdrop_path}`;
   }
 
-  // Определение типа медиа
+  // Определение типа медиа: строгое разделение аниме и западных мультфильмов
   let mediaType = isTv ? 'series' : 'movie';
   const genreIds = item.genre_ids || [];
   if (genreIds.includes(16)) { // 16 = Animation в TMDB
-    mediaType = isTv ? 'cartoon-series' : 'cartoons';
+    const isJapanese = item.original_language === 'ja' || (Array.isArray(item.origin_country) && item.origin_country.includes('JP'));
+    if (isJapanese) {
+      mediaType = isTv ? 'anime-series' : 'anime-movies';
+    } else {
+      mediaType = isTv ? 'cartoon-series' : 'cartoons';
+    }
   }
 
   return {
@@ -50,7 +59,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     title: title.trim(),
     original_title: originalTitle.trim(),
     poster,
-    year,
+    year: year || '2024',
     rating: item.vote_average ? Math.round(item.vote_average * 10) / 10 : 0,
     media_type: mediaType,
     quality: '4K Ultra HD',
@@ -80,9 +89,9 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
     } else if (category === 'new') {
       endpoint = '/movie/now_playing';
     } else if (category === 'cartoons') {
-      endpoint = '/discover/movie?with_genres=16&sort_by=popularity.desc';
+      endpoint = '/discover/movie?with_genres=16&without_original_language=ja&sort_by=popularity.desc';
     } else if (category === 'cartoon-series') {
-      endpoint = '/discover/tv?with_genres=16&sort_by=popularity.desc';
+      endpoint = '/discover/tv?with_genres=16&without_original_language=ja&sort_by=popularity.desc';
     } else if (category === 'anime-movies') {
       endpoint = '/discover/movie?with_genres=16&with_original_language=ja&sort_by=popularity.desc';
     } else if (category === 'anime-series') {

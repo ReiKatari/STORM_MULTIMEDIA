@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import sharp from 'sharp';
 
 import {
   registerUser,
@@ -664,9 +665,21 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
     if (res.ok) {
       const rawType = res.headers.get('content-type') || 'image/jpeg';
       if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
-        const buffer = Buffer.from(await res.arrayBuffer());
-        if (buffer.length > 800) {
-          const item = { buffer, contentType: rawType.startsWith('image/') ? rawType : 'image/jpeg' };
+        let buffer = Buffer.from(await res.arrayBuffer());
+        let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
+
+        if (buffer.length > 500) {
+          try {
+            const webpBuf = await sharp(buffer)
+              .webp({ quality: 82, effort: 3 })
+              .toBuffer();
+            buffer = webpBuf;
+            contentType = 'image/webp';
+          } catch {
+            // Фолбэк на оригинальный формат, если sharp не смог обработать (например svg)
+          }
+
+          const item = { buffer, contentType };
           if (imageBinaryCache.size > 1000) {
             const keysToDelete = Array.from(imageBinaryCache.keys()).slice(0, 150);
             keysToDelete.forEach(k => imageBinaryCache.delete(k));
@@ -853,7 +866,7 @@ app.get('/api/media/image-proxy', async (req, res) => {
       const img = await fetchImageBuffer(normalizedUrl, 5000);
       if (img) {
         res.set('Content-Type', img.contentType);
-        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
         return res.send(img.buffer);
       }
     }
@@ -863,7 +876,7 @@ app.get('/api/media/image-proxy', async (req, res) => {
       const resolvedImg = await resolveAnimePosterBuffer(title, orig);
       if (resolvedImg) {
         res.set('Content-Type', resolvedImg.contentType);
-        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
         return res.send(resolvedImg.buffer);
       }
     }
@@ -901,6 +914,24 @@ function interleaveSources(arrays) {
     }
   }
   return result;
+}
+
+function isAnimeMediaItem(item) {
+  if (!item) return false;
+  if (['anixart', 'shikimori', 'anilibria'].includes(item.source)) return true;
+  if (item.media_type === 'anime-movie' || item.media_type === 'anime-series') return true;
+  if (item.original_language === 'ja') return true;
+  if (Array.isArray(item.origin_country) && item.origin_country.includes('JP')) return true;
+  if (typeof item.country === 'string' && item.country.toLowerCase().includes('япон')) return true;
+  if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(item.original_title || '')) return true;
+  const link = (item.link || item.url || '').toLowerCase();
+  if (link.includes('-anime.html') || link.includes('/anime/') || link.includes('anime')) return true;
+  if (typeof item.category === 'string' && item.category.toLowerCase().includes('аниме')) return true;
+  const title = (item.title || '').toLowerCase();
+  if (title.includes('аниме') || title.includes('ghost in the shell') || title.includes('призрак в доспехах') || title.includes('клинок, рассекающий') || title.includes('атака титанов') || title.includes('человек-бензопила') || title.includes('магическая битва')) return true;
+  const genres = Array.isArray(item.genres) ? item.genres : (typeof item.genres === 'string' ? item.genres.split(',') : []);
+  if (genres.some(g => typeof g === 'string' && g.toLowerCase().includes('аниме'))) return true;
+  return false;
 }
 
 // ==========================================
@@ -1043,7 +1074,7 @@ app.get('/api/media/catalog', async (req, res) => {
             fetchedItems = interleaveSources([
               fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [],
               tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : []
-            ]);
+            ]).filter(item => !isAnimeMediaItem(item));
             fetchedTotal = fetchedItems.length;
           } else if (category === 'movies' || category === 'series') {
             const [fanfilmRes, tmdbRes] = await Promise.allSettled([
@@ -1130,21 +1161,27 @@ app.get('/api/media/catalog', async (req, res) => {
       };
     });
 
+    const totalCount = totalItems > items.length ? totalItems : (items.length >= 20 ? items.length * 25 : items.length);
+    const totalPages = Math.max(1, Math.ceil(totalCount / 20));
+
     res.json({
       category,
       page,
       source,
-      total_items: totalItems || items.length,
+      total_items: totalCount,
+      total_pages: totalPages,
       items
     });
   } catch (err) {
     console.error('Ошибка агрегации каталога:', err.message);
     const fallbackItems = getCategoryFallback(req.query.category || 'popular');
+    const totalPages = Math.max(1, Math.ceil(fallbackItems.length / 20));
     res.json({
       category: req.query.category || 'popular',
       page: parseInt(req.query.page, 10) || 1,
       source: req.query.source || 'all',
       total_items: fallbackItems.length,
+      total_pages: totalPages,
       items: fallbackItems
     });
   }
@@ -1716,64 +1753,8 @@ app.get('/api/media/franchise', async (req, res) => {
 });
 
 // ==========================================
-// СЕРВЕРНЫЙ ПРОКСИ ИЗОБРАЖЕНИЙ И ОБЛОЖЕК
+// РАСПИСАНИЕ ВЫХОДА СЕРИЙ И ОНГОИНГОВ
 // ==========================================
-const serverImageCache = new Map();
-
-app.get('/api/media/image-proxy', async (req, res) => {
-  try {
-    const rawUrl = req.query.url;
-    if (!rawUrl) {
-      return res.redirect(302, '/assets/favicon.svg');
-    }
-
-    const decodedUrl = decodeURIComponent(rawUrl);
-
-    if (decodedUrl.startsWith('/') || decodedUrl.startsWith('assets/')) {
-      return res.redirect(302, decodedUrl);
-    }
-
-    if (serverImageCache.has(decodedUrl)) {
-      const cached = serverImageCache.get(decodedUrl);
-      if (Date.now() - cached.timestamp < 3600000 * 24) {
-        res.setHeader('Content-Type', cached.contentType);
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        return res.send(cached.buffer);
-      }
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const resp = await fetch(decodedUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Referer': 'https://v17.fanfilm4k.media/'
-      }
-    });
-    clearTimeout(timeout);
-
-    if (!resp.ok) {
-      return res.redirect(302, '/assets/favicon.svg');
-    }
-
-    const contentType = resp.headers.get('content-type') || 'image/jpeg';
-    const arrayBuffer = await resp.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    serverImageCache.set(decodedUrl, {
-      buffer,
-      contentType,
-      timestamp: Date.now()
-    });
-
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(buffer);
-  } catch {
-    res.redirect(302, '/assets/favicon.svg');
-  }
-});
 
 // Получение актуального расписания выхода серий и онгоингов на 2 недели
 app.get('/api/media/schedule', async (req, res) => {
