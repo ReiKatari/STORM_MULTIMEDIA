@@ -189,6 +189,9 @@ function initFullscreenControls() {
       if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
         toggleCinemaFullscreen();
       } else if (typeof data === 'object' && data) {
+        if (data.type === 'STORM_SWITCH_NEXT_SOURCE' || data.type === 'STORM_PLAYER_FALLBACK') {
+          switchToNextSource();
+        }
         if (data.type === 'STORM_SPEED_CHANGED') {
           const sp = parseFloat(data.speed);
           if (sp && !isNaN(sp)) {
@@ -366,7 +369,17 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 
 export async function openPlayerModal(mediaItem, options = {}) {
   const cleanTitle = cleanVideoTitle(mediaItem?.title || '');
-  currentMedia = { ...mediaItem, title: cleanTitle };
+  let initialYr = mediaItem?.year || '';
+  if (!initialYr) {
+    const ym = String(mediaItem?.title || '').match(/\b(19\d\d|20\d\d)\b/);
+    if (ym && parseInt(ym[1], 10) >= 1950 && parseInt(ym[1], 10) <= 2030 && ym[1] !== '2049') {
+      initialYr = ym[1];
+    } else if (mediaItem?.release_date) {
+      const rm = String(mediaItem.release_date).match(/\b(19\d\d|20\d\d)\b/);
+      if (rm) initialYr = rm[1];
+    }
+  }
+  currentMedia = { ...mediaItem, title: cleanTitle, year: initialYr || mediaItem?.year || '' };
   quickBarSeriesData = null;
   currentEpisodes = [];
   currentEpisodeIndex = 1;
@@ -455,7 +468,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
     const mediaType = mediaItem.media_type || mediaItem.type || '';
     const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
-    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}`;
+    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(currentMedia?.year || mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}`;
     
     let details = null;
     try {
@@ -784,6 +797,18 @@ function updatePlayerTriggerInfo(player) {
 
 function selectPlayer(player) {
   currentActivePlayer = player;
+  updatePlayerTriggerInfo(player);
+
+  // Синхронизируем активный элемент в выпадающем списке выбора плееров
+  const list = document.getElementById('player-source-list');
+  if (list && player?.id) {
+    list.querySelectorAll('.player-dropdown-item').forEach(el => {
+      const idx = parseInt(el.dataset.idx, 10);
+      const p = currentPlayers ? currentPlayers[idx] : null;
+      el.classList.toggle('active', Boolean(p && p.id === player.id));
+    });
+  }
+
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
@@ -1697,6 +1722,10 @@ function playStreamUrl(url) {
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
       <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <div class="storm-player-vpn-assist" id="storm-player-vpn-assist" style="display:none;position:absolute;bottom:16px;right:16px;z-index:10;background:rgba(15,23,42,0.92);border:1px solid rgba(0,210,255,0.4);box-shadow:0 8px 24px rgba(0,0,0,0.7);padding:8px 14px;border-radius:10px;align-items:center;gap:10px;backdrop-filter:blur(8px);">
+        <span style="font-size:12px;color:#94a3b8;">🛡️ Не загружается через VPN?</span>
+        <button type="button" id="storm-vpn-switch-now-btn" class="storm-btn storm-btn-primary storm-btn-sm" style="padding:4px 10px;font-size:11px;font-weight:700;">Переключить на HDRezka / Резерв</button>
+      </div>
     </div>
   `;
 
@@ -1705,11 +1734,33 @@ function playStreamUrl(url) {
     mountInPlayerOverlay(iframeBox);
   }
 
+  const vpnAssist = container.querySelector('#storm-player-vpn-assist');
+  const vpnBtn = container.querySelector('#storm-vpn-switch-now-btn');
+  if (vpnBtn) {
+    vpnBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (vpnAssist) vpnAssist.style.display = 'none';
+      switchToNextSource();
+    };
+  }
+
+  // VPN Watchdog: если через 5 секунд видео не запустилось из-за блокировки DNS провайдером VPN, предлагаем резервный плеер
+  const vpnWatchdogTimer = setTimeout(() => {
+    if (vpnAssist && container.querySelector('.cinema-player-iframe')) {
+      vpnAssist.style.display = 'inline-flex';
+    }
+  }, 5000);
+
   const iframeEl = container.querySelector('.cinema-player-iframe');
   if (iframeEl) {
     iframeEl.onload = () => {
+      clearTimeout(vpnWatchdogTimer);
       applySavedPlaybackSpeed();
       applyProAudioSettings();
+    };
+    iframeEl.onerror = () => {
+      clearTimeout(vpnWatchdogTimer);
+      switchToNextSource();
     };
   }
 
@@ -5145,6 +5196,9 @@ function renderDetailedMediaInfo(mediaDetails) {
       formattedReleaseDate = `${mediaDetails.year} год`;
     } else if (currentMedia?.year) {
       formattedReleaseDate = `${currentMedia.year} год`;
+    } else {
+      const ym = String(mediaDetails.title || currentMedia?.title || '').match(/\b(19\d\d|20\d\d)\b/);
+      formattedReleaseDate = ym ? `${ym[1]} год` : '2026 год';
     }
   }
 
