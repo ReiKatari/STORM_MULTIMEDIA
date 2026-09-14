@@ -18,6 +18,7 @@ import { openRemoteQrModal } from './storm-remote.js';
 import { initAdminDashboard } from './admin-dashboard.js';
 import { renderOfflineLibrary } from './offline-storage.js';
 import { getBaselineCatalog } from './catalog-baseline.js';
+import { getStatusIconSvg } from './status-icons.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -614,19 +615,22 @@ function openCardActionSheet(item) {
   const chipsContainer = document.getElementById('action-sheet-status-chips');
   if (chipsContainer) {
     const statuses = [
-      { id: 'watching', label: '👁️ Смотрю' },
-      { id: 'planned', label: '📋 В планах' },
-      { id: 'completed', label: '✅ Просмотрено' },
-      { id: 'favorite', label: '❤️ Любимое' },
-      { id: 'on_hold', label: '⏸️ На паузе' },
-      { id: 'dropped', label: '🛑 Брошено' },
-      { id: 'wont_watch', label: '🚫 Не буду' },
-      { id: 'none', label: '🗑️ Убрать статус' }
+      { id: 'watching', label: 'Смотрю' },
+      { id: 'planned', label: 'В планах' },
+      { id: 'completed', label: 'Просмотрено' },
+      { id: 'favorite', label: 'Любимое' },
+      { id: 'on_hold', label: 'На паузе' },
+      { id: 'dropped', label: 'Брошено' },
+      { id: 'wont_watch', label: 'Не буду' },
+      { id: 'none', label: 'Убрать статус' }
     ];
 
     chipsContainer.innerHTML = statuses.map(s => {
       const isActive = s.id === 'none' ? !item.user_status : (item.user_status === s.id || (s.id === 'planned' && item.user_status === 'plan') || (s.id === 'on_hold' && item.user_status === 'hold'));
-      return `<button type="button" class="action-sheet-status-chip ${isActive ? 'active' : ''}" data-status="${s.id}">${s.label}</button>`;
+      const iconContent = s.id === 'none'
+        ? '<span style="font-size: 13px;">🗑️</span>'
+        : getStatusIconSvg(s.id, { size: 14, animated: isActive });
+      return `<button type="button" class="action-sheet-status-chip ${isActive ? 'active' : ''}" data-status="${s.id}"><span style="display:inline-flex;align-items:center;">${iconContent}</span> <span>${s.label}</span></button>`;
     }).join('');
 
     chipsContainer.querySelectorAll('.action-sheet-status-chip').forEach(chip => {
@@ -741,15 +745,46 @@ export function formatMediaTitle(item) {
   if (!item) return '';
   let rawTitle = cleanVideoTitle(item.title || item.original_title || '');
 
-  // Извлечение года
-  const yearMatch = rawTitle.match(/\((\d{4})\)/);
+  // Извлечение года с проверкой известных фильмов с числами/годами в названии
+  const lowerCheck = `${item.title || ''} ${item.original_title || ''}`.toLowerCase();
+  const KNOWN_TITLE_YEARS = {
+    'бегущий по лезвию 2049': '2017',
+    'blade runner 2049': '2017',
+    'бегущий по лезвию': '1982',
+    'космическая одиссея 2001': '1968',
+    '2001: космическая одиссея': '1968',
+    '2010: год вступления в контакт': '1984',
+    '2012': '2009',
+    '1917': '2019',
+    '1922': '2017',
+    '1941': '1979',
+    '1944': '2015',
+    '1984': '1984',
+    '1408': '2007',
+    'киберпанк 2077': '2022',
+    'смертельная гонка 2000': '1975'
+  };
+
   let itemYear = item.year ? String(item.year).trim() : '';
-  if ((!itemYear || itemYear === '0' || itemYear === '—') && yearMatch) {
-    itemYear = yearMatch[1];
+
+  for (const [k, y] of Object.entries(KNOWN_TITLE_YEARS)) {
+    if (lowerCheck.includes(k)) {
+      itemYear = y;
+      break;
+    }
   }
-  if (!itemYear || itemYear === '0' || itemYear === '—') {
+
+  const yearMatch = rawTitle.match(/\((\d{4})\)/);
+  if ((!itemYear || itemYear === '0' || itemYear === '—' || itemYear === '2049') && yearMatch) {
+    const pYear = parseInt(yearMatch[1], 10);
+    if (pYear >= 1920 && pYear <= 2028) itemYear = yearMatch[1];
+  }
+  if (!itemYear || itemYear === '0' || itemYear === '—' || itemYear === '2049') {
     const ym = `${item.title || ''} ${item.original_title || ''}`.match(/\b(19\d\d|20\d\d)\b/);
-    if (ym) itemYear = ym[1];
+    if (ym) {
+      const yrNum = parseInt(ym[1], 10);
+      if (yrNum >= 1920 && yrNum <= 2028) itemYear = ym[1];
+    }
   }
   if (itemYear && itemYear !== '0' && itemYear !== '—') {
     item.year = itemYear;
@@ -1283,7 +1318,6 @@ function createRailCardHtml(item, idx, isWide = false) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
-            ${getSourceBadge(item)}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
@@ -1579,7 +1613,6 @@ function renderMediaItems(items) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
-            ${getSourceBadge(item)}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
@@ -1675,7 +1708,6 @@ function renderMediaItems(items) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
-            ${getSourceBadge(item)}
           </div>
         </div>
         <div class="media-detailed-info">
@@ -1923,18 +1955,9 @@ function getStatusLabel(status) {
 function getStatusBadge(status) {
   if (!status) return '';
   const norm = status === 'plan' ? 'planned' : (status === 'hold' ? 'on_hold' : status);
-  const icons = {
-    watching: '👁️',
-    planned: '📋',
-    completed: '✅',
-    favorite: '❤️',
-    on_hold: '⏸️',
-    dropped: '🛑',
-    wont_watch: '🚫'
-  };
-  const icon = icons[norm] || '📌';
+  const iconSvg = getStatusIconSvg(norm, { size: 13, animated: true });
   const label = getStatusLabel(norm);
-  return `<span class="storm-badge storm-badge-status storm-badge-${norm}"><span>${icon}</span> <span>${label}</span></span>`;
+  return `<span class="storm-badge storm-badge-status storm-badge-${norm}">${iconSvg} <span>${label}</span></span>`;
 }
 
 function getSourceBadge(item) {
@@ -2368,13 +2391,13 @@ export function initFilterDropdowns() {
   // 3.5. Статус просмотра
   const statuses = [
     { id: 'all', name: 'Все статусы', icon: '🏷️' },
-    { id: 'watching', name: 'Смотрю', icon: '👁️' },
-    { id: 'favorite', name: 'Любимое', icon: '❤️' },
-    { id: 'planned', name: 'В планах', icon: '📋' },
-    { id: 'completed', name: 'Просмотрено', icon: '✅' },
-    { id: 'on_hold', name: 'Отложено', icon: '⏸️' },
-    { id: 'dropped', name: 'Заброшено', icon: '🛑' },
-    { id: 'wont_watch', name: 'Не буду смотреть', icon: '🚫' }
+    { id: 'watching', name: 'Смотрю', icon: getStatusIconSvg('watching', { size: 14 }) },
+    { id: 'favorite', name: 'Любимое', icon: getStatusIconSvg('favorite', { size: 14 }) },
+    { id: 'planned', name: 'В планах', icon: getStatusIconSvg('planned', { size: 14 }) },
+    { id: 'completed', name: 'Просмотрено', icon: getStatusIconSvg('completed', { size: 14 }) },
+    { id: 'on_hold', name: 'Отложено', icon: getStatusIconSvg('on_hold', { size: 14 }) },
+    { id: 'dropped', name: 'Заброшено', icon: getStatusIconSvg('dropped', { size: 14 }) },
+    { id: 'wont_watch', name: 'Не буду смотреть', icon: getStatusIconSvg('wont_watch', { size: 14 }) }
   ];
 
   setupFilterDropdown({
@@ -2936,7 +2959,6 @@ function showCardHoverPreview(card, item) {
     <div class="hover-preview-top-row">
       <div class="hover-preview-badges-left">
         ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
-        ${getSourceBadge(item)}
         ${item.user_status ? getStatusBadge(item.user_status) : ''}
       </div>
       <div class="hover-preview-badges-right">
@@ -2975,11 +2997,11 @@ function showCardHoverPreview(card, item) {
     <div class="hover-preview-status-row">
       <span class="hover-preview-status-label">Статус:</span>
       <div class="hover-preview-status-btns">
-        <button type="button" class="hover-status-btn ${item.user_status === 'watching' ? 'active' : ''}" data-status="watching" title="Смотрю">👁️</button>
-        <button type="button" class="hover-status-btn ${item.user_status === 'planned' ? 'active' : ''}" data-status="planned" title="В планах">📋</button>
-        <button type="button" class="hover-status-btn ${item.user_status === 'completed' ? 'active' : ''}" data-status="completed" title="Просмотрено">✅</button>
-        <button type="button" class="hover-status-btn ${item.user_status === 'favorite' ? 'active' : ''}" data-status="favorite" title="Любимое">❤️</button>
-        <button type="button" class="hover-status-btn ${item.user_status === 'on_hold' ? 'active' : ''}" data-status="on_hold" title="Отложено">⏸️</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'watching' ? 'active' : ''}" data-status="watching" title="Смотрю">${getStatusIconSvg('watching', { size: 15, animated: item.user_status === 'watching' })}</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'planned' ? 'active' : ''}" data-status="planned" title="В планах">${getStatusIconSvg('planned', { size: 15, animated: item.user_status === 'planned' })}</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'completed' ? 'active' : ''}" data-status="completed" title="Просмотрено">${getStatusIconSvg('completed', { size: 15, animated: item.user_status === 'completed' })}</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'favorite' ? 'active' : ''}" data-status="favorite" title="Любимое">${getStatusIconSvg('favorite', { size: 15, animated: item.user_status === 'favorite' })}</button>
+        <button type="button" class="hover-status-btn ${item.user_status === 'on_hold' ? 'active' : ''}" data-status="on_hold" title="Отложено">${getStatusIconSvg('on_hold', { size: 15, animated: item.user_status === 'on_hold' })}</button>
       </div>
     </div>
   `;

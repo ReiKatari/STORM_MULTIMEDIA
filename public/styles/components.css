@@ -417,7 +417,7 @@ input[type="checkbox"]::after {
 .media-card-rating {
   position: absolute;
   top: 8px;
-  right: 42px;
+  right: 8px;
   z-index: 5;
 }
 
@@ -512,6 +512,233 @@ input[type="checkbox"]::after {
   color: #ffffff !important;
   border: 1px solid rgba(148, 163, 184, 0.5) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* -------------------------------------------------------------
+   СОВРЕМЕННЫЕ АНИМИРОВАННЫЕ ИКОНКИ СТАТУСОВ (SVG MICRO-ANIMATIONS)
+   ------------------------------------------------------------- */
+.storm-status-svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+}
+
+.storm-status-svg.storm-status-anim {
+  will-change: transform, filter;
+}
+
+/* Пульсация радара для "Смотрю" */
+@keyframes stormRadarWave {
+  0% {
+    r: 6;
+    stroke-opacity: 0.9;
+  }
+  50% {
+    r: 10;
+    stroke-opacity: 0.3;
+  }
+  100% {
+    r: 6;
+    stroke-opacity: 0.9;
+  }
+}
+
+.storm-status-svg.storm-status-anim .storm-svg-radar {
+  animation: stormRadarWave 2.2s infinite ease-in-out;
+  transform-origin: center;
+}
+
+/* Пульсация сердца для "Любимое" */
+@keyframes stormHeartPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(1.18);
+  }
+  28% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(1.12);
+  }
+  70% {
+    transform: scale(1);
+  }
+}
+
+.storm-status-svg.storm-status-anim .storm-svg-heart {
+  animation: stormHeartPulse 2s infinite ease-in-out;
+  transform-origin: center;
+}
+
+/* Дыхание паузы для "Отложено" */
+@keyframes stormPauseBreathe {
+  0%, 100% {
+    opacity: 0.85;
+    transform: scaleY(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1.15);
+  }
+}
+
+.storm-status-svg.storm-status-anim .storm-svg-pause-bar {
+  animation: stormPauseBreathe 2s infinite ease-in-out;
+  transform-origin: center;
+}
+
+/* Неоновое парение "В планах" */
+@keyframes stormBookmarkHover {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+.storm-status-svg.storm-status-anim .storm-svg-bookmark {
+  animation: stormBookmarkHover 2.5s infinite ease-in-out;
+  transform-origin: center;
+}
+
+/* Сияние галочки для "Просмотрено" */
+@keyframes stormCheckShine {
+  0%, 100% {
+    filter: drop-shadow(0 0 1px #10b981);
+  }
+  50% {
+    filter: drop-shadow(0 0 4px #34d399);
+  }
+}
+
+.storm-status-svg.storm-status-anim.storm-status-completed .storm-svg-check,
+.storm-status-svg.storm-status-anim .storm-svg-check {
+  animation: stormCheckShine 2.5s infinite ease-in-out;
+}
+
+/* Эффект ховера */
+button:hover .storm-status-svg {
+  transform: scale(1.15);
+  filter: brightness(1.2);
+}
+
+button:active .storm-status-svg {
+  transform: scale(0.92);
+}
+
+/* Кастомный выпадающий список статусов серии/сезона (Screenshot 1) */
+.quick-status-custom-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-primary) !important;
+}
+
+.quick-status-custom-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  background: rgba(18, 22, 34, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary) !important;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: all 0.15s ease;
+}
+
+.quick-status-custom-trigger:hover,
+.quick-status-custom-trigger:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  background: rgba(28, 34, 52, 0.98);
+}
+
+.quick-status-arrow {
+  font-size: 8px;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+  color: var(--text-secondary);
+}
+
+.quick-status-custom-dropdown.is-open .quick-status-arrow {
+  transform: rotate(180deg);
+}
+
+.quick-status-custom-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 5px;
+  min-width: 155px;
+  background: #0d1019 !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 210, 255, 0.3) !important;
+  border-radius: 8px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.95), 0 0 15px rgba(0, 210, 255, 0.2);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 2500;
+  animation: stormFadeInDown 0.18s ease-out;
+}
+
+.quick-status-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9 !important;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.quick-status-option:hover {
+  background: rgba(0, 210, 255, 0.18) !important;
+  color: #ffffff !important;
+  transform: translateX(2px);
+}
+
+.quick-status-option.active {
+  background: rgba(0, 210, 255, 0.28) !important;
+  color: #00f0ff !important;
+  font-weight: 700;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+}
+
+.quick-status-option .storm-status-svg {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+@keyframes stormFadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* -------------------------------------------------------------
