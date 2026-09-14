@@ -168,9 +168,24 @@ function initTabs() {
   });
 }
 
+const CATEGORY_DEFAULT_PAGES = {
+  'movies': 500,
+  'series': 500,
+  'cartoons': 200,
+  'cartoon-series': 150,
+  'anime-movies': 120,
+  'anime-series': 250,
+  'new': 100,
+  'popular': 500,
+  'home': 500
+};
+
 export function switchTab(tab) {
   currentTab = tab;
   currentPage = 1;
+  const defPages = CATEGORY_DEFAULT_PAGES[tab] || 100;
+  totalCatalogPages = defPages;
+  totalCatalogItems = defPages * 20;
 
   if (tab !== 'home') {
     hideHeroShowcase();
@@ -794,13 +809,26 @@ async function loadCurrentTab() {
   if (currentTab === 'home') category = 'popular';
   const cacheKey = `${category}_${currentPage}_${currentSource}`;
 
-  if (clientTabCache.has(cacheKey) && Array.isArray(clientTabCache.get(cacheKey)) && clientTabCache.get(cacheKey).length > 0) {
-    rawCatalogItems = clientTabCache.get(cacheKey);
+  const defPages = CATEGORY_DEFAULT_PAGES[category] || 100;
+
+  if (clientTabCache.has(cacheKey)) {
+    const cached = clientTabCache.get(cacheKey);
+    if (Array.isArray(cached) && cached.length > 0) {
+      rawCatalogItems = cached;
+      totalCatalogPages = defPages;
+      totalCatalogItems = defPages * 20;
+    } else if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
+      rawCatalogItems = cached.items;
+      totalCatalogPages = cached.totalPages || defPages;
+      totalCatalogItems = cached.totalItems || (totalCatalogPages * 20);
+    }
     renderFilteredCatalog();
   } else {
     const baselineItems = getBaselineCatalog(category);
     if (baselineItems && baselineItems.length > 0) {
       rawCatalogItems = deduplicateMediaList(baselineItems);
+      totalCatalogPages = defPages;
+      totalCatalogItems = defPages * 20;
       renderFilteredCatalog();
     } else {
       renderSkeletonGrid();
@@ -818,12 +846,12 @@ async function loadCurrentTab() {
     });
     const data = await res.json();
     const fetchedItems = data.items || [];
-    totalCatalogItems = data.total_items || fetchedItems.length;
-    totalCatalogPages = data.total_pages || Math.max(1, Math.ceil(totalCatalogItems / 20));
+    totalCatalogPages = data.total_pages || defPages;
+    totalCatalogItems = data.total_items || (totalCatalogPages * 20);
 
     if (fetchedItems.length > 0) {
       rawCatalogItems = deduplicateMediaList(fetchedItems);
-      clientTabCache.set(cacheKey, rawCatalogItems);
+      clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
       renderFilteredCatalog();
     } else {
       // Если по текущему источнику 0 элементов, пробуем сводный каталог
@@ -835,9 +863,9 @@ async function loadCurrentTab() {
         const retryData = await retryRes.json();
         if (retryData.items && retryData.items.length > 0) {
           rawCatalogItems = deduplicateMediaList(retryData.items);
-          totalCatalogItems = retryData.total_items || rawCatalogItems.length;
-          totalCatalogPages = retryData.total_pages || Math.max(1, Math.ceil(totalCatalogItems / 20));
-          clientTabCache.set(cacheKey, rawCatalogItems);
+          totalCatalogPages = retryData.total_pages || defPages;
+          totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
+          clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
           renderFilteredCatalog();
           return;
         }
@@ -845,16 +873,16 @@ async function loadCurrentTab() {
 
       if (!rawCatalogItems || rawCatalogItems.length === 0) {
         rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
-        totalCatalogItems = rawCatalogItems.length;
-        totalCatalogPages = 1;
+        totalCatalogPages = defPages;
+        totalCatalogItems = defPages * 20;
         renderFilteredCatalog();
       }
     }
   } catch (err) {
     if (!rawCatalogItems || rawCatalogItems.length === 0) {
       rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
-      totalCatalogItems = rawCatalogItems.length;
-      totalCatalogPages = 1;
+      totalCatalogPages = defPages;
+      totalCatalogItems = defPages * 20;
       renderFilteredCatalog();
     }
   }

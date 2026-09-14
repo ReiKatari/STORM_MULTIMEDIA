@@ -321,16 +321,26 @@ export function createSession(userId) {
 }
 
 export function getOrCreateDefaultUserSession() {
-  let user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE username = ?').get('ReiKatari');
+  let user = db.prepare(`
+    SELECT id, username, email, avatar, role, created_at, settings_json 
+    FROM users 
+    WHERE LOWER(username) = 'reikatari' 
+       OR LOWER(email) = 'reikatari@outlook.com' 
+       OR LOWER(email) = '45316432+reikatari@users.noreply.github.com'
+    ORDER BY id ASC LIMIT 1
+  `).get();
   const now = Date.now();
   if (!user) {
     const passwordHash = hashPassword('Storm2026!');
     const res = db.prepare(`
       INSERT INTO users (username, email, password_hash, avatar, role, created_at, settings_json)
       VALUES (?, ?, ?, ?, 'admin', ?, '{}')
-    `).run('ReiKatari', '45316432+ReiKatari@users.noreply.github.com', passwordHash, 'assets/favicon.svg', now);
+    `).run('ReiKatari', 'ReiKatari@outlook.com', passwordHash, 'assets/favicon.svg', now);
     const userId = Number(res.lastInsertRowid);
     user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  } else if (user.role !== 'admin') {
+    db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(user.id);
+    user.role = 'admin';
   }
 
   const existingSession = db.prepare('SELECT token FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1').get(user.id, now);

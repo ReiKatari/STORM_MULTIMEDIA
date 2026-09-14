@@ -4175,6 +4175,16 @@ input[type="checkbox"]::after {
   left: auto;
 }
 
+#quick-season-menu {
+  min-width: 440px;
+  max-width: 500px;
+}
+
+#quick-episode-menu {
+  min-width: 360px;
+  max-width: 500px;
+}
+
 body.quick-dropdown-active .cinema-player-iframe,
 body.player-dropdown-active .cinema-player-iframe {
   pointer-events: none;
@@ -4246,7 +4256,15 @@ body.player-dropdown-active .cinema-player-iframe {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-.quick-dropdown-item.active .quick-ep-watch-toggle {
+.quick-dropdown-item.active .quick-ep-watch-toggle,
+.quick-dropdown-item.active .quick-season-watch-toggle {
+  background: #080c14;
+  color: #ffffff;
+  border: 1.5px solid #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.quick-dropdown-item.active .quick-season-status-select {
   background: #080c14;
   color: #ffffff;
   border: 1.5px solid #000;
@@ -4350,7 +4368,8 @@ body.player-dropdown-active .cinema-player-iframe {
   box-shadow: 0 0 12px var(--accent-glow);
 }
 
-.quick-ep-watch-toggle {
+.quick-ep-watch-toggle,
+.quick-season-watch-toggle {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 6px;
@@ -4359,14 +4378,48 @@ body.player-dropdown-active .cinema-player-iframe {
   font-weight: 800;
   color: #ffffff;
   cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   transition: all 0.15s ease;
 }
 
-.quick-ep-watch-toggle:hover {
+.quick-ep-watch-toggle:hover,
+.quick-season-watch-toggle:hover {
   border-color: var(--accent);
   color: #ffffff;
   background: rgba(0, 210, 255, 0.35);
-  transform: scale(1.1);
+  transform: translateY(-1px) scale(1.06);
+  box-shadow: 0 4px 10px rgba(0, 210, 255, 0.3);
+}
+
+.quick-season-watch-toggle.active {
+  background: rgba(255, 51, 102, 0.2);
+  border-color: rgba(255, 51, 102, 0.6);
+  color: #ff3366;
+}
+
+.quick-season-watch-toggle.active:hover {
+  background: rgba(255, 51, 102, 0.35);
+  box-shadow: 0 4px 10px rgba(255, 51, 102, 0.4);
+}
+
+.quick-season-status-select {
+  background: rgba(18, 22, 34, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  height: 24px;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
+}
+
+.quick-season-status-select:hover,
+.quick-season-status-select:focus {
+  border-color: var(--accent);
   box-shadow: 0 0 8px var(--accent-glow);
 }
 

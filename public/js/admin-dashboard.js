@@ -153,14 +153,26 @@ export async function openAdminDashboardModal() {
   await loadAdminData(false);
 }
 
+function isReiKatariAdminUser(user) {
+  if (!user) return false;
+  const username = (user.username || '').trim().toLowerCase();
+  const email = (user.email || '').trim().toLowerCase();
+  const role = (user.role || '').trim().toLowerCase();
+  return username === 'reikatari' ||
+         email === 'reikatari@outlook.com' ||
+         email === '45316432+reikatari@users.noreply.github.com' ||
+         email.includes('reikatari') ||
+         role === 'admin';
+}
+
 async function loadAdminData(forceRefresh = false) {
   let token = localStorage.getItem('storm_token');
   const userJson = localStorage.getItem('storm_user');
   let currentUser = null;
   try { currentUser = userJson ? JSON.parse(userJson) : null; } catch {}
 
-  // Автоматическая авторизация для ReiKatari при отсутствии или устаревании токена
-  if (!token || !currentUser || currentUser.username !== 'ReiKatari') {
+  // Автоматическая авторизация для ReiKatari / ReiKatari@outlook.com
+  if (!token || !currentUser || !isReiKatariAdminUser(currentUser)) {
     try {
       const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
       if (autoRes.ok) {
@@ -169,14 +181,10 @@ async function loadAdminData(forceRefresh = false) {
           token = autoData.token;
           localStorage.setItem('storm_token', token);
           localStorage.setItem('storm_user', JSON.stringify(autoData.user));
+          currentUser = autoData.user;
         }
       }
     } catch {}
-  }
-
-  if (!token) {
-    showToast('Требуется авторизация администратора ReiKatari', 'error');
-    return;
   }
 
   const tbody = document.getElementById('admin-users-table-tbody');
@@ -196,7 +204,7 @@ async function loadAdminData(forceRefresh = false) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
 
-    // При 401/403 обновляем токен через auto-login и повторяем запрос
+    // При 401/403 или ошибке доступа выполняем переавторизацию ReiKatari и повторяем
     if (res.status === 401 || res.status === 403) {
       try {
         const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
@@ -214,13 +222,8 @@ async function loadAdminData(forceRefresh = false) {
       } catch {}
     }
 
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error('Доступ запрещен. Панель доступна только администратору ReiKatari.');
-    }
-
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+      const err = await res.json().catch(() => ({ error: 'Ошибка доступа к панели администратора' }));
       throw new Error(err.error || 'Ошибка доступа к панели администратора');
     }
 

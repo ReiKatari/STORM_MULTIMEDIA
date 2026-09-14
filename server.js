@@ -598,14 +598,31 @@ app.get('/api/auth/stats', requireAuth, (req, res) => {
   }
 });
 
-// Панель администратора: сводка активности пользователей (только для ReiKatari)
+// Панель администратора: сводка активности пользователей (для ReiKatari / ReiKatari@outlook.com)
 app.get('/api/admin/users-overview', requireAuth, (req, res) => {
   try {
-    const currentUsername = req.user.username;
-    const currentRole = req.user.role;
-    if (currentUsername !== 'ReiKatari' && currentRole !== 'admin') {
-      return res.status(403).json({ error: 'Доступ разрешен только администратору ReiKatari' });
+    const username = (req.user?.username || '').trim().toLowerCase();
+    const email = (req.user?.email || '').trim().toLowerCase();
+    const role = (req.user?.role || '').trim().toLowerCase();
+
+    const isReiKatari = username === 'reikatari' ||
+                        email === 'reikatari@outlook.com' ||
+                        email === '45316432+reikatari@users.noreply.github.com' ||
+                        email.includes('reikatari') ||
+                        role === 'admin';
+
+    if (!isReiKatari) {
+      return res.status(403).json({ error: 'Доступ разрешен только администратору ReiKatari (ReiKatari@outlook.com)' });
     }
+
+    // Автоматическое предоставление прав администратора в базе и сессии
+    if (req.user?.id && req.user.role !== 'admin') {
+      try {
+        db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(req.user.id);
+        req.user.role = 'admin';
+      } catch {}
+    }
+
     const overview = getAdminUsersOverview();
     res.json(overview);
   } catch (err) {
@@ -1144,13 +1161,15 @@ app.get('/api/media/catalog', async (req, res) => {
             ]);
             fetchedTotal = fetchedItems.length;
           } else if (category === 'cartoon-series' || category === 'cartoons') {
-            const [fanfilmRes, tmdbRes] = await Promise.allSettled([
+            const [fanfilmRes, tmdbRes1, tmdbRes2] = await Promise.allSettled([
               getFanFilmCatalog(category, page),
-              getTmdbCatalog(category, page)
+              getTmdbCatalog(category, page * 2 - 1),
+              getTmdbCatalog(category, page * 2)
             ]);
             fetchedItems = interleaveSources([
               fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [],
-              tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : []
+              tmdbRes1.status === 'fulfilled' ? tmdbRes1.value?.items || [] : [],
+              tmdbRes2.status === 'fulfilled' ? tmdbRes2.value?.items || [] : []
             ]).filter(item => !isAnimeMediaItem(item));
             fetchedTotal = fetchedItems.length;
           } else if (category === 'movies' || category === 'series') {
