@@ -39,6 +39,7 @@ let hoverPreviewTimer = null;
 let hoverCloseTimer = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  document.body.dataset.activeTab = currentTab || 'home';
   initTheme();
   applyTranslations();
 
@@ -800,6 +801,18 @@ function renderSkeletonGrid() {
   if (!container) return;
   if (currentTab !== 'home') {
     hideHeroShowcase();
+  } else {
+    const heroContainer = document.getElementById('hero-showcase-container');
+    if (heroContainer) {
+      heroContainer.style.display = 'block';
+      if (!heroContainer.querySelector('.hero-showcase')) {
+        heroContainer.innerHTML = `
+          <div class="hero-showcase hero-showcase-skeleton">
+            <div class="hero-showcase-overlay"></div>
+          </div>
+        `;
+      }
+    }
   }
   let html = '';
   for (let i = 0; i < 14; i++) {
@@ -1030,15 +1043,13 @@ async function loadCurrentTab() {
 
   if (clientTabCache.has(cacheKey)) {
     const cached = clientTabCache.get(cacheKey);
-    if (Array.isArray(cached) && cached.length > 0) {
-      rawCatalogItems = cached;
-      totalCatalogPages = defPages;
-      totalCatalogItems = defPages * 20;
-    } else if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
-      rawCatalogItems = cached.items;
-      totalCatalogPages = cached.totalPages || defPages;
-      totalCatalogItems = cached.totalItems || (totalCatalogPages * 20);
+    let items = Array.isArray(cached) ? cached : (cached?.items || []);
+    if (currentPage > 1) {
+      items = filterPageDuplicates(items, category, currentPage);
     }
+    rawCatalogItems = items;
+    totalCatalogPages = cached?.totalPages || defPages;
+    totalCatalogItems = cached?.totalItems || (totalCatalogPages * 20);
     renderFilteredCatalog();
     scheduleNextPagePrefetch(category, currentPage, currentSource);
   } else {
@@ -1064,7 +1075,11 @@ async function loadCurrentTab() {
     totalCatalogItems = data.total_items || (totalCatalogPages * 20);
 
     if (fetchedItems.length > 0) {
-      rawCatalogItems = deduplicateMediaList(fetchedItems);
+      let cleanList = deduplicateMediaList(fetchedItems);
+      if (currentPage > 1) {
+        cleanList = filterPageDuplicates(cleanList, category, currentPage);
+      }
+      rawCatalogItems = cleanList;
       clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
       renderFilteredCatalog();
       scheduleNextPagePrefetch(category, currentPage, currentSource);
@@ -1079,7 +1094,11 @@ async function loadCurrentTab() {
         if (loadSeq !== activeTabLoadSeq) return;
 
         if (retryData.items && retryData.items.length > 0) {
-          rawCatalogItems = deduplicateMediaList(retryData.items);
+          let retryList = deduplicateMediaList(retryData.items);
+          if (currentPage > 1) {
+            retryList = filterPageDuplicates(retryList, category, currentPage);
+          }
+          rawCatalogItems = retryList;
           totalCatalogPages = retryData.total_pages || defPages;
           totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
           clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
@@ -1232,6 +1251,50 @@ function deduplicateMediaList(items) {
   return Array.from(itemMap.values());
 }
 
+// Защита от утечки сквозных каруселей сайтов-доноров при пагинации страниц
+export const FANFILM_PINNED_CAROUSEL_IDS = new Set([
+  '2699', '3303', '2955', '2602', '2927', '3398', '3999', '3324', '2907',
+  '13962', '73057', '4165', '3319', '80233', '75166', '81746', '4066', '82029', '70512'
+]);
+
+export function filterPageDuplicates(items, category, page) {
+  if (!Array.isArray(items)) return [];
+  if (page <= 1) return items;
+
+  // 1. Исключаем сквозные карточки верхней карусели сайта Fanfilm (18 зафиксированных карточек верхнего слайдера)
+  let filtered = items.filter(it => {
+    if (!it) return false;
+    const itId = String(it.id || '');
+    if (it.source === 'fanfilm4k' && FANFILM_PINNED_CAROUSEL_IDS.has(itId)) {
+      return false;
+    }
+    return true;
+  });
+
+  // 2. Исключаем дубли тайтлов, которые уже были показаны на 1-й странице этой же категории
+  const page1Cache = clientTabCache.get(`${category}_1_${currentSource}`) || clientTabCache.get(`${category}_1_all`);
+  if (page1Cache) {
+    const p1Items = Array.isArray(page1Cache) ? page1Cache : (page1Cache.items || []);
+    if (p1Items.length > 0) {
+      const page1Keys = new Set();
+      p1Items.forEach(it => {
+        const k = normalizeMediaTitle(it.title, it.original_title);
+        if (k) page1Keys.add(k);
+        if (it.id) page1Keys.add(String(it.id));
+      });
+
+      filtered = filtered.filter(it => {
+        const k = normalizeMediaTitle(it.title, it.original_title);
+        if (k && page1Keys.has(k)) return false;
+        if (it.id && page1Keys.has(String(it.id))) return false;
+        return true;
+      });
+    }
+  }
+
+  return filtered;
+}
+
 // -------------------------------------------------------------
 // ВИТРИНА HERO SHOWCASE (EMBY & PLEX КИНЕМАТОГРАФИЧНЫЙ БАННЕР)
 // -------------------------------------------------------------
@@ -1255,7 +1318,7 @@ function renderHeroShowcase(items) {
   const container = document.getElementById('hero-showcase-container');
   if (!container) return;
 
-  if (currentTab !== 'home') {
+  if (currentTab !== 'home' || (searchQuery && searchQuery.trim().length >= 2)) {
     hideHeroShowcase();
     return;
   }
@@ -1265,12 +1328,18 @@ function renderHeroShowcase(items) {
     heroSliderTimer = null;
   }
 
-  const rawList = Array.isArray(items) ? items.filter(Boolean) : (items ? [items] : []);
+  let rawList = Array.isArray(items) ? items.filter(Boolean) : (items ? [items] : []);
   if (rawList.length === 0) {
-    hideHeroShowcase();
-    return;
+    const fallback = (getBaselineCatalog('popular') || []).slice(0, 7);
+    if (fallback.length > 0) {
+      rawList = fallback;
+    } else {
+      hideHeroShowcase();
+      return;
+    }
   }
 
+  container.style.display = 'block';
   heroSliderItems = rawList;
   if (currentHeroIndex >= heroSliderItems.length) {
     currentHeroIndex = 0;
@@ -1512,9 +1581,12 @@ function renderHomeView(items) {
   items = deduplicateMediaList(items);
 
   // Топ 6-8 витринных фильмов и релизов для карусели Hero Showcase Slider
-  const featuredList = items.filter(i => (i.is4K || (i.quality && i.quality.includes('4K')) || (i.rating && parseFloat(i.rating) >= 7.5))).slice(0, 7);
-  if (featuredList.length === 0 && items.length > 0) {
-    featuredList.push(...items.slice(0, 5));
+  let featuredList = (items || []).filter(i => (i.is4K || (i.quality && i.quality.includes('4K')) || (i.rating && parseFloat(i.rating) >= 7.2))).slice(0, 8);
+  if (featuredList.length === 0 && items && items.length > 0) {
+    featuredList = items.slice(0, 6);
+  }
+  if (featuredList.length === 0) {
+    featuredList = (getBaselineCatalog('popular') || []).slice(0, 6);
   }
   renderHeroShowcase(featuredList);
 
@@ -2650,6 +2722,9 @@ export function renderFilteredCatalog() {
   updateFilterBadge();
 
   let items = [...rawCatalogItems];
+  if (currentPage > 1) {
+    items = filterPageDuplicates(items, currentTab === 'home' ? 'popular' : currentTab, currentPage);
+  }
 
   // Исключаем аниме из Мультфильмов и Мультсериалов
   if (currentTab === 'cartoons' || currentTab === 'cartoon-series') {

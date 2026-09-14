@@ -57,7 +57,8 @@ import {
   getFanFilmCatalog,
   searchFanFilm,
   getFanFilmDetails,
-  resolveMediaYear
+  resolveMediaYear,
+  FANFILM_PINNED_CAROUSEL_IDS
 } from './services/fanfilm-service.js';
 
 import {
@@ -1313,6 +1314,9 @@ app.get('/api/media/catalog', async (req, res) => {
             fetchedTotal = Math.max(fetchedItems.length, 500 * 20);
           }
         }
+        if (page > 1) {
+          fetchedItems = fetchedItems.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
+        }
         fetchedItems.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
         return { items: fetchedItems, totalItems: fetchedTotal };
       };
@@ -1338,6 +1342,9 @@ app.get('/api/media/catalog', async (req, res) => {
     }
 
     if (items && items.length > 0) {
+      if (page > 1) {
+        items = items.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
+      }
       items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
       memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
     }
