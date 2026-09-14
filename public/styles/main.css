@@ -1516,6 +1516,14 @@ body {
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 16px;
   gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.profile-tab-links::-webkit-scrollbar {
+  display: none;
 }
 
 .profile-tab-link {
@@ -1528,11 +1536,27 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .profile-tab-link.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+.profile-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.profile-stats-grid-dual {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
 }
 
 /* -------------------------------------------------------------
@@ -1728,12 +1752,21 @@ body {
 .mobile-drawer-user-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(26, 32, 48, 0.9) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+[data-theme="STORM DAY"] .mobile-drawer-user-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .mobile-drawer-avatar {
@@ -3220,8 +3253,13 @@ body {
 }
 
 /* ==========================================================================
-   ФЛАГМАНСКИЙ ДИЗАЙН EMBY И PLEX: HERO SHOWCASE, RAILS, DOCK & BOTTOM SHEETS
+   ФЛАГМАНСКИЙ ДИЗАЙН EMBY И PLEX: HERO SHOWCASE, RAILS, DOCK И BOTTOM SHEETS
    ========================================================================== */
+
+/* Строгое скрытие Hero Showcase вне вкладки Главная */
+body:not([data-active-tab="home"]) #hero-showcase-container {
+  display: none !important;
+}
 
 /* 1. HERO SHOWCASE (КИНЕМАТОГРАФИЧНАЯ ВИТРИНА ТОП-РЕЛИЗА) */
 .hero-showcase-container {
@@ -3803,7 +3841,15 @@ body {
 
   .hero-showcase {
     min-height: 380px !important;
-    padding: 24px 16px 20px 16px !important;
+    padding: 24px 16px 44px 16px !important;
+  }
+
+  .hero-slider-dots {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    bottom: 8px !important;
+    padding: 4px 10px !important;
   }
 
   .hero-title {
@@ -3839,6 +3885,24 @@ body {
     font-size: 12.5px !important;
     justify-content: center !important;
     white-space: nowrap !important;
+  }
+
+  /* Адаптив профиля пользователя для мобильных */
+  .profile-modal-dialog {
+    width: 95vw !important;
+    min-height: unset !important;
+    max-height: 94vh !important;
+    padding: 16px !important;
+  }
+
+  .profile-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .profile-stats-grid-dual {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
   }
 
   /* Скрытие громоздкого подвала на мобильных (перенесен в бутерброд Drawer) */

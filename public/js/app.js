@@ -171,7 +171,7 @@ function initTabs() {
 const CATEGORY_DEFAULT_PAGES = {
   'movies': 500,
   'series': 500,
-  'cartoons': 200,
+  'cartoons': 250,
   'cartoon-series': 150,
   'anime-movies': 120,
   'anime-series': 250,
@@ -182,6 +182,7 @@ const CATEGORY_DEFAULT_PAGES = {
 
 export function switchTab(tab) {
   currentTab = tab;
+  document.body.dataset.activeTab = tab;
   currentPage = 1;
   const defPages = CATEGORY_DEFAULT_PAGES[tab] || 100;
   totalCatalogPages = defPages;
@@ -254,8 +255,13 @@ function initBottomNav() {
       } else if (tab === 'more') {
         const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
         if (drawerBackdrop) {
-          drawerBackdrop.classList.add('is-open');
-          updateMobileDrawerUser();
+          const isOpen = drawerBackdrop.classList.contains('is-open');
+          if (isOpen) {
+            drawerBackdrop.classList.remove('is-open');
+          } else {
+            drawerBackdrop.classList.add('is-open');
+            updateMobileDrawerUser();
+          }
         }
       }
     });
@@ -661,6 +667,16 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+let catalogResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(catalogResizeTimer);
+  catalogResizeTimer = setTimeout(() => {
+    if (currentTab !== 'home' && currentTab !== 'offline') {
+      renderFilteredCatalog();
+    }
+  }, 200);
+});
+
 function showActionSheetToast(msg) {
   const toast = document.createElement('div');
   toast.className = 'storm-action-toast';
@@ -768,16 +784,20 @@ async function loadCurrentTab() {
   if (currentTab === 'continue') {
     renderSkeletonGrid();
     const history = await fetchContinueWatching();
-    const rawItems = history.map(h => ({
-      id: h.media_id,
-      source: h.source,
-      title: h.title,
-      poster: h.poster_url,
-      media_type: h.media_type,
-      progress_percent: h.progress_percent,
-      season: h.season,
-      episode: h.episode
-    }));
+    const excludedStatuses = ['completed', 'dropped', 'wont_watch'];
+    const rawItems = history
+      .filter(h => !excludedStatuses.includes(h.status) && !excludedStatuses.includes(h.user_status) && (h.progress_percent || 0) < 95)
+      .map(h => ({
+        id: h.media_id,
+        source: h.source,
+        title: h.title,
+        poster: h.poster_url,
+        media_type: h.media_type,
+        progress_percent: h.progress_percent,
+        user_status: h.status || 'watching',
+        season: h.season,
+        episode: h.episode
+      }));
     rawCatalogItems = deduplicateMediaList(rawItems);
     renderFilteredCatalog();
     return;
@@ -1242,8 +1262,13 @@ function renderHomeView(items) {
   }
   renderHeroShowcase(featuredList);
 
-  // Рейл 1: Продолжить просмотр
-  const continueItems = items.filter(i => (i.progress_percent > 0 || i.user_status === 'watching')).slice(0, 10);
+  // Рейл 1: Продолжить просмотр (исключаем Просмотрено, Брошено и Не буду смотреть)
+  const excludedFromContinue = ['completed', 'dropped', 'wont_watch'];
+  const continueItems = items.filter(i => {
+    if (excludedFromContinue.includes(i.user_status) || excludedFromContinue.includes(i.status)) return false;
+    if ((i.progress_percent || 0) >= 95) return false;
+    return (i.progress_percent > 0 || i.user_status === 'watching');
+  }).slice(0, 10);
 
   // Рейл 2: Горячие премьеры 2026/2025
   const trendingItems = items.filter(i => {
@@ -1508,6 +1533,31 @@ function renderMediaItems(items) {
       </div>
     `;
     }).join('');
+
+    // Гарантируем 100% заполнение всех рядов сетки без пустых мест на промежуточных страницах
+    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+    if (!isSearching && !['home', 'continue', 'bookmarks', 'offline'].includes(currentTab) && currentPage < totalCatalogPages) {
+      const renderedCards = Array.from(container.querySelectorAll('.media-card'));
+      if (renderedCards.length > 1) {
+        const firstTop = Math.round(renderedCards[0].offsetTop);
+        let cols = 0;
+        while (cols < renderedCards.length && Math.abs(Math.round(renderedCards[cols].offsetTop) - firstTop) <= 3) {
+          cols++;
+        }
+        if (cols > 0) {
+          const remainder = renderedCards.length % cols;
+          if (remainder !== 0 && renderedCards.length > cols) {
+            for (let r = 0; r < remainder; r++) {
+              const lastCard = renderedCards[renderedCards.length - 1 - r];
+              if (lastCard && lastCard.parentNode) {
+                lastCard.parentNode.removeChild(lastCard);
+              }
+            }
+            items = items.slice(0, items.length - remainder);
+          }
+        }
+      }
+    }
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
@@ -2448,8 +2498,24 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 4. Сортировка
-  if (currentSort === 'newest') {
+  // 4. Сортировка: при поиске и фильтрах по умолчанию автоматически от новых к старым
+  if (isSearching) {
+    if (currentSort === 'rating') {
+      items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
+    } else if (currentSort === 'title') {
+      items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+    } else {
+      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+    }
+  } else if (isFiltered) {
+    if (currentSort === 'rating') {
+      items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
+    } else if (currentSort === 'title') {
+      items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+    } else {
+      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+    }
+  } else if (currentSort === 'newest') {
     items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
   } else if (currentSort === 'rating') {
     items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
@@ -2487,7 +2553,7 @@ export function renderFilteredCatalog() {
   if (currentTab === 'home' && !isFiltered && (!searchQuery || !searchQuery.trim())) {
     renderHomeView(currentItems);
   } else {
-    if (heroContainer) heroContainer.style.display = 'none';
+    hideHeroShowcase();
     renderMediaItems(currentItems);
   }
 }
@@ -2497,12 +2563,6 @@ export async function applyGenreFilter(genre) {
   const cleanGenre = genre.trim();
   currentGenre = cleanGenre.toLowerCase();
   currentCountry = 'all';
-
-  const homeBtn = document.querySelector('.storm-tab-btn[data-tab="home"]');
-  if (homeBtn && currentTab !== 'home') {
-    currentTab = 'home';
-    document.querySelectorAll('.storm-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'home'));
-  }
 
   const genreLabel = document.getElementById('filter-genre-label');
   if (genreLabel) {

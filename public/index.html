@@ -97,10 +97,7 @@
           <span id="user-name-label">Пользователь</span>
         </button>
 
-        <!-- Кнопка мобильного меню (Mobile Menu Button) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm storm-mobile-menu-btn" id="mobile-menu-toggle-btn" title="Меню экосистемы">
-          <span>☰</span>
-        </button>
+
       </div>
     </div>
   </header>
@@ -576,7 +573,7 @@
           </div>
 
           <!-- Расширенная сетка статистики всех статусов -->
-          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+          <div class="profile-stats-grid">
             <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
               <div style="font-size: 20px; font-weight: 800; color: var(--accent);" id="profile-stat-hours">0</div>
               <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_total_hours">Часов просмотра</div>
@@ -612,7 +609,7 @@
           </div>
 
           <!-- Списки и закладки пользователя -->
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px;">
+          <div class="profile-stats-grid-dual">
             <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
               <div style="font-size: 20px; font-weight: 800; color: var(--color-amber);" id="profile-stat-bookmarks">0</div>
               <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_bookmarks">Всего в закладках</div>

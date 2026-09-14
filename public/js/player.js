@@ -1083,18 +1083,18 @@ function renderQuickBarDropdowns() {
 
       return `
         <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-season="${s.season}">
-          <div class="quick-item-left" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-            <span class="quick-item-icon">${statusIcon}</span>
-            <span class="quick-item-title" style="white-space: nowrap; font-weight: 700;">${s.name}</span>
+          <div class="quick-item-left" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+            <span class="quick-item-title" style="white-space: nowrap; font-weight: 700; font-size: 13px; color: var(--text-primary);">${s.name}</span>
           </div>
-          <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
-            ${statusBadge}
-            <select class="storm-select quick-season-status-select" data-season="${s.season}" title="Статус сезона" style="font-size: 11px; padding: 2px 6px; height: 24px; border-radius: 4px; background: rgba(18, 22, 34, 0.95); color: var(--text-primary); border: 1px solid var(--border-subtle); cursor: pointer;">
-              <option value="planned" ${curSeasonStatus === 'planned' ? 'selected' : ''}>📋 В планах</option>
-              <option value="watching" ${curSeasonStatus === 'watching' ? 'selected' : ''}>▶ Смотрю</option>
-              <option value="completed" ${curSeasonStatus === 'completed' ? 'selected' : ''}>✓ Просмотрен</option>
-              <option value="on_hold" ${curSeasonStatus === 'on_hold' ? 'selected' : ''}>⏸️ Отложен</option>
-              <option value="dropped" ${curSeasonStatus === 'dropped' ? 'selected' : ''}>🛑 Заброшен</option>
+          <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0;">
+            <span class="quick-count-badge" title="Просмотрено ${watchedCount} из ${totalEp} серий">${watchedCount}/${totalEp}</span>
+            <select class="storm-select quick-season-status-select-icon" data-season="${s.season}" title="Статус сезона" style="font-size: 12px; padding: 2px 4px; height: 26px; width: 36px; text-align: center; border-radius: 6px; background: rgba(18, 22, 34, 0.95); color: var(--text-primary); border: 1px solid var(--border-subtle); cursor: pointer;">
+              <option value="planned" ${curSeasonStatus === 'planned' ? 'selected' : ''} title="В планах">📋</option>
+              <option value="watching" ${curSeasonStatus === 'watching' ? 'selected' : ''} title="Смотрю">▶</option>
+              <option value="completed" ${curSeasonStatus === 'completed' || isAllWatched ? 'selected' : ''} title="Просмотрен">✓</option>
+              <option value="on_hold" ${curSeasonStatus === 'on_hold' ? 'selected' : ''} title="Отложен">⏸️</option>
+              <option value="dropped" ${curSeasonStatus === 'dropped' ? 'selected' : ''} title="Заброшен">🛑</option>
+              <option value="not_started" ${(!curSeasonStatus || curSeasonStatus === 'not_started') && !isAllWatched ? 'selected' : ''} title="Не начат">⚪</option>
             </select>
             <button type="button" class="quick-season-watch-toggle ${isAllWatched ? 'active' : ''}" data-toggle-season="${s.season}" title="${isAllWatched ? 'Снять отметку со всего сезона' : 'Отметить весь сезон просмотренным'}">
               ${isAllWatched ? '✖' : '✓'}
@@ -1106,7 +1106,7 @@ function renderQuickBarDropdowns() {
 
     seasonList.querySelectorAll('.quick-dropdown-item').forEach(item => {
       item.onclick = (e) => {
-        if (e.target.closest('.quick-season-status-select') || e.target.closest('.quick-season-watch-toggle')) {
+        if (e.target.closest('.quick-season-status-select-icon') || e.target.closest('.quick-season-watch-toggle')) {
           return;
         }
         e.stopPropagation();
@@ -1118,7 +1118,7 @@ function renderQuickBarDropdowns() {
       };
     });
 
-    seasonList.querySelectorAll('.quick-season-status-select').forEach(sel => {
+    seasonList.querySelectorAll('.quick-season-status-select-icon').forEach(sel => {
       sel.onclick = (e) => e.stopPropagation();
       sel.onchange = async (e) => {
         e.stopPropagation();
@@ -1129,8 +1129,7 @@ function renderQuickBarDropdowns() {
         if (newStat === 'completed') {
           showToast(`Сезон ${sNum}: все серии отмечены как просмотренные`, 'success');
         } else {
-          const lbl = sel.options[sel.selectedIndex]?.text || newStat;
-          showToast(`Сезон ${sNum}: статус «${lbl}»`, 'info');
+          showToast(`Сезон ${sNum}: статус обновлен`, 'info');
         }
         await syncOverallSeriesProgress(currentMedia);
         renderQuickBarDropdowns();
@@ -1190,36 +1189,25 @@ function renderQuickBarDropdowns() {
       const isWatched = watchedEpisodes.has(ep.episode);
       const isAct = ep.episode === quickBarActiveEpisode;
 
-      let statusIcon = '🎬';
-      let statusBadge = '';
+      let statusIconBadge = '';
       if (isAct && isWatched) {
-        statusIcon = '✅';
-        statusBadge = `<span class="quick-status-pill pill-watched">✓ Текущая</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-current-watched" title="Текущая воспроизводимая серия (Просмотрено)">▶✓</span>`;
       } else if (isAct) {
-        statusIcon = '▶️';
-        statusBadge = `<span class="quick-status-pill pill-current">▶ Текущая</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-current" title="Текущая воспроизводимая серия">▶</span>`;
       } else if (isWatched) {
-        statusIcon = '✅';
-        statusBadge = `<span class="quick-status-pill pill-watched">✓ Просмотрено</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-watched" title="Просмотрено">✓</span>`;
       } else {
-        statusIcon = '🎬';
-        statusBadge = `<span class="quick-status-pill pill-unwatched">⚪ Не начата</span>`;
+        statusIconBadge = `<span class="quick-ep-status-icon is-unwatched" title="Не начата">⚪</span>`;
       }
 
-      const epDesc = ep.overview ? `<span class="quick-item-sub" style="font-size:11px;color:var(--text-muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;line-height:1.2;margin-top:2px;">${ep.overview}</span>` : '';
-
       return `
-        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-episode="${ep.episode}">
-          <div class="quick-item-left">
-            <span class="quick-item-icon">${statusIcon}</span>
-            <div style="min-width: 0; flex: 1;">
-              <span class="quick-item-title">${ep.name}</span>
-              ${epDesc}
-            </div>
+        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-episode="${ep.episode}" title="${ep.overview ? ep.overview.replace(/"/g, '&quot;') : ''}">
+          <div class="quick-item-left" style="min-width: 0; flex: 1; overflow: hidden;">
+            <span class="quick-item-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${ep.name}</span>
           </div>
-          <div class="quick-item-right">
-            ${statusBadge}
-            <button type="button" class="quick-ep-watch-toggle" data-toggle-ep="${ep.episode}" title="${isWatched ? 'Отметить непросмотренной' : 'Отметить просмотренной'}">
+          <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 10px;">
+            ${statusIconBadge}
+            <button type="button" class="quick-ep-watch-toggle ${isWatched ? 'active' : ''}" data-toggle-ep="${ep.episode}" title="${isWatched ? 'Отметить непросмотренной' : 'Отметить просмотренной'}">
               ${isWatched ? '✖' : '✓'}
             </button>
           </div>

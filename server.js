@@ -1161,17 +1161,36 @@ app.get('/api/media/catalog', async (req, res) => {
             ]);
             fetchedTotal = fetchedItems.length;
           } else if (category === 'cartoon-series' || category === 'cartoons') {
-            const [fanfilmRes, tmdbRes1, tmdbRes2] = await Promise.allSettled([
-              getFanFilmCatalog(category, page),
+            const promises = [
               getTmdbCatalog(category, page * 2 - 1),
               getTmdbCatalog(category, page * 2)
-            ]);
+            ];
+            // FanFilm4K имеет только 2-3 страницы для мультфильмов, поэтому опрашиваем его только для первых 2 страниц с защитным таймаутом
+            if (page <= 2) {
+              promises.push(
+                Promise.race([
+                  getFanFilmCatalog(category, page),
+                  new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
+                ])
+              );
+            }
+            const results = await Promise.allSettled(promises);
+            const tmdbRes1 = results[0]?.status === 'fulfilled' ? results[0].value : null;
+            const tmdbRes2 = results[1]?.status === 'fulfilled' ? results[1].value : null;
+            const fanfilmRes = results[2]?.status === 'fulfilled' ? results[2].value : null;
+
+            const tmdbItems1 = tmdbRes1?.items || [];
+            const tmdbItems2 = tmdbRes2?.items || [];
+            const ffItems = fanfilmRes?.items || [];
+
             fetchedItems = interleaveSources([
-              fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [],
-              tmdbRes1.status === 'fulfilled' ? tmdbRes1.value?.items || [] : [],
-              tmdbRes2.status === 'fulfilled' ? tmdbRes2.value?.items || [] : []
+              ffItems,
+              tmdbItems1,
+              tmdbItems2
             ]).filter(item => !isAnimeMediaItem(item));
-            fetchedTotal = fetchedItems.length;
+
+            const tmdbTotalPages = Math.min(250, Math.ceil((tmdbRes1?.total_pages || 500) / 2));
+            fetchedTotal = Math.max(fetchedItems.length, tmdbTotalPages * 20);
           } else if (category === 'movies' || category === 'series') {
             const [fanfilmRes, tmdbRes] = await Promise.allSettled([
               getFanFilmCatalog(category, page),
@@ -1260,7 +1279,7 @@ app.get('/api/media/catalog', async (req, res) => {
     const CATEGORY_TOTAL_PAGES_MAP = {
       'movies': 500,
       'series': 500,
-      'cartoons': 200,
+      'cartoons': 250,
       'cartoon-series': 150,
       'anime-movies': 120,
       'anime-series': 250,

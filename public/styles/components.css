@@ -2749,10 +2749,10 @@ input[type="checkbox"]::after {
 }
 
 /* ==========================================================================
-   STUDIO DOCK & DRAWER (КОМПАКТНАЯ СТУДИЙНАЯ ПАНЕЛЬ ПЛЕЕРА)
+   STUDIO DOCK И DRAWER (КОМПАКТНАЯ СТУДИЙНАЯ ПАНЕЛЬ ПЛЕЕРА)
    ========================================================================== */
 .player-studio-dock {
-  margin: 10px 0 14px 0;
+  margin: 12px 0 34px 0;
   width: 100%;
   position: relative;
   z-index: 15;
@@ -2767,14 +2767,14 @@ input[type="checkbox"]::after {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  padding: 6px 10px;
+  padding: 10px 16px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .studio-tabs-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -2786,7 +2786,7 @@ input[type="checkbox"]::after {
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: 7px 13px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -2882,11 +2882,10 @@ input[type="checkbox"]::after {
   background: rgba(12, 17, 27, 0.96);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
-  border-top: none;
-  border-radius: 0 0 14px 14px;
-  padding: 14px 18px;
+  border-radius: 12px;
+  padding: 20px 24px;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 210, 255, 0.12);
-  margin-top: -3px;
+  margin-top: 10px;
   animation: slideDownStudio 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -2937,10 +2936,10 @@ input[type="checkbox"]::after {
 }
 
 .studio-drawer-body {
-  max-height: 380px;
+  max-height: 420px;
   overflow-y: auto;
   scrollbar-width: thin;
-  padding-right: 4px;
+  padding: 8px 10px;
 }
 
 /* Объемные 3D блоки панели управления плеера */
@@ -4176,13 +4175,13 @@ input[type="checkbox"]::after {
 }
 
 #quick-season-menu {
-  min-width: 440px;
-  max-width: 500px;
+  min-width: 320px;
+  max-width: 440px;
 }
 
 #quick-episode-menu {
-  min-width: 360px;
-  max-width: 500px;
+  min-width: 320px;
+  max-width: 420px;
 }
 
 body.quick-dropdown-active .cinema-player-iframe,
@@ -4421,6 +4420,112 @@ body.player-dropdown-active .cinema-player-iframe {
 .quick-season-status-select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Компактные иконки статусов и счетчики для выпадающих меню Quick Bar */
+.quick-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 750;
+  padding: 2px 7px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.quick-dropdown-item.active .quick-count-badge {
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  border-color: rgba(0, 0, 0, 0.6);
+}
+
+.quick-season-status-select-icon {
+  background: rgba(18, 22, 34, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 0;
+  width: 32px;
+  height: 26px;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: all 0.15s ease;
+}
+
+.quick-season-status-select-icon:hover,
+.quick-season-status-select-icon:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.quick-dropdown-item.active .quick-season-status-select-icon {
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  border-color: rgba(0, 0, 0, 0.8);
+}
+
+.quick-ep-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.quick-ep-status-icon.is-watched {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+}
+
+.quick-ep-status-icon.is-current {
+  background: rgba(0, 210, 255, 0.2);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 210, 255, 0.7);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.quick-ep-status-icon.is-current-watched {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(16, 185, 129, 0.25));
+  color: #00f0ff;
+  border: 1px solid rgba(0, 210, 255, 0.6);
+  box-shadow: 0 0 10px var(--accent-glow);
+  font-size: 10px;
+  letter-spacing: -1px;
+}
+
+.quick-ep-status-icon.is-unwatched {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.quick-dropdown-item.active .quick-ep-status-icon {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: rgba(0, 0, 0, 0.8);
+}
+.quick-dropdown-item.active .quick-ep-status-icon.is-watched {
+  color: #10b981;
+}
+.quick-dropdown-item.active .quick-ep-status-icon.is-current {
+  color: #00f0ff;
 }
 
 .watched-pill {
@@ -5409,6 +5514,72 @@ body.player-dropdown-active .cinema-player-iframe {
   font-size: 11.5px;
   font-weight: 800;
   color: var(--accent);
+}
+
+/* Мобильный адаптив панели администратора */
+@media (max-width: 768px) {
+  .admin-dashboard-dialog {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+  }
+
+  .admin-dashboard-body {
+    padding: 14px 12px !important;
+    gap: 14px !important;
+  }
+
+  .admin-metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .admin-metric-card {
+    padding: 10px !important;
+    gap: 10px !important;
+    border-radius: 10px !important;
+  }
+
+  .admin-metric-icon {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 16px !important;
+    border-radius: 8px !important;
+  }
+
+  .admin-metric-val {
+    font-size: 18px !important;
+  }
+
+  .admin-metric-label {
+    font-size: 10.5px !important;
+  }
+
+  .admin-search-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .admin-search-toolbar .storm-input-wrap {
+    width: 100% !important;
+  }
+
+  .admin-user-count-badge {
+    text-align: center !important;
+  }
+
+  .admin-users-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .admin-users-table {
+    min-width: 650px !important;
+  }
 }
 
 
