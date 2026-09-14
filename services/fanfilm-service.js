@@ -296,8 +296,12 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
   const $ = cheerio.load(html);
   const items = [];
 
-  // На страницах конкретных категорий или при page > 1 парсим только карточки каталога #dle-content,
-  // чтобы исключить повторение 24 карточек верхнего сквозного слайдера сайта .top
+  // Исключаем сквозную карусель сайта (.carou, #owl-carou) для всех страниц категорий и пагинации,
+  // чтобы исключить повторение 24 карточек верхнего сквозного слайдера сайта
+  if (category !== 'popular' || page > 1) {
+    $('.carou, #owl-carou, .top').remove();
+  }
+
   let selector = '#dle-content .card';
   if ($('#dle-content .card').length === 0) {
     selector = '.card';

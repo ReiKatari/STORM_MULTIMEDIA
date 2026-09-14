@@ -220,6 +220,15 @@ export function switchTab(tab) {
     b.classList.toggle('active', isActive);
   });
 
+  // При смене вкладки мгновенно очищаем устаревший список карточек и показываем скелетон,
+  // если текущей вкладки ещё нет в кэше — полностью исключаем мелькание карточек
+  const targetCategory = tab === 'home' ? 'popular' : tab;
+  const targetKey = `${targetCategory}_1_${currentSource}`;
+  if (!clientTabCache.has(targetKey)) {
+    rawCatalogItems = [];
+    renderSkeletonGrid();
+  }
+
   loadCurrentTab();
 }
 
@@ -755,6 +764,36 @@ function showActionSheetToast(msg) {
 }
 
 const clientTabCache = new Map();
+let activeTabLoadSeq = 0;
+let prefetchTimer = null;
+
+function scheduleNextPagePrefetch(cat, page, src) {
+  clearTimeout(prefetchTimer);
+  if (page >= totalCatalogPages) return;
+  prefetchTimer = setTimeout(async () => {
+    const nextKey = `${cat}_${page + 1}_${src}`;
+    if (clientTabCache.has(nextKey)) return;
+    try {
+      const headers = {};
+      const token = localStorage.getItem('storm_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/media/catalog?category=${cat}&page=${page + 1}&source=${src}`, {
+        headers,
+        signal: AbortSignal.timeout(8000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          clientTabCache.set(nextKey, {
+            items: deduplicateMediaList(data.items),
+            totalItems: data.total_items || (totalCatalogPages * 20),
+            totalPages: data.total_pages || totalCatalogPages
+          });
+        }
+      }
+    } catch {}
+  }, 1200);
+}
 
 function renderSkeletonGrid() {
   const container = document.getElementById('media-render-container');
@@ -986,8 +1025,8 @@ async function loadCurrentTab() {
   let category = currentTab;
   if (currentTab === 'home') category = 'popular';
   const cacheKey = `${category}_${currentPage}_${currentSource}`;
-
   const defPages = CATEGORY_DEFAULT_PAGES[category] || 100;
+  const loadSeq = ++activeTabLoadSeq;
 
   if (clientTabCache.has(cacheKey)) {
     const cached = clientTabCache.get(cacheKey);
@@ -1001,20 +1040,11 @@ async function loadCurrentTab() {
       totalCatalogItems = cached.totalItems || (totalCatalogPages * 20);
     }
     renderFilteredCatalog();
+    scheduleNextPagePrefetch(category, currentPage, currentSource);
   } else {
-    if (currentPage === 1) {
-      const baselineItems = getBaselineCatalog(category);
-      if (baselineItems && baselineItems.length > 0) {
-        rawCatalogItems = deduplicateMediaList(baselineItems);
-        totalCatalogPages = defPages;
-        totalCatalogItems = defPages * 20;
-        renderFilteredCatalog();
-      } else {
-        renderSkeletonGrid();
-      }
-    } else {
-      renderSkeletonGrid();
-    }
+    // Чистая загрузка: никаких мельканий чужих карточек или старых тайтлов
+    rawCatalogItems = [];
+    renderSkeletonGrid();
   }
 
   try {
@@ -1027,6 +1057,8 @@ async function loadCurrentTab() {
       signal: AbortSignal.timeout(12000)
     });
     const data = await res.json();
+    if (loadSeq !== activeTabLoadSeq) return; // Устаревший запрос отменён
+
     const fetchedItems = data.items || [];
     totalCatalogPages = data.total_pages || defPages;
     totalCatalogItems = data.total_items || (totalCatalogPages * 20);
@@ -1035,6 +1067,7 @@ async function loadCurrentTab() {
       rawCatalogItems = deduplicateMediaList(fetchedItems);
       clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
       renderFilteredCatalog();
+      scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
       // Если по текущему источнику 0 элементов, пробуем сводный каталог
       try {
@@ -1043,28 +1076,27 @@ async function loadCurrentTab() {
           signal: AbortSignal.timeout(8000)
         });
         const retryData = await retryRes.json();
+        if (loadSeq !== activeTabLoadSeq) return;
+
         if (retryData.items && retryData.items.length > 0) {
           rawCatalogItems = deduplicateMediaList(retryData.items);
           totalCatalogPages = retryData.total_pages || defPages;
           totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
           clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
           renderFilteredCatalog();
+          scheduleNextPagePrefetch(category, currentPage, currentSource);
           return;
         }
       } catch {}
 
-      if (currentPage === 1 && (!rawCatalogItems || rawCatalogItems.length === 0)) {
-        rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
-        totalCatalogPages = defPages;
-        totalCatalogItems = defPages * 20;
+      if (loadSeq !== activeTabLoadSeq) return;
+      if (!rawCatalogItems || rawCatalogItems.length === 0) {
         renderFilteredCatalog();
       }
     }
   } catch (err) {
-    if (currentPage === 1 && (!rawCatalogItems || rawCatalogItems.length === 0)) {
-      rawCatalogItems = deduplicateMediaList(getBaselineCatalog(category));
-      totalCatalogPages = defPages;
-      totalCatalogItems = defPages * 20;
+    if (loadSeq !== activeTabLoadSeq) return;
+    if (!rawCatalogItems || rawCatalogItems.length === 0) {
       renderFilteredCatalog();
     }
   }
@@ -2050,7 +2082,16 @@ function renderCatalogPagination(shownCount) {
 }
 
 function goToPage(pageNum) {
+  if (pageNum === currentPage) return;
   currentPage = pageNum;
+
+  const category = currentTab === 'home' ? 'popular' : currentTab;
+  const cacheKey = `${category}_${currentPage}_${currentSource}`;
+  if (!clientTabCache.has(cacheKey)) {
+    rawCatalogItems = [];
+    renderSkeletonGrid();
+  }
+
   loadCurrentTab();
   const container = document.getElementById('media-render-container');
   if (container) {
