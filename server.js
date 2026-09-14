@@ -43,6 +43,7 @@ import {
   getOrCreateDefaultUserSession,
   getUserFamilyProfiles,
   saveUserFamilyProfiles,
+  getAdminUsersOverview,
   getCache,
   setCache,
   saveWatchRoomDb,
@@ -504,7 +505,12 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/auto-login', (req, res) => {
-  res.json({ user: null, token: null });
+  try {
+    const session = getOrCreateDefaultUserSession();
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -562,11 +568,47 @@ app.post('/api/auth/settings', requireAuth, (req, res) => {
   }
 });
 
+app.put(['/api/auth/profile', '/api/auth/profile/update'], requireAuth, (req, res) => {
+  try {
+    const { username, email, avatar, settings } = req.body;
+    const updatedUser = updateUserProfile(req.user.id, { username, email, avatar });
+    if (settings) {
+      updateUserSettings(req.user.id, settings);
+    }
+    const stats = getUserStats(req.user.id);
+    res.json({
+      user: {
+        ...updatedUser,
+        settings: JSON.parse(updatedUser.settings_json || '{}')
+      },
+      stats
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get('/api/auth/stats', requireAuth, (req, res) => {
   try {
     const stats = getUserStats(req.user.id);
     res.json(stats);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Панель администратора: сводка активности пользователей (только для ReiKatari)
+app.get('/api/admin/users-overview', requireAuth, (req, res) => {
+  try {
+    const currentUsername = req.user.username;
+    const currentRole = req.user.role;
+    if (currentUsername !== 'ReiKatari' && currentRole !== 'admin') {
+      return res.status(403).json({ error: 'Доступ разрешен только администратору ReiKatari' });
+    }
+    const overview = getAdminUsersOverview();
+    res.json(overview);
+  } catch (err) {
+    console.error('Ошибка получения сводки администратора:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -654,6 +696,8 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
   } else if (normalized.includes('shikimori')) {
     headers['User-Agent'] = 'STORM-MULTIMEDIA/1.0';
     headers['Referer'] = 'https://shikimori.one/';
+  } else if (normalized.includes('fanfilm4k')) {
+    headers['Referer'] = 'https://v17.fanfilm4k.media/';
   }
 
   try {
@@ -762,13 +806,20 @@ async function resolveAnimePosterBuffer(title, orig) {
       if (res.ok) {
         const list = await res.json();
         if (list && list[0]?.image) {
-          const imgPath = list[0].image.original || list[0].image.preview;
-          if (imgPath && !isPlaceholderImage(imgPath)) {
-            const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.one${imgPath}`;
-            const img = await fetchImageBuffer(fullUrl, 4000);
-            if (img) {
-              setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
-              return img;
+          const item = list[0];
+          const itNameRu = (item.russian || '').toLowerCase().trim();
+          const itNameOrig = (item.name || '').toLowerCase().trim();
+          const sTerm = term.toLowerCase().trim();
+          if (itNameRu.includes(sTerm) || sTerm.includes(itNameRu) ||
+              itNameOrig.includes(sTerm) || sTerm.includes(itNameOrig)) {
+            const imgPath = item.image.original || item.image.preview;
+            if (imgPath && !isPlaceholderImage(imgPath)) {
+              const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.one${imgPath}`;
+              const img = await fetchImageBuffer(fullUrl, 4000);
+              if (img) {
+                setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
+                return img;
+              }
             }
           }
         }
@@ -1161,29 +1212,63 @@ app.get('/api/media/catalog', async (req, res) => {
       };
     });
 
-    const totalCount = totalItems > items.length ? totalItems : (items.length >= 20 ? items.length * 25 : items.length);
-    const totalPages = Math.max(1, Math.ceil(totalCount / 20));
+    const CATEGORY_TOTAL_PAGES_MAP = {
+      'movies': 500,
+      'series': 500,
+      'cartoons': 200,
+      'cartoon-series': 150,
+      'anime-movies': 120,
+      'anime-series': 250,
+      'new': 100,
+      'popular': 500,
+      'home': 500
+    };
+    const maxPages = CATEGORY_TOTAL_PAGES_MAP[category] || 100;
+    const computedTotalItems = Math.max(totalItems, maxPages * 20);
+    const totalPages = maxPages;
 
     res.json({
       category,
       page,
       source,
-      total_items: totalCount,
+      total_items: computedTotalItems,
       total_pages: totalPages,
       items
     });
   } catch (err) {
     console.error('Ошибка агрегации каталога:', err.message);
     const fallbackItems = getCategoryFallback(req.query.category || 'popular');
-    const totalPages = Math.max(1, Math.ceil(fallbackItems.length / 20));
+    const maxPages = {
+      'movies': 500,
+      'series': 500,
+      'cartoons': 200,
+      'cartoon-series': 150,
+      'anime-movies': 120,
+      'anime-series': 250,
+      'new': 100,
+      'popular': 500,
+      'home': 500
+    }[req.query.category || 'popular'] || 100;
     res.json({
       category: req.query.category || 'popular',
       page: parseInt(req.query.page, 10) || 1,
       source: req.query.source || 'all',
-      total_items: fallbackItems.length,
-      total_pages: totalPages,
+      total_items: maxPages * 20,
+      total_pages: maxPages,
       items: fallbackItems
     });
+  }
+});
+
+// Расписание онгоингов и новых серий (Release Calendar)
+app.get('/api/media/schedule', async (req, res) => {
+  try {
+    const week = req.query.week === 'next' ? 'next' : 'current';
+    const schedule = await getAggregatedSchedule(week);
+    res.json(schedule);
+  } catch (err) {
+    console.error('Ошибка получения расписания:', err.message);
+    res.status(500).json({ error: 'Ошибка получения расписания', items: [] });
   }
 });
 

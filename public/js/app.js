@@ -4,7 +4,7 @@
 
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive } from './auth.js';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 import { trackClientAction, renderProfileAchievements } from './achievements.js';
@@ -15,6 +15,7 @@ import { joinWatchRoom, createWatchRoom } from './watch-together.js';
 import { openNeuralRecommenderModal } from './neural-recommender.js';
 import { openReleaseCalendarModal } from './release-calendar.js';
 import { openRemoteQrModal } from './storm-remote.js';
+import { initAdminDashboard } from './admin-dashboard.js';
 import { renderOfflineLibrary } from './offline-storage.js';
 import { getBaselineCatalog } from './catalog-baseline.js';
 
@@ -52,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initProfileHandlers();
   initLanguageSwitcher();
   initNewCyberFeatures();
+  initAdminDashboard();
   updateFamilyProfileHeader();
 
   onAuthChanged(() => {
@@ -3128,19 +3130,7 @@ function initNewCyberFeatures() {
 }
 
 export function updateFamilyProfileHeader() {
-  const profile = getActiveProfile();
-  const iconEl = document.getElementById('active-profile-avatar-icon');
-  const labelEl = document.getElementById('active-profile-name-label');
-  if (iconEl && profile) {
-    if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/') || profile.avatar.startsWith('data:'))) {
-      iconEl.innerHTML = `<img src="${profile.avatar}" alt="" style="width: 16px; height: 16px; border-radius: 50%; object-fit: cover; vertical-align: middle;">`;
-    } else {
-      iconEl.textContent = profile.avatar || (profile.isKid ? '🦄' : '👑');
-    }
-  }
-  if (labelEl && profile) {
-    labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Семья';
-  }
+  updateFamilyHeaderUI();
 }
 
 // -------------------------------------------------------------

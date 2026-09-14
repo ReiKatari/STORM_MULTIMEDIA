@@ -14,7 +14,7 @@ async function fetchHtml(url, options = {}) {
   };
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(options.timeout || 3000),
+    signal: AbortSignal.timeout(options.timeout || 6000),
     ...options,
     headers
   });
@@ -124,7 +124,7 @@ export async function getFanFilmCatalog(category = 'popular', page = 1) {
   let path = '';
   switch (category) {
     case 'new':
-      path = page === 1 ? '/f/c.year=2026,2026/sort=date/order=desc/' : `/f/c.year=2026,2026/sort=date/order=desc/page/${page}/`;
+      path = page === 1 ? '/' : `/page/${page}/`;
       break;
     case 'movies':
       path = page === 1 ? '/4kfilmy/' : `/4kfilmy/page/${page}/`;

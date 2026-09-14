@@ -1748,4 +1748,76 @@ export function cleanupDuplicateDatabaseRecords() {
 // Запуск дедупликации при старте сервера
 cleanupDuplicateDatabaseRecords();
 
+export function getAdminUsersOverview() {
+  const users = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users ORDER BY id ASC').all();
+
+  const historyStmt = db.prepare(`
+    SELECT media_id, source, title, poster_url, media_type, season, episode, time_seconds, duration_seconds, progress_percent, updated_at
+    FROM watch_history
+    WHERE user_id = ?
+    ORDER BY updated_at DESC
+  `);
+
+  const bookmarksStmt = db.prepare(`
+    SELECT media_id, source, title, original_title, poster_url, media_type, status, progress_percent, updated_at
+    FROM bookmarks
+    WHERE user_id = ?
+    ORDER BY updated_at DESC
+  `);
+
+  const resultUsers = users.map(u => {
+    const history = historyStmt.all(u.id);
+    const bookmarks = bookmarksStmt.all(u.id);
+
+    const totalSeconds = history.reduce((sum, h) => sum + (h.time_seconds || 0), 0);
+    const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
+
+    const latestItem = history.length > 0 ? history[0] : null;
+    const isCurrentlyWatching = latestItem && (Date.now() - latestItem.updated_at < 3600 * 1000 * 6);
+
+    const watchingNow = latestItem ? {
+      title: latestItem.title,
+      poster_url: latestItem.poster_url,
+      season: latestItem.season,
+      episode: latestItem.episode,
+      progress_percent: latestItem.progress_percent,
+      time_seconds: latestItem.time_seconds,
+      duration_seconds: latestItem.duration_seconds,
+      updated_at: latestItem.updated_at,
+      is_active: isCurrentlyWatching
+    } : null;
+
+    return {
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      avatar: u.avatar,
+      role: u.role || 'user',
+      created_at: u.created_at,
+      watching_now: watchingNow,
+      history_count: history.length,
+      history: history.slice(0, 15),
+      bookmarks_count: bookmarks.length,
+      bookmarks: bookmarks.slice(0, 20),
+      total_hours: totalHours
+    };
+  });
+
+  const totalUsers = resultUsers.length;
+  const activeNowCount = resultUsers.filter(u => u.watching_now && u.watching_now.is_active).length;
+  const totalBookmarksCount = resultUsers.reduce((sum, u) => sum + u.bookmarks_count, 0);
+  const totalHistoryCount = resultUsers.reduce((sum, u) => sum + u.history_count, 0);
+
+  return {
+    summary: {
+      total_users: totalUsers,
+      active_now: activeNowCount,
+      total_bookmarks: totalBookmarksCount,
+      total_history_views: totalHistoryCount
+    },
+    users: resultUsers
+  };
+}
+
+
 

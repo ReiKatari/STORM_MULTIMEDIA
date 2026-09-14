@@ -587,6 +587,8 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
   gap: 16px;
   width: 100%;
+  align-content: start;
+  align-items: start;
 }
 
 .media-card {
@@ -596,6 +598,8 @@ body {
   contain: content;
   transform: translateZ(0);
   will-change: transform;
+  height: fit-content;
+  align-self: start;
 }
 
 .media-card-poster {
@@ -799,6 +803,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 14px;
+  align-content: start;
+  align-items: start;
 }
 
 .media-container.view-compact-grid .media-card-content {
