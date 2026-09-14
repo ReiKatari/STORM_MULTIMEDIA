@@ -1067,8 +1067,8 @@ function renderQuickBarDropdowns() {
 
       return `
         <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-season="${s.season}">
-          <div class="quick-item-left" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
-            <span class="quick-item-title" style="white-space: nowrap; font-weight: 700; font-size: 13px; color: var(--text-primary);">${s.name}</span>
+          <div class="quick-item-left" style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
+            <span class="quick-item-title quick-season-title" title="${escapeHtml(s.name)}">${s.name}</span>
           </div>
           <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0;">
             <span class="quick-count-badge" title="Просмотрено ${watchedCount} из ${totalEp} серий">${watchedCount}/${totalEp}</span>
@@ -1219,8 +1219,8 @@ function renderQuickBarDropdowns() {
 
       return `
         <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-episode="${ep.episode}" title="${ep.overview ? ep.overview.replace(/"/g, '&quot;') : ''}">
-          <div class="quick-item-left" style="min-width: 0; flex: 1; overflow: hidden;">
-            <span class="quick-item-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${ep.name}</span>
+          <div class="quick-item-left" style="min-width: 0; flex: 1;">
+            <span class="quick-item-title quick-episode-title" title="${escapeHtml(ep.name)}">${ep.name}</span>
           </div>
           <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 10px;">
             ${statusIconBadge}
@@ -1681,6 +1681,7 @@ function playStreamUrl(url) {
         title: currentMedia.title,
         poster_url: currentMedia.poster,
         media_type: currentMedia.media_type,
+        year: currentMedia.year || '',
         season: currentMedia.season || 1,
         episode: currentEpisodeIndex || 1,
         total_episodes: currentEpisodes.length || 1,
@@ -1748,6 +1749,7 @@ function setupVideoFeatures(video, wrapper) {
           title: currentMedia.title,
           poster_url: currentMedia.poster,
           media_type: currentMedia.media_type,
+          year: currentMedia.year || '',
           season: currentMedia.season || 1,
           episode: currentEpisodeIndex || 1,
           total_episodes: currentEpisodes.length || 1,
@@ -2574,6 +2576,7 @@ function setupSkipLogic(video) {
           title: currentMedia.title,
           poster_url: currentMedia.poster,
           media_type: currentMedia.media_type,
+          year: currentMedia.year || '',
           season: currentMedia.season || 1,
           episode: currentEpisodeIndex || 1,
           total_episodes: currentEpisodes.length || 1,
@@ -5051,15 +5054,21 @@ function renderDetailedMediaInfo(mediaDetails) {
   const poster = mediaDetails.poster || 'assets/favicon.svg';
 
   let formattedReleaseDate = 'Не указана';
-  if (mediaDetails.release_date) {
-    const parts = String(mediaDetails.release_date).split('-');
-    if (parts.length === 3) {
+  const rawDate = mediaDetails.release_date || mediaDetails.premiere || (mediaDetails.year ? `${mediaDetails.year} год` : (currentMedia?.year ? `${currentMedia.year} год` : ''));
+  if (rawDate) {
+    const parts = String(rawDate).split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
       formattedReleaseDate = `${parts[2].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[0]}`;
     } else {
-      formattedReleaseDate = mediaDetails.release_date;
+      formattedReleaseDate = String(rawDate).trim();
     }
-  } else if (mediaDetails.year) {
-    formattedReleaseDate = `${mediaDetails.year} год`;
+  }
+  if (!formattedReleaseDate || formattedReleaseDate === 'Не указана') {
+    if (mediaDetails.year) {
+      formattedReleaseDate = `${mediaDetails.year} год`;
+    } else if (currentMedia?.year) {
+      formattedReleaseDate = `${currentMedia.year} год`;
+    }
   }
 
   const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : '1 ч 45 мин');

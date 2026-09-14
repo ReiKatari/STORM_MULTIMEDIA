@@ -13,17 +13,31 @@ async function fetchHtml(url, options = {}) {
     ...options.headers
   };
 
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(options.timeout || 6000),
-    ...options,
-    headers
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ошибка запроса FanFilm4K: ${response.status} ${response.statusText}`);
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(options.timeout || 6000),
+      ...options,
+      headers
+    });
+    if (response.ok) {
+      return await response.text();
+    }
+  } catch (err) {
+    if (url.includes('v17.fanfilm4k.media')) {
+      const mirrorUrl = url.replace('v17.fanfilm4k.media', 'v16.fanfilm4k.media');
+      try {
+        const mirrorRes = await fetch(mirrorUrl, {
+          signal: AbortSignal.timeout(options.timeout || 6000),
+          ...options,
+          headers
+        });
+        if (mirrorRes.ok) return await mirrorRes.text();
+      } catch {}
+    }
+    throw err;
   }
 
-  return await response.text();
+  throw new Error(`Ошибка запроса FanFilm4K: ${url}`);
 }
 
 export const KNOWN_RELEASE_YEARS = {
@@ -409,10 +423,33 @@ export async function getFanFilmCatalog(category = 'popular', page = 1) {
     const html = await fetchHtml(`${BASE_URL}${path}`);
     const items = parseMediaList(html, { category, page });
 
+    const $ = cheerio.load(html);
+    let totalPages = 1;
+    $('.navigation a, .nav_ext a, .pages a').each((_, el) => {
+      const txt = $(el).text().trim();
+      const num = parseInt(txt, 10);
+      if (!isNaN(num) && num > totalPages) totalPages = num;
+      const href = $(el).attr('href') || '';
+      const m = href.match(/\/page\/(\d+)\//);
+      if (m) {
+        const p = parseInt(m[1], 10);
+        if (p > totalPages) totalPages = p;
+      }
+    });
+
+    if (totalPages === 1) {
+      if (category === 'movies') totalPages = 718;
+      else if (category === 'series') totalPages = 162;
+      else if (category === 'cartoons') totalPages = 35;
+      else if (category === 'cartoon-series') totalPages = 20;
+      else totalPages = 50;
+    }
+
     const result = {
       page,
       category,
-      total_items: items.length,
+      total_pages: totalPages,
+      total_items: totalPages * Math.max(20, items.length || 56),
       items
     };
 
@@ -420,7 +457,7 @@ export async function getFanFilmCatalog(category = 'popular', page = 1) {
     return result;
   } catch (err) {
     console.error(`[FanFilm4K] Ошибка получения каталога ${category}:`, err.message);
-    return { page, category, total_items: 0, items: [] };
+    return { page, category, total_pages: 1, total_items: 0, items: [] };
   }
 }
 
@@ -506,6 +543,9 @@ export async function getFanFilmDetails(idOrUrl) {
     const $ = cheerio.load(html);
 
     const title = $('h1').first().text().trim() || $('title').text().replace(/смотреть онлайн.*/i, '').trim();
+    if (!$('h1').length || !title || title.includes('FANFILM4K') || title.includes('ФАН4К –')) {
+      return null;
+    }
     let poster = $('.pmovie__poster img, .poster img').first().attr('src') || $('meta[property="og:image"]').attr('content') || '';
     if (poster && poster.startsWith('/')) poster = `${BASE_URL}${poster}`;
 
@@ -518,10 +558,17 @@ export async function getFanFilmDetails(idOrUrl) {
 
     // Год
     let year = '';
-    const ym = subcolsText.match(/\|\s*(\d{4})\b/) || subcolsText.match(/\b(19\d\d|20\d\d)\b/);
-    if (ym) year = ym[1];
-    if (!year) {
-      year = resolveMediaYear(title, url, poster);
+    const knownYr = resolveMediaYear(title, url, poster);
+    if (knownYr) {
+      year = knownYr;
+    } else {
+      const ym = subcolsText.match(/\|\s*(\d{4})\b/) || subcolsText.match(/\b(19\d\d|20\d\d)\b/);
+      if (ym && parseInt(ym[1], 10) <= 2030) {
+        year = ym[1];
+      }
+      if (!year) {
+        year = resolveMediaYear(title, url, poster);
+      }
     }
 
     // Рейтинг
@@ -596,7 +643,9 @@ export async function getFanFilmDetails(idOrUrl) {
       original_title: originalTitle,
       poster,
       description,
-      year: year || '2026',
+      year: year || '',
+      premiere: premiere || '',
+      release_date: premiere || (year ? `${year}-01-01` : ''),
       rating: rating || 8.0,
       genres,
       countries,

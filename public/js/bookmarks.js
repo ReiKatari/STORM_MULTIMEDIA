@@ -52,6 +52,7 @@ export async function saveBookmarkStatus(mediaData, status) {
         original_title: mediaData.original_title || '',
         poster_url: mediaData.poster || '',
         media_type: mediaData.media_type || 'movie',
+        year: mediaData.year || '',
         status: status
       })
     });

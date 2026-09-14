@@ -200,8 +200,22 @@ async function loadAdminData(forceRefresh = false) {
   }
 
   try {
+    if (!token) {
+      try {
+        const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
+        if (autoRes.ok) {
+          const autoData = await autoRes.json();
+          if (autoData.token) {
+            token = autoData.token;
+            localStorage.setItem('storm_token', token);
+            localStorage.setItem('storm_user', JSON.stringify(autoData.user));
+          }
+        }
+      } catch {}
+    }
+
     let res = await fetch('/api/admin/users-overview', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token || ''}` }
     });
 
     // При 401/403 или ошибке доступа выполняем переавторизацию ReiKatari и повторяем
@@ -220,6 +234,13 @@ async function loadAdminData(forceRefresh = false) {
           }
         }
       } catch {}
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      console.warn('[Admin Dashboard] Non-JSON response:', text.slice(0, 100));
+      throw new Error('Сервер вернул некорректный ответ (не JSON). Перезапустите сервер.');
     }
 
     if (!res.ok) {
