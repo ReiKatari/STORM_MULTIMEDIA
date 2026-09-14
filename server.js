@@ -987,19 +987,66 @@ function interleaveSources(arrays) {
 
 function isAnimeMediaItem(item) {
   if (!item) return false;
-  if (['anixart', 'shikimori', 'anilibria'].includes(item.source)) return true;
-  if (item.media_type === 'anime-movie' || item.media_type === 'anime-series') return true;
+  if (['anixart', 'shikimori', 'anilibria', 'animevost'].includes(item.source)) return true;
+  if (item.media_type === 'anime-movie' || item.media_type === 'anime-series' || item.media_type === 'anime') return true;
   if (item.original_language === 'ja') return true;
   if (Array.isArray(item.origin_country) && item.origin_country.includes('JP')) return true;
-  if (typeof item.country === 'string' && item.country.toLowerCase().includes('япон')) return true;
+  if (typeof item.country === 'string' && /япон|japan/i.test(item.country)) return true;
+  if (Array.isArray(item.countries) && item.countries.some(c => /япон|japan/i.test(String(c)))) return true;
   if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(item.original_title || '')) return true;
+
   const link = (item.link || item.url || '').toLowerCase();
   if (link.includes('-anime.html') || link.includes('/anime/') || link.includes('anime')) return true;
   if (typeof item.category === 'string' && item.category.toLowerCase().includes('аниме')) return true;
-  const title = (item.title || '').toLowerCase();
-  if (title.includes('аниме') || title.includes('ghost in the shell') || title.includes('призрак в доспехах') || title.includes('клинок, рассекающий') || title.includes('атака титанов') || title.includes('человек-бензопила') || title.includes('магическая битва')) return true;
+
+  const title = `${item.title || ''} ${item.original_title || ''}`.toLowerCase();
+  const animeKeywords = [
+    'аниме', 'anime',
+    'человек-бензопила', 'chainsaw man', 'резе', 'reze',
+    'сад изящных слов', 'garden of words', 'kotonoha no niwa',
+    'призрак в доспехах', 'ghost in the shell',
+    'война рохирримов', 'war of the rohirrim',
+    'клинок, рассекающий', 'клинок рассекающий', 'demon slayer', 'kimetsu',
+    'атака титанов', 'attack on titan', 'shingeki',
+    'магическая битва', 'jujutsu kaisen',
+    'форма голоса', 'silent voice', 'koe no katachi',
+    'твоё имя', 'твое имя', 'your name', 'kimi no na wa',
+    'дитя погоды', 'weathering with you',
+    'судзумэ', 'suzume',
+    'ходячий замок', 'howl\'s moving castle',
+    'унесённые призраками', 'унесенные призраками', 'spirited away',
+    'мой сосед тоторо', 'my neighbor totoro',
+    'принцесса мононоке', 'princess mononoke',
+    'ветер крепчает', 'wind rises',
+    'навсикая', 'nausicaa',
+    'могила светлячков', 'grave of the fireflies',
+    'шепот сердца', 'шёпот сердца', 'whisper of the heart',
+    'рыбка поньо', 'ponyo',
+    'акира', 'akira',
+    'евангелион', 'evangelion',
+    'ван-пис', 'ван пис', 'one piece',
+    'наруто', 'naruto', 'боруто', 'boruto',
+    'блич', 'bleach',
+    'тетрадь смерти', 'death note',
+    'берсерк', 'berserk',
+    'врата штейна', 'steins;gate',
+    'ковбой бибоп', 'cowboy bebop',
+    'хвост феи', 'fairy tail',
+    'семья шпиона', 'spy x family',
+    'дандадан', 'dandadan',
+    'кайджу № 8', 'кайджу 8', 'kaiju no. 8',
+    'гинтама', 'gintama',
+    'хантер х хантер', 'hunter x hunter',
+    'чёрный клевер', 'черный клевер', 'black clover',
+    'сейлор мун', 'sailor moon',
+    'токийский гуль', 'tokyo ghoul'
+  ];
+
+  if (animeKeywords.some(kw => title.includes(kw))) return true;
+
   const genres = Array.isArray(item.genres) ? item.genres : (typeof item.genres === 'string' ? item.genres.split(',') : []);
-  if (genres.some(g => typeof g === 'string' && g.toLowerCase().includes('аниме'))) return true;
+  if (genres.some(g => typeof g === 'string' && /аниме|anime/i.test(g))) return true;
+
   return false;
 }
 
@@ -1133,13 +1180,16 @@ app.get('/api/media/catalog', async (req, res) => {
         // 7. Сводный каталог всех источников ('all')
         else {
           if (category === 'anime-movies') {
-            const [anixRes, shikiRes, libRes, tmdbRes] = await Promise.allSettled([
+            const [anixRes, shikiRes, libRes, tmdbRes, ffRes] = await Promise.allSettled([
               getAnixartDiscover('anime-movies', page - 1),
               getShikimoriCatalog('anime-movies', page),
               getAniLibriaCatalog('anime-movies', page),
-              getTmdbCatalog('anime-movies', page)
+              getTmdbCatalog('anime-movies', page),
+              getFanFilmCatalog('cartoons', page)
             ]);
+            const ffAnime = (ffRes.status === 'fulfilled' ? ffRes.value?.items || [] : []).filter(item => isAnimeMediaItem(item));
             fetchedItems = interleaveSources([
+              ffAnime,
               anixRes.status === 'fulfilled' ? anixRes.value?.items || [] : [],
               shikiRes.status === 'fulfilled' ? shikiRes.value?.items || [] : [],
               libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
@@ -1163,17 +1213,12 @@ app.get('/api/media/catalog', async (req, res) => {
           } else if (category === 'cartoon-series' || category === 'cartoons') {
             const promises = [
               getTmdbCatalog(category, page * 2 - 1),
-              getTmdbCatalog(category, page * 2)
+              getTmdbCatalog(category, page * 2),
+              Promise.race([
+                getFanFilmCatalog(category, page),
+                new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3500))
+              ])
             ];
-            // FanFilm4K имеет только 2-3 страницы для мультфильмов, поэтому опрашиваем его только для первых 2 страниц с защитным таймаутом
-            if (page <= 2) {
-              promises.push(
-                Promise.race([
-                  getFanFilmCatalog(category, page),
-                  new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
-                ])
-              );
-            }
             const results = await Promise.allSettled(promises);
             const tmdbRes1 = results[0]?.status === 'fulfilled' ? results[0].value : null;
             const tmdbRes2 = results[1]?.status === 'fulfilled' ? results[1].value : null;
@@ -1236,6 +1281,7 @@ app.get('/api/media/catalog', async (req, res) => {
             fetchedTotal = fetchedItems.length;
           }
         }
+        fetchedItems.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
         return { items: fetchedItems, totalItems: fetchedTotal };
       };
 
@@ -1260,6 +1306,7 @@ app.get('/api/media/catalog', async (req, res) => {
     }
 
     if (items && items.length > 0) {
+      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
       memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
     }
 

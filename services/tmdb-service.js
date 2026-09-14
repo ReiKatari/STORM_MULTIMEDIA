@@ -4,6 +4,7 @@
  */
 
 import { getCache, setCache } from '../db.js';
+import { resolveMediaYear, isAnimeLinkOrTitle } from './fanfilm-service.js';
 
 const TMDB_API_KEY = 'REDACTED_TMDB_KEY';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
@@ -33,6 +34,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     const ym = `${title} ${originalTitle} ${item.overview || ''}`.match(/\b(19\d\d|20\d\d)\b/);
     if (ym) year = ym[1];
   }
+  const verifiedYear = resolveMediaYear(title, '', item.poster_path, year) || year;
 
   let poster = 'assets/favicon.svg';
   if (item.poster_path) {
@@ -44,8 +46,8 @@ function formatTmdbItem(item, mediaTypeHint = null) {
   // Определение типа медиа: строгое разделение аниме и западных мультфильмов
   let mediaType = isTv ? 'series' : 'movie';
   const genreIds = item.genre_ids || [];
-  if (genreIds.includes(16)) { // 16 = Animation в TMDB
-    const isJapanese = item.original_language === 'ja' || (Array.isArray(item.origin_country) && item.origin_country.includes('JP'));
+  const isJapanese = item.original_language === 'ja' || (Array.isArray(item.origin_country) && item.origin_country.includes('JP')) || isAnimeLinkOrTitle(title, originalTitle);
+  if (genreIds.includes(16) || isJapanese) { // 16 = Animation в TMDB
     if (isJapanese) {
       mediaType = isTv ? 'anime-series' : 'anime-movies';
     } else {
@@ -59,7 +61,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     title: title.trim(),
     original_title: originalTitle.trim(),
     poster,
-    year: year || '2024',
+    year: verifiedYear || year || '2025',
     rating: item.vote_average ? Math.round(item.vote_average * 10) / 10 : 0,
     media_type: mediaType,
     quality: '4K Ultra HD',
@@ -71,7 +73,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
 }
 
 /**
- * Получение каталога TMDB по категориям
+ * Получение каталога TMDB по категориям (по умолчанию от новых к старым по дате выхода)
  */
 export async function getTmdbCatalog(category = 'popular', page = 1) {
   const pageNum = parseInt(page, 10) || 1;
@@ -80,22 +82,24 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
   if (cached) return cached;
 
   try {
-    let endpoint = '/trending/all/week';
+    let endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=10';
 
     if (category === 'movies') {
-      endpoint = '/movie/popular';
+      endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=10';
     } else if (category === 'series') {
-      endpoint = '/tv/popular';
+      endpoint = '/discover/tv?sort_by=first_air_date.desc&vote_count.gte=10';
     } else if (category === 'new') {
       endpoint = '/movie/now_playing';
     } else if (category === 'cartoons') {
-      endpoint = '/discover/movie?with_genres=16&without_original_language=ja&sort_by=popularity.desc';
+      endpoint = '/discover/movie?with_genres=16&without_original_language=ja&sort_by=primary_release_date.desc&vote_count.gte=5';
     } else if (category === 'cartoon-series') {
-      endpoint = '/discover/tv?with_genres=16&without_original_language=ja&sort_by=popularity.desc';
+      endpoint = '/discover/tv?with_genres=16&without_original_language=ja&sort_by=first_air_date.desc&vote_count.gte=5';
     } else if (category === 'anime-movies') {
-      endpoint = '/discover/movie?with_genres=16&with_original_language=ja&sort_by=popularity.desc';
+      endpoint = '/discover/movie?with_genres=16&with_original_language=ja&sort_by=primary_release_date.desc&vote_count.gte=5';
     } else if (category === 'anime-series') {
-      endpoint = '/discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc';
+      endpoint = '/discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc&vote_count.gte=5';
+    } else if (category === 'popular') {
+      endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=15';
     }
 
     const sep = endpoint.includes('?') ? '&' : '?';
@@ -108,7 +112,10 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
     }
 
     const data = await res.json();
-    const items = (data.results || []).map(i => formatTmdbItem(i, category));
+    let items = (data.results || []).map(i => formatTmdbItem(i, category)).filter(Boolean);
+
+    // Сортировка по дате выхода по умолчанию
+    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
 
     const result = {
       items,
