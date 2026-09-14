@@ -4,7 +4,21 @@
 
 import { t, formatDate } from './i18n.js';
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 let currentUser = null;
+try {
+  const cachedUser = localStorage.getItem('storm_user');
+  if (cachedUser) currentUser = JSON.parse(cachedUser);
+} catch {}
+
 let currentToken = localStorage.getItem('storm_token') || null;
 let onAuthChangedCallbacks = [];
 
@@ -49,7 +63,25 @@ export function showToast(message, type = 'info') {
 
 export async function checkAuth() {
   if (!currentToken) {
+    // Попытка автоматической авторизации владельца/администратора
+    try {
+      const autoRes = await fetch('/api/auth/auto-login', { method: 'POST' });
+      if (autoRes.ok) {
+        const autoData = await autoRes.json();
+        if (autoData && autoData.token && autoData.user) {
+          currentToken = autoData.token;
+          currentUser = autoData.user;
+          localStorage.setItem('storm_token', currentToken);
+          localStorage.setItem('storm_user', JSON.stringify(currentUser));
+          updateAuthUI();
+          notifyAuthChanged();
+          return currentUser;
+        }
+      }
+    } catch {}
+
     currentUser = null;
+    localStorage.removeItem('storm_user');
     updateAuthUI();
     notifyAuthChanged();
     return null;
@@ -67,14 +99,18 @@ export async function checkAuth() {
       currentUser = data.user;
       if (currentUser) {
         currentUser.stats = data.stats;
+        localStorage.setItem('storm_user', JSON.stringify(currentUser));
       } else {
         currentToken = null;
+        currentUser = null;
         localStorage.removeItem('storm_token');
+        localStorage.removeItem('storm_user');
       }
     } else {
       currentUser = null;
       currentToken = null;
       localStorage.removeItem('storm_token');
+      localStorage.removeItem('storm_user');
     }
   } catch (err) {
     console.warn('Ошибка проверки авторизации:', err.message);
@@ -100,6 +136,7 @@ export async function register(username, email, password) {
   currentToken = data.token;
   currentUser = data.user;
   localStorage.setItem('storm_token', currentToken);
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
   
   updateAuthUI();
   notifyAuthChanged();
@@ -122,6 +159,7 @@ export async function login(loginStr, password) {
   currentToken = data.token;
   currentUser = data.user;
   localStorage.setItem('storm_token', currentToken);
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
 
   updateAuthUI();
   notifyAuthChanged();
@@ -144,10 +182,27 @@ export async function logout() {
   currentToken = null;
   currentUser = null;
   localStorage.removeItem('storm_token');
+  localStorage.removeItem('storm_user');
 
   updateAuthUI();
   notifyAuthChanged();
   showToast(t('msg_logout_success'), 'info');
+}
+
+export function updateFamilyHeaderUI() {
+  const profile = getActiveProfile();
+  const iconEl = document.getElementById('active-profile-avatar-icon');
+  const labelEl = document.getElementById('active-profile-name-label');
+  if (iconEl && profile) {
+    if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/') || profile.avatar.startsWith('data:'))) {
+      iconEl.innerHTML = `<img src="${profile.avatar}" alt="" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle;">`;
+    } else {
+      iconEl.textContent = profile.avatar || (profile.isKid ? '🦄' : '👑');
+    }
+  }
+  if (labelEl && profile) {
+    labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Семья';
+  }
 }
 
 export function updateAuthUI() {
@@ -156,6 +211,7 @@ export function updateAuthUI() {
   const headerProfileBtn = document.getElementById('header-profile-btn');
   const avatarImg = document.getElementById('user-avatar-img');
   const userNameSpan = document.getElementById('user-name-label');
+  const adminDashboardBtn = document.getElementById('admin-dashboard-btn');
 
   if (currentUser) {
     if (loginBtn) loginBtn.style.display = 'none';
@@ -163,11 +219,23 @@ export function updateAuthUI() {
     if (profileBtn) profileBtn.style.display = 'flex';
     if (avatarImg) avatarImg.src = currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`;
     if (userNameSpan) userNameSpan.textContent = currentUser.username;
+
+    // Кнопка административного дашборда для ReiKatari или роли admin
+    if (adminDashboardBtn) {
+      if (currentUser.username === 'ReiKatari' || currentUser.role === 'admin') {
+        adminDashboardBtn.style.display = 'inline-flex';
+      } else {
+        adminDashboardBtn.style.display = 'none';
+      }
+    }
   } else {
     if (loginBtn) loginBtn.style.display = 'inline-flex';
     if (headerProfileBtn) headerProfileBtn.style.display = 'inline-flex';
     if (profileBtn) profileBtn.style.display = 'none';
+    if (adminDashboardBtn) adminDashboardBtn.style.display = 'none';
   }
+
+  updateFamilyHeaderUI();
 }
 
 export const AVATAR_PRESETS = [
@@ -204,7 +272,18 @@ export async function updateProfile(username, email, avatar) {
 
     const data = await res.json();
     currentUser = { ...currentUser, ...(data.user || data) };
+    localStorage.setItem('storm_user', JSON.stringify(currentUser));
+
+    // Синхронизируем также основной профиль в семейных профилях
+    const primary = familyProfiles.find(p => p.id === 'primary' || p.isDefault);
+    if (primary) {
+      primary.name = currentUser.username;
+      if (currentUser.avatar) primary.avatar = currentUser.avatar;
+      saveFamilyProfiles([...familyProfiles]);
+    }
+
     updateAuthUI();
+    notifyAuthChanged();
     showToast('Профиль успешно обновлен!', 'success');
     return true;
   } catch (err) {
@@ -700,6 +779,22 @@ export function updateFamilyProfile(id, data) {
   const updated = [...familyProfiles];
   updated[idx] = updatedProfile;
   saveFamilyProfiles(updated);
+
+  // Немедленно обновляем отображение в шапке
+  updateFamilyHeaderUI();
+
+  // Если отредактирован активный профиль или основной профиль
+  if (id === activeProfileId || id === 'primary' || current.isDefault) {
+    if (currentUser) {
+      currentUser.username = updatedProfile.name;
+      if (updatedProfile.avatar && (updatedProfile.avatar.startsWith('http') || updatedProfile.avatar.startsWith('data:') || updatedProfile.avatar.startsWith('/'))) {
+        currentUser.avatar = updatedProfile.avatar;
+      }
+      localStorage.setItem('storm_user', JSON.stringify(currentUser));
+      updateAuthUI();
+    }
+  }
+
   showToast(`Профиль «${updatedProfile.name}» обновлен`, 'success');
   return updatedProfile;
 }
@@ -993,32 +1088,43 @@ export function openProfileEditorModal(profileId = null) {
   }
 
   modal.classList.add('is-open');
-  const titleIcon = document.getElementById('editor-title-icon');
-  const titleText = document.getElementById('editor-title-text');
-  const body = document.getElementById('profile-editor-body');
-  const footer = document.getElementById('profile-editor-footer');
+  const titleIcon = modal.querySelector('#editor-title-icon');
+  const titleText = modal.querySelector('#editor-title-text');
+  const body = modal.querySelector('#profile-editor-body');
+  const footer = modal.querySelector('#profile-editor-footer');
 
-  titleIcon.textContent = isEditing ? '✏️' : '✨';
-  titleText.textContent = isEditing ? `Редактирование: ${profile.name}` : 'Создание нового профиля';
+  if (titleIcon) titleIcon.textContent = isEditing ? '✏️' : '✨';
+  if (titleText) titleText.textContent = isEditing ? `Редактирование: ${profile.name}` : 'Создание нового профиля';
 
   body.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 20px;">
       <!-- Шапка аватара и имени -->
       <div style="display: flex; align-items: center; gap: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
-        <div id="editor-avatar-preview" class="family-profile-avatar-box" style="width: 80px; height: 80px; font-size: 38px; margin: 0; background: ${selectedBg};">
+        <div id="editor-avatar-preview" class="family-profile-avatar-box" style="width: 80px; height: 80px; font-size: 38px; margin: 0; background: ${selectedBg}; overflow: hidden;">
           ${renderAvatarElement({ avatar: selectedAvatar, name: '' })}
         </div>
         <div style="flex: 1;">
           <label style="display: block; font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">Имя профиля</label>
-          <input type="text" id="editor-profile-name-input" class="storm-input" value="${profile ? profile.name : ''}" placeholder="Например: Папа, Дети, Киноманы" maxlength="28" style="width: 100%; font-size: 14px; font-weight: 600; padding: 10px 14px; border-radius: 8px;">
+          <input type="text" id="editor-profile-name-input" class="storm-input" value="${profile ? escapeHtml(profile.name) : ''}" placeholder="Например: Папа, Дети, Киноманы" maxlength="28" style="width: 100%; font-size: 14px; font-weight: 600; padding: 10px 14px; border-radius: 8px;">
         </div>
       </div>
 
       <!-- Выбор аватарки -->
       <div>
-        <label style="display: block; font-size: 12.5px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Выбор аватарки (24 стиля экосистемы)</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 12.5px; font-weight: 700; color: #ffffff;">Выбор аватарки (24 стиля экосистемы)</label>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="editor-random-avatar-btn" style="font-size: 11px; padding: 4px 8px;">
+              🎲 Случайный
+            </button>
+            <label class="storm-btn storm-btn-secondary storm-btn-sm" style="font-size: 11px; padding: 4px 8px; margin: 0; cursor: pointer;">
+              📁 Файл
+              <input type="file" id="editor-avatar-file-input" accept="image/*" style="display: none;">
+            </label>
+          </div>
+        </div>
         <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px;">Нажмите на любую иконку для мгновенной смены аватара:</div>
-        <div class="family-avatar-picker-grid" id="avatar-presets-container">
+        <div class="family-avatar-picker-grid" id="family-avatar-presets-container">
           ${FAMILY_AVATAR_PRESETS.map(preset => `
             <button type="button" class="avatar-preset-btn ${preset.icon === selectedAvatar ? 'selected' : ''}" data-icon="${preset.icon}" data-bg="${preset.bg}" title="${preset.label}" style="background: ${preset.bg};">
               ${preset.icon}
@@ -1026,7 +1132,7 @@ export function openProfileEditorModal(profileId = null) {
           `).join('')}
         </div>
         <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
-          <input type="text" id="editor-custom-avatar-input" class="storm-input" placeholder="Или введите свой эмодзи или URL картинки" style="flex: 1; font-size: 12px; padding: 7px 10px; border-radius: 8px;">
+          <input type="text" id="editor-custom-avatar-input" class="storm-input" placeholder="Или введите свой эмодзи или URL картинки" value="${selectedAvatar && (selectedAvatar.startsWith('http') || selectedAvatar.startsWith('data:')) ? selectedAvatar : ''}" style="flex: 1; font-size: 12px; padding: 7px 10px; border-radius: 8px;">
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="apply-custom-avatar-btn">Применить</button>
         </div>
       </div>
@@ -1095,73 +1201,139 @@ export function openProfileEditorModal(profileId = null) {
     </div>
   `;
 
-  const nameInput = document.getElementById('editor-profile-name-input');
-  const avatarPreview = document.getElementById('editor-avatar-preview');
-  const presetsContainer = document.getElementById('avatar-presets-container');
-  const customAvatarInput = document.getElementById('editor-custom-avatar-input');
-  const applyCustomBtn = document.getElementById('apply-custom-avatar-btn');
-  const kidToggle = document.getElementById('editor-kid-toggle');
-  const ageRatingBox = document.getElementById('editor-age-rating-box');
-  const ageRatingSelect = document.getElementById('editor-age-rating-select');
-  const pinToggle = document.getElementById('editor-pin-toggle');
-  const pinInputBox = document.getElementById('editor-pin-input-box');
-  const pinCodeInput = document.getElementById('editor-pin-code-input');
-  const pinVisBtn = document.getElementById('toggle-pin-visibility-btn');
-  const cancelBtn = document.getElementById('cancel-profile-editor-btn');
-  const saveBtn = document.getElementById('save-profile-editor-btn');
-  const deleteBtn = document.getElementById('delete-current-profile-btn');
+  const nameInput = modal.querySelector('#editor-profile-name-input');
+  const avatarPreview = modal.querySelector('#editor-avatar-preview');
+  const presetsContainer = modal.querySelector('#family-avatar-presets-container');
+  const customAvatarInput = modal.querySelector('#editor-custom-avatar-input');
+  const applyCustomBtn = modal.querySelector('#apply-custom-avatar-btn');
+  const fileInput = modal.querySelector('#editor-avatar-file-input');
+  const randomAvatarBtn = modal.querySelector('#editor-random-avatar-btn');
+  const kidToggle = modal.querySelector('#editor-kid-toggle');
+  const ageRatingBox = modal.querySelector('#editor-age-rating-box');
+  const ageRatingSelect = modal.querySelector('#editor-age-rating-select');
+  const pinToggle = modal.querySelector('#editor-pin-toggle');
+  const pinInputBox = modal.querySelector('#editor-pin-input-box');
+  const pinCodeInput = modal.querySelector('#editor-pin-code-input');
+  const pinVisBtn = modal.querySelector('#toggle-pin-visibility-btn');
+  const cancelBtn = modal.querySelector('#cancel-profile-editor-btn');
+  const saveBtn = modal.querySelector('#save-profile-editor-btn');
+  const deleteBtn = modal.querySelector('#delete-current-profile-btn');
 
-  // Выбор пресета аватара
-  presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(btn => {
-    btn.onclick = () => {
-      presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      selectedAvatar = btn.dataset.icon;
-      selectedBg = btn.dataset.bg;
+  // Функция обновления превью аватара
+  const updatePreview = () => {
+    if (avatarPreview) {
       avatarPreview.style.background = selectedBg;
       avatarPreview.innerHTML = renderAvatarElement({ avatar: selectedAvatar, name: '' });
-    };
-  });
+    }
+  };
+
+  // Выбор пресета аватара
+  if (presetsContainer) {
+    presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(btn => {
+      btn.onclick = () => {
+        presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedAvatar = btn.dataset.icon;
+        selectedBg = btn.dataset.bg;
+        if (customAvatarInput) customAvatarInput.value = '';
+        updatePreview();
+      };
+    });
+  }
 
   // Пользовательский аватар (эмодзи или URL)
-  applyCustomBtn.onclick = () => {
-    const val = customAvatarInput.value.trim();
-    if (val) {
-      selectedAvatar = val;
-      avatarPreview.innerHTML = renderAvatarElement({ avatar: selectedAvatar, name: '' });
-      showToast('Аватар обновлен', 'info');
-    }
-  };
+  if (applyCustomBtn && customAvatarInput) {
+    applyCustomBtn.onclick = () => {
+      const val = customAvatarInput.value.trim();
+      if (val) {
+        selectedAvatar = val;
+        if (presetsContainer) {
+          presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(b => b.classList.remove('selected'));
+        }
+        updatePreview();
+        showToast('Аватар обновлен', 'info');
+      }
+    };
+  }
+
+  // Загрузка аватарки из файла
+  if (fileInput) {
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('Пожалуйста, выберите файл изображения', 'error');
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        showToast('Размер файла не должен превышать 2 МБ', 'error');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        selectedAvatar = evt.target.result;
+        if (customAvatarInput) customAvatarInput.value = '';
+        if (presetsContainer) {
+          presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(b => b.classList.remove('selected'));
+        }
+        updatePreview();
+        showToast('Изображение загружено', 'success');
+      };
+      reader.readAsDataURL(file);
+    };
+  }
+
+  // Генерация случайного аватара
+  if (randomAvatarBtn) {
+    randomAvatarBtn.onclick = () => {
+      const randomSeed = 'Storm-' + Math.random().toString(36).substring(2, 9);
+      selectedAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${randomSeed}`;
+      if (customAvatarInput) customAvatarInput.value = selectedAvatar;
+      if (presetsContainer) {
+        presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(b => b.classList.remove('selected'));
+      }
+      updatePreview();
+      showToast('Сгенерирован уникальный аватар', 'info');
+    };
+  }
 
   // Переключение детского режима
-  kidToggle.onclick = () => {
-    isKidMode = !isKidMode;
-    kidToggle.classList.toggle('checked', isKidMode);
-    ageRatingBox.style.display = isKidMode ? 'block' : 'none';
-  };
+  if (kidToggle && ageRatingBox) {
+    kidToggle.onclick = () => {
+      isKidMode = !isKidMode;
+      kidToggle.classList.toggle('checked', isKidMode);
+      ageRatingBox.style.display = isKidMode ? 'block' : 'none';
+    };
+  }
 
   // Переключение защиты PIN
-  pinToggle.onclick = () => {
-    hasPinLock = !hasPinLock;
-    pinToggle.classList.toggle('checked', hasPinLock);
-    pinInputBox.style.display = hasPinLock ? 'flex' : 'none';
-    if (hasPinLock && (!pinCodeInput.value || pinCodeInput.value.length < 4)) {
-      pinCodeInput.value = '0000';
-    }
-  };
+  if (pinToggle && pinInputBox && pinCodeInput) {
+    pinToggle.onclick = () => {
+      hasPinLock = !hasPinLock;
+      pinToggle.classList.toggle('checked', hasPinLock);
+      pinInputBox.style.display = hasPinLock ? 'flex' : 'none';
+      if (hasPinLock && (!pinCodeInput.value || pinCodeInput.value.length < 4)) {
+        pinCodeInput.value = '0000';
+      }
+    };
+  }
 
   // Показать/скрыть PIN
-  pinVisBtn.onclick = () => {
-    const isPass = pinCodeInput.type === 'password';
-    pinCodeInput.type = isPass ? 'text' : 'password';
-    pinVisBtn.textContent = isPass ? 'Скрыть' : 'Показать';
-  };
+  if (pinVisBtn && pinCodeInput) {
+    pinVisBtn.onclick = () => {
+      const isPass = pinCodeInput.type === 'password';
+      pinCodeInput.type = isPass ? 'text' : 'password';
+      pinVisBtn.textContent = isPass ? 'Скрыть' : 'Показать';
+    };
+  }
 
   // Отмена
-  cancelBtn.onclick = () => {
-    modal.classList.remove('is-open');
-    openProfileManagementModal();
-  };
+  if (cancelBtn) {
+    cancelBtn.onclick = () => {
+      modal.classList.remove('is-open');
+      openProfileManagementModal();
+    };
+  }
 
   // Удаление профиля
   if (deleteBtn) {
@@ -1175,42 +1347,48 @@ export function openProfileEditorModal(profileId = null) {
   }
 
   // Сохранение
-  saveBtn.onclick = () => {
-    const name = nameInput.value.trim();
-    if (!name) {
-      showToast('Пожалуйста, укажите имя профиля', 'error');
-      nameInput.focus();
-      return;
-    }
-
-    if (hasPinLock) {
-      const pin = pinCodeInput.value.trim();
-      if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-        showToast('PIN-код должен состоять ровно из 4 цифр', 'error');
-        pinCodeInput.focus();
+  if (saveBtn && nameInput) {
+    saveBtn.onclick = () => {
+      const name = nameInput.value.trim();
+      if (!name) {
+        showToast('Пожалуйста, укажите имя профиля', 'error');
+        nameInput.focus();
         return;
       }
-    }
 
-    const payload = {
-      name,
-      avatar: selectedAvatar,
-      avatarBg: selectedBg,
-      isKid: isKidMode,
-      ageRating: isKidMode ? ageRatingSelect.value : '18+',
-      hasPin: hasPinLock,
-      pin: hasPinLock ? pinCodeInput.value.trim() : ''
+      if (customAvatarInput && customAvatarInput.value.trim()) {
+        selectedAvatar = customAvatarInput.value.trim();
+      }
+
+      if (hasPinLock) {
+        const pin = pinCodeInput.value.trim();
+        if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+          showToast('PIN-код должен состоять ровно из 4 цифр', 'error');
+          pinCodeInput.focus();
+          return;
+        }
+      }
+
+      const payload = {
+        name,
+        avatar: selectedAvatar,
+        avatarBg: selectedBg,
+        isKid: isKidMode,
+        ageRating: isKidMode ? ageRatingSelect.value : '18+',
+        hasPin: hasPinLock,
+        pin: hasPinLock ? pinCodeInput.value.trim() : ''
+      };
+
+      if (isEditing) {
+        updateFamilyProfile(profile.id, payload);
+      } else {
+        createFamilyProfile(payload);
+      }
+
+      modal.classList.remove('is-open');
+      openProfileManagementModal();
     };
-
-    if (isEditing) {
-      updateFamilyProfile(profile.id, payload);
-    } else {
-      createFamilyProfile(payload);
-    }
-
-    modal.classList.remove('is-open');
-    openProfileManagementModal();
-  };
+  }
 }
 
 // -------------------------------------------------------------

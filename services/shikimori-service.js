@@ -140,7 +140,7 @@ export async function getShikimoriCalendar() {
 
   try {
     const res = await fetch(`${SHIKIMORI_BASE}/api/calendar`, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(3500),
       headers: { 'User-Agent': USER_AGENT }
     });
     if (!res.ok) return [];

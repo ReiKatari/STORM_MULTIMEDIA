@@ -612,7 +612,7 @@ export async function getTmdbOnTheAir(page = 1) {
 
   try {
     const url = `${TMDB_BASE}/tv/on_the_air?api_key=${TMDB_API_KEY}&language=ru-RU&page=${page}`;
-    const res = await tmdbFetch(url);
+    const res = await tmdbFetch(url, { timeout: 3500 });
     if (!res.ok) return [];
 
     const data = await res.json();
