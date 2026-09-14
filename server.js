@@ -102,6 +102,11 @@ import {
   getCategoryFallback
 } from './services/catalog-fallback.js';
 
+import {
+  resolveMediaPremiereAndYear,
+  searchTvdb
+} from './services/tvdb-service.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1345,6 +1350,16 @@ app.get('/api/media/catalog', async (req, res) => {
       if (page > 1) {
         items = items.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
       }
+      // Обогащаем года и премьеры для всех карточек, исключая «undefined» и пропуски
+      items = items.map(i => {
+        const yr = i.year || resolveMediaYear(i.title, i.link || '', i.poster || '') || '';
+        return {
+          ...i,
+          year: yr,
+          premiere: i.premiere || (yr ? `${yr} год` : ''),
+          release_date: i.release_date || (yr ? `${yr}-01-01` : '')
+        };
+      });
       items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
       memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
     }
@@ -1367,12 +1382,24 @@ app.get('/api/media/catalog', async (req, res) => {
     else if (category === 'series') calculatedTotalPages = 162;
     else if (category === 'cartoons') calculatedTotalPages = 35;
     else if (category === 'cartoon-series') calculatedTotalPages = 20;
-    else if (category === 'anime-movies') calculatedTotalPages = 30;
-    else if (category === 'anime-series') calculatedTotalPages = 80;
+    else if (category === 'anime-movies') calculatedTotalPages = 50;
+    else if (category === 'anime-series') calculatedTotalPages = 50;
+    else if (category === 'new') calculatedTotalPages = 50;
+    else if (category === 'popular' || category === 'home') calculatedTotalPages = 500;
     else if (totalItems > 0 && items.length > 0) {
       calculatedTotalPages = Math.max(1, Math.ceil(totalItems / Math.max(20, items.length)));
     } else {
       calculatedTotalPages = 50;
+    }
+
+    // Защита от пустых страниц пагинации: если запрошенная страница превышает доступный лимит,
+    // отдаем данные последней существующей страницы
+    if (page > calculatedTotalPages && (!items || items.length === 0)) {
+      const lastKey = `${category}_${calculatedTotalPages}_${source}`;
+      const lastCached = memoryCatalogCache.get(lastKey);
+      if (lastCached && Array.isArray(lastCached.items) && lastCached.items.length > 0) {
+        items = lastCached.items;
+      }
     }
 
     res.json({
@@ -1917,6 +1944,27 @@ app.get('/api/media/item', async (req, res) => {
       if (!mediaDetails.release_date && mediaDetails.year) {
         mediaDetails.release_date = `${mediaDetails.year}-01-01`;
       }
+    }
+
+    // Гарантированное определение даты премьеры и года выпуска через каскад TheTVDB / TMDB / Kinopoisk
+    try {
+      const resolvedPremiereData = await resolveMediaPremiereAndYear({
+        title: mediaDetails.title,
+        originalTitle: mediaDetails.original_title,
+        link: mediaDetails.fanfilm_4k_url || mediaDetails.link || '',
+        poster: mediaDetails.poster,
+        year: mediaDetails.year || req.query.year || '',
+        premiere: mediaDetails.premiere || '',
+        releaseDate: mediaDetails.release_date || '',
+        mediaType: mediaDetails.media_type || req.query.media_type || 'movie',
+        kpId: mediaDetails.kp_id || ''
+      });
+
+      mediaDetails.year = resolvedPremiereData.year;
+      mediaDetails.premiere = resolvedPremiereData.premiere;
+      mediaDetails.release_date = resolvedPremiereData.release_date;
+    } catch (e) {
+      console.warn('Ошибка resolveMediaPremiereAndYear:', e.message);
     }
 
     if (!mediaDetails.trivia || mediaDetails.trivia.length === 0) {
@@ -2530,10 +2578,78 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
         return res.send(html);
       }
     } catch (proxyErr) {
-      console.warn('Проксирование FanFilm iframe завершилось с ошибкой, выполняем редирект:', proxyErr.message);
+      console.warn('Проксирование FanFilm iframe завершилось с ошибкой:', proxyErr.message);
     }
 
-    return res.redirect(finalUrl);
+    // Если прямое проксирование недоступно (например, при DNS-блокировке балансера через VPN),
+    // отдаем интерактивный адаптивный HTML-мост, автоматически переключающий на стабильный плеер
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(`
+      <!DOCTYPE html>
+      <html lang="ru">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body {
+            margin: 0;
+            background: #0a0b10;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+          }
+          .vpn-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(0, 210, 255, 0.35);
+            border-radius: 14px;
+            padding: 26px 20px;
+            max-width: 440px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+          }
+          .vpn-icon { font-size: 40px; }
+          .vpn-title { font-size: 16px; font-weight: 700; color: #00d2ff; }
+          .vpn-desc { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+          .vpn-btn {
+            background: linear-gradient(135deg, #00d2ff, #0077ff);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3);
+            transition: transform 0.15s, opacity 0.15s;
+          }
+          .vpn-btn:hover { transform: translateY(-1px); opacity: 0.95; }
+        </style>
+      </head>
+      <body>
+        <div class="vpn-card">
+          <div class="vpn-icon">🛡️</div>
+          <div class="vpn-title">Режим совместимости с VPN</div>
+          <div class="vpn-desc">Прямой 4K поток заблокирован вашим VPN или DNS-провайдером. Автоматически переключаем на стабильный плеер (HDRezka / Collaps)...</div>
+          <button type="button" class="vpn-btn" onclick="triggerNext()">Переключить источник сейчас</button>
+        </div>
+        <script>
+          function triggerNext() {
+            try {
+              window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'VPN_DNS_FALLBACK' }, '*');
+            } catch(e) {}
+          }
+          setTimeout(triggerNext, 1200);
+        </script>
+      </body>
+      </html>
+    `);
   } catch (err) {
     console.error('Ошибка прокси плеера:', err.message);
     res.status(500).send('Ошибка проксирования видеопотока');

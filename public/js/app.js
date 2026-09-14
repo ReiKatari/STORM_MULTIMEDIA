@@ -171,13 +171,13 @@ function initTabs() {
 }
 
 const CATEGORY_DEFAULT_PAGES = {
-  'movies': 500,
-  'series': 500,
-  'cartoons': 250,
-  'cartoon-series': 150,
-  'anime-movies': 120,
-  'anime-series': 250,
-  'new': 100,
+  'movies': 718,
+  'series': 162,
+  'cartoons': 35,
+  'cartoon-series': 20,
+  'anime-movies': 50,
+  'anime-series': 50,
+  'new': 50,
   'popular': 500,
   'home': 500
 };
@@ -1037,8 +1037,11 @@ async function loadCurrentTab() {
   // Каталог медиа - мгновенная отдача из кэша + фоновое обновление
   let category = currentTab;
   if (currentTab === 'home') category = 'popular';
-  const cacheKey = `${category}_${currentPage}_${currentSource}`;
   const defPages = CATEGORY_DEFAULT_PAGES[category] || 100;
+  if (currentPage > defPages) {
+    currentPage = defPages;
+  }
+  const cacheKey = `${category}_${currentPage}_${currentSource}`;
   const loadSeq = ++activeTabLoadSeq;
 
   if (clientTabCache.has(cacheKey)) {
@@ -1048,7 +1051,7 @@ async function loadCurrentTab() {
       items = filterPageDuplicates(items, category, currentPage);
     }
     rawCatalogItems = items;
-    totalCatalogPages = cached?.totalPages || defPages;
+    totalCatalogPages = Math.min(defPages, cached?.totalPages || defPages);
     totalCatalogItems = cached?.totalItems || (totalCatalogPages * 20);
     renderFilteredCatalog();
     scheduleNextPagePrefetch(category, currentPage, currentSource);
@@ -1071,7 +1074,7 @@ async function loadCurrentTab() {
     if (loadSeq !== activeTabLoadSeq) return; // Устаревший запрос отменён
 
     const fetchedItems = data.items || [];
-    totalCatalogPages = data.total_pages || defPages;
+    totalCatalogPages = Math.min(defPages, data.total_pages || defPages);
     totalCatalogItems = data.total_items || (totalCatalogPages * 20);
 
     if (fetchedItems.length > 0) {
@@ -1099,7 +1102,7 @@ async function loadCurrentTab() {
             retryList = filterPageDuplicates(retryList, category, currentPage);
           }
           rawCatalogItems = retryList;
-          totalCatalogPages = retryData.total_pages || defPages;
+          totalCatalogPages = Math.min(defPages, retryData.total_pages || defPages);
           totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
           clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
           renderFilteredCatalog();
@@ -1110,6 +1113,11 @@ async function loadCurrentTab() {
 
       if (loadSeq !== activeTabLoadSeq) return;
       if (!rawCatalogItems || rawCatalogItems.length === 0) {
+        if (currentPage > totalCatalogPages) {
+          currentPage = totalCatalogPages;
+          loadCurrentTab();
+          return;
+        }
         renderFilteredCatalog();
       }
     }
@@ -2783,7 +2791,8 @@ export function renderFilteredCatalog() {
   // 2. Фильтр по году (только для каталога категорий)
   if (!isSearching && currentYear !== 'all') {
     items = items.filter(item => {
-      const year = parseInt(item.year, 10);
+      const yrStr = getMediaYear(item) || item.year;
+      const year = parseInt(yrStr, 10);
       if (isNaN(year)) return false;
       if (currentYear === '2000_down') return year < 2000;
       if (currentYear === '2000-2009' || currentYear === '2000_2009') return year >= 2000 && year <= 2009;
