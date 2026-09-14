@@ -289,6 +289,11 @@ export function isAnimeLinkOrTitle(title = '', link = '', category = '') {
   return animeKeywords.some(kw => t.includes(kw));
 }
 
+export const FANFILM_PINNED_CAROUSEL_IDS = new Set([
+  '2699', '3303', '2955', '2602', '2927', '3398', '3999', '3324', '2907',
+  '13962', '73057', '4165', '3319', '80233', '75166', '81746', '4066', '82029', '70512'
+]);
+
 /**
  * Парсинг списка медиа карточек из HTML FanFilm4K
  */
@@ -299,7 +304,7 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
   // Исключаем сквозную карусель сайта (.carou, #owl-carou) для всех страниц категорий и пагинации,
   // чтобы исключить повторение 24 карточек верхнего сквозного слайдера сайта
   if (category !== 'popular' || page > 1) {
-    $('.carou, #owl-carou, .top').remove();
+    $('.carou, #owl-carou, .top, [class*="carou"], [id*="carou"]').remove();
   }
 
   let selector = '#dle-content .card';
@@ -368,7 +373,10 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
       mediaType = 'cartoon';
     }
 
-    // Проверяем дубликаты
+    // Проверяем дубликаты и исключаем сквозную карусель сайта
+    if ((category !== 'popular' || page > 1) && FANFILM_PINNED_CAROUSEL_IDS.has(String(id))) {
+      return;
+    }
     if (!items.some(it => it.id === id)) {
       setCache('fanfilm4k', `item_link_${id}`, link, 86400 * 7); // Кэшируем ссылку на неделю
       items.push({
