@@ -4104,20 +4104,83 @@ function toggleEpisodeWatched(mediaId, seasonNum = 1, episodeNum = 1) {
   return !isWatched;
 }
 
-function toggleAllSeasonEpisodesWatched(mediaId, seasonNum = 1, totalEpisodes = 0) {
-  if (!mediaId || !totalEpisodes) return false;
+function getSeasonExplicitStatus(mediaId, seasonNum = 1) {
+  if (!mediaId) return null;
+  const sNum = (seasonNum !== undefined && !isNaN(Number(seasonNum))) ? Number(seasonNum) : 1;
   try {
-    const sNum = Number(seasonNum) || 1;
-    const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
-    const watched = getWatchedEpisodes(mediaId, sNum);
-    if (watched.size >= totalEpisodes) {
+    return localStorage.getItem(`storm_season_status_${mediaId}_s${sNum}`) || null;
+  } catch {}
+  return null;
+}
+
+function setSeasonExplicitStatus(mediaId, seasonNum = 1, status = null) {
+  if (!mediaId) return;
+  const sNum = (seasonNum !== undefined && !isNaN(Number(seasonNum))) ? Number(seasonNum) : 1;
+  const sKey = `storm_season_status_${mediaId}_s${sNum}`;
+  try {
+    if (status) {
+      localStorage.setItem(sKey, status);
+    } else {
+      localStorage.removeItem(sKey);
+    }
+  } catch {}
+}
+
+function applySeasonStatus(mediaId, seasonNum = 1, newStatus = 'planned', episodesList = []) {
+  if (!mediaId) return false;
+  const sNum = (seasonNum !== undefined && !isNaN(Number(seasonNum))) ? Number(seasonNum) : 1;
+  const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
+
+  setSeasonExplicitStatus(mediaId, sNum, newStatus);
+
+  if (newStatus === 'completed') {
+    // ВАЖНО: Если на сезон ставится Просмотрено, то статус применяется к каждой серии этого сезона!
+    let allEpNumbers = [];
+    if (Array.isArray(episodesList) && episodesList.length > 0) {
+      allEpNumbers = episodesList.map(e => {
+        if (Number.isFinite(Number(e.episode_number))) return Number(e.episode_number);
+        if (Number.isFinite(Number(e.ordinal))) return Number(e.ordinal);
+        if (Number.isFinite(Number(e.episode))) return Number(e.episode);
+        return 1;
+      });
+    } else {
+      const watched = getWatchedEpisodes(mediaId, sNum);
+      allEpNumbers = watched.size > 0 ? Array.from(watched) : [1];
+    }
+    const uniqueEps = Array.from(new Set(allEpNumbers));
+    try {
+      localStorage.setItem(sKey, JSON.stringify(uniqueEps));
+      if (sNum === 1) localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(uniqueEps));
+    } catch {}
+    return true;
+  } else if (newStatus === 'planned') {
+    // Сброс отметок серий для этого сезона
+    try {
       localStorage.removeItem(sKey);
       if (sNum === 1) localStorage.removeItem(`storm_watched_eps_${mediaId}`);
+    } catch {}
+    return false;
+  }
+  return true;
+}
+
+function toggleAllSeasonEpisodesWatched(mediaId, seasonNum = 1, totalEpisodes = 0, episodesList = []) {
+  if (!mediaId) return false;
+  try {
+    const sNum = (seasonNum !== undefined && !isNaN(Number(seasonNum))) ? Number(seasonNum) : 1;
+    const watched = getWatchedEpisodes(mediaId, sNum);
+    const total = Number(totalEpisodes) || (Array.isArray(episodesList) ? episodesList.length : 0);
+    const explicitStatus = getSeasonExplicitStatus(mediaId, sNum);
+
+    if ((total > 0 && watched.size >= total) || explicitStatus === 'completed') {
+      applySeasonStatus(mediaId, sNum, 'planned', episodesList);
       return false;
     } else {
-      const all = Array.from({ length: totalEpisodes }, (_, i) => i + 1);
-      localStorage.setItem(sKey, JSON.stringify(all));
-      if (sNum === 1) localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(all));
+      let eps = episodesList;
+      if (!eps || eps.length === 0) {
+        eps = Array.from({ length: total || 1 }, (_, i) => ({ episode_number: i + 1 }));
+      }
+      applySeasonStatus(mediaId, sNum, 'completed', eps);
       return true;
     }
   } catch {}
@@ -4128,15 +4191,30 @@ function toggleAllEpisodesWatched(mediaId, totalEpisodes) {
   return toggleAllSeasonEpisodesWatched(mediaId, 1, totalEpisodes);
 }
 
-function getSeasonStatusInfo(mediaId, seasonNum = 1, totalEpisodes = 0) {
-  const total = Number(totalEpisodes) || 0;
-  const watched = getWatchedEpisodes(mediaId, seasonNum);
+function getSeasonStatusInfo(mediaId, seasonNum = 1, totalEpisodes = 0, episodesList = []) {
+  const sNum = (seasonNum !== undefined && !isNaN(Number(seasonNum))) ? Number(seasonNum) : 1;
+  const total = Number(totalEpisodes) || (Array.isArray(episodesList) ? episodesList.length : 0);
+  const watched = getWatchedEpisodes(mediaId, sNum);
   const count = watched.size;
+  const explicitStatus = getSeasonExplicitStatus(mediaId, sNum);
+
   if (total > 0 && count >= total) {
     return { status: 'completed', label: '✓ Просмотрен', count, total };
   }
+  if (explicitStatus === 'completed') {
+    return { status: 'completed', label: '✓ Просмотрен', count: total || count, total };
+  }
   if (count > 0) {
     return { status: 'watching', label: `▶ ${count}/${total || '?'}`, count, total };
+  }
+  if (explicitStatus === 'on_hold') {
+    return { status: 'on_hold', label: '⏸️ Отложен', count, total };
+  }
+  if (explicitStatus === 'dropped') {
+    return { status: 'dropped', label: '🛑 Заброшен', count, total };
+  }
+  if (explicitStatus === 'watching') {
+    return { status: 'watching', label: '▶ Смотрю', count, total };
   }
   return { status: 'planned', label: 'В планах', count: 0, total };
 }
@@ -5436,9 +5514,19 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       if (infoBox) {
         infoBox.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <strong style="font-size: 13.5px; color: #ffffff;">${season.name || `Сезон ${seasonNum}`}</strong>
               <span class="season-status-chip ${sStatus.status}">${sStatus.label}</span>
+              <div class="season-status-select-wrap" style="display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;">
+                <label for="season-status-select" style="font-size: 11px; color: var(--text-muted);">Статус:</label>
+                <select class="storm-select season-status-select" id="season-status-select" style="padding: 3px 8px; font-size: 11.5px; border-radius: 6px; background: rgba(18, 22, 34, 0.9); color: var(--text-primary); border: 1px solid var(--border-subtle); cursor: pointer;">
+                  <option value="planned" ${sStatus.status === 'planned' ? 'selected' : ''}>📋 В планах</option>
+                  <option value="watching" ${sStatus.status === 'watching' ? 'selected' : ''}>▶ Смотрю</option>
+                  <option value="completed" ${sStatus.status === 'completed' ? 'selected' : ''}>✓ Просмотрен</option>
+                  <option value="on_hold" ${sStatus.status === 'on_hold' ? 'selected' : ''}>⏸️ Отложен</option>
+                  <option value="dropped" ${sStatus.status === 'dropped' ? 'selected' : ''}>🛑 Заброшен</option>
+                </select>
+              </div>
             </div>
             <button type="button" class="storm-btn storm-btn-sm ${isSeasonAllWatched ? 'storm-btn-secondary' : 'storm-btn-primary'}" id="toggle-season-btn" style="font-size: 11px; padding: 4px 10px;">
               ${isSeasonAllWatched ? '✕ Снять отметку' : '✓ Отметить весь сезон'}
@@ -5447,11 +5535,29 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           <div class="series-season-desc" id="series-season-desc">${finalSeasonDesc}</div>
         `;
 
+        const statusSelect = infoBox.querySelector('#season-status-select');
+        if (statusSelect) {
+          statusSelect.onchange = async (e) => {
+            const selectedStatus = e.target.value;
+            applySeasonStatus(mediaDetails.id, seasonNum, selectedStatus, episodes);
+            if (selectedStatus === 'completed') {
+              showToast(`Сезон ${seasonNum} отмечен как просмотренный: все серии просмотрены`, 'success');
+            } else {
+              const label = statusSelect.options[statusSelect.selectedIndex]?.text || selectedStatus;
+              showToast(`Сезон ${seasonNum}: статус «${label}»`, 'info');
+            }
+            renderSeasonTabs();
+            await syncOverallSeriesProgress(mediaDetails);
+            renderQuickBarDropdowns();
+            loadSeasonEpisodes(seasonNum, activeEpisodeNum || 1);
+          };
+        }
+
         const toggleBtn = infoBox.querySelector('#toggle-season-btn');
         if (toggleBtn) {
           toggleBtn.onclick = async () => {
-            const marked = toggleAllSeasonEpisodesWatched(mediaDetails.id, seasonNum, episodes.length);
-            showToast(marked ? `Сезон ${seasonNum} отмечен как просмотренный` : `Отметка снята с сезона ${seasonNum}`, 'info');
+            const marked = toggleAllSeasonEpisodesWatched(mediaDetails.id, seasonNum, episodes.length, episodes);
+            showToast(marked ? `Сезон ${seasonNum} отмечен как просмотренный: все серии просмотрены` : `Отметка снята с сезона ${seasonNum}`, 'info');
             renderSeasonTabs();
             await syncOverallSeriesProgress(mediaDetails);
             renderQuickBarDropdowns();
