@@ -416,6 +416,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   renderStatusButtons(cachedStatus);
   renderCustomListsSelector();
   renderPlayerUtilityButtons();
+  renderFranchiseOrder(mediaItem);
 
   // 🛡️ ГАРАНТИЯ ИСТОЧНИКОВ: Создаем полный универсальный набор онлайн-плееров сразу!
   // Никакой источник никогда не пропадает, даже при задержке сети или таймауте
@@ -507,6 +508,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
     // Отображаем подробную информацию в боковой колонке (даты, рейтинги, режиссеры, актеры)
     renderDetailedMediaInfo(currentMedia);
+
+    // Порядок просмотра и хронология франшизы (фильмы, сериалы, аниме)
+    renderFranchiseOrder(currentMedia);
 
     // Отображаем селектор сезонов и серий для сериалов (для аниме настраивается ниже)
     if (mediaItem.source !== 'anilibria' && mediaItem.source !== 'anixart') {
@@ -1668,7 +1672,12 @@ function setupVideoFeatures(video, wrapper) {
     }
   });
 
-  // 10. Монтирование интеллектуального оверлея плеера и серий
+  // 10. Автопросмотр следующей части франшизы при завершении видео
+  video.addEventListener('ended', async () => {
+    await autoAdvanceNextFranchiseItem();
+  });
+
+  // 11. Монтирование интеллектуального оверлея плеера и серий
   mountInPlayerOverlay(wrapper);
 }
 
@@ -5010,6 +5019,147 @@ function renderDetailedMediaInfo(mediaDetails) {
       openPersonModal(chip.dataset.actorId, chip.dataset.actorName);
     };
   });
+}
+
+// ==========================================
+// ПОРЯДОК ПРОСМОТРА И ХРОНОЛОГИЯ ФРАНШИЗЫ (FRANCHISE WATCH ORDER)
+// ==========================================
+let isAutoWatchChronology = localStorage.getItem('storm_autowatch_chronology') !== 'false';
+let currentFranchiseItems = [];
+let currentFranchiseActiveIndex = -1;
+
+export async function renderFranchiseOrder(mediaItem) {
+  const section = document.getElementById('franchise-order-section');
+  const listEl = document.getElementById('franchise-items-list');
+  const titleEl = document.getElementById('franchise-order-title');
+  const toggleBtn = document.getElementById('franchise-autowatch-toggle');
+  const indicator = document.getElementById('franchise-autowatch-indicator');
+
+  if (!section || !listEl || !mediaItem) return;
+
+  // Инициализация кнопки «Автопросмотр хронологии»
+  if (toggleBtn) {
+    toggleBtn.classList.toggle('active', isAutoWatchChronology);
+    if (indicator) indicator.textContent = isAutoWatchChronology ? '🟢' : '⚪';
+    toggleBtn.onclick = () => {
+      isAutoWatchChronology = !isAutoWatchChronology;
+      localStorage.setItem('storm_autowatch_chronology', String(isAutoWatchChronology));
+      toggleBtn.classList.toggle('active', isAutoWatchChronology);
+      if (indicator) indicator.textContent = isAutoWatchChronology ? '🟢' : '⚪';
+      showToast(`Автопросмотр хронологии: ${isAutoWatchChronology ? 'Включен' : 'Выключен'}`, 'info');
+    };
+  }
+
+  try {
+    const params = new URLSearchParams({
+      id: mediaItem.id || '',
+      title: mediaItem.title || '',
+      source: mediaItem.source || '',
+      media_type: mediaItem.media_type || ''
+    });
+
+    const res = await fetch(`/api/media/franchise?${params.toString()}`);
+    if (!res.ok) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const data = await res.json();
+    if (!data || !Array.isArray(data.items) || data.items.length <= 1) {
+      section.style.display = 'none';
+      currentFranchiseItems = [];
+      currentFranchiseActiveIndex = -1;
+      return;
+    }
+
+    currentFranchiseItems = data.items;
+    if (titleEl) {
+      titleEl.textContent = data.franchise_name || 'Порядок просмотра и хронология';
+    }
+
+    const currentTitleNorm = (mediaItem.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+    const currentIdStr = String(mediaItem.id || '');
+
+    currentFranchiseActiveIndex = currentFranchiseItems.findIndex(it => {
+      if (String(it.id) === currentIdStr || String(it.tmdb_id) === currentIdStr) return true;
+      const itTitleNorm = (it.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+      return itTitleNorm === currentTitleNorm || itTitleNorm.includes(currentTitleNorm) || currentTitleNorm.includes(itTitleNorm);
+    });
+
+    listEl.innerHTML = currentFranchiseItems.map((item, idx) => {
+      const isCurrent = idx === currentFranchiseActiveIndex;
+      const orderLabel = item.order_label || (item.order ? `Часть ${item.order}` : `Часть ${idx + 1}`);
+      const relationBadge = item.relation ? `<span class="franchise-order-badge">${item.relation}</span>` : `<span class="franchise-order-badge">${orderLabel}</span>`;
+      const poster = item.poster || 'assets/favicon.svg';
+      const year = item.year || '';
+
+      return `
+        <div class="franchise-card ${isCurrent ? 'current' : ''}" data-franchise-index="${idx}" title="${item.title}">
+          <div class="franchise-card-poster">
+            <img src="${poster}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            ${relationBadge}
+          </div>
+          <div class="franchise-card-content">
+            <div class="franchise-card-title">${item.title}</div>
+            <div class="franchise-card-meta">
+              <span>${year}</span>
+              ${item.rating ? `<span style="color:var(--accent);font-weight:700;">★ ${item.rating}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Подключение быстрых переходов при клике на карточку части
+    listEl.querySelectorAll('.franchise-card').forEach(card => {
+      card.onclick = () => {
+        const idx = parseInt(card.dataset.franchiseIndex, 10);
+        if (!isNaN(idx) && currentFranchiseItems[idx]) {
+          openPlayerModal(currentFranchiseItems[idx]);
+        }
+      };
+    });
+
+    section.style.display = 'block';
+
+    // Центрируем скролл на текущей части
+    setTimeout(() => {
+      const activeCard = listEl.querySelector('.franchise-card.current');
+      if (activeCard) {
+        activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }, 200);
+
+  } catch (err) {
+    console.warn('[Franchise Order UI]:', err.message);
+    section.style.display = 'none';
+  }
+}
+
+export async function autoAdvanceNextFranchiseItem() {
+  if (!isAutoWatchChronology) return false;
+  if (!currentFranchiseItems || currentFranchiseItems.length <= 1) return false;
+  if (currentFranchiseActiveIndex < 0 || currentFranchiseActiveIndex >= currentFranchiseItems.length - 1) return false;
+
+  const nextIndex = currentFranchiseActiveIndex + 1;
+  const nextItem = currentFranchiseItems[nextIndex];
+  if (!nextItem) return false;
+
+  if (currentMedia) {
+    currentMedia.user_status = 'completed';
+    await saveBookmarkStatus(currentMedia, 'completed');
+  }
+
+  nextItem.user_status = 'watching';
+  await saveBookmarkStatus(nextItem, 'watching');
+
+  showToast(`Автопросмотр хронологии: Запуск следующей части «${nextItem.title}»`, 'info');
+
+  setTimeout(() => {
+    openPlayerModal(nextItem);
+  }, 1200);
+
+  return true;
 }
 
 // ==========================================

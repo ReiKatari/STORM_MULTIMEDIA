@@ -3,7 +3,7 @@ import { getCache, setCache } from '../db.js';
 
 const client = new Anixart();
 
-function withTimeout(promise, ms = 2500) {
+function withTimeout(promise, ms = 8000) {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error(`AniXart request timed out after ${ms}ms`)), ms);

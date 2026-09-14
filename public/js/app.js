@@ -877,75 +877,195 @@ function deduplicateMediaList(items) {
 // -------------------------------------------------------------
 // ВИТРИНА HERO SHOWCASE (EMBY & PLEX КИНЕМАТОГРАФИЧНЫЙ БАННЕР)
 // -------------------------------------------------------------
-function renderHeroShowcase(item) {
+let heroSliderTimer = null;
+let heroSliderItems = [];
+let currentHeroIndex = 0;
+
+function renderHeroShowcase(items) {
   const container = document.getElementById('hero-showcase-container');
   if (!container) return;
 
-  if (!item) {
+  if (heroSliderTimer) {
+    clearInterval(heroSliderTimer);
+    heroSliderTimer = null;
+  }
+
+  const rawList = Array.isArray(items) ? items.filter(Boolean) : (items ? [items] : []);
+  if (rawList.length === 0) {
     container.style.display = 'none';
     return;
   }
 
-  const formattedTitle = formatMediaTitle(item);
-  const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
-  const backdrop = item.backdrop || item.backdrop_path || item.poster || 'assets/favicon.svg';
-
-  let genres = [];
-  if (Array.isArray(item.genres)) genres = item.genres;
-  else if (typeof item.genres === 'string') genres = item.genres.split(/[,/]/).map(g => g.trim()).filter(Boolean);
-
-  const genresHtml = genres.slice(0, 3).map(g => `<span class="hero-genre-pill">${g}</span>`).join('');
-
-  container.innerHTML = `
-    <div class="hero-showcase" style="background-image: url('${backdrop}');">
-      <div class="hero-showcase-overlay"></div>
-      <div class="hero-showcase-content">
-        <div class="hero-badges-row">
-          ${isReal4K ? '<span class="hero-badge-tag hero-badge-4k">4K UHD</span>' : ''}
-          ${item.rating ? `<span class="hero-badge-tag hero-badge-rating">★ ${item.rating}</span>` : ''}
-          <span class="hero-badge-tag" style="background:var(--bg-tertiary);color:var(--text-secondary);">${getSourceName(item)}</span>
-        </div>
-        <h1 class="hero-title">${formattedTitle}</h1>
-        <div class="hero-meta-row">
-          <span>${item.year || '2026'}</span>
-          ${genresHtml ? `<span>•</span><div class="hero-genres-chips">${genresHtml}</div>` : ''}
-        </div>
-        <p class="hero-desc">${item.description || 'Высочайшее качество видео и звука в формате 4K Ultra HD. Смотрите онлайн в любое удобное время на STORM MULTIMEDIA.'}</p>
-        <div class="hero-actions">
-          <button type="button" class="storm-btn storm-btn-primary hero-btn-play" id="hero-watch-btn">
-            <span>▶</span>
-            <span data-i18n="hero_watch_now">${t('hero_watch_now')}</span>
-          </button>
-          <button type="button" class="hero-btn-bookmark" id="hero-bookmark-btn">
-            <span>🔖</span>
-            <span data-i18n="hero_add_bookmark">${t('hero_add_bookmark')}</span>
-          </button>
-          <button type="button" class="hero-btn-trailer" id="hero-trailer-btn">
-            <span>👥</span>
-            <span data-i18n="card_menu_watch_together">${t('card_menu_watch_together')}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  container.style.display = 'block';
-
-  const watchBtn = document.getElementById('hero-watch-btn');
-  if (watchBtn) watchBtn.onclick = () => openPlayerModal(item);
-
-  const bookmarkBtn = document.getElementById('hero-bookmark-btn');
-  if (bookmarkBtn) {
-    bookmarkBtn.onclick = async () => {
-      const nextStatus = item.user_status === 'favorite' ? 'plan' : 'favorite';
-      item.user_status = nextStatus;
-      await saveBookmarkStatus(item, nextStatus);
-      showActionSheetToast(`Добавлено в закладки: ${getStatusLabel(nextStatus)}`);
-    };
+  heroSliderItems = rawList;
+  if (currentHeroIndex >= heroSliderItems.length) {
+    currentHeroIndex = 0;
   }
 
-  const trailerBtn = document.getElementById('hero-trailer-btn');
-  if (trailerBtn) trailerBtn.onclick = () => createWatchRoom(item);
+  function renderSlide(index) {
+    const item = heroSliderItems[index];
+    if (!item) return;
+
+    const formattedTitle = formatMediaTitle(item);
+    const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+    const backdrop = item.backdrop || item.backdrop_path || item.poster || 'assets/favicon.svg';
+
+    let genres = [];
+    if (Array.isArray(item.genres)) genres = item.genres;
+    else if (typeof item.genres === 'string') genres = item.genres.split(/[,/]/).map(g => g.trim()).filter(Boolean);
+
+    const genresHtml = genres.slice(0, 3).map(g => `<span class="hero-genre-pill">${g}</span>`).join('');
+
+    const dotsHtml = heroSliderItems.length > 1 ? `
+      <div class="hero-slider-dots">
+        ${heroSliderItems.map((_, dIdx) => `
+          <div class="hero-slider-dot ${dIdx === index ? 'active' : ''}" data-index="${dIdx}" title="Слайд ${dIdx + 1}"></div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    const navArrowsHtml = heroSliderItems.length > 1 ? `
+      <button type="button" class="hero-slider-nav hero-slider-prev" aria-label="Предыдущий слайд" title="Предыдущий">❮</button>
+      <button type="button" class="hero-slider-nav hero-slider-next" aria-label="Следующий слайд" title="Следующий">❯</button>
+    ` : '';
+
+    container.innerHTML = `
+      <div class="hero-showcase" style="background-image: url('${backdrop}');">
+        <div class="hero-showcase-overlay"></div>
+        ${navArrowsHtml}
+        ${dotsHtml}
+        <div class="hero-showcase-content">
+          <div class="hero-badges-row">
+            ${isReal4K ? '<span class="hero-badge-tag hero-badge-4k">4K UHD</span>' : ''}
+            ${item.rating ? `<span class="hero-badge-tag hero-badge-rating">★ ${item.rating}</span>` : ''}
+            <span class="hero-badge-tag" style="background:var(--bg-tertiary);color:var(--text-secondary);">${getSourceName(item)}</span>
+          </div>
+          <h1 class="hero-title">${formattedTitle}</h1>
+          <div class="hero-meta-row">
+            <span>${item.year || '2026'}</span>
+            ${genresHtml ? `<span>•</span><div class="hero-genres-chips">${genresHtml}</div>` : ''}
+          </div>
+          <p class="hero-desc">${item.description || 'Высочайшее качество видео и звука в формате 4K Ultra HD. Смотрите онлайн в любое удобное время на STORM MULTIMEDIA.'}</p>
+          <div class="hero-actions">
+            <button type="button" class="storm-btn storm-btn-primary hero-btn-play" id="hero-watch-btn">
+              <span>▶</span>
+              <span data-i18n="hero_watch_now">${t('hero_watch_now')}</span>
+            </button>
+            <button type="button" class="hero-btn-bookmark" id="hero-bookmark-btn">
+              <span>🔖</span>
+              <span data-i18n="hero_add_bookmark">${t('hero_add_bookmark')}</span>
+            </button>
+            <button type="button" class="hero-btn-trailer" id="hero-trailer-btn">
+              <span>👥</span>
+              <span data-i18n="card_menu_watch_together">${t('card_menu_watch_together')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.style.display = 'block';
+
+    const watchBtn = document.getElementById('hero-watch-btn');
+    if (watchBtn) watchBtn.onclick = () => openPlayerModal(item);
+
+    const bookmarkBtn = document.getElementById('hero-bookmark-btn');
+    if (bookmarkBtn) {
+      bookmarkBtn.onclick = async () => {
+        const nextStatus = item.user_status === 'favorite' ? 'plan' : 'favorite';
+        item.user_status = nextStatus;
+        await saveBookmarkStatus(item, nextStatus);
+        showActionSheetToast(`Добавлено в закладки: ${getStatusLabel(nextStatus)}`);
+      };
+    }
+
+    const trailerBtn = document.getElementById('hero-trailer-btn');
+    if (trailerBtn) trailerBtn.onclick = () => createWatchRoom(item);
+
+    const prevBtn = container.querySelector('.hero-slider-prev');
+    if (prevBtn) {
+      prevBtn.onclick = (e) => {
+        e.stopPropagation();
+        goToSlide((currentHeroIndex - 1 + heroSliderItems.length) % heroSliderItems.length);
+      };
+    }
+
+    const nextBtn = container.querySelector('.hero-slider-next');
+    if (nextBtn) {
+      nextBtn.onclick = (e) => {
+        e.stopPropagation();
+        goToSlide((currentHeroIndex + 1) % heroSliderItems.length);
+      };
+    }
+
+    container.querySelectorAll('.hero-slider-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        const dIdx = parseInt(dot.dataset.index, 10);
+        if (!isNaN(dIdx)) goToSlide(dIdx);
+      };
+    });
+
+    const showcaseEl = container.querySelector('.hero-showcase');
+    if (showcaseEl) {
+      let touchStartX = 0;
+      let touchEndX = 0;
+
+      showcaseEl.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        stopAutoRotation();
+      }, { passive: true });
+
+      showcaseEl.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+        startAutoRotation();
+      }, { passive: true });
+
+      function handleSwipe() {
+        const diff = touchEndX - touchStartX;
+        if (Math.abs(diff) > 45) {
+          if (diff < 0) {
+            goToSlide((currentHeroIndex + 1) % heroSliderItems.length);
+          } else {
+            goToSlide((currentHeroIndex - 1 + heroSliderItems.length) % heroSliderItems.length);
+          }
+        }
+      }
+
+      showcaseEl.addEventListener('mouseenter', stopAutoRotation);
+      showcaseEl.addEventListener('mouseleave', startAutoRotation);
+    }
+  }
+
+  function goToSlide(newIdx) {
+    currentHeroIndex = newIdx;
+    renderSlide(currentHeroIndex);
+    resetAutoRotation();
+  }
+
+  function startAutoRotation() {
+    if (heroSliderItems.length <= 1) return;
+    if (heroSliderTimer) clearInterval(heroSliderTimer);
+    heroSliderTimer = setInterval(() => {
+      currentHeroIndex = (currentHeroIndex + 1) % heroSliderItems.length;
+      renderSlide(currentHeroIndex);
+    }, 7000);
+  }
+
+  function stopAutoRotation() {
+    if (heroSliderTimer) {
+      clearInterval(heroSliderTimer);
+      heroSliderTimer = null;
+    }
+  }
+
+  function resetAutoRotation() {
+    stopAutoRotation();
+    startAutoRotation();
+  }
+
+  renderSlide(currentHeroIndex);
+  startAutoRotation();
 }
 
 // -------------------------------------------------------------
@@ -999,9 +1119,12 @@ function renderHomeView(items) {
 
   items = deduplicateMediaList(items);
 
-  // Витринный фильм для баннера Hero Showcase
-  const featured = items.find(i => (i.is4K || (i.quality && i.quality.includes('4K'))) && i.rating && parseFloat(i.rating) >= 7.5) || items[0];
-  renderHeroShowcase(featured);
+  // Топ 6-8 витринных фильмов и релизов для карусели Hero Showcase Slider
+  const featuredList = items.filter(i => (i.is4K || (i.quality && i.quality.includes('4K')) || (i.rating && parseFloat(i.rating) >= 7.5))).slice(0, 7);
+  if (featuredList.length === 0 && items.length > 0) {
+    featuredList.push(...items.slice(0, 5));
+  }
+  renderHeroShowcase(featuredList);
 
   // Рейл 1: Продолжить просмотр
   const continueItems = items.filter(i => (i.progress_percent > 0 || i.user_status === 'watching')).slice(0, 10);
@@ -1112,7 +1235,7 @@ function renderHomeView(items) {
               <span class="rail-icon">${rail.icon}</span>
               <h3 class="rail-title">${rail.title}</h3>
             </div>
-            <button type="button" class="rail-see-all-btn" data-category="${rail.category}">${t('rail_see_all')} →</button>
+            <button type="button" class="rail-see-all-btn" data-category="${rail.category}"><span>${t('rail_see_all')}</span> <span class="rail-see-all-arrow">→</span></button>
           </div>
           <div class="rail-carousel-wrap">
             <button type="button" class="rail-nav-btn rail-nav-prev" aria-label="Назад">❮</button>
