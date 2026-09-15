@@ -208,18 +208,74 @@ function initFullscreenControls() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') {
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
-        return;
-      }
-      const modal = document.getElementById('cinema-modal');
-      if (modal && modal.classList.contains('is-open')) {
-        e.preventDefault();
-        toggleCinemaFullscreen();
-      }
+    const modal = document.getElementById('cinema-modal');
+    if (!modal || !modal.classList.contains('is-open')) return;
+
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+      return;
     }
-  });
+
+    if (isPlayerScreenLocked) return;
+
+    const k = e.key;
+
+    // 1. Полноэкранный режим: F / А
+    if (k === 'f' || k === 'F' || k === 'а' || k === 'А') {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleCinemaFullscreen();
+      return;
+    }
+
+    // 2. Перемотка назад (-10с): Стрелка влево / J / О
+    if (k === 'ArrowLeft' || k === 'j' || k === 'J' || k === 'о' || k === 'О') {
+      e.preventDefault();
+      e.stopPropagation();
+      sendSeekDelta(-10);
+      triggerDoubleTapRipple(document.getElementById('player-tap-indicator-left'), false);
+      return;
+    }
+
+    // 3. Перемотка вперед (+10с): Стрелка вправо / L / Д
+    if (k === 'ArrowRight' || k === 'l' || k === 'L' || k === 'д' || k === 'Д') {
+      e.preventDefault();
+      e.stopPropagation();
+      sendSeekDelta(10);
+      triggerDoubleTapRipple(document.getElementById('player-tap-indicator-right'), true);
+      return;
+    }
+
+    // 4. Пауза и воспроизведение: Пробел / K / Л
+    if (k === ' ' || k === 'k' || k === 'K' || k === 'л' || k === 'Л') {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePlayerPlayPause();
+      return;
+    }
+
+    // 5. Громкость: Стрелка вверх / вниз
+    if (k === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      adjustPlayerVolume(0.1);
+      return;
+    }
+    if (k === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      adjustPlayerVolume(-0.1);
+      return;
+    }
+
+    // 6. Без звука: M / Ь
+    if (k === 'm' || k === 'M' || k === 'ь' || k === 'Ь') {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePlayerMute();
+      return;
+    }
+  }, true);
 }
 
 // -------------------------------------------------------------
@@ -303,6 +359,92 @@ function updateSleepTimerUI() {
   }
 }
 
+export function togglePlayerPlayPause() {
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    if (video.paused) {
+      video.play().catch(() => {});
+      showToast('▶ Воспроизведение', 'info');
+    } else {
+      video.pause();
+      showToast('⏸ Пауза', 'info');
+    }
+    return;
+  }
+
+  const toggleMsgs = [
+    { event: 'toggle' },
+    { api: 'toggle' },
+    { action: 'toggle' },
+    { method: 'toggle' },
+    { key: 'kodik_player_api', value: { action: 'toggle' } }
+  ];
+  document.querySelectorAll('#cinema-player-wrapper iframe, .cinema-player-iframe').forEach(iframe => {
+    toggleMsgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(msg, '*');
+        iframe.contentWindow?.postMessage(JSON.stringify(msg), '*');
+      } catch {}
+    });
+  });
+}
+
+export function adjustPlayerVolume(delta) {
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    video.volume = Math.max(0, Math.min(1, video.volume + delta));
+    const pct = Math.round(video.volume * 100);
+    showToast(`🔊 Громкость: ${pct}%`, 'info');
+    return;
+  }
+  const volMsgs = [
+    { event: 'volume', val: delta > 0 ? '+10' : '-10' },
+    { action: 'volume', delta }
+  ];
+  document.querySelectorAll('#cinema-player-wrapper iframe, .cinema-player-iframe').forEach(iframe => {
+    volMsgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(msg, '*');
+        iframe.contentWindow?.postMessage(JSON.stringify(msg), '*');
+      } catch {}
+    });
+  });
+}
+
+export function togglePlayerMute() {
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    video.muted = !video.muted;
+    showToast(video.muted ? '🔇 Звук выключен' : '🔊 Звук включен', 'info');
+    return;
+  }
+  const muteMsgs = [
+    { event: 'mute' },
+    { action: 'mute' }
+  ];
+  document.querySelectorAll('#cinema-player-wrapper iframe, .cinema-player-iframe').forEach(iframe => {
+    muteMsgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(msg, '*');
+        iframe.contentWindow?.postMessage(JSON.stringify(msg), '*');
+      } catch {}
+    });
+  });
+}
+
+export function triggerDoubleTapRipple(indicatorEl, isForward) {
+  if (indicatorEl) {
+    indicatorEl.classList.remove('is-active');
+    void indicatorEl.offsetWidth;
+    indicatorEl.classList.add('is-active');
+    setTimeout(() => indicatorEl.classList.remove('is-active'), 500);
+  }
+  sendSeekDelta(isForward ? 10 : -10);
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    try { navigator.vibrate([10, 30, 10]); } catch (_) {}
+  }
+}
+
 function pauseCurrentPlayback() {
   const video = document.querySelector('#cinema-player-wrapper video');
   if (video) {
@@ -315,7 +457,7 @@ function pauseCurrentPlayback() {
     { method: 'pause' },
     { key: 'kodik_player_api', value: { action: 'pause' } }
   ];
-  document.querySelectorAll('#cinema-player-wrapper iframe').forEach(iframe => {
+  document.querySelectorAll('#cinema-player-wrapper iframe, .cinema-player-iframe').forEach(iframe => {
     pauseMsgs.forEach(msg => {
       try {
         iframe.contentWindow?.postMessage(msg, '*');
@@ -325,7 +467,7 @@ function pauseCurrentPlayback() {
   });
 }
 
-function sendSeekDelta(secondsDelta) {
+export function sendSeekDelta(secondsDelta) {
   const video = document.querySelector('#cinema-player-wrapper video');
   if (video) {
     try {
@@ -334,14 +476,14 @@ function sendSeekDelta(secondsDelta) {
   }
 
   const seekMsgs = [
-    { event: 'seek', value: secondsDelta > 0 ? '+10' : '-10' },
+    { event: 'seek', val: secondsDelta, delta: secondsDelta, value: secondsDelta > 0 ? '+10' : '-10' },
     { api: 'seek', val: secondsDelta },
     { api: 'seekDelta', val: secondsDelta },
     { method: 'seek', delta: secondsDelta },
     { action: 'seek', delta: secondsDelta },
     { key: 'kodik_player_api', value: { action: 'seek', delta: secondsDelta } }
   ];
-  document.querySelectorAll('#cinema-player-wrapper iframe').forEach(iframe => {
+  document.querySelectorAll('#cinema-player-wrapper iframe, .cinema-player-iframe').forEach(iframe => {
     seekMsgs.forEach(msg => {
       try {
         iframe.contentWindow?.postMessage(msg, '*');
@@ -417,8 +559,10 @@ function initMobilePlayerControls() {
       }
 
       // Внутренний мини-PiP режим приложения
-      modal.classList.toggle('is-mini-pip');
-      pipBtn.classList.toggle('active', modal.classList.contains('is-mini-pip'));
+      const isPip = modal.classList.toggle('is-mini-pip');
+      pipBtn.classList.toggle('active', isPip);
+      const modalBody = modal.querySelector('.storm-modal-body');
+      if (modalBody) modalBody.scrollTop = 0;
     };
   }
 
@@ -459,9 +603,26 @@ function initMobilePlayerControls() {
   const lockOverlay = document.getElementById('player-screen-locked-overlay');
   const unlockBtn = document.getElementById('player-unlock-btn');
 
+  let unlockBtnTimer = null;
+  const showUnlockBtnBriefly = () => {
+    if (!unlockBtn) return;
+    unlockBtn.classList.remove('is-hidden');
+    if (unlockBtnTimer) clearTimeout(unlockBtnTimer);
+    unlockBtnTimer = setTimeout(() => {
+      if (isPlayerScreenLocked) {
+        unlockBtn.classList.add('is-hidden');
+      }
+    }, 2800);
+  };
+
   const setScreenLock = (locked) => {
     isPlayerScreenLocked = locked;
-    if (lockOverlay) lockOverlay.style.display = locked ? 'flex' : 'none';
+    if (lockOverlay) {
+      lockOverlay.style.display = locked ? 'flex' : 'none';
+      if (locked) {
+        showUnlockBtnBriefly();
+      }
+    }
     if (lockBtn) lockBtn.classList.toggle('active', locked);
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try { navigator.vibrate(locked ? [20, 50, 20] : 15); } catch (_) {}
@@ -473,8 +634,23 @@ function initMobilePlayerControls() {
     lockBtn.dataset.hasListener = 'true';
     lockBtn.onclick = (e) => {
       e.stopPropagation();
-      setScreenLock(true);
+      setScreenLock(!isPlayerScreenLocked);
     };
+  }
+
+  if (lockOverlay && !lockOverlay.dataset.hasListener) {
+    lockOverlay.dataset.hasListener = 'true';
+    lockOverlay.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!e.target.closest('#player-unlock-btn')) {
+        showUnlockBtnBriefly();
+      }
+    });
+    lockOverlay.addEventListener('touchstart', (e) => {
+      if (!e.target.closest('#player-unlock-btn')) {
+        showUnlockBtnBriefly();
+      }
+    }, { passive: true });
   }
 
   if (unlockBtn && !unlockBtn.dataset.hasListener) {
@@ -497,54 +673,72 @@ function initMobilePlayerControls() {
     unlockBtn.addEventListener('mouseleave', cancelUnlock);
     unlockBtn.addEventListener('touchstart', startUnlock, { passive: true });
     unlockBtn.addEventListener('touchend', cancelUnlock, { passive: true });
-    unlockBtn.onclick = () => {
+    unlockBtn.onclick = (e) => {
+      e.stopPropagation();
       setScreenLock(false);
     };
   }
 
-  // 5. Двойной тап для перемотки назад/вперед (±10с)
+  // 5. Двойной тап для перемотки назад/вперед (±10с) и одиночный для паузы/воспроизведения
   const tapLeft = document.getElementById('player-tap-left');
   const tapRight = document.getElementById('player-tap-right');
   const indicatorLeft = document.getElementById('player-tap-indicator-left');
   const indicatorRight = document.getElementById('player-tap-indicator-right');
 
-  const triggerDoubleTapRipple = (indicatorEl, isForward) => {
-    if (indicatorEl) {
-      indicatorEl.classList.remove('is-active');
-      void indicatorEl.offsetWidth;
-      indicatorEl.classList.add('is-active');
-      setTimeout(() => indicatorEl.classList.remove('is-active'), 500);
-    }
-    sendSeekDelta(isForward ? 10 : -10);
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try { navigator.vibrate([10, 30, 10]); } catch (_) {}
-    }
-  };
-
   const bindDoubleTap = (zoneEl, indicatorEl, isForward) => {
     if (!zoneEl || zoneEl.dataset.hasListener) return;
     zoneEl.dataset.hasListener = 'true';
     let lastTapTime = 0;
+    let singleTapTimer = null;
 
     const handleTap = (e) => {
       if (isPlayerScreenLocked) return;
       const now = Date.now();
-      if (now - lastTapTime < 320) {
+      const timeDiff = now - lastTapTime;
+
+      if (timeDiff < 320) {
+        // Двойной тап: отменяем одиночный тап и перематываем на 10 сек
+        if (singleTapTimer) {
+          clearTimeout(singleTapTimer);
+          singleTapTimer = null;
+        }
         e.preventDefault();
         e.stopPropagation();
         triggerDoubleTapRipple(indicatorEl, isForward);
         lastTapTime = 0;
       } else {
         lastTapTime = now;
+        // Одиночный тап: если в течение 280мс не последовал второй тап — переключаем Воспроизведение / Пауза
+        if (singleTapTimer) clearTimeout(singleTapTimer);
+        singleTapTimer = setTimeout(() => {
+          singleTapTimer = null;
+          togglePlayerPlayPause();
+        }, 280);
       }
     };
 
     zoneEl.addEventListener('click', handleTap);
-    zoneEl.addEventListener('touchend', handleTap, { passive: false });
+    zoneEl.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      handleTap(e);
+    }, { passive: false });
   };
 
   bindDoubleTap(tapLeft, indicatorLeft, false);
   bindDoubleTap(tapRight, indicatorRight, true);
+
+  // Центр плеера: одиночный клик переключает Воспроизведение / Пауза
+  const playerWrapper = document.getElementById('cinema-player-wrapper');
+  if (playerWrapper && !playerWrapper.dataset.hasTapListener) {
+    playerWrapper.dataset.hasTapListener = 'true';
+    playerWrapper.addEventListener('click', (e) => {
+      if (isPlayerScreenLocked) return;
+      if (e.target.closest('.player-tap-zone') || e.target.closest('#player-screen-locked-overlay') || e.target.closest('.storm-inplayer-overlay')) {
+        return;
+      }
+      togglePlayerPlayPause();
+    });
+  }
 
   // 6. Свайп вниз для закрытия плеера на смартфонах
   const dragHandle = document.getElementById('cinema-modal-drag-handle');

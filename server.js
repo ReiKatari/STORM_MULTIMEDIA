@@ -2628,6 +2628,54 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                   applySpeedToPlayerJS(sp);
                 }
               }
+
+              // Обработка команд перемотки (Seek)
+              const isSeekMsg = data.type === 'SEEK' || data.event === 'seek' || data.action === 'seek' || data.method === 'seek' || data.api === 'seek' || data.api === 'seekDelta';
+              if (isSeekMsg) {
+                let delta = 0;
+                if (typeof data.val === 'number') delta = data.val;
+                else if (typeof data.delta === 'number') delta = data.delta;
+                else if (typeof data.value === 'number') delta = data.value;
+                else if (typeof data.value === 'string') delta = parseFloat(data.value);
+                const v = document.querySelector('video');
+                if (v && !isNaN(delta)) {
+                  v.currentTime = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + delta));
+                } else if (window.Playerjs && typeof window.Playerjs.api === 'function') {
+                  if (!isNaN(delta)) window.Playerjs.api('seek', (delta > 0 ? '+' : '') + delta);
+                }
+              }
+
+              // Обработка переключения паузы и воспроизведения (Toggle)
+              const isToggleMsg = data.type === 'TOGGLE' || data.event === 'toggle' || data.action === 'toggle';
+              if (isToggleMsg) {
+                const v = document.querySelector('video');
+                if (v) {
+                  if (v.paused) v.play().catch(() => {});
+                  else v.pause();
+                } else if (window.Playerjs && typeof window.Playerjs.api === 'function') {
+                  window.Playerjs.api('toggle');
+                }
+              }
+
+              // Обработка явной паузы
+              const isPauseMsg = data.type === 'PAUSE' || data.event === 'pause' || data.action === 'pause';
+              if (isPauseMsg) {
+                const v = document.querySelector('video');
+                if (v) v.pause();
+                else if (window.Playerjs && typeof window.Playerjs.api === 'function') {
+                  window.Playerjs.api('pause');
+                }
+              }
+
+              // Обработка явного запуска воспроизведения
+              const isPlayMsg = data.type === 'PLAY' || data.event === 'play' || data.action === 'play';
+              if (isPlayMsg) {
+                const v = document.querySelector('video');
+                if (v) v.play().catch(() => {});
+                else if (window.Playerjs && typeof window.Playerjs.api === 'function') {
+                  window.Playerjs.api('play');
+                }
+              }
             });
 
             // STORM CleanView: In-Iframe Ad Neutralizer
@@ -2810,6 +2858,27 @@ app.get('/api/player/kodik-embed', async (req, res) => {
             }
           } catch(e) {}
         }, 350);
+
+        window.addEventListener('message', function(e) {
+          var data = e.data;
+          if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch(err) {}
+          }
+          if (!data) return;
+          var v = document.querySelector('video');
+          var isSeek = data.type === 'SEEK' || data.event === 'seek' || data.action === 'seek' || data.method === 'seek' || data.api === 'seek';
+          if (isSeek && v) {
+            var delta = parseFloat(data.val !== undefined ? data.val : (data.delta !== undefined ? data.delta : (data.value !== undefined ? data.value : 0)));
+            if (!isNaN(delta) && delta !== 0) {
+              v.currentTime = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + delta));
+            }
+          }
+          var isToggle = data.type === 'TOGGLE' || data.event === 'toggle' || data.action === 'toggle';
+          if (isToggle && v) {
+            if (v.paused) v.play().catch(function() {});
+            else v.pause();
+          }
+        });
       })();
       </script>
     `;

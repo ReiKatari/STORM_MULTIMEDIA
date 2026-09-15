@@ -278,7 +278,7 @@ function handleGamepadInput(gp) {
   const left = gp.buttons[14]?.pressed || gp.axes[0] < -deadzone;
   const right = gp.buttons[15]?.pressed || gp.axes[0] > deadzone;
 
-  const isPlayerOpen = document.getElementById('cinema-modal-backdrop')?.classList.contains('is-open');
+  const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
 
   // Если открыт плеер — кнопки направлений и триггеры управляют видео
   if (isPlayerOpen) {
@@ -372,7 +372,7 @@ function handleSpatialKeyboard(e) {
 
   if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-  const isPlayerOpen = document.getElementById('cinema-modal-backdrop')?.classList.contains('is-open');
+  const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
 
   switch (e.key) {
     case 'ArrowUp':
