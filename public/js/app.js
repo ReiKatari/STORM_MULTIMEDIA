@@ -59,6 +59,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initFilterSheet();
   initCardActionSheet();
   initSearch();
+  initScrollToTop();
   initFilterDropdowns();
   initModals();
   initProfileHandlers();
@@ -1964,10 +1965,12 @@ function renderHomeView(items) {
 
     if (carousel && prevBtn && nextBtn) {
       prevBtn.onclick = () => {
-        carousel.scrollBy({ left: -500, behavior: 'smooth' });
+        const step = Math.max(300, Math.round(carousel.clientWidth * 0.75));
+        carousel.scrollBy({ left: -step, behavior: 'smooth' });
       };
       nextBtn.onclick = () => {
-        carousel.scrollBy({ left: 500, behavior: 'smooth' });
+        const step = Math.max(300, Math.round(carousel.clientWidth * 0.75));
+        carousel.scrollBy({ left: step, behavior: 'smooth' });
       };
     }
 
@@ -2525,11 +2528,31 @@ function initSearch() {
 
   if (!input) return;
 
+  // Горячая клавиша Ctrl+K и / для мгновенной фокусировки поиска
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    } else if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
+
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       clearTimeout(debounceTimer);
       executeSearch();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      input.value = '';
+      input.blur();
+      if (clearBtn) clearBtn.classList.remove('is-visible');
+      searchQuery = '';
+      executeSearch('');
     }
   });
 
@@ -2556,6 +2579,50 @@ function initSearch() {
   }
 
   initSourceFilterDropdown();
+}
+
+// -------------------------------------------------------------
+// ПЛАВАЮЩАЯ КНОПКА «НАВЕРХ» С КРУГОВЫМ ПРОГРЕССОМ СТРАНИЦЫ
+// -------------------------------------------------------------
+function initScrollToTop() {
+  const fab = document.getElementById('scroll-to-top-btn');
+  const progressFill = document.getElementById('scroll-progress-ring-fill');
+  if (!fab) return;
+
+  const circumference = 113.1; // 2 * pi * 18
+  let isTicking = false;
+
+  function onScroll() {
+    if (!isTicking) {
+      window.requestAnimationFrame(() => {
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        const maxScroll = (document.documentElement.scrollHeight || document.body.scrollHeight) - window.innerHeight;
+
+        if (scrollY > 320) {
+          fab.classList.add('is-visible');
+        } else {
+          fab.classList.remove('is-visible');
+        }
+
+        if (progressFill && maxScroll > 0) {
+          const progress = Math.min(1, Math.max(0, scrollY / maxScroll));
+          const offset = circumference * (1 - progress);
+          progressFill.style.strokeDashoffset = String(offset);
+        }
+        isTicking = false;
+      });
+      isTicking = true;
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  fab.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(12); } catch {}
+    }
+  });
 }
 
 // -------------------------------------------------------------

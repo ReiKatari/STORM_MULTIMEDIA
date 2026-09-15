@@ -30,6 +30,8 @@
   --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 210, 255, 0.22);
   --btn-3d-shadow: 0 4px 0 #077994, 0 8px 16px rgba(0, 210, 255, 0.3);
   --btn-3d-shadow-press: 0 1px 0 #077994, 0 3px 8px rgba(0, 210, 255, 0.2);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-fluid: cubic-bezier(0.2, 0, 0, 1);
 
   /* Индивидуальные стили вкладок */
   --tab-continue-color: #10b981;
