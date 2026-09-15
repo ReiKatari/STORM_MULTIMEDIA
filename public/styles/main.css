@@ -1756,21 +1756,52 @@ body {
   display: none;
 }
 
+@media (max-width: 768px) {
+  .storm-mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 18px;
+    cursor: pointer;
+    margin-right: 8px;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .storm-mobile-menu-btn:active {
+    transform: scale(0.92);
+    border-color: var(--accent);
+  }
+}
+
 .storm-drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  z-index: 1200;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 2000 !important;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  pointer-events: none;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .storm-drawer-backdrop.is-open {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
+}
+
+body.drawer-open {
+  overflow: hidden !important;
+  touch-action: none !important;
 }
 
 .storm-mobile-drawer {
@@ -1778,27 +1809,41 @@ body {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 86vw;
-  max-width: 360px;
+  width: 88vw;
+  max-width: 380px;
+  height: 100%;
+  height: 100dvh;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
-  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.85);
+  box-shadow: -14px 0 45px rgba(0, 0, 0, 0.85);
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 1201;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2001 !important;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
 
 .storm-drawer-backdrop.is-open .storm-mobile-drawer {
   transform: translateX(0);
 }
 
+.mobile-drawer-drag-handle {
+  width: 44px;
+  height: 5px;
+  background: var(--border-color);
+  border-radius: 3px;
+  margin: 10px auto 2px auto;
+  opacity: 0.6;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
 .mobile-drawer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 18px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
 }
@@ -1827,6 +1872,121 @@ body {
   flex-direction: column;
   gap: 16px;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Таймер сна в мобильной шторке */
+.mobile-drawer-sleep-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.drawer-sleep-pill {
+  flex: 1;
+  min-width: 54px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.drawer-sleep-pill.is-active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.drawer-sleep-pill:active {
+  transform: scale(0.94);
+}
+
+.drawer-sleep-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 210, 255, 0.08);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.drawer-sleep-cancel-btn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+/* Сетка 8 визуальных тем в шторке */
+.mobile-drawer-themes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.drawer-theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.drawer-theme-card.active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.drawer-theme-card:active {
+  transform: scale(0.94);
+}
+
+.theme-card-preview {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.theme-card-name {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}
+
+/* Блок локального кэша */
+.mobile-drawer-cache-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
 }
 
 .mobile-drawer-user-card {
@@ -2444,7 +2604,7 @@ body {
     gap: 12px !important;
   }
 
-  #cinema-modal .cinema-player-wrapper {
+  #cinema-modal .cinema-player-container {
     border-radius: 0 !important;
     width: 100vw !important;
     max-width: 100vw !important;
@@ -2453,6 +2613,15 @@ body {
     top: 0 !important;
     z-index: 55 !important;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8) !important;
+    overflow: hidden !important;
+    background: #000000 !important;
+  }
+
+  #cinema-modal .cinema-player-wrapper {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+    position: relative !important;
   }
 
   #cinema-modal .player-series-quick-bar {
@@ -4922,5 +5091,232 @@ body[data-active-tab="home"] #hero-showcase-container {
     width: 22px !important;
     height: 22px !important;
     font-size: 11px !important;
+  }
+}
+
+/* ==========================================================================
+   МОБИЛЬНЫЙ СЕНСОРНЫЙ ПЛЕЕР, ЖЕСТЫ И СТУДИЙНЫЕ ИНСТРУМЕНТЫ (MOBILE GESTURES)
+   ========================================================================== */
+.cinema-modal-drag-handle {
+  display: none;
+  width: 44px;
+  height: 5px;
+  background: var(--border-color);
+  border-radius: 3px;
+  margin: 8px auto 2px auto;
+  opacity: 0.7;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+@media (max-width: 768px) {
+  .cinema-modal-drag-handle {
+    display: block !important;
+  }
+}
+
+.storm-modal-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  user-select: none;
+  padding: 0;
+  outline: none;
+}
+
+.storm-modal-tool-btn:hover {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  transform: scale(1.05);
+}
+
+.storm-modal-tool-btn:active {
+  transform: scale(0.94);
+}
+
+.storm-modal-tool-btn.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.cinema-player-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Режимы масштабирования (Aspect Ratio) */
+.cinema-player-container.aspect-fill .cinema-player-wrapper iframe,
+.cinema-player-container.aspect-fill .cinema-player-wrapper video {
+  object-fit: cover !important;
+  transform: scale(1.18) !important;
+}
+
+.cinema-player-container.aspect-original .cinema-player-wrapper iframe,
+.cinema-player-container.aspect-original .cinema-player-wrapper video {
+  object-fit: contain !important;
+  transform: none !important;
+}
+
+/* Сенсорные зоны двойного тапа для перемотки (±10 сек) */
+.player-tap-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 42%;
+  z-index: 25;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.player-tap-left {
+  left: 0;
+}
+
+.player-tap-right {
+  right: 0;
+}
+
+.player-tap-indicator {
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 13, 20, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  width: 72px;
+  height: 72px;
+  box-shadow: 0 0 20px var(--accent-glow);
+  color: #ffffff;
+}
+
+.player-tap-indicator.is-active {
+  opacity: 1;
+  transform: scale(1);
+  animation: tapPulse 0.45s ease-out;
+}
+
+@keyframes tapPulse {
+  0% { opacity: 0; transform: scale(0.5); }
+  40% { opacity: 1; transform: scale(1.12); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+
+.player-tap-indicator .tap-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.player-tap-indicator .tap-text {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+/* Оверлей полной блокировки экрана от случайных нажатий */
+.player-screen-locked-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  background: rgba(5, 7, 10, 0.72);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.player-unlock-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-radius: 30px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 2px solid var(--accent);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--accent-glow);
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.player-unlock-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8), 0 0 25px var(--accent-glow);
+}
+
+.player-unlock-btn .unlock-icon {
+  font-size: 18px;
+}
+
+/* Мобильная лента категорий (Sticky Touch Pills Carousel) */
+@media (max-width: 768px) {
+  .storm-tabs-bar {
+    position: sticky !important;
+    top: 56px !important;
+    z-index: 950 !important;
+    background: var(--bg-primary) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    padding: 6px 12px !important;
+    border-bottom: 1px solid var(--border-subtle) !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  .storm-tabs-bar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .storm-tabs-inner {
+    display: flex !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+    width: max-content !important;
+    padding-right: 14px !important;
+  }
+
+  .storm-tab-btn {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    min-height: 38px !important;
+    padding: 6px 14px !important;
+    border-radius: 20px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.2px !important;
   }
 }

@@ -6,7 +6,7 @@ import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
-import { openPlayerModal, closePlayerModal } from './player.js';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining } from './player.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
 import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
 import { renderSyncModalContent } from './sync-service.js';
@@ -241,6 +241,8 @@ export function switchTab(tab) {
     if (clearBtn) clearBtn.classList.remove('is-visible');
   }
 
+  closeMobileDrawer();
+
   document.querySelectorAll('.storm-tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
@@ -277,44 +279,48 @@ if (typeof window !== 'undefined') {
 }
 
 function initBottomNav() {
+  const syncBottomNavActive = (activeTab) => {
+    document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
+      b.classList.toggle('active', b.dataset.bottomTab === activeTab);
+    });
+  };
+
   document.querySelectorAll('.storm-bottom-nav-item').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate(12); } catch (_) {}
+        try { navigator.vibrate(15); } catch (_) {}
       }
       const tab = btn.dataset.bottomTab;
       if (tab === 'home') {
+        closeMobileDrawer();
         switchTab('home');
+        syncBottomNavActive('home');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'catalog') {
+        closeMobileDrawer();
         if (currentTab === 'home' || currentTab === 'bookmarks') {
           switchTab('movies');
         } else {
           const filterBtn = document.getElementById('mobile-filter-sheet-trigger');
           if (filterBtn) filterBtn.click();
         }
+        syncBottomNavActive('catalog');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'search') {
+        closeMobileDrawer();
         const searchInput = document.getElementById('global-search-input');
         if (searchInput) {
           searchInput.focus();
           searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       } else if (tab === 'bookmarks') {
+        closeMobileDrawer();
         switchTab('bookmarks');
+        syncBottomNavActive('bookmarks');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'more') {
-        const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
-        if (drawerBackdrop) {
-          const isOpen = drawerBackdrop.classList.contains('is-open');
-          if (isOpen) {
-            drawerBackdrop.classList.remove('is-open');
-          } else {
-            drawerBackdrop.classList.add('is-open');
-            updateMobileDrawerUser();
-          }
-        }
+        toggleMobileDrawer();
       }
     });
   });
@@ -1694,6 +1700,7 @@ function createRailCardHtml(item, idx, isWide = false) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
@@ -2063,6 +2070,7 @@ function renderMediaItems(items) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
@@ -2158,6 +2166,7 @@ function renderMediaItems(items) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
         </div>
         <div class="media-detailed-info">
@@ -2241,7 +2250,7 @@ function renderMediaItems(items) {
             return `
             <tr data-idx="${idx}" style="cursor:pointer;">
               <td class="td-center"><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
-              <td><strong>${formattedTitle}</strong></td>
+              <td><strong>${formattedTitle}</strong>${item.next_up ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up}</span>` : ''}</td>
               <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
               <td class="td-center">${getMediaYear(item) || '—'}</td>
               <td class="td-center" style="font-weight: 700; color: var(--color-amber);">${item.rating ? `★ ${item.rating}` : '—'}</td>
@@ -3789,33 +3798,119 @@ export function updateFamilyProfileHeader() {
 // -------------------------------------------------------------
 // МОБИЛЬНОЕ ВЫДВИЖНОЕ МЕНЮ (MOBILE DRAWER)
 // -------------------------------------------------------------
+export function openMobileDrawer() {
+  const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
+  if (!drawerBackdrop) return;
+  drawerBackdrop.classList.add('is-open');
+  document.body.classList.add('drawer-open');
+  document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.bottomTab === 'more');
+  });
+  updateMobileDrawerUser();
+  updateDrawerSleepUI();
+  updateDrawerCacheSize();
+}
+
+export function closeMobileDrawer() {
+  const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
+  if (!drawerBackdrop) return;
+  drawerBackdrop.classList.remove('is-open');
+  document.body.classList.remove('drawer-open');
+  // Восстанавливаем подсветку активной вкладки
+  document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
+    const bTab = b.dataset.bottomTab;
+    let isActive = false;
+    if (currentTab === 'home' && bTab === 'home') isActive = true;
+    else if (['new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series'].includes(currentTab) && bTab === 'catalog') isActive = true;
+    else if (currentTab === 'bookmarks' && bTab === 'bookmarks') isActive = true;
+    b.classList.toggle('active', isActive);
+  });
+}
+
+export function toggleMobileDrawer() {
+  const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
+  if (!drawerBackdrop) return;
+  if (drawerBackdrop.classList.contains('is-open')) {
+    closeMobileDrawer();
+  } else {
+    openMobileDrawer();
+  }
+}
+
 function initMobileDrawer() {
   const drawerBackdrop = document.getElementById('mobile-drawer-backdrop');
+  const drawerPanel = document.getElementById('storm-mobile-drawer');
   const openBtn = document.getElementById('mobile-menu-toggle-btn');
   const closeBtn = document.getElementById('mobile-drawer-close-btn');
 
   if (!drawerBackdrop) return;
 
-  const openDrawer = () => {
-    drawerBackdrop.classList.add('is-open');
-    updateMobileDrawerUser();
-  };
+  if (openBtn) {
+    openBtn.onclick = () => {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(15); } catch (_) {}
+      }
+      openMobileDrawer();
+    };
+  }
 
-  const closeDrawer = () => {
-    drawerBackdrop.classList.remove('is-open');
-  };
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(10); } catch (_) {}
+      }
+      closeMobileDrawer();
+    };
+  }
 
-  if (openBtn) openBtn.onclick = openDrawer;
-  if (closeBtn) closeBtn.onclick = closeDrawer;
   drawerBackdrop.addEventListener('click', (e) => {
-    if (e.target === drawerBackdrop) closeDrawer();
+    if (e.target === drawerBackdrop) closeMobileDrawer();
   });
+
+  // Закрытие по Escape
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawerBackdrop.classList.contains('is-open')) {
+      closeMobileDrawer();
+    }
+  });
+
+  // Сенсорные жесты: свайп вправо или вниз для закрытия шторки
+  if (drawerPanel) {
+    let startX = 0;
+    let startY = 0;
+    let isTracking = false;
+
+    drawerPanel.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        isTracking = true;
+      }
+    }, { passive: true });
+
+    drawerPanel.addEventListener('touchend', (e) => {
+      if (!isTracking || !e.changedTouches.length) return;
+      isTracking = false;
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const diffX = endX - startX;
+      const diffY = endY - startY;
+
+      // Свайп вправо на 60+ px при минимальном вертикальном смещении
+      if (diffX > 65 && Math.abs(diffY) < 70) {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate(15); } catch (_) {}
+        }
+        closeMobileDrawer();
+      }
+    }, { passive: true });
+  }
 
   const bindDrawerItem = (id, targetAction) => {
     const el = document.getElementById(id);
     if (el) {
       el.onclick = () => {
-        closeDrawer();
+        closeMobileDrawer();
         targetAction();
       };
     }
@@ -3842,7 +3937,7 @@ function initMobileDrawer() {
   const authBtn = document.getElementById('mobile-drawer-auth-btn');
   if (authBtn) {
     authBtn.onclick = () => {
-      closeDrawer();
+      closeMobileDrawer();
       const user = getUser();
       if (user) {
         openProfileModal();
@@ -3853,20 +3948,135 @@ function initMobileDrawer() {
     };
   }
 
-  const themeSelect = document.getElementById('mobile-drawer-theme-select');
-  if (themeSelect) {
-    themeSelect.value = localStorage.getItem('storm_theme') || 'STORM DARK';
-    themeSelect.onchange = (e) => {
-      setTheme(e.target.value);
+  // 8 визуальных карточек тем оформления в шторке
+  const currentTheme = localStorage.getItem('storm_theme') || 'STORM DARK';
+  document.querySelectorAll('.drawer-theme-card').forEach(card => {
+    const tName = card.dataset.themeName;
+    card.classList.toggle('active', tName === currentTheme);
+    card.onclick = () => {
+      document.querySelectorAll('.drawer-theme-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      setTheme(tName);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(15); } catch (_) {}
+      }
+      showToast(`Тема изменена: ${tName}`);
     };
-  }
+  });
 
+  // Быстрый выбор языка
   const langSelect = document.getElementById('mobile-drawer-lang-select');
   if (langSelect) {
     langSelect.value = localStorage.getItem('storm_lang') || 'ru';
     langSelect.onchange = (e) => {
       setLanguage(e.target.value);
     };
+  }
+
+  // Полноэкранный режим
+  const fsBtn = document.getElementById('mobile-drawer-fs-btn');
+  if (fsBtn) {
+    fsBtn.onclick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+        fsBtn.innerHTML = '<span>⛶ Выйти из экрана</span>';
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+        fsBtn.innerHTML = '<span>⛶ Во весь экран</span>';
+      }
+    };
+  }
+
+  // Пилюли таймера сна в шторке
+  document.querySelectorAll('.drawer-sleep-pill').forEach(pill => {
+    pill.onclick = () => {
+      const minVal = pill.dataset.sleepMin;
+      document.querySelectorAll('.drawer-sleep-pill').forEach(p => p.classList.remove('is-active'));
+      pill.classList.add('is-active');
+
+      if (minVal === '0') {
+        cancelSleepTimer();
+        showToast('⏱️ Таймер сна выключен');
+      } else if (minVal === 'end') {
+        setSleepTimer('end');
+        showToast('⏱️ Таймер сна: в конце серии');
+      } else {
+        const m = parseInt(minVal, 10);
+        setSleepTimer(m);
+        showToast(`⏱️ Таймер сна установлен на ${m} мин`);
+      }
+      updateDrawerSleepUI();
+    };
+  });
+
+  const sleepCancelBtn = document.getElementById('drawer-sleep-cancel-btn');
+  if (sleepCancelBtn) {
+    sleepCancelBtn.onclick = () => {
+      cancelSleepTimer();
+      document.querySelectorAll('.drawer-sleep-pill').forEach(p => {
+        p.classList.toggle('is-active', p.dataset.sleepMin === '0');
+      });
+      updateDrawerSleepUI();
+      showToast('⏱️ Таймер сна отменён');
+    };
+  }
+
+  // Очистка локального кэша
+  const clearCacheBtn = document.getElementById('mobile-drawer-clear-cache-btn');
+  if (clearCacheBtn) {
+    clearCacheBtn.onclick = () => {
+      try {
+        clientTabCache.clear();
+        sessionStorage.clear();
+        // Удаляем закэшированные временные ключи
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('storm_cache_') || k.startsWith('storm_tmdb_'))) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        const sizeEl = document.getElementById('mobile-drawer-cache-size');
+        if (sizeEl) sizeEl.textContent = 'Очищен (0 КБ)';
+        showToast('🧹 Кэш каталога и сессий успешно очищен');
+      } catch (err) {
+        showToast('⚠️ Ошибка при очистке кэша', 'error');
+      }
+    };
+  }
+}
+
+export function updateDrawerSleepUI() {
+  const statusWrap = document.getElementById('drawer-sleep-status');
+  const statusText = document.getElementById('drawer-sleep-status-text');
+  if (!statusWrap || !statusText) return;
+
+  const rem = getSleepTimerRemaining();
+  if (rem && rem > 0) {
+    statusWrap.style.display = 'flex';
+    const mins = Math.floor(rem / 60);
+    const secs = rem % 60;
+    statusText.textContent = `Осталось: ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  } else {
+    statusWrap.style.display = 'none';
+  }
+}
+window.updateDrawerSleepUI = updateDrawerSleepUI;
+
+export function updateDrawerCacheSize() {
+  const sizeEl = document.getElementById('mobile-drawer-cache-size');
+  if (!sizeEl) return;
+  try {
+    let totalBytes = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) totalBytes += (localStorage.getItem(k) || '').length * 2;
+    }
+    const mb = (totalBytes / (1024 * 1024)).toFixed(1);
+    sizeEl.textContent = `~${mb} МБ`;
+  } catch (_) {
+    sizeEl.textContent = 'Оптимизирован';
   }
 }
 
