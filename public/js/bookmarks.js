@@ -117,6 +117,7 @@ export function saveLocalWatchProgress(data) {
       source: data.source || 'tmdb',
       title: data.title || 'Видео',
       poster_url: data.poster_url || data.poster || '',
+      poster: data.poster_url || data.poster || '',
       media_type: data.media_type || 'movie',
       year: data.year || '',
       season: data.season || 1,
@@ -125,7 +126,8 @@ export function saveLocalWatchProgress(data) {
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: data.time_seconds || 0,
       progress_percent: data.progress_percent || 0,
-      status: data.status || 'watching',
+      status: data.status || data.user_status || null,
+      user_status: data.user_status || data.status || null,
       updated_at: now
     };
 
@@ -208,7 +210,17 @@ export async function fetchContinueWatching() {
     }
   }
 
-  const result = Array.from(mergedMap.values());
+  const result = Array.from(mergedMap.values()).map(item => ({
+    ...item,
+    id: item.media_id || item.id,
+    media_id: item.media_id || item.id,
+    poster: item.poster_url || item.poster || '',
+    poster_url: item.poster_url || item.poster || '',
+    progress_percent: typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0,
+    user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
+    season: item.season || 1,
+    episode: item.episode || 1
+  }));
   result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
   return result;
 }

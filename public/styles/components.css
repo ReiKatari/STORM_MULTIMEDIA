@@ -24,20 +24,20 @@
   user-select: none;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4), 0 6px 12px var(--shadow-color);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45), 0 10px 20px -3px var(--shadow-color);
   transform: translateY(0);
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .storm-btn:hover {
-  transform: translateY(-1.5px);
+  transform: translateY(-1px);
   border-color: var(--border-hover);
-  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.4), 0 8px 16px var(--shadow-color), 0 0 12px var(--accent-glow);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45), 0 14px 24px -2px var(--shadow-color), 0 0 16px var(--accent-glow);
 }
 
 .storm-btn:active {
-  transform: translateY(2px) scale(0.98);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 2px 6px var(--shadow-color);
+  transform: translateY(1.5px) scale(0.98);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.45), 0 4px 8px var(--shadow-color);
 }
 
 .storm-btn:disabled {
@@ -51,10 +51,22 @@
 .storm-btn-primary {
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
   color: #05070a !important;
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.45);
   box-shadow: var(--btn-3d-shadow);
   font-weight: 700;
   text-shadow: none !important;
+  position: relative;
+}
+
+.storm-btn-primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  pointer-events: none;
 }
 
 .storm-btn-primary:not(.storm-btn-secondary),
@@ -330,23 +342,35 @@ input[type="checkbox"]::after {
    ОБЪЁМНЫЕ КАРТОЧКИ (CARDS)
    ------------------------------------------------------------- */
 .storm-card {
-  background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--card-bg-gradient);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--card-shadow);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-              border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s ease;
   overflow: hidden;
   position: relative;
 }
 
+.storm-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-specular), transparent);
+  pointer-events: none;
+  z-index: 5;
+}
+
 .storm-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-8px) scale(1.02);
   border-color: var(--border-hover);
-  box-shadow: var(--card-shadow), 0 12px 28px -5px var(--shadow-color), 0 0 20px var(--accent-subtle);
+  box-shadow: var(--card-hover-shadow);
 }
 
 /* -------------------------------------------------------------
@@ -2119,12 +2143,13 @@ button:active .storm-status-svg {
 }
 
 .storm-skeleton-card {
-  background: var(--bg-card);
+  background: var(--card-bg-gradient);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-  animation: stormSkeletonFade 0.2s ease both, stormShimmer 1.5s infinite ease-in-out;
+  animation: stormSkeletonFade 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  position: relative;
 }
 
 @keyframes stormSkeletonFade {
@@ -2141,8 +2166,9 @@ button:active .storm-status-svg {
 .storm-skeleton-poster {
   width: 100%;
   aspect-ratio: 2 / 3;
-  background: linear-gradient(90deg, var(--bg-tertiary) 0%, rgba(255, 255, 255, 0.05) 50%, var(--bg-tertiary) 100%);
+  background: linear-gradient(90deg, var(--bg-tertiary) 0%, rgba(255, 255, 255, 0.08) 50%, var(--bg-tertiary) 100%);
   background-size: 200% 100%;
+  animation: stormShimmer 1.8s infinite linear;
 }
 
 .storm-skeleton-content {
@@ -2155,7 +2181,9 @@ button:active .storm-status-svg {
 .storm-skeleton-line {
   height: 14px;
   border-radius: 6px;
-  background: var(--bg-tertiary);
+  background: linear-gradient(90deg, var(--bg-tertiary) 0%, rgba(255, 255, 255, 0.08) 50%, var(--bg-tertiary) 100%);
+  background-size: 200% 100%;
+  animation: stormShimmer 1.8s infinite linear;
 }
 
 .storm-skeleton-line.short {
@@ -2164,9 +2192,8 @@ button:active .storm-status-svg {
 }
 
 @keyframes stormShimmer {
-  0% { opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 /* ==========================================================================
@@ -3618,7 +3645,7 @@ button:active .storm-status-svg {
 }
 
 /* ==========================================================================
-   ПОКАДРОВОЕ ПРЕВЬЮ И ИНТЕРАКТИВНЫЕ ГЛАВЫ (THUMBNAIL SCRUBBING & CHAPTERS)
+   ПОКАДРОВОЕ ПРЕВЬЮ И ИНТЕРАКТИВНЫЕ ГЛАВЫ (THUMBNAIL SCRUBBING and CHAPTERS)
    ========================================================================== */
 .player-chapters-track {
   position: absolute;
@@ -4207,7 +4234,7 @@ button:active .storm-status-svg {
 }
 
 /* ==========================================================================
-   СТИКЕРЫ И ЭМОДЗИ КИНОКОМНАТЫ (CHAT STICKERS & EMOJI POPOVER)
+   СТИКЕРЫ И ЭМОДЗИ КИНОКОМНАТЫ (CHAT STICKERS and EMOJI POPOVER)
    ========================================================================== */
 .watch-chat-stickers-popover {
   position: absolute;
@@ -5906,7 +5933,7 @@ body.player-dropdown-active .cinema-player-iframe {
 }
 
 /* ==========================================================================
-   STORM CleanView™ & AdShield Styles
+   STORM CleanView™ and AdShield Styles
    ========================================================================== */
 
 .storm-cleanview-overlay {
