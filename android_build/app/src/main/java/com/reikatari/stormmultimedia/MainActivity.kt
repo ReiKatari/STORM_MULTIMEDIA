@@ -7,9 +7,6 @@ import android.net.http.SslError
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsController
-import android.view.WindowManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -20,13 +17,17 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var customViewContainer: FrameLayout
+    private lateinit var rootLayout: FrameLayout
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
-    private var originalOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
     private val primaryUrl = "https://stormmultimedia.ru/"
     private val fallbackUrl = "file:///android_asset/index.html"
@@ -40,12 +41,28 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = Color.parseColor("#0a0d14")
         window.navigationBarColor = Color.parseColor("#0a0d14")
 
-        val rootLayout = FrameLayout(this).apply {
+        // В обычном режиме контент не должен заезжать под системные шторки (Status Bar и Navigation Bar)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+
+        rootLayout = FrameLayout(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setBackgroundColor(Color.parseColor("#0a0d14"))
+        }
+
+        // Обработка системных отступов: контент отображается строго в безопасной зоне
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, windowInsets ->
+            if (customView == null) {
+                val insets = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+                )
+                view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+            } else {
+                view.setPadding(0, 0, 0, 0)
+            }
+            windowInsets
         }
 
         customViewContainer = FrameLayout(this).apply {
@@ -88,8 +105,9 @@ class MainActivity : ComponentActivity() {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        settings.useWideViewPort = true
-        settings.loadWithOverviewMode = true
+        // Отключаем десктопный overview режим, вызывающий неконтролируемое масштабирование и блокировку зума
+        settings.useWideViewPort = false
+        settings.loadWithOverviewMode = false
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
@@ -132,14 +150,18 @@ class MainActivity : ComponentActivity() {
 
                 customView = view
                 customViewCallback = callback
-                originalOrientation = requestedOrientation
 
                 webView.visibility = View.GONE
                 customViewContainer.visibility = View.VISIBLE
                 customViewContainer.addView(view)
 
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                // Полноэкранный режим: разворачиваем на весь дисплей без системных рамок
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                rootLayout.setPadding(0, 0, 0, 0)
                 hideSystemUI()
+
+                // Используем сенсорную ориентацию без принудительного жесткого переворота экрана
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
             }
 
             override fun onHideCustomView() {
@@ -153,8 +175,12 @@ class MainActivity : ComponentActivity() {
                 customViewContainer.visibility = View.GONE
                 webView.visibility = View.VISIBLE
 
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                // Возврат в безопасную рабочую область с системными панелями
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                ViewCompat.requestApplyInsets(rootLayout)
                 showSystemUI()
+
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
             }
         }
     }
@@ -174,14 +200,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hideSystemUI() {
-        window.decorView.windowInsetsController?.let { controller ->
-            controller.hide(WindowInsets.Type.systemBars())
-            controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
     private fun showSystemUI() {
-        window.decorView.windowInsetsController?.show(WindowInsets.Type.systemBars())
+        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     override fun onResume() {

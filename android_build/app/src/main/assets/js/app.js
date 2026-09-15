@@ -267,6 +267,7 @@ const CATEGORY_DEFAULT_PAGES = {
 };
 
 export function switchTab(tab) {
+  closePlayerModal();
   currentTab = tab;
   document.body.dataset.activeTab = tab;
   currentPage = 1;
@@ -351,11 +352,13 @@ function initBottomNav() {
       const tab = btn.dataset.bottomTab;
       if (tab === 'home') {
         closeMobileDrawer();
+        closePlayerModal();
         switchTab('home');
         syncBottomNavActive('home');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'catalog') {
         closeMobileDrawer();
+        closePlayerModal();
         if (currentTab === 'home' || currentTab === 'bookmarks') {
           switchTab('movies');
         } else {
@@ -366,6 +369,7 @@ function initBottomNav() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'search') {
         closeMobileDrawer();
+        closePlayerModal();
         const searchInput = document.getElementById('global-search-input');
         if (searchInput) {
           searchInput.focus();
@@ -373,16 +377,12 @@ function initBottomNav() {
         }
       } else if (tab === 'bookmarks') {
         closeMobileDrawer();
+        closePlayerModal();
         switchTab('bookmarks');
         syncBottomNavActive('bookmarks');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'more') {
-        const burger = document.getElementById('mobile-menu-toggle-btn');
-        if (burger && typeof burger.onclick === 'function') {
-          burger.onclick();
-        } else {
-          toggleMobileDrawer();
-        }
+        toggleMobileDrawer();
       }
     });
   });
@@ -4274,7 +4274,7 @@ function initMobileDrawer() {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try { navigator.vibrate(15); } catch (_) {}
       }
-      openMobileDrawer();
+      toggleMobileDrawer();
     };
   }
 
@@ -4335,6 +4335,7 @@ function initMobileDrawer() {
     if (el) {
       el.onclick = () => {
         closeMobileDrawer();
+        closePlayerModal();
         targetAction();
       };
     }
@@ -4363,6 +4364,7 @@ function initMobileDrawer() {
   if (authBtn) {
     authBtn.onclick = () => {
       closeMobileDrawer();
+      closePlayerModal();
       const user = getUser();
       if (user) {
         openProfileModal();
@@ -4510,18 +4512,27 @@ export function updateMobileDrawerUser() {
   const usernameEl = document.getElementById('mobile-drawer-username');
   const statusEl = document.getElementById('mobile-drawer-user-status');
   const authBtn = document.getElementById('mobile-drawer-auth-btn');
+  const authText = document.getElementById('mobile-drawer-auth-text');
   const avatarEl = document.getElementById('mobile-drawer-avatar');
 
-  if (usernameEl && statusEl && authBtn) {
+  if (usernameEl && statusEl) {
     if (user) {
       usernameEl.textContent = user.username || user.name || 'Пользователь';
       statusEl.textContent = user.email || 'Аккаунт активен';
-      authBtn.textContent = 'Управление профилем';
+      if (authText) {
+        authText.textContent = 'Управление профилем';
+      } else if (authBtn) {
+        authBtn.innerHTML = '<span>⚙️</span> <span>Управление профилем</span>';
+      }
       if (avatarEl && user.avatar) avatarEl.src = user.avatar;
     } else {
       usernameEl.textContent = 'Гость';
       statusEl.textContent = 'Авторизуйтесь для синхронизации';
-      authBtn.textContent = 'Войти';
+      if (authText) {
+        authText.textContent = 'Войти в профиль';
+      } else if (authBtn) {
+        authBtn.innerHTML = '<span>🔑</span> <span>Войти в профиль</span>';
+      }
       if (avatarEl) avatarEl.src = 'assets/favicon.svg';
     }
   }
