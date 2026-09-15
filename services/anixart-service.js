@@ -260,14 +260,20 @@ export async function getAnixartEpisodes(releaseId, typeId) {
     const episodesRes = await client.endpoints.episode.episodes(numReleaseId, numTypeId, primarySource.id);
     const rawEpisodes = episodesRes?.episodes || [];
 
-    const episodes = rawEpisodes.map((ep, idx) => ({
-      position: ep.position || (idx + 1),
-      name: ep.name || `${ep.position || (idx + 1)} серия`,
-      url: ep.url || '',
-      is_iframe: !!ep.iframe,
-      quality: ep.quality || 0,
-      source_name: primarySource.name
-    }));
+    const episodes = rawEpisodes.map((ep, idx) => {
+      let finalUrl = ep.url || '';
+      if (finalUrl && finalUrl.includes('kodik') && !finalUrl.includes('/api/player/kodik-embed')) {
+        finalUrl = `/api/player/kodik-embed?url=${encodeURIComponent(finalUrl)}`;
+      }
+      return {
+        position: ep.position || (idx + 1),
+        name: ep.name || `${ep.position || (idx + 1)} серия`,
+        url: finalUrl,
+        is_iframe: !!ep.iframe,
+        quality: ep.quality || 0,
+        source_name: primarySource.name
+      };
+    });
 
     setCache('anixart', cacheKey, episodes, 1800); // 30 минут
     return episodes;

@@ -5,7 +5,7 @@
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear } from './bookmarks.js';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
 import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
@@ -1197,12 +1197,13 @@ function normalizeMediaTitle(title, originalTitle = '') {
   if (!title && !originalTitle) return '';
   const clean = (t) => {
     if (!t) return '';
-    return String(t)
-      .toLowerCase()
+    let s = String(t).toLowerCase()
       .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
-      .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
-      .replace(/[^a-zа-я0-9]/gi, '')
-      .trim();
+      .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон|часть\s*\d+|\d+\s*часть)\s*[\)\]]?/gi, ' ');
+    if (s.includes('дандадан') || s.includes('dandadan')) {
+      s = 'дандадан';
+    }
+    return s.replace(/[^a-zа-я0-9]/gi, '').trim();
   };
 
   const primary = clean(title);
@@ -1376,6 +1377,15 @@ function deduplicateMediaList(items) {
         user_status: existing.user_status || item.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       };
+
+      if (key === 'дандадан') {
+        merged.title = 'Дандадан';
+        merged.media_type = 'anime-series';
+        merged.category = 'Аниме-сериал';
+        merged.year = '2024–2025';
+        merged.total_seasons = 2;
+        merged.anixart_season_ids = { 1: '19675', 2: '20145' };
+      }
 
       itemMap.set(key, merged);
     }
@@ -1666,6 +1676,9 @@ function createRailCardHtml(item, idx, isWide = false) {
   const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
   const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
 
+  const currentStatus = resolveMediaUserStatus(item);
+  if (currentStatus) item.user_status = currentStatus;
+
   const isSeries = item.media_type === 'series' || item.media_type === 'anime-series' || item.media_type === 'cartoon-series' || (item.episode && item.episode > 1);
   let displayPercent = typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0;
   if (displayPercent <= 0 && isSeries && (item.episode || item.season)) {
@@ -1721,6 +1734,10 @@ function renderHomeView(items) {
   clearTimeout(hoverCloseTimer);
 
   items = deduplicateMediaList(items);
+  items.forEach(it => {
+    const st = resolveMediaUserStatus(it);
+    if (st) it.user_status = st;
+  });
 
   // Топ 6-8 витринных фильмов и релизов для карусели Hero Showcase Slider
   let featuredList = (items || []).filter(i => (i.is4K || (i.quality && i.quality.includes('4K')) || (i.rating && parseFloat(i.rating) >= 7.2))).slice(0, 8);
@@ -2024,6 +2041,11 @@ function renderMediaItems(items) {
     }
     return;
   }
+
+  items.forEach(it => {
+    const st = resolveMediaUserStatus(it);
+    if (st) it.user_status = st;
+  });
 
   // 1 и 2. Сетка и компактная сетка
   if (currentViewMode === 'grid' || currentViewMode === 'compact-grid') {
@@ -2923,6 +2945,10 @@ export function renderFilteredCatalog() {
   updateFilterBadge();
 
   let items = [...rawCatalogItems];
+  items.forEach(it => {
+    const st = resolveMediaUserStatus(it);
+    if (st) it.user_status = st;
+  });
   if (currentPage > 1) {
     items = filterPageDuplicates(items, currentTab === 'home' ? 'popular' : currentTab, currentPage);
   }

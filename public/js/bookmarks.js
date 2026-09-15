@@ -5,26 +5,80 @@
 import { getToken, showToast } from './auth.js';
 import { t } from './i18n.js';
 
+let memoryBookmarksCache = [];
+
+export function setMemoryBookmarksCache(bookmarks = []) {
+  if (Array.isArray(bookmarks)) {
+    memoryBookmarksCache = bookmarks;
+  }
+}
+
+export function getMemoryBookmarksCache() {
+  return memoryBookmarksCache;
+}
+
+export function resolveMediaUserStatus(item) {
+  if (!item) return null;
+  const directStatus = item.user_status || item.bookmark_status;
+  if (directStatus && directStatus !== 'none') return directStatus;
+  if (item.status && ['completed', 'watching', 'planned', 'favorite', 'on_hold', 'dropped', 'wont_watch'].includes(item.status)) {
+    return item.status;
+  }
+
+  const id = String(item.id || item.media_id || '');
+  if (id) {
+    const s = localStorage.getItem(`storm_status_${id}`);
+    if (s && s !== 'none') return s;
+  }
+
+  const rawTitle = String(item.title || item.original_title || '').trim();
+  const normTitle = rawTitle.toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
+  if (normTitle) {
+    const s = localStorage.getItem(`storm_status_title_${normTitle}`) || localStorage.getItem(`storm_status_title_${rawTitle.toLowerCase()}`);
+    if (s && s !== 'none') return s;
+  }
+
+  if (memoryBookmarksCache.length > 0) {
+    const match = memoryBookmarksCache.find(b => {
+      const bId = String(b.id || b.media_id || '');
+      if (id && bId === id) return true;
+      const bTitle = String(b.title || '').trim().toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
+      return bTitle && (bTitle === normTitle || normTitle.includes(bTitle) || bTitle.includes(normTitle));
+    });
+    if (match?.status && match.status !== 'none') {
+      return match.status;
+    }
+  }
+
+  return null;
+}
+
 export async function fetchUserBookmarks(status = null, type = null) {
   const token = getToken();
-  if (!token) return [];
+  let serverBookmarks = [];
+  if (token) {
+    let url = '/api/bookmarks';
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (type) params.append('type', type);
+    if (params.toString()) url += `?${params.toString()}`;
 
-  let url = '/api/bookmarks';
-  const params = new URLSearchParams();
-  if (status) params.append('status', status);
-  if (type) params.append('type', type);
-  if (params.toString()) url += `?${params.toString()}`;
-
-  try {
-    const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch (err) {
-    console.error('Ошибка получения закладок:', err);
-    return [];
+    try {
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        serverBookmarks = await res.json();
+      }
+    } catch (err) {
+      console.error('Ошибка получения закладок:', err);
+    }
   }
+
+  if (serverBookmarks.length > 0) {
+    setMemoryBookmarksCache(serverBookmarks);
+  }
+  return serverBookmarks;
 }
 
 export function removeFromLocalContinueWatching(mediaId, title = '') {
@@ -65,13 +119,20 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
     }
   } catch {}
 
+  let defaultCount = 10;
+  if (normTitle.includes('дандадан') || normTitle.includes('dandadan') || normTitle.includes('аниме')) {
+    defaultCount = 12;
+  } else if (normTitle.includes('укрытие') || normTitle.includes('бункер') || normTitle.includes('silo')) {
+    defaultCount = 10;
+  }
+
   const seasons = Array.isArray(media.seasons) && media.seasons.length > 0
     ? media.seasons
-    : Array.from({ length: 5 }, (_, i) => ({ season_number: i + 1, episode_count: 24 }));
+    : Array.from({ length: 3 }, (_, i) => ({ season_number: i + 1, episode_count: defaultCount }));
 
   seasons.forEach(s => {
     const sNum = Number(s.season || s.season_number) || 1;
-    const count = Number(s.episode_count || s.episodes_count || (s.episodes ? s.episodes.length : 12)) || 12;
+    const count = Number(s.episode_count || s.episodes_count || (s.episodes ? s.episodes.length : defaultCount)) || defaultCount;
     const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
     const statusKey = `storm_season_status_${mediaId}_s${sNum}`;
 

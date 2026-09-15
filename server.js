@@ -2131,15 +2131,26 @@ app.get('/api/media/item', async (req, res) => {
 // Получение серий сезона сериала с русскими названиями и синопсисами
 app.get('/api/media/series-episodes', async (req, res) => {
   try {
-    const { tvId, season } = req.query;
-    if (!tvId) {
-      return res.status(400).json({ error: 'Укажите tvId' });
+    let { tvId, season, title } = req.query;
+    let resolvedTvId = tvId;
+    if ((!resolvedTvId || isNaN(Number(String(resolvedTvId).replace('tmdb_', '')))) && title) {
+      try {
+        const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+        const searchRes = await searchTmdb(cleanTitle, 1);
+        const tvMatch = (searchRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv') || searchRes?.items?.[0];
+        if (tvMatch && tvMatch.id) {
+          resolvedTvId = String(tvMatch.id).replace('tmdb_', '');
+        }
+      } catch {}
+    }
+    if (!resolvedTvId) {
+      return res.status(400).json({ error: 'Укажите tvId или название сериала' });
     }
     const sNum = (season !== undefined && !isNaN(parseInt(season, 10))) ? parseInt(season, 10) : 1;
-    const data = await getTmdbSeasonEpisodes(tvId, sNum);
+    const data = await getTmdbSeasonEpisodes(resolvedTvId, sNum);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, episodes: [] });
   }
 });
 
@@ -2209,7 +2220,7 @@ app.get('/api/media/franchise', async (req, res) => {
     return res.json({ franchise_name: null, total: 0, items: [] });
   } catch (err) {
     console.error('[Franchise Endpoint Error]:', err.message);
-    res.status(500).json({ error: err.message, items: [] });
+    res.json({ franchise_name: null, total: 0, items: [] });
   }
 });
 
@@ -2713,6 +2724,40 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
   } catch (err) {
     console.error('Ошибка прокси плеера:', err.message);
     res.status(500).send('Ошибка проксирования видеопотока');
+  }
+});
+
+// Проксирующий плеер Kodik / AniXart с авторизованным Referer (устраняет ошибку «Плеер не найден»)
+app.get('/api/player/kodik-embed', async (req, res) => {
+  try {
+    const { url: targetUrl } = req.query;
+    if (!targetUrl) return res.status(400).send('URL не указан');
+
+    const cleanUrl = targetUrl.startsWith('//') ? 'https:' + targetUrl : targetUrl;
+    const embedRes = await fetch(cleanUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': 'https://anixart.tv/'
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (!embedRes.ok) {
+      return res.redirect(cleanUrl);
+    }
+
+    let html = await embedRes.text();
+    const baseOrigin = new URL(cleanUrl).origin;
+    if (!html.includes('<base ')) {
+      html = html.replace(/<head[^>]*>/i, `$&<base href="${baseOrigin}/"><meta name="referrer" content="no-referrer">`);
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Permissions-Policy', 'fullscreen=*');
+    return res.send(html);
+  } catch (err) {
+    console.warn('[Kodik Embed Proxy Error]:', err.message);
+    return res.redirect(req.query.url);
   }
 });
 
