@@ -55,6 +55,7 @@ const DEFAULT_SETTINGS = {
   watermarkMaskEnabled: false, // по умолчанию выключена, пользователь включает при обнаружении водяного знака
   activePreset: '1xbet_mid',
   maskStyle: 'blur', // 'blur' (бесшовное размытие) или 'blackout' (черная плашка)
+  maskOpacity: 0.42, // по умолчанию 42% (деликатное полупрозрачное размытие без темных пятен)
   customCoords: { top: '42%', left: '1.2%', width: '135px', height: '44px' },
   isCustomizing: false,
   isAiming: false
@@ -75,6 +76,9 @@ export function loadCleanViewSettings() {
     if (raw) {
       const parsed = JSON.parse(raw);
       currentSettings = { ...DEFAULT_SETTINGS, ...parsed, isCustomizing: false, isAiming: false };
+      if (typeof currentSettings.maskOpacity !== 'number') {
+        currentSettings.maskOpacity = 0.42;
+      }
     }
   } catch (e) {
     currentSettings = { ...DEFAULT_SETTINGS };
@@ -93,6 +97,7 @@ export function saveCleanViewSettings(settings = {}) {
       watermarkMaskEnabled: currentSettings.watermarkMaskEnabled,
       activePreset: currentSettings.activePreset,
       maskStyle: currentSettings.maskStyle,
+      maskOpacity: currentSettings.maskOpacity,
       customCoords: currentSettings.customCoords
     }));
   } catch (e) {
@@ -183,6 +188,12 @@ export function applyMaskSettings() {
   maskElement.classList.toggle('mode-blackout', currentSettings.maskStyle === 'blackout');
   maskElement.classList.toggle('mode-blur', currentSettings.maskStyle !== 'blackout');
   maskElement.classList.toggle('is-customizing', Boolean(currentSettings.isCustomizing));
+
+  // Уровень прозрачности маски: для интерактивной настройки или blackout - 1.0, для размытия - деликатная прозрачность
+  const opacityVal = typeof currentSettings.maskOpacity === 'number' ? currentSettings.maskOpacity : 0.42;
+  maskElement.style.opacity = currentSettings.isCustomizing
+    ? '1.0'
+    : (currentSettings.maskStyle === 'blackout' ? '1.0' : String(opacityVal));
 
   const labelEl = maskElement.querySelector('.storm-mask-label');
   if (labelEl) {
@@ -627,6 +638,28 @@ function renderCleanViewPanelContent(panel) {
             </button>
           </div>
         </div>
+
+        <!-- Блок 7: Прозрачность размытия -->
+        <div class="cleanview-section" id="cleanview-opacity-section" style="${currentSettings.maskStyle === 'blackout' ? 'display: none;' : ''}">
+          <div class="cleanview-section-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div class="cleanview-section-label" style="margin-bottom: 0;">Прозрачность размытия:</div>
+            <span class="cleanview-opacity-badge" id="cleanview-opacity-val">${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.42) * 100)}%</span>
+          </div>
+          <div class="cleanview-slider-row" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <input type="range" class="storm-slider" id="cleanview-opacity-slider" min="15" max="85" step="5" value="${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.42) * 100)}">
+          </div>
+          <div class="cleanview-quick-opacity-row" style="display: flex; gap: 8px;">
+            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.42) * 100) <= 28 ? 'active' : ''}" data-opacity="0.25">
+              <span>Ультра-мягкая (25%)</span>
+            </button>
+            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.42) * 100) > 28 && Math.round((currentSettings.maskOpacity || 0.42) * 100) <= 50 ? 'active' : ''}" data-opacity="0.40">
+              <span>Оптимальная (40%)</span>
+            </button>
+            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.42) * 100) > 50 ? 'active' : ''}" data-opacity="0.65">
+              <span>Плотная (65%)</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="cleanview-footer">
@@ -646,6 +679,8 @@ function renderCleanViewPanelContent(panel) {
   const aimBtn = panel.querySelector('#cleanview-aim-btn');
   const styleBlurBtn = panel.querySelector('#style-blur-btn');
   const styleBlackoutBtn = panel.querySelector('#style-blackout-btn');
+  const opacitySlider = panel.querySelector('#cleanview-opacity-slider');
+  const opacityValBadge = panel.querySelector('#cleanview-opacity-val');
 
   const closeHandler = () => {
     panel.classList.remove('is-open');
@@ -764,4 +799,34 @@ function renderCleanViewPanelContent(panel) {
       renderCleanViewPanelContent(panel);
     };
   }
+
+  // Регулировка прозрачности размытия (живой интерактивный слайдер)
+  if (opacitySlider) {
+    opacitySlider.oninput = (e) => {
+      const val = parseInt(e.target.value, 10);
+      const floatVal = val / 100;
+      currentSettings.maskOpacity = floatVal;
+      if (opacityValBadge) opacityValBadge.textContent = `${val}%`;
+      if (maskElement && currentSettings.maskStyle !== 'blackout') {
+        maskElement.style.opacity = String(floatVal);
+      }
+    };
+    opacitySlider.onchange = (e) => {
+      const val = parseInt(e.target.value, 10);
+      currentSettings.maskOpacity = val / 100;
+      saveCleanViewSettings();
+      applyMaskSettings();
+      renderCleanViewPanelContent(panel);
+    };
+  }
+
+  panel.querySelectorAll('.cleanview-opacity-chip').forEach(chip => {
+    chip.onclick = () => {
+      const floatVal = parseFloat(chip.dataset.opacity);
+      currentSettings.maskOpacity = floatVal;
+      saveCleanViewSettings();
+      applyMaskSettings();
+      renderCleanViewPanelContent(panel);
+    };
+  });
 }
