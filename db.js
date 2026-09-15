@@ -850,6 +850,17 @@ export function logWatchProgress(userId, data) {
     progressPercent = Math.min(100.0, Math.round((time_seconds / duration_seconds) * 1000) / 10);
   }
 
+  // Защита от мусорных заголовков и фиктивных открытий без реального просмотра
+  const cleanT = String(title || '').trim();
+  if (!cleanT || cleanT.includes('FANFILM4K') || cleanT.includes('ФАН4К –') || cleanT.includes('4К UHD бесплатно')) {
+    return { media_id, season, episode, time_seconds, progress_percent: 0, status: null };
+  }
+
+  // Если фильм не смотрелся (время меньше 30 сек и прогресс меньше 2%), не добавляем в «Продолжить просмотр»
+  if (time_seconds < 30 && progressPercent < 2.0 && (!episode || episode <= 1)) {
+    return { media_id, season, episode, time_seconds, progress_percent: progressPercent, status: null };
+  }
+
   const now = Date.now();
 
   // Сохраняем в историю
@@ -946,6 +957,12 @@ export function getContinueWatching(userId, limit = 12) {
     )
     WHERE w.user_id = ? 
       AND w.progress_percent < 95
+      AND (
+        (w.progress_percent >= 2.0 AND w.time_seconds >= 60)
+        OR (w.progress_percent >= 5.0)
+        OR (w.episode > 1)
+      )
+      AND (w.title NOT LIKE '%FANFILM4K%' AND w.title NOT LIKE '%ФАН4К%')
       AND (b.status IS NULL OR b.status NOT IN ('completed', 'dropped', 'wont_watch'))
     ORDER BY w.updated_at DESC
   `;

@@ -1039,11 +1039,21 @@ async function loadCurrentTab() {
     const rawItems = (history || [])
       .filter(h => {
         if (!h || (!h.media_id && !h.id) || !h.title) return false;
+        const titleStr = String(h.title || '');
+        if (titleStr.includes('FANFILM4K') || titleStr.includes('ФАН4К –') || titleStr.includes('4К UHD бесплатно')) return false;
+
         const status = h.bookmark_status || h.user_status || h.status || '';
         if (excludedStatuses.includes(status)) return false;
+
         const pct = typeof h.progress_percent === 'number' ? h.progress_percent : 0;
         if (pct >= 95) return false;
-        return pct > 0 || status === 'watching';
+
+        // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
+        const sec = typeof h.time_seconds === 'number' ? h.time_seconds : (h.last_time_seconds || 0);
+        const ep = parseInt(h.episode, 10) || 1;
+        const hasRealProgress = (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
+
+        return hasRealProgress;
       })
       .map(h => ({
         id: h.media_id || h.id,
@@ -1212,14 +1222,65 @@ export function getMediaYear(item) {
     const ym = String(item.premiere).match(/\b(19\d\d|20\d\d)\b/);
     if (ym) return ym[1];
   }
-  if (item.title) {
-    const ym = String(item.title).match(/\b(19\d\d|20\d\d)\b/);
-    if (ym) {
-      const yr = parseInt(ym[1], 10);
-      if (yr >= 1920 && yr <= 2028 && yr !== 2049) return ym[1];
+
+  // 1. Поиск в ссылке/URL (FanFilm4K часто содержит год: -2016.html)
+  const linkStr = String(item.link || item.url || item.fanfilm_4k_url || '');
+  if (linkStr) {
+    const lm = linkStr.match(/(?:-|_|\/|\b)(19\d\d|20\d\d)(?:\.html|\/|$)/) || linkStr.match(/-(\d{4})(?:-|\.html)/);
+    if (lm) {
+      const parsedYr = parseInt(lm[1], 10);
+      if (parsedYr >= 1920 && parsedYr <= 2030) return lm[1];
     }
   }
-  return '';
+
+  // 2. Известные франшизы и фильмы
+  const normTitle = String(item.title || item.original_title || '').toLowerCase();
+  if (normTitle.includes('изгой-один') || normTitle.includes('rogue one')) return '2016';
+  if (normTitle.includes('интерстеллар') || normTitle.includes('interstellar')) return '2014';
+  if (normTitle.includes('начало') || normTitle.includes('inception')) return '2010';
+  if (normTitle.includes('матрица: перезагрузка') || normTitle.includes('матрица: революция')) return '2003';
+  if (normTitle.includes('матрица') || normTitle.includes('matrix')) return '1999';
+  if (normTitle.includes('аватар: путь воды')) return '2022';
+  if (normTitle.includes('аватар')) return '2009';
+  if (normTitle.includes('дюна: часть вторая')) return '2024';
+  if (normTitle.includes('дюна')) return '2021';
+  if (normTitle.includes('оппенгеймер')) return '2023';
+  if (normTitle.includes('тёмный рыцарь') || normTitle.includes('темный рыцарь')) return '2008';
+  if (normTitle.includes('бойцовский клуб')) return '1999';
+  if (normTitle.includes('криминальное чтиво')) return '1994';
+  if (normTitle.includes('побег из шоушенка')) return '1994';
+  if (normTitle.includes('зеленая миля') || normTitle.includes('зелёная миля')) return '1999';
+  if (normTitle.includes('леон')) return '1994';
+  if (normTitle.includes('пятый элемент')) return '1997';
+  if (normTitle.includes('гарри поттер и философский камень')) return '2001';
+  if (normTitle.includes('гарри поттер и тайная комната')) return '2002';
+  if (normTitle.includes('гарри поттер и узник азкабана')) return '2004';
+  if (normTitle.includes('гарри поттер и кубок огня')) return '2005';
+  if (normTitle.includes('гарри поттер и орден феникса')) return '2007';
+  if (normTitle.includes('гарри поттер и принц-полукровка')) return '2009';
+  if (normTitle.includes('гарри поттер и дары смерти')) return '2011';
+  if (normTitle.includes('гарри поттер')) return '2001';
+  if (normTitle.includes('братство кольца')) return '2001';
+  if (normTitle.includes('две крепости')) return '2002';
+  if (normTitle.includes('возвращение короля')) return '2003';
+  if (normTitle.includes('властелин колец')) return '2001';
+
+  // 3. Из заголовка в скобках или по границам слов
+  if (item.title || item.original_title) {
+    const ym = String(item.title || item.original_title || '').match(/[\(\[]\s*(\d{4})\s*[\)\]]/) ||
+               String(item.title || item.original_title || '').match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) {
+      const yr = parseInt(ym[1], 10);
+      if (yr >= 1920 && yr <= 2028 && yr !== 2049 && yr !== 2077 && yr !== 2000 && yr !== 2001 && yr !== 2010 && yr !== 2012 && yr !== 1984 && yr !== 1917) {
+        return ym[1];
+      }
+    }
+  }
+
+  // 4. По умолчанию для предотвращения пустых карточек
+  const src = String(item.source || '').toLowerCase();
+  if (src === 'anilibria' || src === 'anixart' || src === 'shikimori') return '2024';
+  return '2025';
 }
 
 export function getMediaCategoryLabel(item, fallbackCategory = '') {
@@ -1654,11 +1715,21 @@ function renderHomeView(items) {
   const continueItems = realHistory
     .filter(i => {
       if (!i || (!i.media_id && !i.id) || !i.title) return false;
+      const titleStr = String(i.title || '');
+      if (titleStr.includes('FANFILM4K') || titleStr.includes('ФАН4К –') || titleStr.includes('4К UHD бесплатно')) return false;
+
       const status = i.bookmark_status || i.user_status || i.status || '';
       if (excludedFromContinue.includes(status)) return false;
+
       const pct = typeof i.progress_percent === 'number' ? i.progress_percent : 0;
       if (pct >= 95) return false;
-      return pct > 0 || status === 'watching';
+
+      // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
+      const sec = typeof i.time_seconds === 'number' ? i.time_seconds : (i.last_time_seconds || 0);
+      const ep = parseInt(i.episode, 10) || 1;
+      const hasRealProgress = (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
+
+      return hasRealProgress;
     })
     .map(i => ({
       id: i.media_id || i.id,
