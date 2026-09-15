@@ -2090,12 +2090,12 @@ function playStreamUrl(url) {
     if (quickBar) quickBar.style.display = 'none';
   }
 
-  container.innerHTML = `
-    <div class="player-video-box" style="position:relative;width:100%;height:100%;">
-      <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
-    </div>
-  `;
+    container.innerHTML = `
+      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      </div>
+    `;
 
   const iframeBox = container.querySelector('.player-video-box');
   if (iframeBox) {
@@ -2209,7 +2209,8 @@ function setupVideoFeatures(video, wrapper) {
           episode: currentEpisodeIndex || 1,
           total_episodes: currentEpisodes.length || 1,
           duration_seconds: Math.round(video.duration),
-          time_seconds: currentWatchTimeSeconds
+          time_seconds: currentWatchTimeSeconds,
+          progress_percent: percent
         });
       }
     }
@@ -3044,7 +3045,8 @@ function setupSkipLogic(video) {
           episode: currentEpisodeIndex || 1,
           total_episodes: currentEpisodes.length || 1,
           duration_seconds: Math.round(video.duration),
-          time_seconds: Math.round(time)
+          time_seconds: Math.round(time),
+          progress_percent: percent
         });
       }
     }
@@ -5202,7 +5204,7 @@ function playAnixartEpisode(episode) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 

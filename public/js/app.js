@@ -286,12 +286,22 @@ function initBottomNav() {
     });
   };
 
+  let lastNavTriggerTime = 0;
+
   document.querySelectorAll('.storm-bottom-nav-item').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
+    const handleNavAction = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const now = Date.now();
+      if (now - lastNavTriggerTime < 300) return;
+      lastNavTriggerTime = now;
+
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try { navigator.vibrate(15); } catch (_) {}
       }
+
       const tab = btn.dataset.bottomTab;
       if (tab === 'home') {
         closeMobileDrawer();
@@ -323,7 +333,12 @@ function initBottomNav() {
       } else if (tab === 'more') {
         toggleMobileDrawer();
       }
-    });
+    };
+
+    btn.addEventListener('click', handleNavAction);
+    btn.addEventListener('touchend', (e) => {
+      handleNavAction(e);
+    }, { passive: false });
   });
 }
 
@@ -1251,35 +1266,37 @@ export function getMediaYear(item) {
   }
 
   // 3. Известные франшизы и фильмы
-  const normTitle = String(item.title || item.original_title || '').toLowerCase();
-  if (normTitle.includes('изгой-один') || normTitle.includes('rogue one')) return '2016';
+  const normTitle = String(item.title || item.original_title || '')
+    .toLowerCase()
+    .replace(/[«»"'`]/g, '')
+    .replace(/[:—–-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (normTitle.includes('проект конец света') || normTitle.includes('конец света')) return '2026';
+  if (normTitle.includes('закулисье реальности')) return '2026';
+  if (normTitle.includes('я не киллер') || normTitle.includes('hit man')) return '2023';
+  if (normTitle.includes('хищник планета смерти') || normTitle.includes('планета смерти')) return '2025';
+  if (normTitle.includes('аватар 3') || normTitle.includes('аватар пламя и пепел')) return '2025';
+  if (normTitle.includes('аватар путь воды')) return '2022';
+  if (normTitle.includes('аватар')) return '2009';
+  if (normTitle.includes('падение империи')) return '2024';
+  if (normTitle.includes('изгой один') || normTitle.includes('rogue one')) return '2016';
   if (normTitle.includes('интерстеллар') || normTitle.includes('interstellar')) return '2014';
   if (normTitle.includes('начало') || normTitle.includes('inception')) return '2010';
-  if (normTitle.includes('матрица: перезагрузка') || normTitle.includes('матрица: революция')) return '2003';
+  if (normTitle.includes('матрица перезагрузка') || normTitle.includes('матрица революция')) return '2003';
   if (normTitle.includes('матрица') || normTitle.includes('matrix')) return '1999';
-  if (normTitle.includes('аватар: путь воды')) return '2022';
-  if (normTitle.includes('аватар')) return '2009';
-  if (normTitle.includes('дюна: часть вторая')) return '2024';
+  if (normTitle.includes('дюна часть вторая')) return '2024';
   if (normTitle.includes('дюна')) return '2021';
   if (normTitle.includes('оппенгеймер')) return '2023';
-  if (normTitle.includes('тёмный рыцарь') || normTitle.includes('темный рыцарь')) return '2008';
+  if (normTitle.includes('темный рыцарь') || normTitle.includes('тёмный рыцарь')) return '2008';
   if (normTitle.includes('бойцовский клуб')) return '1999';
   if (normTitle.includes('криминальное чтиво')) return '1994';
   if (normTitle.includes('побег из шоушенка')) return '1994';
   if (normTitle.includes('зеленая миля') || normTitle.includes('зелёная миля')) return '1999';
   if (normTitle.includes('леон')) return '1994';
   if (normTitle.includes('пятый элемент')) return '1997';
-  if (normTitle.includes('гарри поттер и философский камень')) return '2001';
-  if (normTitle.includes('гарри поттер и тайная комната')) return '2002';
-  if (normTitle.includes('гарри поттер и узник азкабана')) return '2004';
-  if (normTitle.includes('гарри поттер и кубок огня')) return '2005';
-  if (normTitle.includes('гарри поттер и орден феникса')) return '2007';
-  if (normTitle.includes('гарри поттер и принц-полукровка')) return '2009';
-  if (normTitle.includes('гарри поттер и дары смерти')) return '2011';
   if (normTitle.includes('гарри поттер')) return '2001';
-  if (normTitle.includes('братство кольца')) return '2001';
-  if (normTitle.includes('две крепости')) return '2002';
-  if (normTitle.includes('возвращение короля')) return '2003';
   if (normTitle.includes('властелин колец')) return '2001';
 
   // 4. Из заголовка в скобках или по границам слов
@@ -1293,6 +1310,10 @@ export function getMediaYear(item) {
       }
     }
   }
+
+  // 5. Гарантированный возврат года для свежих каталогов (вместо пустой строки)
+  if (currentTab === 'new') return '2026';
+  if (item.is4K || item.source === 'fanfilm4k') return '2026';
 
   return '';
 }
@@ -4158,7 +4179,7 @@ export function updateMobileDrawerUser() {
     if (user) {
       usernameEl.textContent = user.username || user.name || 'Пользователь';
       statusEl.textContent = user.email || 'Аккаунт активен';
-      authBtn.textContent = 'Профиль';
+      authBtn.textContent = 'Управление профилем';
       if (avatarEl && user.avatar) avatarEl.src = user.avatar;
     } else {
       usernameEl.textContent = 'Гость';
