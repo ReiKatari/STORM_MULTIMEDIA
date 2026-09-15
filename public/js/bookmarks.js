@@ -455,10 +455,17 @@ export function getLocalContinueWatching() {
       // Автоматическое исправление устаревших типов и годов в локальном хранилище пользователя
       const cleanType = detectClientMediaType(item);
       const cleanYr = detectClientYear(item);
+      const s = parseInt(item.season, 10) || 1;
+      const ep = parseInt(item.episode, 10) || 1;
+      const isSeries = cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1;
+      const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
       return {
         ...item,
         media_type: cleanType,
-        year: cleanYr || item.year
+        year: cleanYr || item.year,
+        season: s,
+        episode: ep,
+        next_up: nextUpText || item.next_up || ''
       };
     });
 
@@ -489,6 +496,11 @@ export function saveLocalWatchProgress(data) {
     const list = getLocalContinueWatching();
     const now = Date.now();
 
+    const s = parseInt(data.season, 10) || 1;
+    const ep = parseInt(data.episode, 10) || 1;
+    const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1;
+    const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
+
     const newEntry = {
       media_id: String(data.media_id),
       source: data.source || 'tmdb',
@@ -497,14 +509,15 @@ export function saveLocalWatchProgress(data) {
       poster: data.poster_url || data.poster || '',
       media_type: cleanMediaType,
       year: cleanYear,
-      season: data.season || 1,
-      episode: data.episode || 1,
+      season: s,
+      episode: ep,
       total_episodes: data.total_episodes || 1,
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: sec,
       progress_percent: pct,
       status: data.status || data.user_status || null,
       user_status: data.user_status || data.status || null,
+      next_up: nextUpText,
       updated_at: now
     };
 
@@ -597,19 +610,27 @@ export async function fetchContinueWatching() {
         item.bookmark_status === 'wont_watch' || item.user_status === 'wont_watch' || item.status === 'wont_watch') return false;
     if (item.progress_percent && item.progress_percent >= 90) return false;
     return true;
-  }).map(item => ({
-    ...item,
-    id: item.media_id || item.id,
-    media_id: item.media_id || item.id,
-    poster: item.poster_url || item.poster || '',
-    poster_url: item.poster_url || item.poster || '',
-    media_type: detectClientMediaType(item),
-    year: detectClientYear(item) || item.year || '',
-    progress_percent: typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0,
-    user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
-    season: item.season || 1,
-    episode: item.episode || 1
-  }));
+  }).map(item => {
+    const s = parseInt(item.season, 10) || 1;
+    const ep = parseInt(item.episode, 10) || 1;
+    const cleanType = detectClientMediaType(item);
+    const isSeries = cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1;
+    const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
+    return {
+      ...item,
+      id: item.media_id || item.id,
+      media_id: item.media_id || item.id,
+      poster: item.poster_url || item.poster || '',
+      poster_url: item.poster_url || item.poster || '',
+      media_type: cleanType,
+      year: detectClientYear(item) || item.year || '',
+      progress_percent: typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0,
+      user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
+      season: s,
+      episode: ep,
+      next_up: nextUpText || item.next_up || ''
+    };
+  });
   result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
   return result;
 }

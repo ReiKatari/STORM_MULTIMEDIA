@@ -222,6 +222,360 @@ function initFullscreenControls() {
   });
 }
 
+// -------------------------------------------------------------
+// МОБИЛЬНЫЙ ТАЙМЕР СНА (SLEEP TIMER)
+// -------------------------------------------------------------
+let sleepTimerRemainingSeconds = 0;
+let sleepTimerIntervalId = null;
+let sleepTimerTargetMode = null; // number or 'end'
+
+export function setSleepTimer(minutesOrMode) {
+  cancelSleepTimer();
+  if (!minutesOrMode || minutesOrMode === 0 || minutesOrMode === '0') {
+    return;
+  }
+
+  sleepTimerTargetMode = minutesOrMode;
+  if (minutesOrMode === 'end') {
+    const video = document.querySelector('#cinema-player-wrapper video');
+    if (video && video.duration && !isNaN(video.duration)) {
+      sleepTimerRemainingSeconds = Math.max(60, Math.round(video.duration - video.currentTime));
+    } else {
+      sleepTimerRemainingSeconds = 45 * 60;
+    }
+  } else {
+    const mins = parseInt(minutesOrMode, 10) || 15;
+    sleepTimerRemainingSeconds = mins * 60;
+  }
+
+  updateSleepTimerUI();
+
+  sleepTimerIntervalId = setInterval(() => {
+    sleepTimerRemainingSeconds--;
+    if (sleepTimerRemainingSeconds <= 30 && sleepTimerRemainingSeconds > 0) {
+      const video = document.querySelector('#cinema-player-wrapper video');
+      if (video && video.volume > 0.05) {
+        try { video.volume = Math.max(0, video.volume - 0.03); } catch {}
+      }
+    }
+
+    if (sleepTimerRemainingSeconds <= 0) {
+      cancelSleepTimer();
+      pauseCurrentPlayback();
+      showToast('⏱️ Таймер сна сработал. Воспроизведение остановлено.');
+    } else {
+      updateSleepTimerUI();
+    }
+  }, 1000);
+}
+
+export function cancelSleepTimer() {
+  if (sleepTimerIntervalId) {
+    clearInterval(sleepTimerIntervalId);
+    sleepTimerIntervalId = null;
+  }
+  sleepTimerRemainingSeconds = 0;
+  sleepTimerTargetMode = null;
+  updateSleepTimerUI();
+}
+
+export function getSleepTimerRemaining() {
+  return sleepTimerRemainingSeconds;
+}
+
+function updateSleepTimerUI() {
+  const sleepBtn = document.getElementById('player-sleep-btn');
+  if (sleepBtn) {
+    if (sleepTimerRemainingSeconds > 0) {
+      const mins = Math.floor(sleepTimerRemainingSeconds / 60);
+      const secs = sleepTimerRemainingSeconds % 60;
+      sleepBtn.classList.add('active');
+      sleepBtn.title = `Таймер сна активен: ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    } else {
+      sleepBtn.classList.remove('active');
+      sleepBtn.title = 'Таймер сна';
+    }
+  }
+
+  // Обновляем отображение в мобильной шторке, если функция доступна
+  if (typeof window.updateDrawerSleepUI === 'function') {
+    window.updateDrawerSleepUI();
+  }
+}
+
+function pauseCurrentPlayback() {
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    try { video.pause(); } catch {}
+  }
+  const pauseMsgs = [
+    { event: 'pause' },
+    { api: 'pause' },
+    { action: 'pause' },
+    { method: 'pause' },
+    { key: 'kodik_player_api', value: { action: 'pause' } }
+  ];
+  document.querySelectorAll('#cinema-player-wrapper iframe').forEach(iframe => {
+    pauseMsgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(msg, '*');
+        iframe.contentWindow?.postMessage(JSON.stringify(msg), '*');
+      } catch {}
+    });
+  });
+}
+
+function sendSeekDelta(secondsDelta) {
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    try {
+      video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + secondsDelta));
+    } catch {}
+  }
+
+  const seekMsgs = [
+    { event: 'seek', value: secondsDelta > 0 ? '+10' : '-10' },
+    { api: 'seek', val: secondsDelta },
+    { api: 'seekDelta', val: secondsDelta },
+    { method: 'seek', delta: secondsDelta },
+    { action: 'seek', delta: secondsDelta },
+    { key: 'kodik_player_api', value: { action: 'seek', delta: secondsDelta } }
+  ];
+  document.querySelectorAll('#cinema-player-wrapper iframe').forEach(iframe => {
+    seekMsgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(msg, '*');
+        iframe.contentWindow?.postMessage(JSON.stringify(msg), '*');
+      } catch {}
+    });
+  });
+}
+
+// -------------------------------------------------------------
+// ИНИЦИАЛИЗАЦИЯ СЕНСОРНЫХ ЖЕСТОВ И МОБИЛЬНЫХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ
+// -------------------------------------------------------------
+let currentAspectRatioMode = 'default';
+let isPlayerScreenLocked = false;
+
+function initMobilePlayerControls() {
+  const modal = document.getElementById('cinema-modal');
+  if (!modal) return;
+
+  // 1. Кнопка масштабирования (Aspect Ratio)
+  const aspectBtn = document.getElementById('player-aspect-btn');
+  const playerContainer = document.getElementById('cinema-player-container');
+  if (aspectBtn && !aspectBtn.dataset.hasListener) {
+    aspectBtn.dataset.hasListener = 'true';
+    aspectBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (!playerContainer) return;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(12); } catch (_) {}
+      }
+
+      if (currentAspectRatioMode === 'default') {
+        currentAspectRatioMode = 'fill';
+        playerContainer.classList.remove('aspect-original');
+        playerContainer.classList.add('aspect-fill');
+        aspectBtn.classList.add('active');
+        showToast('📐 Масштаб: 21:9 во весь экран (Fill)');
+      } else if (currentAspectRatioMode === 'fill') {
+        currentAspectRatioMode = 'original';
+        playerContainer.classList.remove('aspect-fill');
+        playerContainer.classList.add('aspect-original');
+        aspectBtn.classList.add('active');
+        showToast('📐 Масштаб: Исходный (Fit)');
+      } else {
+        currentAspectRatioMode = 'default';
+        playerContainer.classList.remove('aspect-fill', 'aspect-original');
+        aspectBtn.classList.remove('active');
+        showToast('📐 Масштаб: Стандартный 16:9');
+      }
+    };
+  }
+
+  // 2. Кнопка «Картинка в картинке» (PiP)
+  const pipBtn = document.getElementById('player-pip-btn');
+  if (pipBtn && !pipBtn.dataset.hasListener) {
+    pipBtn.dataset.hasListener = 'true';
+    pipBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(15); } catch (_) {}
+      }
+
+      const video = document.querySelector('#cinema-player-wrapper video');
+      if (video && document.pictureInPictureEnabled) {
+        try {
+          if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture();
+          } else {
+            await video.requestPictureInPicture();
+          }
+          return;
+        } catch (_) {}
+      }
+
+      // Внутренний мини-PiP режим приложения
+      modal.classList.toggle('is-mini-pip');
+      pipBtn.classList.toggle('active', modal.classList.contains('is-mini-pip'));
+    };
+  }
+
+  // 3. Кнопка таймера сна в шапке плеера
+  const sleepBtn = document.getElementById('player-sleep-btn');
+  if (sleepBtn && !sleepBtn.dataset.hasListener) {
+    sleepBtn.dataset.hasListener = 'true';
+    sleepBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(15); } catch (_) {}
+      }
+
+      if (!sleepTimerRemainingSeconds || sleepTimerRemainingSeconds === 0) {
+        setSleepTimer(15);
+        showToast('⏱️ Таймер сна установлен на 15 мин');
+      } else if (sleepTimerTargetMode === 15) {
+        setSleepTimer(30);
+        showToast('⏱️ Таймер сна установлен на 30 мин');
+      } else if (sleepTimerTargetMode === 30) {
+        setSleepTimer(45);
+        showToast('⏱️ Таймер сна установлен на 45 мин');
+      } else if (sleepTimerTargetMode === 45) {
+        setSleepTimer(60);
+        showToast('⏱️ Таймер сна установлен на 60 мин');
+      } else if (sleepTimerTargetMode === 60) {
+        setSleepTimer('end');
+        showToast('⏱️ Таймер сна: в конце серии');
+      } else {
+        cancelSleepTimer();
+        showToast('⏱️ Таймер сна выключен');
+      }
+    };
+  }
+
+  // 4. Блокировка экрана (Screen Lock)
+  const lockBtn = document.getElementById('player-screen-lock-btn');
+  const lockOverlay = document.getElementById('player-screen-locked-overlay');
+  const unlockBtn = document.getElementById('player-unlock-btn');
+
+  const setScreenLock = (locked) => {
+    isPlayerScreenLocked = locked;
+    if (lockOverlay) lockOverlay.style.display = locked ? 'flex' : 'none';
+    if (lockBtn) lockBtn.classList.toggle('active', locked);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(locked ? [20, 50, 20] : 15); } catch (_) {}
+    }
+    showToast(locked ? '🔒 Экран заблокирован от случайных нажатий' : '🔓 Экран разблокирован');
+  };
+
+  if (lockBtn && !lockBtn.dataset.hasListener) {
+    lockBtn.dataset.hasListener = 'true';
+    lockBtn.onclick = (e) => {
+      e.stopPropagation();
+      setScreenLock(true);
+    };
+  }
+
+  if (unlockBtn && !unlockBtn.dataset.hasListener) {
+    unlockBtn.dataset.hasListener = 'true';
+    let unlockTimer = null;
+    const startUnlock = () => {
+      unlockTimer = setTimeout(() => {
+        setScreenLock(false);
+      }, 700);
+    };
+    const cancelUnlock = () => {
+      if (unlockTimer) {
+        clearTimeout(unlockTimer);
+        unlockTimer = null;
+      }
+    };
+
+    unlockBtn.addEventListener('mousedown', startUnlock);
+    unlockBtn.addEventListener('mouseup', cancelUnlock);
+    unlockBtn.addEventListener('mouseleave', cancelUnlock);
+    unlockBtn.addEventListener('touchstart', startUnlock, { passive: true });
+    unlockBtn.addEventListener('touchend', cancelUnlock, { passive: true });
+    unlockBtn.onclick = () => {
+      setScreenLock(false);
+    };
+  }
+
+  // 5. Двойной тап для перемотки назад/вперед (±10с)
+  const tapLeft = document.getElementById('player-tap-left');
+  const tapRight = document.getElementById('player-tap-right');
+  const indicatorLeft = document.getElementById('player-tap-indicator-left');
+  const indicatorRight = document.getElementById('player-tap-indicator-right');
+
+  const triggerDoubleTapRipple = (indicatorEl, isForward) => {
+    if (indicatorEl) {
+      indicatorEl.classList.remove('is-active');
+      void indicatorEl.offsetWidth;
+      indicatorEl.classList.add('is-active');
+      setTimeout(() => indicatorEl.classList.remove('is-active'), 500);
+    }
+    sendSeekDelta(isForward ? 10 : -10);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([10, 30, 10]); } catch (_) {}
+    }
+  };
+
+  const bindDoubleTap = (zoneEl, indicatorEl, isForward) => {
+    if (!zoneEl || zoneEl.dataset.hasListener) return;
+    zoneEl.dataset.hasListener = 'true';
+    let lastTapTime = 0;
+
+    const handleTap = (e) => {
+      if (isPlayerScreenLocked) return;
+      const now = Date.now();
+      if (now - lastTapTime < 320) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerDoubleTapRipple(indicatorEl, isForward);
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+      }
+    };
+
+    zoneEl.addEventListener('click', handleTap);
+    zoneEl.addEventListener('touchend', handleTap, { passive: false });
+  };
+
+  bindDoubleTap(tapLeft, indicatorLeft, false);
+  bindDoubleTap(tapRight, indicatorRight, true);
+
+  // 6. Свайп вниз для закрытия плеера на смартфонах
+  const dragHandle = document.getElementById('cinema-modal-drag-handle');
+  const headerEl = modal.querySelector('.storm-modal-header');
+  [dragHandle, headerEl].forEach(el => {
+    if (!el || el.dataset.hasSwipeListener) return;
+    el.dataset.hasSwipeListener = 'true';
+    let startY = 0;
+    let isDragging = false;
+
+    el.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        startY = e.touches[0].clientY;
+        isDragging = true;
+      }
+    }, { passive: true });
+
+    el.addEventListener('touchend', (e) => {
+      if (!isDragging || !e.changedTouches.length) return;
+      isDragging = false;
+      const diffY = e.changedTouches[0].clientY - startY;
+      if (diffY > 80) {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate(15); } catch (_) {}
+        }
+        closePlayerModal();
+      }
+    }, { passive: true });
+  });
+}
+
 export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const title = cleanTitle || cleanVideoTitle(mediaItem.title || 'Видео');
   const safeTitle = encodeURIComponent(title);
@@ -418,6 +772,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   initProgressSlider();
   initFullscreenControls();
+  initMobilePlayerControls();
 
   // Обновляем URL для глубокого связывания (Deep Linking)
   updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
@@ -580,9 +935,23 @@ export async function openPlayerModal(mediaItem, options = {}) {
 export function closePlayerModal() {
   const modal = document.getElementById('cinema-modal');
   if (modal) {
-    modal.classList.remove('is-open');
+    modal.classList.remove('is-open', 'is-mini-pip');
     stopAmbilight();
     clearPlayerUrl();
+
+    // Сброс мобильных состояний (блокировка экрана, соотношение сторон, PiP)
+    const lockOverlay = document.getElementById('player-screen-locked-overlay');
+    if (lockOverlay) lockOverlay.style.display = 'none';
+    const lockBtn = document.getElementById('player-screen-lock-btn');
+    if (lockBtn) lockBtn.classList.remove('active');
+    const pipBtn = document.getElementById('player-pip-btn');
+    if (pipBtn) pipBtn.classList.remove('active');
+    const aspectBtn = document.getElementById('player-aspect-btn');
+    if (aspectBtn) aspectBtn.classList.remove('active');
+    const playerContainer = document.getElementById('cinema-player-container');
+    if (playerContainer) playerContainer.classList.remove('aspect-fill', 'aspect-original');
+    currentAspectRatioMode = 'default';
+    isPlayerScreenLocked = false;
 
     if (iframeWatchInterval) {
       clearInterval(iframeWatchInterval);
