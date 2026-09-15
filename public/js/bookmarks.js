@@ -27,15 +27,115 @@ export async function fetchUserBookmarks(status = null, type = null) {
   }
 }
 
+export function removeFromLocalContinueWatching(mediaId, title = '') {
+  try {
+    const raw = localStorage.getItem('storm_continue_watching');
+    if (!raw) return;
+    let list = JSON.parse(raw);
+    if (!Array.isArray(list)) return;
+
+    const cleanTitle = String(title || '').trim().toLowerCase();
+    const cleanId = String(mediaId || '');
+
+    const filtered = list.filter(it => {
+      if (!it) return false;
+      const itId = String(it.media_id || it.id || '');
+      const itTitle = String(it.title || '').trim().toLowerCase();
+      if (cleanId && itId === cleanId) return false;
+      if (cleanTitle && (itTitle === cleanTitle || itTitle.includes(cleanTitle) || cleanTitle.includes(itTitle))) return false;
+      return true;
+    });
+
+    localStorage.setItem('storm_continue_watching', JSON.stringify(filtered));
+    window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { mediaId, title, removed: true } }));
+  } catch (e) {
+    console.error('Ошибка удаления из продолжать просмотр:', e);
+  }
+}
+
+export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') {
+  if (!media || !media.id) return;
+  const mediaId = String(media.id);
+  const normTitle = String(media.title || '').trim().toLowerCase();
+
+  try {
+    localStorage.setItem(`storm_status_${mediaId}`, newStatus);
+    if (normTitle) {
+      localStorage.setItem(`storm_status_title_${normTitle}`, newStatus);
+    }
+  } catch {}
+
+  const seasons = Array.isArray(media.seasons) && media.seasons.length > 0
+    ? media.seasons
+    : Array.from({ length: 5 }, (_, i) => ({ season_number: i + 1, episode_count: 24 }));
+
+  seasons.forEach(s => {
+    const sNum = Number(s.season || s.season_number) || 1;
+    const count = Number(s.episode_count || s.episodes_count || (s.episodes ? s.episodes.length : 12)) || 12;
+    const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
+    const statusKey = `storm_season_status_${mediaId}_s${sNum}`;
+
+    try {
+      if (newStatus === 'completed') {
+        localStorage.setItem(statusKey, 'completed');
+        const eps = Array.from({ length: count }, (_, i) => i + 1);
+        localStorage.setItem(sKey, JSON.stringify(eps));
+        if (sNum === 1) {
+          localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(eps));
+        }
+      } else if (newStatus === 'planned') {
+        localStorage.removeItem(statusKey);
+        localStorage.removeItem(sKey);
+        if (sNum === 1) localStorage.removeItem(`storm_watched_eps_${mediaId}`);
+      }
+    } catch {}
+  });
+
+  if (newStatus === 'completed' || newStatus === 'dropped' || newStatus === 'wont_watch') {
+    removeFromLocalContinueWatching(mediaId, media.title);
+  }
+
+  window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+    detail: { mediaId, status: newStatus }
+  }));
+}
+
 export async function saveBookmarkStatus(mediaData, status) {
+  if (!mediaData) return null;
+  const mediaId = String(mediaData.id || mediaData.media_id || '');
+  const normTitle = String(mediaData.title || '').trim().toLowerCase();
+
+  // Всегда локально сохраняем статус в localStorage для мгновенного отклика
+  try {
+    if (mediaId) {
+      localStorage.setItem(`storm_status_${mediaId}`, status);
+    }
+    if (normTitle) {
+      localStorage.setItem(`storm_status_title_${normTitle}`, status);
+    }
+  } catch {}
+
+  // Если статус завершён/брошен/не буду — немедленно удаляем из Продолжить просмотр
+  if (status === 'completed' || status === 'dropped' || status === 'wont_watch') {
+    removeFromLocalContinueWatching(mediaId, mediaData.title);
+  }
+
+  // Если это сериал и статус «Просмотрено», каскадно помечаем все сезоны и серии
+  const mType = detectClientMediaType(mediaData);
+  const isSeries = mType === 'series' || mType === 'anime-series' || mType === 'cartoon-series';
+  if (isSeries && status === 'completed') {
+    markAllSeriesSeasonsAndEpisodes(mediaData, 'completed');
+  }
+
   const token = getToken();
   if (!token) {
-    showToast('Войдите в систему для добавления в закладки', 'info');
-    return null;
+    showToast(t('msg_bookmark_saved'), 'success');
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status } }));
+    return { status, localOnly: true };
   }
 
   if (!status || status === 'none') {
-    return await deleteBookmark(mediaData.id, mediaData.source);
+    return await deleteBookmark(mediaData.id, mediaData.source, mediaData.title);
   }
 
   try {
@@ -50,9 +150,9 @@ export async function saveBookmarkStatus(mediaData, status) {
         source: mediaData.source,
         title: mediaData.title,
         original_title: mediaData.original_title || '',
-        poster_url: mediaData.poster || '',
-        media_type: mediaData.media_type || 'movie',
-        year: mediaData.year || '',
+        poster_url: mediaData.poster || mediaData.poster_url || '',
+        media_type: mediaData.media_type || mType || 'movie',
+        year: mediaData.year || detectClientYear(mediaData) || '',
         status: status
       })
     });
@@ -69,8 +169,18 @@ export async function saveBookmarkStatus(mediaData, status) {
 }
 
 export async function deleteBookmark(mediaId, source, title = '') {
+  const normTitle = String(title || '').trim().toLowerCase();
+  try {
+    if (mediaId) localStorage.removeItem(`storm_status_${mediaId}`);
+    if (normTitle) localStorage.removeItem(`storm_status_title_${normTitle}`);
+  } catch {}
+
   const token = getToken();
-  if (!token) return false;
+  if (!token) {
+    showToast('Удалено из закладок', 'info');
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, title, deleted: true } }));
+    return { success: true, deleted: true };
+  }
 
   try {
     const res = await fetch('/api/bookmarks/remove', {
@@ -101,14 +211,15 @@ export function detectClientMediaType(item) {
   if (!item) return 'movie';
   const t = String(item.title || item.name || '').toLowerCase();
   const cat = String(item.category || '').toLowerCase();
-  const link = String(item.link || item.url || '').toLowerCase();
+  const link = String(item.link || item.url || item.fanfilm_4k_url || '').toLowerCase();
   const src = String(item.source || '').toLowerCase();
 
   // Аниме
   if (src === 'anilibria' || src === 'anixart' || src === 'shikimori' ||
       cat.includes('anime') || link.includes('anime') ||
       t.includes('перекуре за супермаркетом') || t.includes('дандадан') || t.includes('клинок, рассекающий') ||
-      t.includes('атака титанов') || t.includes('аркейн') || t.includes('поднятие уровня') || t.includes('магическая битва')) {
+      t.includes('атака титанов') || t.includes('аркейн') || t.includes('поднятие уровня') || t.includes('магическая битва') ||
+      t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) {
     if (t.includes('фильм') || cat === 'anime-movies' || item.media_type === 'anime-movie') {
       return 'anime-movie';
     }
@@ -123,6 +234,12 @@ export function detectClientMediaType(item) {
 
   // Известные сериалы
   const knownSeries = [
+    'мистер робот', 'mr. robot', 'mr robot',
+    'ходячие мертвецы', 'the walking dead',
+    'остаться в живых', 'lost',
+    'спартак', 'спартак: кровь и песок', 'spartacus',
+    'персонажи в клетке',
+    'кафе из другого мира',
     'джек ричер', 'ричер', 'reacher',
     'стюарт блум не смог спасти вселенную', 'стюарт блум',
     'укрытие', 'бункер', 'silo', 'разделение', 'severance',
@@ -157,10 +274,25 @@ export function detectClientYear(item) {
   const t = String(item.title || item.name || '').toLowerCase();
 
   const knownYears = {
+    'пассажир': '2023',
+    'the passenger': '2023',
+    'мистер робот': '2015',
+    'mr. robot': '2015',
+    'ходячие мертвецы': '2010',
+    'the walking dead': '2010',
+    'остаться в живых': '2004',
+    'lost': '2004',
+    'спартак: кровь и песок': '2010',
+    'спартак': '2010',
+    'spartacus': '2010',
+    'персонажи в клетке': '2024',
+    'кафе из другого мира': '2017',
     'история о перекуре за супермаркетом': '2026',
     'super no ura de yani suu futari': '2026',
     'дандадан 2': '2025',
     'dandadan 2': '2025',
+    'дандадан': '2024',
+    'dandadan': '2024',
     'человек-паук: новый день': '2026',
     'стюарт блум не смог спасти вселенную': '2025',
     'обитель зла: мутация': '2025',
@@ -213,11 +345,48 @@ export function getLocalContinueWatching() {
     if (!raw) return [];
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
-    return list.filter(item => {
+
+    let hasChanges = false;
+
+    const sanitized = list.filter(item => {
       if (!item || !item.media_id || !item.title) return false;
-      const t = String(item.title || '');
-      if (t.includes('FANFILM4K') || t.includes('ФАН4К –') || t.includes('4К UHD бесплатно')) return false;
+      const t = String(item.title || '').trim().toLowerCase();
+      if (t.includes('fanfilm4k') || t.includes('фан4к –') || t.includes('4к uhd бесплатно')) return false;
+
+      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом (Персонажи в клетке, Кафе из другого мира)
+      if ((t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) && (!item.time_seconds || item.time_seconds < 120 || item.progress_percent <= 10)) {
+        hasChanges = true;
+        return false;
+      }
+
+      // 2. Исключаем уже полностью просмотренные произведения (Обитель зла: Мутация, Стюарт Блум, Джек Ричер)
+      if (t.includes('обитель зла: мутация') || t.includes('стюарт блум') || t.includes('джек ричер')) {
+        const titleStatus = localStorage.getItem(`storm_status_title_${t}`);
+        const idStatus = localStorage.getItem(`storm_status_${item.media_id}`);
+        if (titleStatus === 'completed' || idStatus === 'completed' || item.user_status === 'completed' || item.status === 'completed' || (item.progress_percent && item.progress_percent >= 90)) {
+          hasChanges = true;
+          return false;
+        }
+      }
+
+      // 3. Общая проверка статуса: если у тайтла стоит completed, dropped или wont_watch, скрываем из Продолжить просмотр
+      const localStatus = localStorage.getItem(`storm_status_${item.media_id}`) || localStorage.getItem(`storm_status_title_${t}`);
+      if (localStatus === 'completed' || localStatus === 'dropped' || localStatus === 'wont_watch') {
+        hasChanges = true;
+        return false;
+      }
+      if (item.user_status === 'completed' || item.status === 'completed' || item.user_status === 'dropped' || item.status === 'dropped') {
+        hasChanges = true;
+        return false;
+      }
+
+      // 4. Если прогресс 90% или более (кроме титров), считается просмотренным
       const pct = typeof item.progress_percent === 'number' ? item.progress_percent : 0;
+      if (pct >= 90) {
+        hasChanges = true;
+        return false;
+      }
+
       const sec = typeof item.time_seconds === 'number' ? item.time_seconds : 0;
       const ep = parseInt(item.episode, 10) || 1;
       return (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
@@ -231,6 +400,12 @@ export function getLocalContinueWatching() {
         year: cleanYr || item.year
       };
     });
+
+    if (hasChanges || sanitized.length !== list.length) {
+      localStorage.setItem('storm_continue_watching', JSON.stringify(sanitized));
+    }
+
+    return sanitized;
   } catch {
     return [];
   }
@@ -351,12 +526,24 @@ export async function fetchContinueWatching() {
     }
   }
 
-  const result = Array.from(mergedMap.values()).map(item => ({
+  const result = Array.from(mergedMap.values()).filter(item => {
+    if (!item) return false;
+    const t = String(item.title || '').trim().toLowerCase();
+    const localStatus = localStorage.getItem(`storm_status_${item.media_id || item.id}`) || localStorage.getItem(`storm_status_title_${t}`);
+    if (localStatus === 'completed' || localStatus === 'dropped' || localStatus === 'wont_watch') return false;
+    if (item.bookmark_status === 'completed' || item.user_status === 'completed' || item.status === 'completed' ||
+        item.bookmark_status === 'dropped' || item.user_status === 'dropped' || item.status === 'dropped' ||
+        item.bookmark_status === 'wont_watch' || item.user_status === 'wont_watch' || item.status === 'wont_watch') return false;
+    if (item.progress_percent && item.progress_percent >= 90) return false;
+    return true;
+  }).map(item => ({
     ...item,
     id: item.media_id || item.id,
     media_id: item.media_id || item.id,
     poster: item.poster_url || item.poster || '',
     poster_url: item.poster_url || item.poster || '',
+    media_type: detectClientMediaType(item),
+    year: detectClientYear(item) || item.year || '',
     progress_percent: typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0,
     user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
     season: item.season || 1,

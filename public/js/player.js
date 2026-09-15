@@ -441,21 +441,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Определяем стартовый рекомендуемый плеер
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
-    const isAnime = (mediaItem.media_type || '').includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
-    const isSeries = (mediaItem.media_type || '') === 'series' || (mediaItem.media_type || '') === 'cartoon-series';
     const isStable = p => p && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-    if (!isAnime && !isSeries) {
-      initialChoice = currentPlayers.find(p => p.id === 'rezka_cinema' && isStable(p))
-        || currentPlayers.find(p => p.id === 'collaps_player' && isStable(p))
-        || currentPlayers.find(p => p.id === 'alloha_tv' && isStable(p))
-        || currentPlayers.find(p => p.id === 'kodik_direct' && isStable(p))
-        || currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isStable(p))
-        || currentPlayers.find(isStable)
-        || currentPlayers[0];
-    }
-    if (!initialChoice) {
-      initialChoice = currentPlayers.find(isStable) || currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
-    }
+    initialChoice = currentPlayers.find(p => p.is_recommended && isStable(p))
+      || currentPlayers.find(p => p.is_recommended)
+      || currentPlayers.find(isStable)
+      || currentPlayers[0];
   }
 
   currentActivePlayer = initialChoice || {
@@ -557,21 +547,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
         if (!defaultPlayer) {
-          const isAnime = (mediaItem.media_type || '').includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
-          const isSeries = (mediaItem.media_type || '') === 'series' || (mediaItem.media_type || '') === 'cartoon-series';
           const isStable = p => p && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-          if (!isAnime && !isSeries) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'rezka_cinema' && isStable(p))
-              || currentPlayers.find(p => p.id === 'collaps_player' && isStable(p))
-              || currentPlayers.find(p => p.id === 'alloha_tv' && isStable(p))
-              || currentPlayers.find(p => p.id === 'kodik_direct' && isStable(p))
-              || currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isStable(p))
-              || currentPlayers.find(isStable)
-              || currentPlayers[0];
-          }
-          if (!defaultPlayer) {
-            defaultPlayer = currentPlayers.find(isStable) || currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
-          }
+          defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
+            || currentPlayers.find(p => p.is_recommended)
+            || currentPlayers.find(isStable)
+            || currentPlayers[0];
         }
         selectPlayer(defaultPlayer);
       } else if (currentMedia.is_upcoming) {
@@ -1761,46 +1741,12 @@ function playStreamUrl(url) {
     startAmbilightLoop(null);
   }
 
-  // Автоматический трекинг прогресса при воспроизведении через Iframe
+  // Трекинг прогресса: для iframe не накручиваем фиктивные секунды при простое модального окна
+  if (iframeWatchInterval) {
+    clearInterval(iframeWatchInterval);
+    iframeWatchInterval = null;
+  }
   currentWatchTimeSeconds = Math.round(((currentProgressPercent || 0) / 100) * 7200);
-  let lastSync = Date.now();
-
-  iframeWatchInterval = setInterval(() => {
-    const modal = document.getElementById('cinema-modal');
-    if (!modal || !modal.classList.contains('is-open')) {
-      clearInterval(iframeWatchInterval);
-      iframeWatchInterval = null;
-      return;
-    }
-
-    currentWatchTimeSeconds += 5;
-    const totalSec = 7200;
-    const percent = Math.min(100, Math.round((currentWatchTimeSeconds / totalSec) * 100));
-    currentProgressPercent = percent;
-
-    const slider = document.getElementById('player-progress-slider');
-    const label = document.getElementById('player-progress-label');
-    if (slider) slider.value = percent;
-    if (label) label.textContent = `${percent}%`;
-
-    const now = Date.now();
-    if (now - lastSync >= 10000 && currentMedia) {
-      lastSync = now;
-      syncWatchProgress({
-        media_id: currentMedia.id,
-        source: currentMedia.source,
-        title: currentMedia.title,
-        poster_url: currentMedia.poster,
-        media_type: currentMedia.media_type,
-        year: currentMedia.year || '',
-        season: currentMedia.season || 1,
-        episode: currentEpisodeIndex || 1,
-        total_episodes: currentEpisodes.length || 1,
-        duration_seconds: totalSec,
-        time_seconds: currentWatchTimeSeconds
-      });
-    }
-  }, 5000);
 }
 
 function setupVideoFeatures(video, wrapper) {
@@ -1854,6 +1800,20 @@ function setupVideoFeatures(video, wrapper) {
       if (slider) slider.value = percent;
       if (label) label.textContent = `${percent}%`;
 
+      // При достижении 90% (начало финальных титров) автоматически отмечаем просмотренным
+      if (percent >= 90 && currentMedia) {
+        const isSeries = currentMedia.media_type === 'series' || currentMedia.media_type === 'anime-series' || currentMedia.media_type === 'cartoon-series';
+        if (isSeries) {
+          // Серия сериала отмечается как просмотренная, но общий сериал не отмечается просмотренным
+          applySeasonStatus(currentMedia.id, currentMedia.season || 1, 'watching');
+        } else if (currentMedia.user_status !== 'completed') {
+          // Для фильма ставим Просмотрено и очищаем из истории Продолжить просмотр
+          currentMedia.user_status = 'completed';
+          saveBookmarkStatus(currentMedia, 'completed');
+          renderStatusButtons('completed');
+        }
+      }
+
       const now = Date.now();
       if (now - lastSyncTime >= 10000 && currentMedia) {
         lastSyncTime = now;
@@ -1887,6 +1847,14 @@ function setupVideoFeatures(video, wrapper) {
 
   // 10. Автопросмотр следующей части франшизы при завершении видео
   video.addEventListener('ended', async () => {
+    if (currentMedia) {
+      const isSeries = currentMedia.media_type === 'series' || currentMedia.media_type === 'anime-series' || currentMedia.media_type === 'cartoon-series';
+      if (!isSeries && currentMedia.user_status !== 'completed') {
+        currentMedia.user_status = 'completed';
+        await saveBookmarkStatus(currentMedia, 'completed');
+        renderStatusButtons('completed');
+      }
+    }
     await autoAdvanceNextFranchiseItem();
   });
 
@@ -4475,26 +4443,10 @@ function getSeasonStatusInfo(mediaId, seasonNum = 1, totalEpisodes = 0, episodes
 }
 
 async function syncOverallSeriesProgress(mediaDetails) {
+  // Согласно регламенту STORM: отметки отдельных сезонов и серий НЕ переводят весь сериал в «Просмотрено».
+  // Общий статус «Просмотрено» для сериала устанавливается только при явном выборе пользователем
+  // на главной карточке сериала (что динамически охватывает все сезоны и серии).
   if (!mediaDetails) return;
-  const seasons = mediaDetails.seasons || [];
-  if (seasons.length === 0) return;
-
-  let totalEps = 0;
-  let totalWatched = 0;
-  seasons.forEach(s => {
-    const count = s.episode_count || 0;
-    totalEps += count;
-    const watched = getWatchedEpisodes(mediaDetails.id, s.season_number);
-    totalWatched += watched.size;
-  });
-
-  if (totalEps > 0 && totalWatched >= totalEps) {
-    if (mediaDetails.user_status !== 'completed') {
-      mediaDetails.user_status = 'completed';
-      await saveBookmarkStatus(mediaDetails, 'completed');
-      renderStatusButtons('completed');
-    }
-  }
 }
 
 function getVoiceoverStats(name, index = 0) {
@@ -5535,8 +5487,11 @@ export async function autoAdvanceNextFranchiseItem() {
   if (!nextItem) return false;
 
   if (currentMedia) {
-    currentMedia.user_status = 'completed';
-    await saveBookmarkStatus(currentMedia, 'completed');
+    const isSeries = currentMedia.media_type === 'series' || currentMedia.media_type === 'anime-series' || currentMedia.media_type === 'cartoon-series';
+    if (!isSeries) {
+      currentMedia.user_status = 'completed';
+      await saveBookmarkStatus(currentMedia, 'completed');
+    }
   }
 
   nextItem.user_status = 'watching';
