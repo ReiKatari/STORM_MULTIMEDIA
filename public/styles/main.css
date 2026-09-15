@@ -1718,7 +1718,7 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid var(--border-color);
   padding: 6px 12px;
-  z-index: 600;
+  z-index: 3200 !important;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
 }
 
@@ -1863,7 +1863,7 @@ body.drawer-open {
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 3100 !important;
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-bottom: calc(75px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 .storm-drawer-backdrop.is-open .storm-mobile-drawer {
@@ -1909,11 +1909,16 @@ body.drawer-open {
 .mobile-drawer-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   -webkit-overflow-scrolling: touch;
+}
+
+.mobile-drawer-body > * {
+  flex-shrink: 0 !important;
 }
 
 /* Таймер сна в мобильной шторке */
@@ -2033,6 +2038,8 @@ body.drawer-open {
   overflow: hidden;
   transition: all 0.2s ease;
   width: 100%;
+  flex-shrink: 0 !important;
+  box-sizing: border-box;
 }
 
 [data-theme="STORM DAY"] .mobile-drawer-user-card {
@@ -2047,24 +2054,28 @@ body.drawer-open {
   gap: 14px;
   width: 100%;
   min-width: 0;
+  flex-shrink: 0 !important;
 }
 
 .mobile-drawer-avatar {
   width: 48px;
   height: 48px;
+  min-width: 48px;
+  min-height: 48px;
   border-radius: 50%;
   border: 2px solid var(--accent);
   box-shadow: 0 0 14px var(--accent-glow);
   object-fit: cover;
-  flex-shrink: 0;
+  flex-shrink: 0 !important;
 }
 
 .mobile-drawer-user-info {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  overflow: hidden;
 }
 
 .mobile-drawer-user-name {
@@ -2072,15 +2083,18 @@ body.drawer-open {
   font-weight: 800;
   color: var(--text-primary);
   line-height: 1.25;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mobile-drawer-user-status {
   font-size: 11.5px;
   color: var(--text-muted);
   line-height: 1.35;
-  word-break: break-all;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mobile-drawer-auth-btn {
@@ -2772,7 +2786,7 @@ body.drawer-open {
   }
 
   #cinema-modal .storm-modal-body {
-    padding: 0 0 50px 0 !important;
+    padding: 0 0 calc(85px + env(safe-area-inset-bottom, 0px)) 0 !important;
     flex: 1 !important;
   }
 
@@ -2884,7 +2898,7 @@ body.drawer-open {
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     border-top: 1px solid var(--border-color) !important;
-    z-index: 700 !important;
+    z-index: 3200 !important;
     box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.65) !important;
   }
 
