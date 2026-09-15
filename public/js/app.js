@@ -287,6 +287,7 @@ function initBottomNav() {
   };
 
   let lastNavTriggerTime = 0;
+  let isNavDebouncing = false;
 
   document.querySelectorAll('.storm-bottom-nav-item').forEach(btn => {
     const handleNavAction = (e) => {
@@ -295,8 +296,10 @@ function initBottomNav() {
         e.stopPropagation();
       }
       const now = Date.now();
-      if (now - lastNavTriggerTime < 300) return;
+      if (isNavDebouncing || (now - lastNavTriggerTime < 450)) return;
+      isNavDebouncing = true;
       lastNavTriggerTime = now;
+      setTimeout(() => { isNavDebouncing = false; }, 450);
 
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try { navigator.vibrate(15); } catch (_) {}
@@ -1722,6 +1725,7 @@ function createRailCardHtml(item, idx, isWide = false) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
@@ -1849,11 +1853,13 @@ function renderHomeView(items) {
     return yr >= 2025;
   }).slice(0, 16);
 
-  // Рейл 3: Популярные фильмы
+  // Рейл 3: Популярные фильмы (строго исключаем сериалы)
   const movieItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
-    if (mType === 'series' || mType === 'cartoon-series' || mType === 'anime-series' || i.category === 'series' || i.type === 'series' || i.seasons) return false;
+    if (mType === 'series' || mType === 'cartoon-series' || mType === 'anime-series' || i.category === 'series' || i.type === 'series' || i.media_type === 'series' || i.seasons) return false;
+    const normTitle = String(i.title || '').toLowerCase();
+    if (normTitle.includes('сериал') || normTitle.includes('сезон') || /сезон\s*\d+/i.test(normTitle)) return false;
     return true;
   }).slice(0, 16);
 
@@ -1861,7 +1867,8 @@ function renderHomeView(items) {
   const seriesItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
-    return (mType === 'series' || i.category === 'series' || i.type === 'series' || i.seasons);
+    const normTitle = String(i.title || '').toLowerCase();
+    return (mType === 'series' || i.category === 'series' || i.type === 'series' || i.media_type === 'series' || i.seasons || normTitle.includes('сериал') || normTitle.includes('сезон'));
   }).slice(0, 16);
 
   // Рейл 5: Топ аниме
@@ -2094,6 +2101,7 @@ function renderMediaItems(items) {
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
@@ -3923,6 +3931,12 @@ export function toggleMobileDrawer() {
   } else {
     openMobileDrawer();
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.openMobileDrawer = openMobileDrawer;
+  window.closeMobileDrawer = closeMobileDrawer;
+  window.toggleMobileDrawer = toggleMobileDrawer;
 }
 
 function initMobileDrawer() {

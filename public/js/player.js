@@ -1923,6 +1923,8 @@ function renderQuickBarDropdowns() {
       epMenu.style.display = isOpen ? 'none' : 'block';
       epDropdown.classList.toggle('is-open', !isOpen);
       document.body.classList.toggle('quick-dropdown-active', !isOpen);
+      const quickBar = document.getElementById('player-series-quick-bar');
+      if (quickBar) quickBar.classList.toggle('has-open-dropdown', !isOpen);
     };
   }
 
@@ -1984,6 +1986,8 @@ function renderQuickBarDropdowns() {
       voiceMenu.style.display = isOpen ? 'none' : 'block';
       voiceDropdown.classList.toggle('is-open', !isOpen);
       document.body.classList.toggle('quick-dropdown-active', !isOpen);
+      const quickBar = document.getElementById('player-series-quick-bar');
+      if (quickBar) quickBar.classList.toggle('has-open-dropdown', !isOpen);
     };
   }
 
@@ -1991,6 +1995,7 @@ function renderQuickBarDropdowns() {
 }
 
 function closeOtherQuickDropdowns(activeDropdownId) {
+  const quickBar = document.getElementById('player-series-quick-bar');
   const ids = ['quick-season-dropdown', 'quick-episode-dropdown', 'quick-voiceover-dropdown'];
   ids.forEach(id => {
     if (id !== activeDropdownId) {
@@ -2002,6 +2007,11 @@ function closeOtherQuickDropdowns(activeDropdownId) {
       }
     }
   });
+
+  if (quickBar) {
+    const hasAnyOpen = ids.some(id => (id === activeDropdownId && document.getElementById(id)?.classList.contains('is-open')));
+    quickBar.classList.toggle('has-open-dropdown', hasAnyOpen);
+  }
 
   document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(dd => {
     dd.classList.remove('is-open');
@@ -4423,47 +4433,59 @@ function renderPlayerUtilityButtons() {
 
   container.innerHTML = `
     <div class="player-studio-dock">
-      <!-- Верхняя линейка вкладок и переключателей студии -->
-      <div class="player-studio-tabs-bar">
-        <div class="studio-tabs-group">
-          <button type="button" class="studio-tab-btn" id="studio-tab-video" title="Профессиональные настройки изображения (HDR10, Dolby Vision, FSR CAS, 21:9 Cinemascope)">
-            <span class="studio-tab-icon">🎛️</span>
-            <span class="studio-tab-text">Pro Видео</span>
-          </button>
-          <button type="button" class="studio-tab-btn" id="studio-tab-audio" title="Профессиональная студия звука (Dolby Atmos 3D, 10-Band EQ, AI Voice)">
-            <span class="studio-tab-icon">🔊</span>
-            <span class="studio-tab-text">Pro Звук</span>
-          </button>
-          <button type="button" class="studio-tab-btn ${ambilightEnabled ? 'active-glow' : ''}" id="studio-tab-ambilight" title="Динамическая фоновая подсветка Ambilight и настройки">
-            <span class="studio-tab-icon">🌈</span>
-            <span class="studio-tab-text">Ambilight</span>
-          </button>
-          <button type="button" class="studio-tab-btn" id="studio-tab-services" title="Интеллектуальные сервисы: Whisper AI, X-Ray, Офлайн, Торренты">
-            <span class="studio-tab-icon">⚡</span>
-            <span class="studio-tab-text">Сервисы и ИИ</span>
-          </button>
-          <button type="button" class="studio-tab-btn" id="studio-tab-subtitles" title="Внешние дорожки и пользовательские субтитры">
-            <span class="studio-tab-icon">💬</span>
-            <span class="studio-tab-text">Субтитры</span>
-          </button>
-          <button type="button" class="studio-tab-btn" id="studio-tab-room" title="Совместный просмотр с друзьями и чатом">
-            <span class="studio-tab-icon">👥</span>
-            <span class="studio-tab-text">Кинокомната</span>
-          </button>
-          <button type="button" class="studio-tab-btn" id="studio-tab-cleanview" title="STORM CleanView: автоматический пропуск рекламы и вырезание водяных знаков">
-            <span class="studio-tab-icon">🛡️</span>
-            <span class="studio-tab-text">CleanView</span>
-          </button>
+      <div class="player-studio-sections">
+        <!-- 1. Студия звука и видео -->
+        <div class="player-studio-section">
+          <div class="player-studio-section-label">🎬 Студия звука и видео</div>
+          <div class="player-studio-btn-grid">
+            <button type="button" class="studio-tab-btn" id="studio-tab-video" title="Профессиональные настройки изображения (HDR10, Dolby Vision, FSR CAS, 21:9 Cinemascope)">
+              <span class="studio-tab-icon">🎛️</span>
+              <span class="studio-tab-text">Pro Видео</span>
+            </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-audio" title="Профессиональная студия звука (Dolby Atmos 3D, 10-Band EQ, AI Voice)">
+              <span class="studio-tab-icon">🔊</span>
+              <span class="studio-tab-text">Pro Звук</span>
+            </button>
+            <button type="button" class="studio-tab-btn ${ambilightEnabled ? 'active-glow' : ''}" id="studio-tab-ambilight" title="Динамическая фоновая подсветка Ambilight и настройки">
+              <span class="studio-tab-icon">🌈</span>
+              <span class="studio-tab-text">Ambilight</span>
+            </button>
+            <button type="button" class="studio-tab-btn ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Ночной режим звука (компрессор динамического диапазона)">
+              <span class="studio-tab-icon">🌙</span>
+              <span class="studio-tab-text">Ночной звук</span>
+            </button>
+          </div>
         </div>
 
-        <div class="studio-quick-actions">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Ночной режим звука (компрессор динамического диапазона)">
-            <span>🌙 Ночь</span>
-          </button>
+        <!-- 2. Сервисы и инструменты -->
+        <div class="player-studio-section">
+          <div class="player-studio-section-label">⚡ Сервисы и просмотр</div>
+          <div class="player-studio-btn-grid">
+            <button type="button" class="studio-tab-btn" id="studio-tab-services" title="Интеллектуальные сервисы: Whisper AI, X-Ray, Офлайн, Торренты">
+              <span class="studio-tab-icon">⚡</span>
+              <span class="studio-tab-text">Сервисы и ИИ</span>
+            </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-subtitles" title="Внешние дорожки и пользовательские субтитры">
+              <span class="studio-tab-icon">💬</span>
+              <span class="studio-tab-text">Субтитры</span>
+            </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-room" title="Совместный просмотр с друзьями и чатом">
+              <span class="studio-tab-icon">👥</span>
+              <span class="studio-tab-text">Кинокомната</span>
+            </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-cleanview" title="STORM CleanView: автоматический пропуск рекламы и вырезание водяных знаков">
+              <span class="studio-tab-icon">🛡️</span>
+              <span class="studio-tab-text">CleanView</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Панель автоматизации -->
+        <div class="player-studio-quick-row">
           <label class="studio-autoskip-toggle" title="Автоматический пропуск опенингов и титров">
             <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
-            <span class="studio-autoskip-indicator"></span>
-            <span class="studio-autoskip-label">Автопропуск</span>
+            <span class="studio-autoskip-box"></span>
+            <span class="studio-autoskip-label">Автопропуск заставок и титров</span>
           </label>
         </div>
       </div>

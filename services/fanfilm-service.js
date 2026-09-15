@@ -473,15 +473,17 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
     const id = idMatch ? idMatch[1] : link;
 
     // Название
-    let title = el.find('.infoca a').first().text().trim() ||
+    let rawTitle = el.find('.infoca a').first().text().trim() ||
                 el.find('.top__title, .card__title, .poster__title, h2, h3').first().text().trim();
-    if (!title) {
-      title = el.find('img').first().attr('alt') || el.find('img').first().attr('title') || '';
+    if (!rawTitle) {
+      rawTitle = el.find('img').first().attr('alt') || el.find('img').first().attr('title') || '';
     }
-    if (!title) return;
+    if (!rawTitle) return;
+
+    const isExplicitSeries = /\(?(?:сериал|дорама|все сезоны|сезон)\)?/i.test(rawTitle) || /\/(?:serials?|dorama)\//i.test(link);
 
     // Очистка от "постер 4К", "постер", "4K", "смотреть"
-    title = title
+    let title = rawTitle
       .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
       .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
       .replace(/\s*\(?(?:фильм|сериал)\)?\s*$/i, '')
@@ -510,10 +512,13 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
 
     // Жанры из карточки HTML или канонической базы
     const rawCardGenres = el.find('.card__genre, .card__cat, .cat, .category, .tags a, a[href*="genre"], a[href*="xfsearch"]').text().trim();
-    const genres = resolveCanonicalGenres(title, category, '', rawCardGenres);
+    const genres = resolveCanonicalGenres(title, isExplicitSeries ? 'series' : category, '', rawCardGenres);
+    if (isExplicitSeries && !genres.includes('Сериал')) {
+      genres.push('Сериал');
+    }
 
     // Классификация типа медиа с защитой от ошибок
-    const mediaType = resolveCanonicalMediaType(title, link, category, genres);
+    const mediaType = resolveCanonicalMediaType(title, link, isExplicitSeries ? 'series' : category, genres, { isSeries: isExplicitSeries });
 
     // Проверяем дубликаты и исключаем сквозную карусель сайта
     if ((category !== 'popular' || page > 1) && FANFILM_PINNED_CAROUSEL_IDS.has(String(id))) {
