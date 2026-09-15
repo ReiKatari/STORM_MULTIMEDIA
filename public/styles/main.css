@@ -3423,58 +3423,103 @@ body.drawer-open {
 
 #cinema-modal.is-mini-pip .storm-modal-header {
   padding: 6px 10px !important;
-  min-height: 34px !important;
-  background: rgba(10, 14, 22, 0.95) !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  background: rgba(10, 14, 22, 0.96) !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
 }
 
 #cinema-modal.is-mini-pip .storm-modal-title {
   font-size: 12px !important;
-  max-width: 260px !important;
+  max-width: 200px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
 
-#cinema-modal.is-mini-pip .cinema-side-column,
-#cinema-modal.is-mini-pip .player-selector-dropdown-wrap,
-#cinema-modal.is-mini-pip #player-utility-actions,
-#cinema-modal.is-mini-pip #ambilight-settings-panel-host,
-#cinema-modal.is-mini-pip #cinema-modal-desc-wrap,
-#cinema-modal.is-mini-pip #series-seasons-container,
-#cinema-modal.is-mini-pip #anixart-controls-container,
-#cinema-modal.is-mini-pip .player-series-quick-bar,
-#cinema-modal.is-mini-pip .player-progress-area,
-#cinema-modal.is-mini-pip #player-status-buttons,
-#cinema-modal.is-mini-pip #player-collection-dropdown {
+/* В режиме PiP оставляем в шапке только кнопку возврата PiP, полноэкранный режим и закрытие */
+#cinema-modal.is-mini-pip #player-aspect-btn,
+#cinema-modal.is-mini-pip #player-sleep-btn,
+#cinema-modal.is-mini-pip #player-screen-lock-btn {
   display: none !important;
 }
 
 #cinema-modal.is-mini-pip .storm-modal-body {
   padding: 0 !important;
-  flex: 1 !important;
+  margin: 0 !important;
+  flex: 1 1 auto !important;
+  height: calc(100% - 36px) !important;
   overflow: hidden !important;
   background: #000000 !important;
 }
 
 #cinema-modal.is-mini-pip .cinema-layout-grid {
-  display: block !important;
+  display: flex !important;
+  flex-direction: column !important;
   height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
-#cinema-modal.is-mini-pip .cinema-main-column,
+#cinema-modal.is-mini-pip .cinema-main-column {
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* Скрываем абсолютно все побочные блоки (рецензии, сезоны, табы, селекторы, описания) */
+#cinema-modal.is-mini-pip .cinema-main-column > *:not(.cinema-player-container),
+#cinema-modal.is-mini-pip .cinema-side-column,
+#cinema-modal.is-mini-pip #cinema-reviews-container,
+#cinema-modal.is-mini-pip .franchise-order-section,
+#cinema-modal.is-mini-pip #cinema-modal-screenshots-container,
+#cinema-modal.is-mini-pip .cinema-modal-drag-handle,
+#cinema-modal.is-mini-pip .player-tap-zone,
+#cinema-modal.is-mini-pip .player-screen-locked-overlay,
+#cinema-modal.is-mini-pip .storm-inplayer-overlay {
+  display: none !important;
+}
+
+#cinema-modal.is-mini-pip .cinema-player-container {
+  height: 100% !important;
+  width: 100% !important;
+  aspect-ratio: unset !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: relative !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+
 #cinema-modal.is-mini-pip .cinema-player-wrapper,
 #cinema-modal.is-mini-pip .player-video-box {
   height: 100% !important;
   width: 100% !important;
   border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: absolute !important;
+  inset: 0 !important;
 }
 
 #cinema-modal.is-mini-pip video,
-#cinema-modal.is-mini-pip iframe {
+#cinema-modal.is-mini-pip iframe,
+#cinema-modal.is-mini-pip .cinema-player-iframe {
   border-radius: 0 !important;
   width: 100% !important;
   height: 100% !important;
+  position: absolute !important;
+  inset: 0 !important;
+  object-fit: contain !important;
 }
 
 /* =============================================================
@@ -5365,15 +5410,16 @@ body[data-active-tab="home"] #hero-showcase-container {
 .player-tap-zone {
   position: absolute;
   top: 0;
-  bottom: 0;
-  width: 42%;
-  z-index: 25;
+  bottom: 72px; /* Оставляем нижнюю панель управления плеера полностью доступной для кликов */
+  width: 38%;
+  z-index: 20;
   pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  cursor: pointer;
 }
 
 .player-tap-left {
@@ -5428,34 +5474,45 @@ body[data-active-tab="home"] #hero-showcase-container {
   margin-top: 2px;
 }
 
-/* Оверлей полной блокировки экрана от случайных нажатий */
+/* Оверлей полной блокировки экрана от случайных нажатий (100% прозрачный, без замыливания) */
 .player-screen-locked-overlay {
   position: absolute;
   inset: 0;
   z-index: 70;
-  background: rgba(5, 7, 10, 0.72);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.001) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   display: flex;
   align-items: center;
   justify-content: center;
   user-select: none;
+  cursor: pointer;
 }
 
 .player-unlock-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 24px;
+  padding: 12px 24px;
   border-radius: 30px;
-  background: rgba(15, 23, 42, 0.94);
-  border: 2px solid var(--accent);
+  background: rgba(10, 14, 24, 0.94);
+  border: 1.5px solid var(--accent);
   color: #ffffff;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--accent-glow);
-  transition: all 0.2s ease;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.9), 0 0 20px var(--accent-glow);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s ease, background 0.2s ease;
   outline: none;
+  pointer-events: auto;
+}
+
+.player-unlock-btn.is-hidden {
+  opacity: 0 !important;
+  transform: translateY(14px) !important;
+  pointer-events: none !important;
 }
 
 .player-unlock-btn:active {
