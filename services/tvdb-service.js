@@ -168,9 +168,9 @@ export async function resolveMediaPremiereAndYear({
   let resPremiere = String(premiere || '').trim();
   let resReleaseDate = String(releaseDate || '').trim();
 
-  // 1. Быстрое извлечение из базы известных релизов (например, «Обитель зла: Мутация» -> 2026)
-  const dictYear = resolveMediaYear(title, link, poster, resYear);
-  if (dictYear && !resYear) {
+  // 1. Быстрое извлечение из базы проверенных релизов KNOWN_RELEASE_YEARS и ссылки
+  const dictYear = resolveMediaYear(title, link, poster, '');
+  if (dictYear) {
     resYear = dictYear;
   }
 
@@ -181,6 +181,14 @@ export async function resolveMediaPremiereAndYear({
   if (!resYear && resReleaseDate) {
     const ym = resReleaseDate.match(/\b(19\d\d|20\d\d)\b/);
     if (ym) resYear = ym[1];
+  }
+
+  // Если дата была заполнена ошибочным годом, синхронизируем с подтвержденным годом
+  if (resYear && resReleaseDate && !resReleaseDate.startsWith(resYear)) {
+    resReleaseDate = `${resYear}-01-01`;
+    if (!premiere || premiere.includes('2026')) {
+      resPremiere = `${resYear} год`;
+    }
   }
 
   // 3. Запрос в TheTVDB v4
@@ -210,7 +218,6 @@ export async function resolveMediaPremiereAndYear({
       // Пробуем сначала по русскому названию, затем по оригинальному
       const queries = [cleanTitle];
       if (originalTitle && originalTitle !== cleanTitle) queries.push(originalTitle);
-      // Для названий с двоеточием (например, "Обитель зла: Мутация" -> "Мутация")
       if (cleanTitle.includes(':')) {
         queries.push(cleanTitle.split(':').pop().trim());
       }
@@ -222,7 +229,7 @@ export async function resolveMediaPremiereAndYear({
           ? `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(q)}`
           : `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(q)}`;
 
-        const tmdbRes = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
+        const tmdbRes = await fetch(searchUrl, { signal: AbortSignal.timeout(3000) });
         if (tmdbRes.ok) {
           const data = await tmdbRes.json();
           if (data.results && data.results.length > 0) {
@@ -248,23 +255,25 @@ export async function resolveMediaPremiereAndYear({
     resYear = resolveMediaYear(title, link, poster, '');
   }
 
-  // 6. ФИНАЛЬНАЯ ГАРАНТИЯ: Никогда не возвращать «Не указана»
+  // 6. Финальная проверка: извлечение года из заголовка
   if (!resYear) {
-    const ym = String(title).match(/\b(19\d\d|20\d\d)\b/);
-    resYear = ym ? ym[1] : '2026';
+    const ym = String(title).match(/[\(\[]\s*(\d{4})\s*[\)\]]/) || String(title).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym && parseInt(ym[1], 10) <= 2028 && parseInt(ym[1], 10) >= 1920) {
+      resYear = ym[1];
+    }
   }
 
-  if (!resReleaseDate) {
+  if (resYear && !resReleaseDate) {
     resReleaseDate = `${resYear}-01-01`;
   }
 
-  if (!resPremiere || resPremiere === 'Не указана') {
-    resPremiere = `${resYear} год`;
+  if (!resPremiere || resPremiere === 'Не указана' || resPremiere.includes('undefined')) {
+    resPremiere = resYear ? `${resYear} год` : 'Дата уточняется';
   }
 
   return {
-    year: String(resYear),
+    year: String(resYear || ''),
     premiere: resPremiere,
-    release_date: resReleaseDate
+    release_date: resReleaseDate || ''
   };
 }

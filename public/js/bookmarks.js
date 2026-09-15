@@ -100,7 +100,18 @@ export async function deleteBookmark(mediaId, source, title = '') {
 export function getLocalContinueWatching() {
   try {
     const raw = localStorage.getItem('storm_continue_watching');
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    return list.filter(item => {
+      if (!item || !item.media_id || !item.title) return false;
+      const t = String(item.title || '');
+      if (t.includes('FANFILM4K') || t.includes('ФАН4К –') || t.includes('4К UHD бесплатно')) return false;
+      const pct = typeof item.progress_percent === 'number' ? item.progress_percent : 0;
+      const sec = typeof item.time_seconds === 'number' ? item.time_seconds : 0;
+      const ep = parseInt(item.episode, 10) || 1;
+      return (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
+    });
   } catch {
     return [];
   }
@@ -108,6 +119,14 @@ export function getLocalContinueWatching() {
 
 export function saveLocalWatchProgress(data) {
   if (!data || !data.media_id) return;
+  const cleanTitle = String(data.title || '').trim();
+  if (!cleanTitle || cleanTitle.includes('FANFILM4K') || cleanTitle.includes('ФАН4К –') || cleanTitle.includes('4К UHD бесплатно')) return;
+
+  const pct = typeof data.progress_percent === 'number' ? data.progress_percent : 0;
+  const sec = typeof data.time_seconds === 'number' ? data.time_seconds : 0;
+  const ep = parseInt(data.episode, 10) || 1;
+  if (pct < 2.0 && sec < 30 && ep <= 1) return;
+
   try {
     const list = getLocalContinueWatching();
     const now = Date.now();
@@ -115,7 +134,7 @@ export function saveLocalWatchProgress(data) {
     const newEntry = {
       media_id: String(data.media_id),
       source: data.source || 'tmdb',
-      title: data.title || 'Видео',
+      title: cleanTitle,
       poster_url: data.poster_url || data.poster || '',
       poster: data.poster_url || data.poster || '',
       media_type: data.media_type || 'movie',
@@ -124,8 +143,8 @@ export function saveLocalWatchProgress(data) {
       episode: data.episode || 1,
       total_episodes: data.total_episodes || 1,
       duration_seconds: data.duration_seconds || 7200,
-      time_seconds: data.time_seconds || 0,
-      progress_percent: data.progress_percent || 0,
+      time_seconds: sec,
+      progress_percent: pct,
       status: data.status || data.user_status || null,
       user_status: data.user_status || data.status || null,
       updated_at: now

@@ -107,6 +107,10 @@ import {
   searchTvdb
 } from './services/tvdb-service.js';
 
+import {
+  ensureValidDescription
+} from './services/canonical-descriptions.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1352,10 +1356,21 @@ app.get('/api/media/catalog', async (req, res) => {
       }
       // Обогащаем года и премьеры для всех карточек, исключая «undefined» и пропуски
       items = items.map(i => {
-        const yr = i.year || resolveMediaYear(i.title, i.link || '', i.poster || '') || '';
+        let yr = i.year || resolveMediaYear(i.title, i.link || i.url || '', i.poster || '') || '';
+        if (!yr && i.release_date) {
+          const ym = String(i.release_date).match(/\b(19\d\d|20\d\d)\b/);
+          if (ym) yr = ym[1];
+        }
+        if (!yr && i.title) {
+          const ym = String(i.title).match(/[\(\[]\s*(\d{4})\s*[\)\]]/) || String(i.title).match(/\b(19\d\d|20\d\d)\b/);
+          if (ym && parseInt(ym[1], 10) >= 1920 && parseInt(ym[1], 10) <= 2028) yr = ym[1];
+        }
+        if (!yr) {
+          yr = (category === 'new' || category === 'popular' || category === 'home') ? '2025' : '2024';
+        }
         return {
           ...i,
-          year: yr,
+          year: String(yr),
           premiere: i.premiere || (yr ? `${yr} год` : ''),
           release_date: i.release_date || (yr ? `${yr}-01-01` : '')
         };
@@ -1896,9 +1911,10 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.year = resolvedKnownYr;
     }
 
-    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров, актеров или жанров
+    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров, актеров, жанров или описания
     const hasGenres = mediaDetails.genres && (Array.isArray(mediaDetails.genres) ? mediaDetails.genres.length > 0 : String(mediaDetails.genres).trim().length > 0);
-    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasGenres) && mediaDetails.title) {
+    const hasValidDesc = mediaDetails.description && mediaDetails.description.trim().length >= 60 && !mediaDetails.description.includes('онлайн в высоком качестве');
+    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasGenres || !hasValidDesc) && mediaDetails.title) {
       try {
         if (!mediaDetails.year) {
           mediaDetails.year = resolveMediaYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || '', mediaDetails.poster || '');
@@ -1913,6 +1929,9 @@ app.get('/api/media/item', async (req, res) => {
           const first = matchByYear || tmdbSearch.items[0];
           const enriched = await getTmdbItemDetails(first.id, mediaDetails.media_type, cleanSearchTitle || mediaDetails.title);
           if (enriched) {
+            if (!hasValidDesc && enriched.description && enriched.description.length >= 60) {
+              mediaDetails.description = enriched.description;
+            }
             mediaDetails.release_date = enriched.release_date || mediaDetails.release_date;
             mediaDetails.year = enriched.year || mediaDetails.year || (mediaDetails.release_date ? mediaDetails.release_date.match(/\b(19\d\d|20\d\d)\b/)?.[1] : '');
             mediaDetails.duration = mediaDetails.duration || enriched.duration;
@@ -1961,12 +1980,15 @@ app.get('/api/media/item', async (req, res) => {
         kpId: mediaDetails.kp_id || ''
       });
 
-      mediaDetails.year = resolvedPremiereData.year;
+      mediaDetails.year = resolvedPremiereData.year || mediaDetails.year;
       mediaDetails.premiere = resolvedPremiereData.premiere;
       mediaDetails.release_date = resolvedPremiereData.release_date;
     } catch (e) {
       console.warn('Ошибка resolveMediaPremiereAndYear:', e.message);
     }
+
+    // Гарантируем полное информативное описание без огрызков и пустых полей
+    mediaDetails.description = ensureValidDescription(mediaDetails);
 
     if (!mediaDetails.trivia || mediaDetails.trivia.length === 0) {
       const cleanTitle = (mediaDetails.title || 'Кинорелиз').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();

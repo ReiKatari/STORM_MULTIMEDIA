@@ -418,24 +418,6 @@ export async function openPlayerModal(mediaItem, options = {}) {
   initProgressSlider();
   initFullscreenControls();
 
-  // Мгновенно фиксируем фильм в «Продолжить просмотр» при открытии
-  try {
-    syncWatchProgress({
-      media_id: currentMedia.id,
-      source: currentMedia.source,
-      title: currentMedia.title,
-      poster_url: currentMedia.poster,
-      media_type: currentMedia.media_type,
-      year: currentMedia.year || '',
-      season: options.initialSeason || currentMedia.season || 1,
-      episode: options.initialEpisode || currentEpisodeIndex || 1,
-      total_episodes: currentEpisodes.length || 1,
-      duration_seconds: 7200,
-      time_seconds: Math.round(((savedPercent || 1) / 100) * 7200),
-      progress_percent: savedPercent || 1
-    });
-  } catch (e) {}
-
   // Обновляем URL для глубокого связывания (Deep Linking)
   updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
 
@@ -5237,15 +5219,21 @@ function renderDetailedMediaInfo(mediaDetails) {
       formattedReleaseDate = String(rawDate).trim();
     }
   }
-  if (!formattedReleaseDate || formattedReleaseDate === 'Не указана') {
+  if (!formattedReleaseDate || formattedReleaseDate === 'Не указана' || formattedReleaseDate.includes('undefined')) {
     if (mediaDetails.year) {
       formattedReleaseDate = `${mediaDetails.year} год`;
     } else if (currentMedia?.year) {
       formattedReleaseDate = `${currentMedia.year} год`;
     } else {
-      const ym = String(mediaDetails.title || currentMedia?.title || '').match(/\b(19\d\d|20\d\d)\b/);
-      formattedReleaseDate = ym ? `${ym[1]} год` : '2026 год';
+      const ym = String(mediaDetails.title || currentMedia?.title || '').match(/[\(\[]\s*(\d{4})\s*[\)\]]/) ||
+                 String(mediaDetails.title || currentMedia?.title || '').match(/\b(19\d\d|20\d\d)\b/);
+      formattedReleaseDate = (ym && parseInt(ym[1], 10) <= 2028 && parseInt(ym[1], 10) >= 1920) ? `${ym[1]} год` : 'Дата уточняется';
     }
+  }
+
+  // Защита от ошибочного 2026 года для старых фильмов
+  if (mediaDetails.year && String(mediaDetails.year) !== '2026' && formattedReleaseDate.includes('2026')) {
+    formattedReleaseDate = `${mediaDetails.year} год`;
   }
 
   const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : '1 ч 45 мин');
