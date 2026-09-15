@@ -5,6 +5,7 @@
  */
 
 import { getCache, setCache } from '../db.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
 
 const ANILIBRIA_BASE = 'https://anilibria.top/api/v1';
 const DOMAIN = 'https://anilibria.top';
@@ -26,11 +27,9 @@ function formatAniLibriaRelease(rel) {
 
   const title = rel.name?.main || rel.name?.english || rel.name?.alternative || 'Аниме релиз';
   const originalTitle = rel.name?.english || rel.name?.alternative || '';
-  let year = String(rel.year || rel.season?.year || '').trim();
-  if (!year || year === '0') {
-    const ym = `${title} ${originalTitle} ${rel.description || ''}`.match(/\b(19\d\d|20\d\d)\b/);
-    if (ym) year = ym[1];
-  }
+  let rawYear = String(rel.year || rel.season?.year || '').trim();
+  if (rawYear === '0') rawYear = '';
+  const resolvedYear = resolveCanonicalYear(title, '', '', rel.season?.year, rawYear) || '2026';
 
   let poster = 'assets/favicon.svg';
   const posterPath = rel.poster?.src || rel.poster?.preview || rel.poster?.thumbnail;
@@ -38,8 +37,9 @@ function formatAniLibriaRelease(rel) {
     poster = posterPath.startsWith('http') ? posterPath : `${DOMAIN}${posterPath}`;
   }
 
-  const isMovie = rel.type?.value === 'MOVIE';
-  const genres = (rel.genres || []).map(g => g.name).join(', ');
+  const rawGenres = (rel.genres || []).map(g => g.name);
+  const genres = resolveCanonicalGenres(title, 'anime', rel.description || '', rawGenres);
+  const mediaType = rel.type?.value === 'MOVIE' ? 'anime-movie' : resolveCanonicalMediaType(title, '', 'anime-series', genres);
 
   return {
     id: String(rel.id),
@@ -47,9 +47,10 @@ function formatAniLibriaRelease(rel) {
     title: title.trim(),
     original_title: originalTitle.trim(),
     poster,
-    year: year || '2024',
+    year: resolvedYear,
     rating: rel.shikimori?.rating || 0,
-    media_type: isMovie ? 'anime-movie' : 'anime-series',
+    media_type: mediaType,
+    category: mediaType === 'anime-movie' ? 'Аниме-фильм' : 'Аниме-сериал',
     quality: '1080p FHD',
     episodes_released: rel.latest_episode?.ordinal || rel.episodes_total || 0,
     episodes_total: rel.episodes_total || 0,

@@ -97,6 +97,116 @@ export async function deleteBookmark(mediaId, source, title = '') {
 // ЛОКАЛЬНАЯ И СЕРВЕРНАЯ ИСТОРИЯ ПРОСМОТРА (CONTINUE WATCHING)
 // -------------------------------------------------------------
 
+export function detectClientMediaType(item) {
+  if (!item) return 'movie';
+  const t = String(item.title || item.name || '').toLowerCase();
+  const cat = String(item.category || '').toLowerCase();
+  const link = String(item.link || item.url || '').toLowerCase();
+  const src = String(item.source || '').toLowerCase();
+
+  // Аниме
+  if (src === 'anilibria' || src === 'anixart' || src === 'shikimori' ||
+      cat.includes('anime') || link.includes('anime') ||
+      t.includes('перекуре за супермаркетом') || t.includes('дандадан') || t.includes('клинок, рассекающий') ||
+      t.includes('атака титанов') || t.includes('аркейн') || t.includes('поднятие уровня') || t.includes('магическая битва')) {
+    if (t.includes('фильм') || cat === 'anime-movies' || item.media_type === 'anime-movie') {
+      return 'anime-movie';
+    }
+    return 'anime-series';
+  }
+
+  // Мультфильмы
+  if (cat.includes('cartoon') || link.includes('mult') || t.includes('мульт')) {
+    const hasEp = (parseInt(item.total_episodes, 10) > 1) || (parseInt(item.episode, 10) > 1) || link.includes('serial');
+    return hasEp ? 'cartoon-series' : 'cartoon';
+  }
+
+  // Известные сериалы
+  const knownSeries = [
+    'джек ричер', 'ричер', 'reacher',
+    'стюарт блум не смог спасти вселенную', 'стюарт блум',
+    'укрытие', 'бункер', 'silo', 'разделение', 'severance',
+    'игра престолов', 'дом дракона', 'пацаны', 'поколение «ви»', 'поколение ви',
+    'очень странные дела', 'кольца власти', 'сёгун', 'сегун', 'shogun',
+    'фоллаут', 'fallout', 'пингвин', 'the penguin', 'джентльмены', 'the gentlemen',
+    'одни из нас', 'the last of us', 'мандалорец', 'андор', 'локи', 'ведьмак',
+    'чернобыль', 'во все тяжкие', 'лучше звоните солу', 'медведь', 'шерлок',
+    'доктор хаус', 'острые козырьки', 'слово пацана', 'вампиры средней полосы'
+  ];
+
+  if (knownSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
+    return 'series';
+  }
+
+  const ep = parseInt(item.episode, 10) || 0;
+  const totalEp = parseInt(item.total_episodes, 10) || parseInt(item.episodes_total, 10) || 0;
+  const season = parseInt(item.season, 10) || 0;
+  if (ep > 1 || totalEp > 1 || season > 1) {
+    return 'series';
+  }
+
+  if (link.includes('serial') || link.includes('fan-serials') || cat.includes('series') || t.includes('сериал') || t.includes('сезон')) {
+    return 'series';
+  }
+
+  return item.media_type || 'movie';
+}
+
+export function detectClientYear(item) {
+  if (!item) return '';
+  const t = String(item.title || item.name || '').toLowerCase();
+
+  const knownYears = {
+    'история о перекуре за супермаркетом': '2026',
+    'super no ura de yani suu futari': '2026',
+    'дандадан 2': '2025',
+    'dandadan 2': '2025',
+    'человек-паук: новый день': '2026',
+    'стюарт блум не смог спасти вселенную': '2025',
+    'обитель зла: мутация': '2025',
+    'джек ричер': '2022',
+    'ричер': '2022',
+    'reacher': '2022',
+    'укрытие': '2023',
+    'бункер': '2023',
+    'silo': '2023',
+    'мэйдэй': '2025',
+    'изгой-один': '2016',
+    'интерстеллар': '2014',
+    'начало': '2010',
+    'дюна: часть вторая': '2024',
+    'дюна': '2021',
+    'оппенгеймер': '2023',
+    'тёмный рыцарь': '2008',
+    'темный рыцарь': '2008'
+  };
+
+  for (const [k, y] of Object.entries(knownYears)) {
+    if (t === k || t.startsWith(k + ' ') || t.includes(k)) return y;
+  }
+
+  if (item.premiere) {
+    const ym = String(item.premiere).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) return ym[1];
+  }
+  if (item.release_date) {
+    const ym = String(item.release_date).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) return ym[1];
+  }
+
+  const bm = String(item.title || '').match(/[\(\[]\s*(\d{4})\s*[\)\]]/);
+  if (bm && parseInt(bm[1], 10) >= 1920 && parseInt(bm[1], 10) <= 2030) return bm[1];
+
+  if (item.year) {
+    const ym = String(item.year).match(/\b(19\d\d|20\d\d)\b/);
+    if (ym && ym[1] !== '2024') return ym[1];
+    if (ym && ym[1] === '2024' && (t.includes('перекур') || t.includes('дандадан 2'))) return '2026';
+    if (ym) return ym[1];
+  }
+
+  return '';
+}
+
 export function getLocalContinueWatching() {
   try {
     const raw = localStorage.getItem('storm_continue_watching');
@@ -111,6 +221,15 @@ export function getLocalContinueWatching() {
       const sec = typeof item.time_seconds === 'number' ? item.time_seconds : 0;
       const ep = parseInt(item.episode, 10) || 1;
       return (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
+    }).map(item => {
+      // Автоматическое исправление устаревших типов и годов в локальном хранилище пользователя
+      const cleanType = detectClientMediaType(item);
+      const cleanYr = detectClientYear(item);
+      return {
+        ...item,
+        media_type: cleanType,
+        year: cleanYr || item.year
+      };
     });
   } catch {
     return [];
@@ -127,6 +246,9 @@ export function saveLocalWatchProgress(data) {
   const ep = parseInt(data.episode, 10) || 1;
   if (pct < 2.0 && sec < 30 && ep <= 1) return;
 
+  const cleanMediaType = detectClientMediaType(data);
+  const cleanYear = detectClientYear(data) || data.year || '';
+
   try {
     const list = getLocalContinueWatching();
     const now = Date.now();
@@ -137,8 +259,8 @@ export function saveLocalWatchProgress(data) {
       title: cleanTitle,
       poster_url: data.poster_url || data.poster || '',
       poster: data.poster_url || data.poster || '',
-      media_type: data.media_type || 'movie',
-      year: data.year || '',
+      media_type: cleanMediaType,
+      year: cleanYear,
       season: data.season || 1,
       episode: data.episode || 1,
       total_episodes: data.total_episodes || 1,

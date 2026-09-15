@@ -1,6 +1,12 @@
 import * as cheerio from 'cheerio';
 import { getCache, setCache } from '../db.js';
 import { ensureValidDescription } from './canonical-descriptions.js';
+import {
+  resolveCanonicalMediaType,
+  resolveCanonicalYear,
+  resolveCanonicalGenres,
+  KNOWN_RELEASE_YEARS as INTEL_RELEASE_YEARS
+} from './canonical-media-intel.js';
 
 const BASE_URL = 'https://v17.fanfilm4k.media';
 
@@ -485,7 +491,7 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
 
     // Точный год выпуска
     const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
-    const realYear = resolveMediaYear(title, link, poster, tagLeft);
+    const realYear = resolveCanonicalYear(title, link, poster, tagLeft);
 
     // Рейтинг (строго из правого тега, без смешивания с годом)
     let ratingText = el.find('.tag.top-right').first().text().replace(/[^\d\.]/g, '').trim();
@@ -494,15 +500,12 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
       if (rm) ratingText = rm[1];
     }
 
-    // Классификация типа медиа с защитой от попадания аниме в мультфильмы
-    let mediaType = 'movie';
-    if (isAnimeLinkOrTitle(title, link, category)) {
-      mediaType = link.includes('serial') || link.includes('multserialy') ? 'anime-series' : 'anime-movie';
-    } else if (link.includes('serial') || link.includes('fan-serials') || title.toLowerCase().includes('сериал')) {
-      mediaType = 'series';
-    } else if (link.includes('mult') || title.toLowerCase().includes('мульт') || category.includes('cartoon')) {
-      mediaType = 'cartoon';
-    }
+    // Жанры из карточки HTML или канонической базы
+    const rawCardGenres = el.find('.card__genre, .card__cat, .cat, .category, .tags a, a[href*="genre"], a[href*="xfsearch"]').text().trim();
+    const genres = resolveCanonicalGenres(title, category, '', rawCardGenres);
+
+    // Классификация типа медиа с защитой от ошибок
+    const mediaType = resolveCanonicalMediaType(title, link, category, genres);
 
     // Проверяем дубликаты и исключаем сквозную карусель сайта
     if ((category !== 'popular' || page > 1) && FANFILM_PINNED_CAROUSEL_IDS.has(String(id))) {
@@ -518,8 +521,9 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
         poster,
         quality,
         is4K,
-        year: realYear || '2025',
+        year: realYear || '2026',
         rating: parseFloat(ratingText) || 0,
+        genres,
         media_type: mediaType
       });
     }
@@ -779,6 +783,10 @@ export async function getFanFilmDetails(idOrUrl) {
       }
     });
 
+    const detectedType = resolveCanonicalMediaType(title, url, '', genres, { total_episodes: players.length, season: 1 });
+    const canonicalGenres = resolveCanonicalGenres(title, '', description, genres);
+    const resolvedYear = year || resolveCanonicalYear(title, url, poster, premiere) || '2026';
+
     const result = {
       id: String(idOrUrl),
       source: 'fanfilm4k',
@@ -786,11 +794,13 @@ export async function getFanFilmDetails(idOrUrl) {
       original_title: originalTitle,
       poster,
       description,
-      year: year || '',
-      premiere: premiere || '',
-      release_date: premiere || (year ? `${year}-01-01` : ''),
+      year: resolvedYear,
+      premiere: premiere || (resolvedYear ? `${resolvedYear} год` : ''),
+      release_date: premiere || (resolvedYear ? `${resolvedYear}-01-01` : ''),
       rating: rating || 8.0,
-      genres,
+      genres: canonicalGenres,
+      media_type: detectedType,
+      category: detectedType === 'series' ? 'Сериал' : (detectedType.includes('anime') ? 'Аниме' : (detectedType.includes('cartoon') ? 'Мультфильм' : 'Фильм')),
       countries,
       director,
       actors,

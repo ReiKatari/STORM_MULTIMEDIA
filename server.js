@@ -111,6 +111,12 @@ import {
   ensureValidDescription
 } from './services/canonical-descriptions.js';
 
+import {
+  resolveCanonicalMediaType,
+  resolveCanonicalYear,
+  resolveCanonicalGenres
+} from './services/canonical-media-intel.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1354,23 +1360,24 @@ app.get('/api/media/catalog', async (req, res) => {
       if (page > 1) {
         items = items.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
       }
-      // Обогащаем года и премьеры для всех карточек, исключая «undefined» и пропуски
+      // Обогащаем года, тип медиа, жанры и премьеры для 100% карточек
       items = items.map(i => {
-        let yr = i.year || resolveMediaYear(i.title, i.link || i.url || '', i.poster || '') || '';
-        if (!yr && i.release_date) {
-          const ym = String(i.release_date).match(/\b(19\d\d|20\d\d)\b/);
-          if (ym) yr = ym[1];
-        }
-        if (!yr && i.title) {
-          const ym = String(i.title).match(/[\(\[]\s*(\d{4})\s*[\)\]]/) || String(i.title).match(/\b(19\d\d|20\d\d)\b/);
-          if (ym && parseInt(ym[1], 10) >= 1920 && parseInt(ym[1], 10) <= 2028) yr = ym[1];
-        }
-        if (!yr) {
-          yr = (category === 'new' || category === 'popular' || category === 'home') ? '2025' : '2024';
-        }
+        const yr = resolveCanonicalYear(i.title, i.link || i.url || '', i.poster || '', i.premiere || i.release_date, i.year);
+        const genres = resolveCanonicalGenres(i.title, category, i.description || '', i.genres);
+        const mediaType = resolveCanonicalMediaType(i.title, i.link || i.url || '', category, genres, i);
+        const categoryLabel = mediaType === 'series' ? 'Сериал' :
+                             (mediaType === 'anime-series' ? 'Аниме-сериал' :
+                             (mediaType === 'anime-movie' ? 'Аниме-фильм' :
+                             (mediaType === 'cartoon-series' ? 'Мультсериал' :
+                             (mediaType === 'cartoon' ? 'Мультфильм' :
+                             (mediaType === 'show' ? 'Шоу' : 'Фильм')))));
+
         return {
           ...i,
           year: String(yr),
+          genres,
+          media_type: mediaType,
+          category: i.category || categoryLabel,
           premiere: i.premiere || (yr ? `${yr} год` : ''),
           release_date: i.release_date || (yr ? `${yr}-01-01` : '')
         };
@@ -2086,6 +2093,17 @@ app.get('/api/media/item', async (req, res) => {
       allPlayers[0].is_recommended = true;
       allPlayers[0].recommended_badge = '🔥 Рекомендуемый';
     }
+
+    // Каноническое обогащение типа медиа, года и жанров
+    mediaDetails.media_type = resolveCanonicalMediaType(mediaDetails.title, mediaDetails.fanfilm_4k_url || mediaDetails.link || '', mediaDetails.category || '', mediaDetails.genres, mediaDetails);
+    mediaDetails.category = mediaDetails.media_type === 'series' ? 'Сериал' :
+                           (mediaDetails.media_type === 'anime-series' ? 'Аниме-сериал' :
+                           (mediaDetails.media_type === 'anime-movie' ? 'Аниме-фильм' :
+                           (mediaDetails.media_type === 'cartoon-series' ? 'Мультсериал' :
+                           (mediaDetails.media_type === 'cartoon' ? 'Мультфильм' :
+                           (mediaDetails.media_type === 'show' ? 'Шоу' : 'Фильм')))));
+    mediaDetails.year = resolveCanonicalYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || mediaDetails.link || '', mediaDetails.poster || '', mediaDetails.premiere || mediaDetails.release_date, mediaDetails.year);
+    mediaDetails.genres = resolveCanonicalGenres(mediaDetails.title, mediaDetails.category, mediaDetails.description || '', mediaDetails.genres);
 
     let userBookmark = null;
     if (req.user) {
