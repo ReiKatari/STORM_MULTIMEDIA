@@ -1828,7 +1828,7 @@ body {
   background: rgba(0, 0, 0, 0.82);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  z-index: 2000 !important;
+  z-index: 3000 !important;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -1862,7 +1862,7 @@ body.drawer-open {
   flex-direction: column;
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 2100 !important;
+  z-index: 3100 !important;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
 
@@ -2812,20 +2812,36 @@ body.drawer-open {
 
   #cinema-modal .player-series-quick-bar {
     padding: 8px 12px !important;
-    overflow-x: auto !important;
+    overflow: visible !important;
     scrollbar-width: none !important;
     display: flex !important;
+    flex-wrap: wrap !important;
     gap: 8px !important;
+    position: relative !important;
+    z-index: 120 !important;
+  }
+
+  #cinema-modal .player-series-quick-bar.has-open-dropdown,
+  #cinema-modal .player-series-quick-bar:has(.is-open) {
+    z-index: 2600 !important;
   }
 
   #cinema-modal .player-series-quick-bar .quick-select-dropdown {
-    flex-shrink: 0 !important;
-    min-width: 0 !important;
+    flex: 1 1 calc(33.33% - 8px) !important;
+    min-width: 110px !important;
+    position: relative !important;
   }
 
   #cinema-modal #player-selector-dropdown-wrap {
     padding: 0 12px !important;
     margin-top: 6px !important;
+    position: relative !important;
+    z-index: 80 !important;
+  }
+
+  #cinema-modal #player-selector-dropdown-wrap.is-open,
+  #cinema-modal #player-selector-dropdown-wrap:has(.is-open) {
+    z-index: 2600 !important;
   }
 
   #cinema-modal #player-utility-actions {
@@ -4279,7 +4295,7 @@ body[data-active-tab="home"] #hero-showcase-container {
     backdrop-filter: blur(28px) saturate(200%) !important;
     -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
     box-shadow: var(--dock-shadow), 0 12px 36px rgba(0, 0, 0, 0.65) !important;
-    z-index: 2050 !important;
+    z-index: 3050 !important;
     justify-content: space-around !important;
     align-items: center !important;
     padding: 4px 6px !important;

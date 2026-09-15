@@ -2276,7 +2276,7 @@ button:active .storm-status-svg {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  z-index: 1500;
+  z-index: 2500 !important;
   background: var(--bg-secondary);
   border: 1px solid var(--accent);
   border-radius: 12px;
@@ -3048,50 +3048,75 @@ button:active .storm-status-svg {
 }
 
 /* ==========================================================================
-   STUDIO DOCK И DRAWER (КОМПАКТНАЯ СТУДИЙНАЯ ПАНЕЛЬ ПЛЕЕРА)
+   STUDIO DOCK И DRAWER (СТРУКТУРИРОВАННАЯ СТУДИЙНАЯ ПАНЕЛЬ ПЛЕЕРА)
    ========================================================================== */
 .player-studio-dock {
-  margin: 12px 0 34px 0;
+  margin: 12px 0 24px 0;
   width: 100%;
   position: relative;
   z-index: 15;
 }
 
-.player-studio-tabs-bar {
+.player-studio-sections {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.player-studio-section {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  padding: 10px 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 10px 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.studio-tabs-group {
+.player-studio-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent);
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+}
+
+.player-studio-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .player-studio-btn-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
 }
 
 .studio-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 7px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   border-radius: 8px;
-  padding: 7px 13px;
+  padding: 8px 10px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
 }
 
 .studio-tab-btn:hover {
@@ -3103,7 +3128,7 @@ button:active .storm-status-svg {
 }
 
 .studio-tab-btn:active {
-  transform: translateY(1px) scale(0.98);
+  transform: translateY(1.5px) scale(0.98);
 }
 
 .studio-tab-btn.active {
@@ -3117,6 +3142,7 @@ button:active .storm-status-svg {
 .studio-tab-btn.active-glow {
   border-color: rgba(0, 210, 255, 0.6);
   color: var(--accent);
+  background: rgba(0, 210, 255, 0.08);
 }
 
 .studio-tab-icon {
@@ -3126,24 +3152,28 @@ button:active .storm-status-svg {
 
 .studio-tab-text {
   letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.studio-quick-actions {
+.player-studio-quick-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 14px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
 .studio-autoskip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 5px 10px;
+  gap: 9px;
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-secondary);
   transition: all 0.2s ease;
@@ -3151,7 +3181,6 @@ button:active .storm-status-svg {
 }
 
 .studio-autoskip-toggle:hover {
-  border-color: var(--accent);
   color: var(--text-primary);
 }
 
@@ -3159,21 +3188,24 @@ button:active .storm-status-svg {
   display: none;
 }
 
+.studio-autoskip-box,
 .studio-autoskip-indicator {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid var(--border-color);
   display: inline-block;
   position: relative;
   transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-sizing: border-box;
 }
 
+.studio-autoskip-toggle input:checked + .studio-autoskip-box,
 .studio-autoskip-toggle input:checked + .studio-autoskip-indicator {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 10px var(--accent-glow) !important;
 }
 
 /* Выдвижной блок студии */
@@ -4350,7 +4382,8 @@ button:active .storm-status-svg {
    ========================================================================== */
 .player-series-quick-bar {
   position: relative;
-  z-index: 100;
+  z-index: 120;
+  overflow: visible !important;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -4364,6 +4397,11 @@ button:active .storm-status-svg {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.player-series-quick-bar.has-open-dropdown,
+.player-series-quick-bar:has(.is-open) {
+  z-index: 2600 !important;
+}
+
 .quick-select-dropdown {
   position: relative;
   flex: 1;
@@ -4371,7 +4409,7 @@ button:active .storm-status-svg {
 }
 
 .quick-select-dropdown.is-open {
-  z-index: 120;
+  z-index: 2600 !important;
 }
 
 .quick-dropdown-trigger {
@@ -4409,23 +4447,22 @@ button:active .storm-status-svg {
 }
 
 .quick-dropdown-val {
+  flex: 1;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
-  text-align: left;
 }
 
 .quick-dropdown-badge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
-  background: linear-gradient(135deg, #00d2ff, #a855f7);
-  color: #fff;
-  box-shadow: 0 0 8px rgba(0, 210, 255, 0.4);
-  text-transform: uppercase;
-  margin-left: auto;
+  background: rgba(0, 210, 255, 0.15);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  letter-spacing: 0.5px;
 }
 
 .quick-dropdown-arrow {
@@ -4446,7 +4483,7 @@ button:active .storm-status-svg {
   min-width: 100%;
   max-height: 320px;
   overflow-y: auto;
-  z-index: 1200;
+  z-index: 2500 !important;
   background: rgba(15, 18, 26, 0.98);
   backdrop-filter: blur(16px);
   border: 1px solid var(--accent);
@@ -4455,6 +4492,7 @@ button:active .storm-status-svg {
   padding: 6px;
   scrollbar-width: thin;
   scrollbar-color: var(--accent) transparent;
+  box-sizing: border-box !important;
 }
 
 .quick-dropdown-menu::-webkit-scrollbar {
@@ -4486,11 +4524,23 @@ button:active .storm-status-svg {
 }
 
 @media (max-width: 768px) {
+  .quick-dropdown-menu {
+    max-height: 280px !important;
+  }
+
+  .quick-dropdown-menu-wide,
+  #quick-voiceover-menu {
+    min-width: min(280px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    right: 0 !important;
+    left: auto !important;
+  }
+
   #quick-season-menu,
   #quick-episode-menu {
-    min-width: 290px;
-    max-width: calc(100vw - 24px);
-    width: auto;
+    min-width: min(280px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    width: auto !important;
   }
 }
 

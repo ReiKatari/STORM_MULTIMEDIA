@@ -293,23 +293,45 @@ export function detectClientMediaType(item) {
     return hasEp ? 'cartoon-series' : 'cartoon';
   }
 
+  if (item.media_type === 'series' || item.type === 'series' || item.type === 'tv' || item.isSeries || cat === 'series' || cat === 'serial') {
+    return 'series';
+  }
+
   // Известные сериалы
   const knownSeries = [
     'мистер робот', 'mr. robot', 'mr robot',
     'ходячие мертвецы', 'the walking dead',
     'остаться в живых', 'lost',
     'спартак', 'спартак: кровь и песок', 'spartacus',
+    'новичок', 'the rookie',
+    'извне', 'from',
+    'декстер', 'dexter', 'декстер: первородный грех', 'dexter: original sin', 'декстер: новая кровь', 'dexter: new blood',
+    'медленные лошади', 'slow horses',
+    'йеллоустоун', 'yellowstone',
+    'мэр кингстауна', 'mayor of kingstown',
+    'кобра кай', 'cobra kai',
+    'сопрано', 'клан сопрано', 'the sopranos',
+    'прослушка', 'the wire',
+    'игра в кальмара', 'squid game',
+    'секретные материалы', 'the x-files',
     'персонажи в клетке',
     'кафе из другого мира',
     'джек ричер', 'ричер', 'reacher',
     'стюарт блум не смог спасти вселенную', 'стюарт блум',
     'укрытие', 'бункер', 'silo', 'разделение', 'severance',
-    'игра престолов', 'дом дракона', 'пацаны', 'поколение «ви»', 'поколение ви',
-    'очень странные дела', 'кольца власти', 'сёгун', 'сегун', 'shogun',
+    'игра престолов', 'дом дракона', 'house of the dragon', 'пацаны', 'the boys', 'поколение «ви»', 'поколение ви', 'gen v',
+    'очень странные дела', 'stranger things', 'кольца власти', 'сёгун', 'сегун', 'shogun',
     'фоллаут', 'fallout', 'пингвин', 'the penguin', 'джентльмены', 'the gentlemen',
-    'одни из нас', 'the last of us', 'мандалорец', 'андор', 'локи', 'ведьмак',
-    'чернобыль', 'во все тяжкие', 'лучше звоните солу', 'медведь', 'шерлок',
-    'доктор хаус', 'острые козырьки', 'слово пацана', 'вампиры средней полосы'
+    'одни из нас', 'the last of us', 'мандалорец', 'андор', 'локи', 'ведьмак', 'the witcher',
+    'чернобыль', 'во все тяжкие', 'breaking bad', 'лучше звоните солу', 'better call saul', 'медведь', 'the bear', 'шерлок',
+    'доктор хаус', 'острые козырьки', 'peaky blinders', 'настоящий детектив', 'фарго', 'мир дикого запада', 'тьма', 'dark',
+    'чёрное зеркало', 'черное зеркало', 'black mirror', 'сверхъестественное', 'supernatural', 'викинги', 'vikings',
+    'слово пацана', 'вампиры средней полосы', 'триггер', 'метод', 'мажор',
+    'кухня', 'интерны', 'эпидемия', 'фишер', 'корона', 'the crown', 'уэнсдэй', 'уэнсдей', 'wednesday', 'миротворец',
+    'бумажный дом', 'money heist', 'озарк', 'ozark', 'академия амбрелла', 'the umbrella academy',
+    'ганнибал', 'hannibal', 'гримм', 'grimm', 'бесстыжие', 'shameless', 'ривердейл', 'riverdale', 'эйфория', 'euphoria',
+    'люцифер', 'lucifer', 'теория большого взрыва', 'the big bang theory', 'детство шелдона', 'young sheldon',
+    'друзья', 'friends', 'офис', 'the office', 'клиника', 'scrubs', 'универ', 'реальные пацаны', 'след', 'глухарь', 'невский'
   ];
 
   if (knownSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
@@ -323,7 +345,7 @@ export function detectClientMediaType(item) {
     return 'series';
   }
 
-  if (link.includes('serial') || link.includes('fan-serials') || cat.includes('series') || t.includes('сериал') || t.includes('сезон')) {
+  if (link.includes('serial') || link.includes('fan-serials') || cat.includes('series') || t.includes('сериал') || t.includes('сезон') || /сезон\s*\d+/i.test(t)) {
     return 'series';
   }
 
