@@ -1,0 +1,38 @@
+{
+  "name": "STORM MULTIMEDIA",
+  "short_name": "STORM MEDIA",
+  "description": "Мультимедийный портал кино, сериалов и аниме онлайн",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0f17",
+  "theme_color": "#00d2ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "assets/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Новинки кино",
+      "short_name": "Новинки",
+      "url": "/#new",
+      "icons": [{ "src": "assets/favicon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "Аниме-сериалы",
+      "short_name": "Аниме",
+      "url": "/#anime-series",
+      "icons": [{ "src": "assets/favicon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "Закладки и списки",
+      "short_name": "Закладки",
+      "url": "/#bookmarks",
+      "icons": [{ "src": "assets/favicon.svg", "sizes": "96x96" }]
+    }
+  ]
+}

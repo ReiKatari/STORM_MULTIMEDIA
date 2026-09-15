@@ -1,0 +1,271 @@
+/* ==========================================================================
+   STORM MULTIMEDIA - СТИЛИ ДЛЯ SMART TV И НАВИГАЦИИ ГЕЙМПАДОМ (10-FOOT UI)
+   ========================================================================== */
+
+body.tv-mode {
+  font-size: 18px !important;
+  user-select: none;
+  overflow-x: hidden;
+}
+
+body.tv-mode .storm-sticky-header-container {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  overflow: visible !important;
+}
+
+body.tv-mode .storm-navbar {
+  padding: 14px 28px;
+}
+
+body.tv-mode .storm-navbar-inner {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  gap: 24px !important;
+}
+
+body.tv-mode .storm-brand {
+  margin-right: auto !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+body.tv-mode .storm-brand-logo {
+  width: 48px;
+  height: 48px;
+}
+
+body.tv-mode .storm-brand-title {
+  font-size: 24px;
+  letter-spacing: 0.8px;
+}
+
+body.tv-mode .storm-search-box {
+  flex: 1 !important;
+  max-width: 680px !important;
+  margin: 0 20px !important;
+}
+
+body.tv-mode .storm-search-input {
+  font-size: 16px;
+  padding: 12px 84px 12px 46px;
+  border-radius: 28px;
+  width: 100%;
+}
+
+body.tv-mode .storm-search-icon {
+  font-size: 18px;
+  left: 18px;
+}
+
+body.tv-mode .storm-nav-actions {
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+body.tv-mode .storm-tabs-bar {
+  padding: 14px 28px 10px;
+  overflow: visible !important;
+}
+
+body.tv-mode .storm-tabs-inner {
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: 10px 12px !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  padding: 10px 4px 6px !important;
+}
+
+body.tv-mode .storm-tab-btn {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  font-size: 14.5px;
+  font-weight: 700;
+  border-radius: 12px;
+  white-space: nowrap;
+  text-align: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+body.tv-mode .storm-tab-btn[data-tab="bookmarks"] {
+  grid-column: span 2 !important;
+}
+
+body.tv-mode .storm-tab-btn.active,
+body.tv-mode .storm-tab-btn:focus {
+  outline: 3px solid var(--accent) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 24px var(--accent-glow), 0 8px 20px rgba(0, 0, 0, 0.75) !important;
+  transform: scale(1.04) translateY(-2px) !important;
+  z-index: 50 !important;
+}
+
+body.tv-mode .storm-toolbar {
+  padding: 12px 36px 14px;
+}
+
+/* Сетка карточек в ТВ-режиме: более крупные и четкие постеры для просмотра с расстояния 3-5 метров */
+body.tv-mode .media-container.view-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  gap: 28px !important;
+  padding-bottom: 90px; /* Отступ под плавающий HUD геймпада */
+}
+
+body.tv-mode .media-card {
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.25s ease, outline 0.2s ease;
+}
+
+body.tv-mode .media-card-title {
+  font-size: 16px !important;
+  font-weight: 700;
+}
+
+body.tv-mode .media-card-meta {
+  font-size: 13px !important;
+}
+
+/* Пространственный неоновый фокус Smart TV и геймпада */
+.tv-focused,
+body.tv-mode .media-card:focus,
+body.tv-mode .storm-tab-btn:focus,
+body.tv-mode .storm-btn:focus,
+body.tv-mode button:focus-visible,
+body.tv-mode select:focus-visible,
+body.tv-mode input:focus-visible {
+  outline: 3.5px solid var(--accent) !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 32px var(--accent-glow), 0 12px 30px rgba(0, 0, 0, 0.85) !important;
+  transform: scale(1.08) translateY(-4px) !important;
+  z-index: 200 !important;
+  position: relative;
+}
+
+body.tv-mode .tv-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-gradient);
+  color: #000;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+body.tv-mode .cinema-modal-dialog {
+  max-width: 98vw !important;
+  width: 98vw !important;
+  height: 96vh !important;
+  max-height: 96vh !important;
+  border-radius: 20px;
+}
+
+body.tv-mode .cinema-player-wrapper {
+  height: 68vh !important;
+  border-radius: 16px;
+}
+
+/* ==========================================================================
+   ПАНЕЛЬ ПОДСКАЗОК ГЕЙМПАДА (GAMEPAD HUD DOCK)
+   ========================================================================== */
+.storm-tv-hud-bar {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999999;
+  background: rgba(10, 11, 16, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  border-radius: 36px;
+  padding: 8px 24px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 210, 255, 0.25);
+  animation: stormFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.tv-hud-inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.tv-hud-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.tv-hud-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.tv-key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+.tv-key-badge.btn-a {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+}
+
+.tv-key-badge.btn-b {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #ffffff;
+}
+
+.tv-key-badge.btn-x {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  color: #ffffff;
+}
+
+.tv-key-badge.btn-y {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000000;
+}
+
+.tv-key-badge.btn-bumper {
+  width: auto;
+  height: auto;
+  border-radius: 6px;
+  padding: 2px 7px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.tv-key-badge.btn-menu {
+  width: auto;
+  height: auto;
+  border-radius: 6px;
+  padding: 2px 7px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+  color: #05070a;
+}
+
