@@ -57,58 +57,73 @@ body {
   position: sticky;
   top: 0;
   z-index: 500;
-  background: var(--bg-primary);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
-  transition: all 0.2s ease;
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: 0 10px 32px -5px var(--shadow-color);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.storm-sticky-header-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-specular), transparent);
+  pointer-events: none;
+  z-index: 501;
 }
 
 [data-theme="STORM DAY"] .storm-sticky-header-container {
-  background: #ffffff;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  background: var(--glass-bg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
 }
 
 .storm-sticky-header-container .storm-navbar {
   position: relative;
   top: auto;
   box-shadow: none;
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .storm-sticky-header-container .storm-tabs-bar {
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .storm-sticky-header-container .storm-toolbar {
   margin: 0 auto;
   padding: 8px 24px 10px;
-  background: var(--bg-secondary);
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 [data-theme="STORM DAY"] .storm-sticky-header-container .storm-toolbar {
-  background: #f8fafc;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: transparent;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 /* -------------------------------------------------------------
    ШАПКА САЙТА И НАВИГАЦИЯ (STORM NAVBAR)
    ------------------------------------------------------------- */
 .storm-navbar {
-  background: var(--bg-secondary);
+  background: var(--glass-bg);
   border-bottom: 1px solid var(--border-color);
 }
 
 [data-theme="STORM DAY"] .storm-navbar {
-  background: #ffffff !important;
-  border-bottom: 1px solid rgba(2, 132, 199, 0.25);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  background: var(--glass-bg) !important;
+  border-bottom: 1px solid rgba(2, 132, 199, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 [data-theme="STORM DAY"] .storm-tabs-bar {
-  background: #f8fafc !important;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: transparent !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="STORM DAY"] .storm-search-input {
@@ -408,31 +423,44 @@ body {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3), 0 3px 6px var(--shadow-color);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 4px 8px var(--shadow-color);
   transform: translateY(0);
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
 }
 
 .storm-tab-btn:hover {
   transform: translateY(-1.5px);
   color: var(--text-primary);
   border-color: var(--border-hover);
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 12px var(--shadow-color), 0 0 10px var(--accent-glow);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 8px 16px var(--shadow-color), 0 0 12px var(--accent-glow);
 }
 
 .storm-tab-btn.active {
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
   color: #05070a;
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.45);
   font-weight: 700;
-  box-shadow: var(--btn-3d-shadow);
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
+  box-shadow: var(--btn-3d-shadow), 0 0 18px var(--accent-glow);
+  text-shadow: none;
   transform: translateY(0);
+}
+
+.storm-tab-btn.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  pointer-events: none;
 }
 
 .storm-tab-btn:active {
   transform: translateY(1.5px) scale(0.98);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 /* Выделение цветом: «Продолжить просмотр» */
@@ -595,13 +623,39 @@ body {
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  contain: content;
   transform: translateZ(0);
-  will-change: transform;
+  will-change: transform, box-shadow;
   height: 100%;
   min-height: 100%;
   align-self: stretch;
   box-sizing: border-box;
+  background: var(--card-bg-gradient);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s ease;
+  position: relative;
+}
+
+.media-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-specular), transparent);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.media-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  border-color: var(--border-hover);
+  box-shadow: var(--card-hover-shadow);
 }
 
 .media-card-poster {
@@ -610,19 +664,45 @@ body {
   position: relative;
   overflow: hidden;
   background: #080b10;
-  border-radius: 12px 12px 0 0;
+  border-radius: 13px 13px 0 0;
   flex-shrink: 0;
+}
+
+.media-card-poster::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -75%;
+  width: 250%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.14) 50%,
+    transparent 65%
+  );
+  transform: rotate(25deg) translateY(-100%);
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+}
+
+.media-card:hover .media-card-poster::after {
+  transform: rotate(25deg) translateY(100%);
+  opacity: 1;
 }
 
 .media-card-poster img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
 }
 
 .media-card:hover .media-card-poster img {
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 .media-card-badges {
@@ -2476,7 +2556,7 @@ body {
 }
 
 /* =============================================================
-   ПОЛНОЭКРАННЫЙ РЕЖИМ (CINEMA FULLSCREEN & VIDEO BOX)
+   ПОЛНОЭКРАННЫЙ РЕЖИМ (CINEMA FULLSCREEN and VIDEO BOX)
    ============================================================= */
 .player-video-box:fullscreen,
 .player-video-box:-webkit-full-screen,
@@ -3569,7 +3649,7 @@ body[data-active-tab="home"] #hero-showcase-container {
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
-/* 2. ГОРИЗОНТАЛЬНЫЕ КАРУСЕЛИ КОНТЕНТА (EMBY & PLEX RAILS) */
+/* 2. ГОРИЗОНТАЛЬНЫЕ КАРУСЕЛИ КОНТЕНТА (EMBY и PLEX RAILS) */
 .storm-rails-container {
   display: flex;
   flex-direction: column;
@@ -3694,12 +3774,12 @@ body[data-active-tab="home"] #hero-showcase-container {
   position: absolute;
   top: calc(50% - 10px);
   transform: translateY(-50%);
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: rgba(10, 11, 16, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
   color: #ffffff;
   font-size: 18px;
   display: flex;
@@ -3707,9 +3787,9 @@ body[data-active-tab="home"] #hero-showcase-container {
   justify-content: center;
   cursor: pointer;
   z-index: 10;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 14px var(--accent-subtle);
   opacity: 0;
-  transition: opacity 0.2s ease, transform 0.2s ease, background 0.15s ease;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .storm-media-rail:hover .rail-nav-btn {
@@ -3718,8 +3798,13 @@ body[data-active-tab="home"] #hero-showcase-container {
 
 .rail-nav-btn:hover {
   background: var(--accent);
-  color: #000000;
-  transform: translateY(-50%) scale(1.1);
+  color: #05070a;
+  transform: translateY(-50%) scale(1.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7), 0 0 20px var(--accent-glow);
+}
+
+.rail-nav-btn:active {
+  transform: translateY(-50%) scale(0.98);
 }
 
 .rail-nav-prev {
@@ -3739,29 +3824,31 @@ body[data-active-tab="home"] #hero-showcase-container {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: rgba(10, 11, 16, 0.72);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(10, 14, 22, 0.75);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   color: #ffffff;
-  font-size: 14px;
+  font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 5;
-  transition: all 0.15s ease;
-  opacity: 0.85;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.88;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
 .media-card-menu-btn:hover,
 .media-card-menu-btn:active {
-  transform: scale(1.12);
+  transform: scale(1.15);
   background: var(--accent);
-  color: #000000;
+  color: #05070a;
   opacity: 1;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 0 12px var(--accent-glow);
 }
 
 /* 4. EMBY И PLEX BOTTOM NAVIGATION DOCK ДЛЯ МОБИЛЬНЫХ */
@@ -3770,33 +3857,50 @@ body[data-active-tab="home"] #hero-showcase-container {
 }
 
 @media (max-width: 768px) {
-  /* Нижний отступ для страницы, чтобы контент не перекрывался доком */
+  /* Нижний отступ для страницы, чтобы контент не перекрывался плавающим доком */
   body {
-    padding-bottom: calc(68px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(86px + env(safe-area-inset-bottom)) !important;
   }
 
+  /* Плавающий стеклянный док навигации (Floating Glass Pill Dock) */
   .storm-bottom-nav {
     display: flex !important;
     position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    height: 60px !important;
-    padding-bottom: env(safe-area-inset-bottom) !important;
-    background: rgba(10, 11, 16, 0.88) !important;
-    backdrop-filter: blur(24px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-    border-top: 1px solid var(--border-subtle) !important;
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.65) !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    left: 14px !important;
+    right: 14px !important;
+    width: auto !important;
+    max-width: 520px !important;
+    margin: 0 auto !important;
+    height: 62px !important;
+    border-radius: 32px !important;
+    border: 1px solid var(--border-color) !important;
+    background: var(--dock-bg) !important;
+    backdrop-filter: blur(28px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
+    box-shadow: var(--dock-shadow), 0 12px 36px rgba(0, 0, 0, 0.65) !important;
     z-index: 1200 !important;
     justify-content: space-around !important;
     align-items: center !important;
+    padding: 4px 6px !important;
+    overflow: hidden !important;
+  }
+
+  .storm-bottom-nav::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 24px !important;
+    right: 24px !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, transparent, var(--glass-specular), transparent) !important;
+    pointer-events: none !important;
   }
 
   [data-theme="STORM DAY"] .storm-bottom-nav {
-    background: rgba(255, 255, 255, 0.94) !important;
-    border-top: 1px solid rgba(0, 0, 0, 0.1) !important;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1) !important;
+    background: var(--dock-bg) !important;
+    border: 1px solid rgba(2, 132, 199, 0.25) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 0 18px rgba(2, 132, 199, 0.15) !important;
   }
 
   .storm-bottom-nav-item {
@@ -3809,23 +3913,25 @@ body[data-active-tab="home"] #hero-showcase-container {
     padding: 6px 0 !important;
     background: transparent !important;
     border: none !important;
+    border-radius: 22px !important;
     color: var(--text-muted) !important;
     cursor: pointer !important;
-    transition: transform 0.12s ease, color 0.15s ease !important;
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease, background 0.2s ease !important;
     position: relative !important;
     outline: none !important;
     user-select: none !important;
+    min-height: 48px !important;
   }
 
   .storm-bottom-nav-item:active {
-    transform: scale(0.9) !important;
+    transform: scale(0.92) !important;
   }
 
   .storm-bottom-nav-icon {
     font-size: 20px !important;
     line-height: 1 !important;
-    margin-bottom: 3px !important;
-    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), filter 0.18s ease !important;
+    margin-bottom: 2px !important;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease !important;
   }
 
   .storm-bottom-nav-label {
@@ -3834,27 +3940,24 @@ body[data-active-tab="home"] #hero-showcase-container {
     letter-spacing: 0.2px !important;
     line-height: 1.1 !important;
     color: inherit !important;
+    transition: color 0.15s ease !important;
   }
 
   .storm-bottom-nav-item.active {
     color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
   }
 
   .storm-bottom-nav-item.active .storm-bottom-nav-icon {
-    transform: translateY(-2px) scale(1.12) !important;
+    transform: scale(1.12) !important;
     filter: drop-shadow(0 2px 8px var(--accent-glow)) !important;
+    animation: dockTabPop 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
-  .storm-bottom-nav-item.active::before {
-    content: '' !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 25% !important;
-    right: 25% !important;
-    height: 2.5px !important;
-    border-radius: 0 0 3px 3px !important;
-    background: var(--accent) !important;
-    box-shadow: 0 0 10px var(--accent) !important;
+  @keyframes dockTabPop {
+    0% { transform: scale(0.85); }
+    50% { transform: scale(1.22); }
+    100% { transform: scale(1.12); }
   }
 
   /* Адаптив Hero Showcase для мобильных */
@@ -3988,8 +4091,10 @@ body[data-active-tab="home"] #hero-showcase-container {
   max-width: 600px !important;
   max-height: 85vh !important;
   margin: 0 auto !important;
-  background: var(--bg-secondary) !important;
-  border-radius: 22px 22px 0 0 !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  border-radius: 24px 24px 0 0 !important;
   border-top: 1px solid var(--accent) !important;
   box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.85) !important;
   display: flex !important;
@@ -4010,11 +4115,11 @@ body[data-active-tab="home"] #hero-showcase-container {
 }
 
 .filter-sheet-drag-handle {
-  width: 38px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.25);
-  margin: 4px auto 10px auto;
+  width: 42px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.28);
+  margin: 6px auto 12px auto;
 }
 
 .filter-sheet-title-row {
@@ -4055,28 +4160,36 @@ body[data-active-tab="home"] #hero-showcase-container {
 }
 
 .filter-chip {
-  padding: 7px 14px;
-  border-radius: 18px;
+  padding: 7px 15px;
+  border-radius: 20px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
+.filter-chip:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
 .filter-chip:active {
-  transform: scale(0.95);
+  transform: translateY(1px) scale(0.96);
+  box-shadow: none;
 }
 
 .filter-chip.is-active {
-  background: var(--accent);
-  color: #000000;
-  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+  color: #05070a;
+  border-color: rgba(255, 255, 255, 0.45);
   font-weight: 800;
-  box-shadow: 0 2px 10px var(--accent-glow);
+  box-shadow: var(--btn-3d-shadow);
 }
 
 .filter-sheet-footer {
@@ -4085,7 +4198,7 @@ body[data-active-tab="home"] #hero-showcase-container {
   border-top: 1px solid var(--border-subtle);
   display: flex;
   gap: 10px;
-  background: var(--bg-secondary);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -4115,9 +4228,11 @@ body[data-active-tab="home"] #hero-showcase-container {
   width: 100vw !important;
   max-width: 520px !important;
   margin: 0 auto !important;
-  background: var(--bg-secondary) !important;
-  border-radius: 22px 22px 0 0 !important;
-  border-top: 1px solid var(--border-subtle) !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  border-radius: 24px 24px 0 0 !important;
+  border-top: 1px solid var(--accent) !important;
   box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.85) !important;
   padding: 8px 16px 24px 16px !important;
   padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;

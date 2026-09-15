@@ -37,6 +37,16 @@ let rawCatalogItems = [];
 let searchQuery = '';
 let hoverPreviewTimer = null;
 let hoverCloseTimer = null;
+let cachedContinueHistory = null;
+
+export async function refreshContinueWatchingCache() {
+  try {
+    cachedContinueHistory = await fetchContinueWatching();
+  } catch {
+    cachedContinueHistory = getLocalContinueWatching();
+  }
+  return cachedContinueHistory;
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
   document.body.dataset.activeTab = currentTab || 'home';
@@ -58,12 +68,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAdminDashboard();
   updateFamilyProfileHeader();
 
+  // Предзагрузка реальной истории просмотров без выдумок
+  refreshContinueWatchingCache().then(() => {
+    if (currentTab === 'home' && rawCatalogItems.length > 0) {
+      renderHomeView(rawCatalogItems);
+    }
+  });
+
   onAuthChanged(() => {
     updateFamilyProfileHeader();
     updateMobileDrawerUser();
-    if (currentTab === 'bookmarks' || currentTab === 'continue') {
-      loadCurrentTab();
-    }
+    refreshContinueWatchingCache().then(() => {
+      if (currentTab === 'bookmarks' || currentTab === 'continue') {
+        loadCurrentTab();
+      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+        renderHomeView(rawCatalogItems);
+      }
+    });
   });
 
   // Динамическое автоматическое обновление закладок и списков без перезагрузки
@@ -93,7 +114,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Живое обновление продолжения просмотра при начале или прогрессе фильма
-  window.addEventListener('storm:continue-watching-updated', () => {
+  window.addEventListener('storm:continue-watching-updated', async () => {
+    await refreshContinueWatchingCache();
     const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
     if (!isSearching) {
       if (currentTab === 'continue') {
@@ -206,6 +228,11 @@ export function switchTab(tab) {
     hideHeroShowcase();
   }
 
+  // Тактильный виброотклик на смартфонах
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    try { navigator.vibrate(10); } catch (_) {}
+  }
+
   // Очищаем активный поисковый запрос при переключении категорий
   const searchInput = document.getElementById('global-search-input');
   if (searchInput && searchInput.value) {
@@ -223,7 +250,7 @@ export function switchTab(tab) {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
 
-  // Синхронизация нижней панели навигации (Emby & Plex Dock)
+  // Синхронизация нижней панели навигации (Emby и Plex Dock)
   document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
     const bTab = b.dataset.bottomTab;
     let isActive = false;
@@ -254,6 +281,9 @@ function initBottomNav() {
   document.querySelectorAll('.storm-bottom-nav-item').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(12); } catch (_) {}
+      }
       const tab = btn.dataset.bottomTab;
       if (tab === 'home') {
         switchTab('home');
@@ -1004,20 +1034,28 @@ async function loadCurrentTab() {
   if (currentTab === 'continue') {
     renderSkeletonGrid();
     const history = await fetchContinueWatching();
+    cachedContinueHistory = history;
     const excludedStatuses = ['completed', 'dropped', 'wont_watch'];
-    const rawItems = history
-      .filter(h => !excludedStatuses.includes(h.status) && !excludedStatuses.includes(h.user_status) && (h.progress_percent || 0) < 95)
+    const rawItems = (history || [])
+      .filter(h => {
+        if (!h || (!h.media_id && !h.id) || !h.title) return false;
+        const status = h.bookmark_status || h.user_status || h.status || '';
+        if (excludedStatuses.includes(status)) return false;
+        const pct = typeof h.progress_percent === 'number' ? h.progress_percent : 0;
+        if (pct >= 95) return false;
+        return pct > 0 || status === 'watching';
+      })
       .map(h => ({
-        id: h.media_id,
-        source: h.source,
+        id: h.media_id || h.id,
+        source: h.source || 'tmdb',
         title: h.title,
-        poster: h.poster_url,
-        media_type: h.media_type,
+        poster: h.poster_url || h.poster,
+        media_type: h.media_type || 'movie',
         year: h.year || '',
-        progress_percent: h.progress_percent,
-        user_status: h.status || 'watching',
-        season: h.season,
-        episode: h.episode
+        progress_percent: Math.round(h.progress_percent || 0),
+        user_status: (h.user_status === 'watching' || h.bookmark_status === 'watching') ? 'watching' : (h.user_status || h.bookmark_status || null),
+        season: h.season || 1,
+        episode: h.episode || 1
       }));
     rawCatalogItems = deduplicateMediaList(rawItems);
     renderFilteredCatalog();
@@ -1610,15 +1648,15 @@ function renderHomeView(items) {
   }
   renderHeroShowcase(featuredList);
 
-  // Рейл 1: Продолжить просмотр (исключаем Просмотрено, Брошено и Не буду смотреть)
+  // Рейл 1: Продолжить просмотр (только РЕАЛЬНАЯ история просмотров пользователя без выдумок)
   const excludedFromContinue = ['completed', 'dropped', 'wont_watch'];
-  const localHistory = getLocalContinueWatching();
-  const rawContinueSources = localHistory.length > 0 ? localHistory : items;
-  const continueItems = rawContinueSources
+  const realHistory = (Array.isArray(cachedContinueHistory) ? cachedContinueHistory : getLocalContinueWatching()) || [];
+  const continueItems = realHistory
     .filter(i => {
-      const status = i.user_status || i.status || 'watching';
+      if (!i || (!i.media_id && !i.id) || !i.title) return false;
+      const status = i.bookmark_status || i.user_status || i.status || '';
       if (excludedFromContinue.includes(status)) return false;
-      const pct = i.progress_percent || 0;
+      const pct = typeof i.progress_percent === 'number' ? i.progress_percent : 0;
       if (pct >= 95) return false;
       return pct > 0 || status === 'watching';
     })
@@ -1629,8 +1667,8 @@ function renderHomeView(items) {
       poster: i.poster_url || i.poster,
       media_type: i.media_type || 'movie',
       year: i.year || '',
-      progress_percent: i.progress_percent || 1,
-      user_status: i.user_status || i.status || 'watching',
+      progress_percent: Math.round(i.progress_percent || 0),
+      user_status: (i.user_status === 'watching' || i.bookmark_status === 'watching') ? 'watching' : (i.user_status || i.bookmark_status || null),
       season: i.season || 1,
       episode: i.episode || 1
     }))
@@ -1672,7 +1710,7 @@ function renderHomeView(items) {
       id: 'rail-continue',
       icon: '⏱️',
       title: t('rail_continue_watching'),
-      category: 'bookmarks',
+      category: 'continue',
       isWide: true,
       items: continueItems
     });
