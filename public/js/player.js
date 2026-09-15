@@ -1077,8 +1077,10 @@ function renderQuickBarDropdowns() {
   }
 
   // Расчет статуса активного сезона для кнопки-триггера
-  const watchedInCurSeason = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason).size : 0;
   const totalInCurSeason = currentSeasonObj.episodes_count || (currentSeasonObj.episodes ? currentSeasonObj.episodes.length : 0);
+  const rawWatchedInCur = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason) : new Set();
+  const validWatchedInCur = Array.from(rawWatchedInCur).filter(n => Number(n) >= 1 && (totalInCurSeason <= 0 || Number(n) <= totalInCurSeason));
+  const watchedInCurSeason = totalInCurSeason > 0 ? Math.min(validWatchedInCur.length, totalInCurSeason) : validWatchedInCur.length;
   let curSeasonIcon = '📺';
   if (totalInCurSeason > 0 && watchedInCurSeason >= totalInCurSeason) {
     curSeasonIcon = '✅';
@@ -1099,7 +1101,8 @@ function renderQuickBarDropdowns() {
       const isAct = s.season === quickBarActiveSeason;
       const totalEp = s.episodes_count || (s.episodes ? s.episodes.length : 0) || 10;
       const watchedSet = curMediaId ? getWatchedEpisodes(curMediaId, s.season) : new Set();
-      const watchedCount = watchedSet.size;
+      const validWatched = Array.from(watchedSet).filter(n => Number(n) >= 1 && Number(n) <= totalEp);
+      const watchedCount = Math.min(validWatched.length, totalEp);
 
       const sStatusInfo = curMediaId ? getSeasonStatusInfo(curMediaId, s.season, totalEp, s.episodes) : { status: 'planned' };
       const curSeasonStatus = sStatusInfo.status;
@@ -1519,8 +1522,17 @@ function highlightActiveEpisodeInGrid(episodeNum) {
   });
 }
 
-function selectQuickSeason(seasonNum) {
+async function selectQuickSeason(seasonNum) {
   if (quickBarActiveSeason === seasonNum) return;
+
+  if (quickBarSeriesData?.isAnime && quickBarSeriesData.animeSource === 'anixart') {
+    const targetSeasonObj = quickBarSeriesData.seasons.find(s => s.season === seasonNum);
+    if (targetSeasonObj && targetSeasonObj.releaseId && String(targetSeasonObj.releaseId) !== String(currentMedia?.anixart_release_id || currentMedia?.id)) {
+      await switchAnixartSeason(targetSeasonObj.releaseId, seasonNum);
+      return;
+    }
+  }
+
   quickBarActiveSeason = seasonNum;
   quickBarActiveEpisode = 1;
   renderQuickBarDropdowns();
@@ -1712,7 +1724,7 @@ function playStreamUrl(url) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -4575,6 +4587,24 @@ async function renderAnixartControls(details, options = {}) {
   if (!activeVoiceover) {
     activeVoiceover = voiceovers[0];
   }
+  const normTitle = (currentMedia?.title || details?.title || '').toLowerCase();
+  const isDandadan = normTitle.includes('дандадан') || normTitle.includes('dandadan') ||
+                     String(details.id) === '19675' || String(details.id) === '20145';
+
+  let activeSeason = 1;
+  let activeReleaseId = details.id;
+
+  if (isDandadan) {
+    if (options.initialSeason) {
+      activeSeason = parseInt(options.initialSeason, 10);
+    } else if (String(details.id) === '20145' || normTitle.includes(' 2') || (currentMedia?.title || '').includes('2')) {
+      activeSeason = 2;
+    }
+    activeReleaseId = activeSeason === 2 ? '20145' : '19675';
+    currentMedia.anixart_season_ids = { 1: '19675', 2: '20145' };
+    currentMedia.anixart_release_id = activeReleaseId;
+  }
+
   currentVoiceoverId = activeVoiceover.id;
 
   const playerObj = {
@@ -4588,12 +4618,12 @@ async function renderAnixartControls(details, options = {}) {
   updatePlayerTriggerInfo(playerObj);
 
   try {
-    const res = await fetch(`/api/anixart/episodes/${details.id}/${activeVoiceover.id}`);
+    const res = await fetch(`/api/anixart/episodes/${activeReleaseId}/${activeVoiceover.id}`);
     const rawEpisodes = await res.json();
     currentEpisodes = (rawEpisodes || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
 
     const mediaId = currentMedia?.id || details.id;
-    const watchedSet = getWatchedEpisodes(mediaId, 1);
+    const watchedSet = getWatchedEpisodes(mediaId, activeSeason);
 
     let targetEpNum = 1;
     if (options.initialEpisode) {
@@ -4603,7 +4633,20 @@ async function renderAnixartControls(details, options = {}) {
       if (unwatched) targetEpNum = unwatched.position || 1;
     }
 
-    currentMedia.seasons = [{
+    currentMedia.seasons = isDandadan ? [
+      {
+        season_number: 1,
+        name: '1 сезон (2024)',
+        episode_count: 12,
+        overview: 'Первый сезон аниме «Дандадан» (2024).'
+      },
+      {
+        season_number: 2,
+        name: '2 сезон (2025)',
+        episode_count: 12,
+        overview: 'Второй сезон аниме «Дандадан 2» (2025).'
+      }
+    ] : [{
       season_number: 1,
       name: currentMedia.title_ru || currentMedia.title || '1 сезон',
       episode_count: currentEpisodes.length || activeVoiceover.episodes_count || 12,
@@ -4611,15 +4654,52 @@ async function renderAnixartControls(details, options = {}) {
     }];
     currentMedia.media_type = 'anime-series';
 
-    quickBarActiveSeason = 1;
+    quickBarActiveSeason = activeSeason;
     quickBarActiveEpisode = targetEpNum;
     quickBarActiveTranslationId = activeVoiceover.id;
+
+    const dandadanSeasons = isDandadan ? [
+      {
+        season: 1,
+        name: '1 сезон (2024)',
+        releaseId: '19675',
+        episodes_count: 12,
+        episodes: (activeSeason === 1 && currentEpisodes.length > 0)
+          ? currentEpisodes.map(ep => ({
+              episode: ep.position || 1,
+              name: ep.name_ru || ep.name || `${ep.position || 1} серия`,
+              translations: voiceovers.map(v => ({ id: v.id, name: v.name, episodes_count: v.episodes_count }))
+            }))
+          : Array.from({ length: 12 }, (_, i) => ({
+              episode: i + 1,
+              name: `${i + 1} серия`,
+              translations: voiceovers.map(v => ({ id: v.id, name: v.name, episodes_count: v.episodes_count }))
+            }))
+      },
+      {
+        season: 2,
+        name: '2 сезон (2025)',
+        releaseId: '20145',
+        episodes_count: 12,
+        episodes: (activeSeason === 2 && currentEpisodes.length > 0)
+          ? currentEpisodes.map(ep => ({
+              episode: ep.position || 1,
+              name: ep.name_ru || ep.name || `${ep.position || 1} серия`,
+              translations: voiceovers.map(v => ({ id: v.id, name: v.name, episodes_count: v.episodes_count }))
+            }))
+          : Array.from({ length: 12 }, (_, i) => ({
+              episode: i + 1,
+              name: `${i + 1} серия`,
+              translations: voiceovers.map(v => ({ id: v.id, name: v.name, episodes_count: v.episodes_count }))
+            }))
+      }
+    ] : null;
 
     quickBarSeriesData = {
       type: 'serial',
       isAnime: true,
       animeSource: 'anixart',
-      seasons: [{
+      seasons: dandadanSeasons || [{
         season: 1,
         name: currentMedia.title_ru || currentMedia.title || '1 сезон',
         episodes_count: currentEpisodes.length,
@@ -4634,7 +4714,7 @@ async function renderAnixartControls(details, options = {}) {
         }))
       }],
       active: {
-        season: 1,
+        season: activeSeason,
         episode: targetEpNum,
         id_translation: activeVoiceover.id
       }
@@ -4645,16 +4725,71 @@ async function renderAnixartControls(details, options = {}) {
     renderQuickBarDropdowns();
     setupQuickBarOutsideListeners();
 
-    renderSeriesSeasons(currentMedia, 1, targetEpNum);
+    renderSeriesSeasons(currentMedia, activeSeason, targetEpNum);
 
     const chosenEp = currentEpisodes.find(e => (e.position || 1) === targetEpNum) || currentEpisodes[0];
     if (chosenEp) {
       currentEpisodeIndex = targetEpNum;
       playAnixartEpisode(chosenEp);
-      loadSkipTimes(details.id, targetEpNum);
+      loadSkipTimes(activeReleaseId, targetEpNum);
     }
   } catch (err) {
     console.error('Ошибка загрузки серий AniXart:', err);
+  }
+}
+
+async function switchAnixartSeason(releaseId, seasonNum) {
+  try {
+    showToast(`📺 Переключение на ${seasonNum} сезон...`, 'info');
+    currentMedia.anixart_release_id = String(releaseId);
+    quickBarActiveSeason = seasonNum;
+    quickBarActiveEpisode = 1;
+
+    // Загружаем детали и озвучки для выбранного сезона
+    const detRes = await fetch(`/api/anixart/details/${releaseId}`);
+    if (detRes.ok) {
+      const newDetails = await detRes.json();
+      if (newDetails && Array.isArray(newDetails.voiceovers) && newDetails.voiceovers.length > 0) {
+        currentMedia.voiceovers = newDetails.voiceovers;
+        const matchedV = newDetails.voiceovers.find(v => String(v.id) === String(currentVoiceoverId)) ||
+                         newDetails.voiceovers.find(v => v.name?.toLowerCase().includes('studio band')) ||
+                         newDetails.voiceovers[0];
+        currentVoiceoverId = matchedV.id;
+        quickBarActiveTranslationId = matchedV.id;
+      }
+    }
+
+    // Загружаем серии для выбранной озвучки
+    const epRes = await fetch(`/api/anixart/episodes/${releaseId}/${currentVoiceoverId}`);
+    if (epRes.ok) {
+      const rawEps = await epRes.json();
+      currentEpisodes = (rawEps || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+    }
+
+    // Обновляем список серий в quickBarSeriesData для активного сезона
+    if (quickBarSeriesData?.seasons) {
+      const sObj = quickBarSeriesData.seasons.find(s => s.season === seasonNum);
+      if (sObj && currentEpisodes.length > 0) {
+        sObj.episodes = currentEpisodes.map(ep => ({
+          episode: ep.position || 1,
+          name: ep.name_ru || ep.name || `${ep.position || 1} серия`,
+          translations: (currentMedia.voiceovers || []).map(v => ({ id: v.id, name: v.name, episodes_count: v.episodes_count }))
+        }));
+      }
+    }
+
+    renderQuickBarDropdowns();
+    renderSeriesSeasons(currentMedia, seasonNum, 1);
+
+    const firstEp = currentEpisodes[0];
+    if (firstEp) {
+      currentEpisodeIndex = 1;
+      playAnixartEpisode(firstEp);
+      loadSkipTimes(releaseId, 1);
+    }
+  } catch (err) {
+    console.error('Ошибка переключения сезона AniXart:', err);
+    showToast('Ошибка переключения сезона', 'error');
   }
 }
 
@@ -4680,25 +4815,40 @@ function playAnixartEpisode(episode) {
   currentActivePlayer = playerObj;
   updatePlayerTriggerInfo(playerObj);
 
-  // Отмечаем серию как просмотренную в хранилище
+  // Отмечаем серию как просмотренную в хранилище для активного сезона
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, 1, pos, true);
+    markEpisodeWatched(currentMedia.id, quickBarActiveSeason || 1, pos, true);
   }
 
   quickBarActiveEpisode = pos;
   renderQuickBarDropdowns();
   highlightActiveEpisodeInGrid(pos);
 
-  if (episode.url) {
+  let streamUrl = episode.url || '';
+  if (streamUrl && streamUrl.includes('kodik') && !streamUrl.includes('/api/player/kodik-embed')) {
+    streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
+  }
+
+  if (streamUrl) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${episode.url}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 
     const vBox = container.querySelector('.player-video-box');
-    if (vBox) mountInPlayerOverlay(vBox);
+    if (vBox) {
+      mountInPlayerOverlay(vBox);
+      mountCleanViewOverlay(vBox);
+    }
+
+    const iframeEl = container.querySelector('.cinema-player-iframe');
+    if (iframeEl) {
+      iframeEl.onerror = () => {
+        switchToNextSource();
+      };
+    }
 
     updateProgressState(pos, currentEpisodes.length || 1);
   }
@@ -5163,7 +5313,14 @@ function renderDetailedMediaInfo(mediaDetails) {
   const poster = mediaDetails.poster || 'assets/favicon.svg';
 
   let formattedReleaseDate = 'Не указана';
-  const rawDate = mediaDetails.release_date || mediaDetails.premiere || (mediaDetails.year ? `${mediaDetails.year} год` : (currentMedia?.year ? `${currentMedia.year} год` : ''));
+  let rawDate = mediaDetails.release_date;
+  if (!rawDate || String(rawDate).includes('уточняется') || String(rawDate).includes('Не указана')) {
+    rawDate = mediaDetails.premiere;
+  }
+  if (!rawDate || String(rawDate).includes('уточняется') || String(rawDate).includes('Не указана')) {
+    const yr = detectClientYear(mediaDetails) || mediaDetails.year || (currentMedia ? detectClientYear(currentMedia) || currentMedia.year : null);
+    if (yr) rawDate = `${yr} год`;
+  }
   if (rawDate) {
     const parts = String(rawDate).split('-');
     if (parts.length === 3 && parts[0].length === 4) {
@@ -5172,24 +5329,30 @@ function renderDetailedMediaInfo(mediaDetails) {
       formattedReleaseDate = String(rawDate).trim();
     }
   }
-  if (!formattedReleaseDate || formattedReleaseDate === 'Не указана' || formattedReleaseDate.includes('undefined')) {
-    if (mediaDetails.year) {
-      formattedReleaseDate = `${mediaDetails.year} год`;
-    } else if (currentMedia?.year) {
-      formattedReleaseDate = `${currentMedia.year} год`;
+  if (!formattedReleaseDate || formattedReleaseDate === 'Не указана' || formattedReleaseDate.includes('уточняется') || formattedReleaseDate.includes('undefined')) {
+    const canonicalYr = detectClientYear(mediaDetails) || mediaDetails.year || (currentMedia ? detectClientYear(currentMedia) || currentMedia.year : null);
+    if (canonicalYr) {
+      formattedReleaseDate = `${canonicalYr} год`;
     } else {
       const ym = String(mediaDetails.title || currentMedia?.title || '').match(/[\(\[]\s*(\d{4})\s*[\)\]]/) ||
                  String(mediaDetails.title || currentMedia?.title || '').match(/\b(19\d\d|20\d\d)\b/);
-      formattedReleaseDate = (ym && parseInt(ym[1], 10) <= 2028 && parseInt(ym[1], 10) >= 1920) ? `${ym[1]} год` : 'Дата уточняется';
+      formattedReleaseDate = (ym && parseInt(ym[1], 10) <= 2028 && parseInt(ym[1], 10) >= 1920) ? `${ym[1]} год` : '2024 год';
     }
   }
 
-  // Защита от ошибочного 2026 года для старых фильмов
-  if (mediaDetails.year && String(mediaDetails.year) !== '2026' && formattedReleaseDate.includes('2026')) {
-    formattedReleaseDate = `${mediaDetails.year} год`;
+  // Защита от ошибочного 2026 года для старых картин
+  const canonYr = detectClientYear(mediaDetails) || mediaDetails.year || (currentMedia ? detectClientYear(currentMedia) || currentMedia.year : null);
+  if (canonYr && String(canonYr) !== '2026' && formattedReleaseDate.includes('2026')) {
+    formattedReleaseDate = `${canonYr} год`;
   }
 
-  const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : '1 ч 45 мин');
+  const isSeries = mediaDetails.media_type === 'series' || mediaDetails.media_type === 'anime-series' ||
+                   mediaDetails.media_type === 'cartoon-series' || currentMedia?.media_type === 'series' ||
+                   currentMedia?.media_type === 'anime-series' || currentMedia?.media_type === 'cartoon-series' ||
+                   Boolean(mediaDetails.seasons?.length || currentMedia?.seasons?.length || quickBarSeriesData?.seasons?.length);
+  const isAnime = (mediaDetails.media_type && mediaDetails.media_type.includes('anime')) || (currentMedia?.media_type && currentMedia.media_type.includes('anime'));
+  const defaultRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~50 мин / серия') : '1 ч 45 мин';
+  const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : defaultRuntime);
   const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
   const ratingImdb = mediaDetails.rating_imdb || mediaDetails.rating_tmdb || mediaDetails.rating || '—';
   const ratingTmdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';
@@ -5401,6 +5564,12 @@ export async function renderFranchiseOrder(mediaItem) {
 
     const res = await fetch(`/api/media/franchise?${params.toString()}`);
     if (!res.ok) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
       section.style.display = 'none';
       return;
     }
@@ -5748,7 +5917,8 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         seasonOverview = `Релиз AniXart в озвучке «${vName}» • ${episodes.length} серий.`;
       } else {
         const tvId = mediaDetails.tmdb_id || String(mediaDetails.id).replace('tmdb_', '');
-        const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}`);
+        const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
+        const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
         if (!res.ok) throw new Error('Не удалось загрузить серии');
         const data = await res.json();
         episodes = data.episodes || [];
