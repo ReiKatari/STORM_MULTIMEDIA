@@ -5933,9 +5933,9 @@ body.player-dropdown-active .cinema-player-iframe {
 }
 
 .storm-watermark-mask.mode-blur {
-  backdrop-filter: blur(14px) saturate(1.05) brightness(0.98);
-  -webkit-backdrop-filter: blur(14px) saturate(1.05) brightness(0.98);
-  background: radial-gradient(ellipse 65% 65% at 50% 50%, rgba(20, 26, 36, 0.65) 0%, rgba(20, 26, 36, 0.40) 45%, rgba(20, 26, 36, 0.10) 75%, transparent 100%) !important;
+  backdrop-filter: blur(18px) saturate(1.15) brightness(0.94);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15) brightness(0.94);
+  background: radial-gradient(ellipse 65% 65% at 50% 50%, rgba(16, 22, 32, 0.82) 0%, rgba(16, 22, 32, 0.50) 48%, rgba(16, 22, 32, 0.15) 76%, transparent 100%) !important;
   border-radius: 22px;
   border: none !important;
   box-shadow: none !important;

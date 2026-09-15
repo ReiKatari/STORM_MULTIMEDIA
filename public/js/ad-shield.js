@@ -18,6 +18,18 @@ export const WATERMARK_PRESETS = {
     desc: 'Положение логотипа на высоте 46–52% (скриншот 1)',
     coords: { top: '46%', left: '1.2%', width: '135px', height: '44px' }
   },
+  '1xbet_bottom': {
+    id: '1xbet_bottom',
+    name: '🎯 1XBET (Слева внизу кадра)',
+    desc: 'Положение логотипа на высоте 70–75% (Обитель зла и широкоформатные релизы)',
+    coords: { top: '71%', left: '1.2%', width: '145px', height: '46px' }
+  },
+  '1xbet_corner': {
+    id: '1xbet_corner',
+    name: '🎯 1XBET (Левый нижний угол)',
+    desc: 'Положение логотипа в самом низу кадра на высоте 85–90%',
+    coords: { top: '86%', left: '1.2%', width: '145px', height: '46px' }
+  },
   '1xbet_band': {
     id: '1xbet_band',
     name: '🌊 1XBET (Адаптивная зона)',
@@ -55,7 +67,7 @@ const DEFAULT_SETTINGS = {
   watermarkMaskEnabled: false, // по умолчанию выключена, пользователь включает при обнаружении водяного знака
   activePreset: '1xbet_mid',
   maskStyle: 'blur', // 'blur' (бесшовное размытие) или 'blackout' (черная плашка)
-  maskOpacity: 0.42, // по умолчанию 42% (деликатное полупрозрачное размытие без темных пятен)
+  maskOpacity: 0.55, // по умолчанию 55% (оптимальное скрытие белых букв без грубых темных пятен)
   customCoords: { top: '42%', left: '1.2%', width: '135px', height: '44px' },
   isCustomizing: false,
   isAiming: false
@@ -77,7 +89,7 @@ export function loadCleanViewSettings() {
       const parsed = JSON.parse(raw);
       currentSettings = { ...DEFAULT_SETTINGS, ...parsed, isCustomizing: false, isAiming: false };
       if (typeof currentSettings.maskOpacity !== 'number') {
-        currentSettings.maskOpacity = 0.42;
+        currentSettings.maskOpacity = 0.55;
       }
     }
   } catch (e) {
@@ -643,20 +655,20 @@ function renderCleanViewPanelContent(panel) {
         <div class="cleanview-section" id="cleanview-opacity-section" style="${currentSettings.maskStyle === 'blackout' ? 'display: none;' : ''}">
           <div class="cleanview-section-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <div class="cleanview-section-label" style="margin-bottom: 0;">Прозрачность размытия:</div>
-            <span class="cleanview-opacity-badge" id="cleanview-opacity-val">${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.42) * 100)}%</span>
+            <span class="cleanview-opacity-badge" id="cleanview-opacity-val">${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.55) * 100)}%</span>
           </div>
           <div class="cleanview-slider-row" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-            <input type="range" class="storm-slider" id="cleanview-opacity-slider" min="15" max="85" step="5" value="${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.42) * 100)}">
+            <input type="range" class="storm-slider" id="cleanview-opacity-slider" min="15" max="85" step="5" value="${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.55) * 100)}">
           </div>
           <div class="cleanview-quick-opacity-row" style="display: flex; gap: 8px;">
-            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.42) * 100) <= 28 ? 'active' : ''}" data-opacity="0.25">
-              <span>Ультра-мягкая (25%)</span>
+            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) <= 40 ? 'active' : ''}" data-opacity="0.35">
+              <span>Деликатная (35%)</span>
             </button>
-            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.42) * 100) > 28 && Math.round((currentSettings.maskOpacity || 0.42) * 100) <= 50 ? 'active' : ''}" data-opacity="0.40">
-              <span>Оптимальная (40%)</span>
+            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) > 40 && Math.round((currentSettings.maskOpacity || 0.55) * 100) <= 68 ? 'active' : ''}" data-opacity="0.55">
+              <span>Оптимальная (55%)</span>
             </button>
-            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.42) * 100) > 50 ? 'active' : ''}" data-opacity="0.65">
-              <span>Плотная (65%)</span>
+            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) > 68 ? 'active' : ''}" data-opacity="0.80">
+              <span>Плотная (80%)</span>
             </button>
           </div>
         </div>
