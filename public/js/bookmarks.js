@@ -332,49 +332,168 @@ export function detectClientMediaType(item) {
 
 export function detectClientYear(item) {
   if (!item) return '';
-  const t = String(item.title || item.name || '').toLowerCase();
+  const rawTitle = String(item.title || item.name || '');
+  const t = rawTitle
+    .toLowerCase()
+    .replace(/[«»"'`]/g, '')
+    .replace(/[:—–-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   const knownYears = {
-    'пассажир': '2023',
-    'the passenger': '2023',
-    'мистер робот': '2015',
-    'mr. robot': '2015',
-    'ходячие мертвецы': '2010',
-    'the walking dead': '2010',
-    'остаться в живых': '2004',
-    'lost': '2004',
-    'спартак: кровь и песок': '2010',
-    'спартак': '2010',
-    'spartacus': '2010',
-    'персонажи в клетке': '2024',
-    'кафе из другого мира': '2017',
+    // 2026
     'история о перекуре за супермаркетом': '2026',
     'super no ura de yani suu futari': '2026',
+    'человек паук новый день': '2026',
+    'spider man brand new day': '2026',
+    'проект конец света': '2026',
+    'закулисье реальности': '2026',
+    'хитрый койот': '2026',
+    'миньоны и монстры': '2026',
+    'бэтмен падение рыцаря': '2026',
+    'аватар аанг последний маг воздуха': '2026',
+    'легенда об аанге': '2026',
+    'прыгуны': '2026',
+    'робоцып спецвыпуск adult swim': '2026',
+    'goat мечтай по крупному': '2026',
+    'история игрушек 5': '2026',
+    'одиссея': '2026',
+    'мандалорец и грогу': '2026',
+    'мстители судный день': '2026',
+    'бэтмен часть 2': '2026',
+    'бэтмен 2': '2026',
+
+    // 2025
+    'аватар 3 пламя и пепел': '2025',
+    'аватар пламя и пепел': '2025',
+    'аватар 3': '2025',
+    'хищник планета смерти': '2025',
+    'планета смерти': '2025',
+    'стюарт блум не смог спасти вселенную': '2025',
+    'обитель зла мутация': '2025',
     'дандадан 2': '2025',
     'dandadan 2': '2025',
+    'человек бензопила фильм история резе': '2025',
+    'человек бензопила история резе': '2025',
+    'история резе': '2025',
+    'зверополис 2': '2025',
+    'мэйдэй': '2025',
+    'mayday': '2025',
+    'супермен': '2025',
+    'микки 17': '2025',
+    '28 лет спустя': '2025',
+    'балерина': '2025',
+    'иллюзия обмана 3': '2025',
+    'франкенштейн': '2025',
+    'дракула': '2025',
+    'обезьяна': '2025',
+
+    // 2024
+    'персонажи в клетке': '2024',
     'дандадан': '2024',
     'dandadan': '2024',
-    'человек-паук: новый день': '2026',
-    'стюарт блум не смог спасти вселенную': '2025',
-    'обитель зла: мутация': '2025',
-    'джек ричер': '2022',
-    'ричер': '2022',
-    'reacher': '2022',
+    'укрытие 2 сезон': '2024',
+    'сёгун': '2024',
+    'сегун': '2024',
+    'shogun': '2024',
+    'фоллаут': '2024',
+    'fallout': '2024',
+    'пингвин': '2024',
+    'the penguin': '2024',
+    'джентльмены': '2024',
+    'the gentlemen': '2024',
+    'дюна часть вторая': '2024',
+    'дэдпул и росомаха': '2024',
+    'гладиатор 2': '2024',
+    'дикий робот': '2024',
+    'головоломка 2': '2024',
+    'кунг фу панда 4': '2024',
+    'падение империи': '2024',
+    'субстанция': '2024',
+    'ужасающий 3': '2024',
+    'джокер безумие на двоих': '2024',
+    'тихое место день первый': '2024',
+    'чужой ромул': '2024',
+    'соник 3 в кино': '2024',
+    'муфаса король лев': '2024',
+    'носферату': '2024',
+    'веном последний танец': '2024',
+    'битлджус битлджус': '2024',
+    'фуриоса хроники безумного макса': '2024',
+    'гадкий я 4': '2024',
+    'мастер и маргарита': '2024',
+    'майор гром игра': '2024',
+    'сто лет тому вперед': '2024',
+    'сто лет тому вперёд': '2024',
+    'холоп 2': '2024',
+
+    // 2023
+    'я не киллер': '2023',
+    'hit man': '2023',
+    'пассажир': '2023',
+    'the passenger': '2023',
     'укрытие': '2023',
     'бункер': '2023',
     'silo': '2023',
-    'мэйдэй': '2025',
-    'изгой-один': '2016',
-    'интерстеллар': '2014',
-    'начало': '2010',
-    'дюна: часть вторая': '2024',
-    'дюна': '2021',
+    'поколение ви': '2023',
+    'одни из нас': '2023',
+    'the last of us': '2023',
     'оппенгеймер': '2023',
+    'чебурашка': '2023',
+    'по щучьему велению': '2023',
+    'вызов': '2023',
+    'кентавр': '2023',
+    'поехавшая': '2023',
+    'праведник': '2023',
+    'снегирь': '2023',
+
+    // 2022 и классика
+    'джек ричер': '2022',
+    'ричер': '2022',
+    'reacher': '2022',
+    'разделение': '2022',
+    'severance': '2022',
+    'дом дракона': '2022',
+    'властелин колец кольца власти': '2022',
+    'андор': '2022',
+    'аватар путь воды': '2022',
+    'кот в сапогах 2': '2022',
+    'скуби ду шалость или сладость': '2022',
+    'дюна': '2021',
+    'локи': '2021',
+    'пацаны': '2019',
+    'мандалорец': '2019',
+    'ведьмак': '2019',
+    'чернобыль': '2019',
+    'кафе из другого мира': '2017',
+    'isekai shokudou': '2017',
+    'очень странные дела': '2016',
+    'изгой один': '2016',
+    'angry birds в кино': '2016',
+    'мистер робот': '2015',
+    'mr robot': '2015',
+    'слуга народа': '2015',
+    'интерстеллар': '2014',
+    'игра престолов': '2011',
+    'кот в сапогах': '2011',
+    'тачки 2': '2011',
+    'ходячие мертвецы': '2010',
+    'the walking dead': '2010',
+    'спартак кровь и песок': '2010',
+    'спартак': '2010',
+    'spartacus': '2010',
+    'начало': '2010',
+    'аватар': '2009',
     'тёмный рыцарь': '2008',
-    'темный рыцарь': '2008'
+    'темный рыцарь': '2008',
+    'тачки': '2006',
+    'остаться в живых': '2004',
+    'lost': '2004',
+    'суперсемейка': '2004'
   };
 
-  for (const [k, y] of Object.entries(knownYears)) {
+  const sortedEntries = Object.entries(knownYears).sort((a, b) => b[0].length - a[0].length);
+  for (const [k, y] of sortedEntries) {
     if (t === k || t.startsWith(k + ' ') || t.includes(k)) return y;
   }
 
@@ -387,8 +506,14 @@ export function detectClientYear(item) {
     if (ym) return ym[1];
   }
 
-  const bm = String(item.title || '').match(/[\(\[]\s*(\d{4})\s*[\)\]]/);
+  const bm = rawTitle.match(/[\(\[]\s*(\d{4})\s*[\)\]]/);
   if (bm && parseInt(bm[1], 10) >= 1920 && parseInt(bm[1], 10) <= 2030) return bm[1];
+
+  const linkStr = String(item.link || item.url || item.fanfilm_4k_url || '');
+  if (linkStr) {
+    const lm = linkStr.match(/(?:-|_|\/|\b)(19\d\d|20\d\d)(?:\.html|\/|$)/);
+    if (lm && parseInt(lm[1], 10) >= 1920 && parseInt(lm[1], 10) <= 2030) return lm[1];
+  }
 
   if (item.year) {
     const ym = String(item.year).match(/\b(19\d\d|20\d\d)\b/);
@@ -414,23 +539,13 @@ export function getLocalContinueWatching() {
       const t = String(item.title || '').trim().toLowerCase();
       if (t.includes('fanfilm4k') || t.includes('фан4к –') || t.includes('4к uhd бесплатно')) return false;
 
-      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом (Персонажи в клетке, Кафе из другого мира)
+      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом
       if ((t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) && (!item.time_seconds || item.time_seconds < 120 || item.progress_percent <= 10)) {
         hasChanges = true;
         return false;
       }
 
-      // 2. Исключаем уже полностью просмотренные произведения (Обитель зла: Мутация, Стюарт Блум, Джек Ричер)
-      if (t.includes('обитель зла: мутация') || t.includes('стюарт блум') || t.includes('джек ричер')) {
-        const titleStatus = localStorage.getItem(`storm_status_title_${t}`);
-        const idStatus = localStorage.getItem(`storm_status_${item.media_id}`);
-        if (titleStatus === 'completed' || idStatus === 'completed' || item.user_status === 'completed' || item.status === 'completed' || (item.progress_percent && item.progress_percent >= 90)) {
-          hasChanges = true;
-          return false;
-        }
-      }
-
-      // 3. Общая проверка статуса: если у тайтла стоит completed, dropped или wont_watch, скрываем из Продолжить просмотр
+      // 2. Исключаем уже полностью просмотренные произведения
       const localStatus = localStorage.getItem(`storm_status_${item.media_id}`) || localStorage.getItem(`storm_status_title_${t}`);
       if (localStatus === 'completed' || localStatus === 'dropped' || localStatus === 'wont_watch') {
         hasChanges = true;
@@ -441,9 +556,11 @@ export function getLocalContinueWatching() {
         return false;
       }
 
-      // 4. Если прогресс 90% или более (кроме титров), считается просмотренным
+      // 3. Если прогресс 90% или более и это фильм, считается просмотренным
       const pct = typeof item.progress_percent === 'number' ? item.progress_percent : 0;
-      if (pct >= 90) {
+      const cleanType = detectClientMediaType(item);
+      const isMovie = cleanType === 'movie' || cleanType === 'anime-movie' || cleanType === 'cartoon';
+      if (pct >= 90 && isMovie) {
         hasChanges = true;
         return false;
       }
@@ -452,7 +569,6 @@ export function getLocalContinueWatching() {
       const ep = parseInt(item.episode, 10) || 1;
       return (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
     }).map(item => {
-      // Автоматическое исправление устаревших типов и годов в локальном хранилище пользователя
       const cleanType = detectClientMediaType(item);
       const cleanYr = detectClientYear(item);
       const s = parseInt(item.season, 10) || 1;
@@ -484,21 +600,61 @@ export function saveLocalWatchProgress(data) {
   const cleanTitle = String(data.title || '').trim();
   if (!cleanTitle || cleanTitle.includes('FANFILM4K') || cleanTitle.includes('ФАН4К –') || cleanTitle.includes('4К UHD бесплатно')) return;
 
-  const pct = typeof data.progress_percent === 'number' ? data.progress_percent : 0;
-  const sec = typeof data.time_seconds === 'number' ? data.time_seconds : 0;
-  const ep = parseInt(data.episode, 10) || 1;
-  if (pct < 2.0 && sec < 30 && ep <= 1) return;
+  let pct = typeof data.progress_percent === 'number' ? data.progress_percent : 0;
+  let sec = typeof data.time_seconds === 'number' ? data.time_seconds : 0;
+  const dur = typeof data.duration_seconds === 'number' ? data.duration_seconds : 0;
+  if ((pct <= 0 || isNaN(pct)) && sec > 0 && dur > 0) {
+    pct = Math.min(100, Math.round((sec / dur) * 100));
+  }
+  let ep = parseInt(data.episode, 10) || 1;
+  const s = parseInt(data.season, 10) || 1;
+  const totalEp = parseInt(data.total_episodes, 10) || 0;
 
   const cleanMediaType = detectClientMediaType(data);
   const cleanYear = detectClientYear(data) || data.year || '';
+  const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1;
+
+  // Плекс и Эмби модель прогресса просмотра:
+  if (pct >= 90) {
+    if (isSeries) {
+      try {
+        localStorage.setItem(`storm_ep_watched_${data.media_id}_s${s}_e${ep}`, '1');
+      } catch (_) {}
+
+      // Если есть следующая серия, переводим Next Up на серию (ep + 1) с 0%
+      if (totalEp > 0 && ep < totalEp) {
+        ep = ep + 1;
+        pct = 0;
+        sec = 0;
+      } else {
+        // Все серии завершены — статус completed, исключаем из Continue Watching
+        try {
+          localStorage.setItem(`storm_status_${data.media_id}`, 'completed');
+          localStorage.setItem(`storm_status_title_${cleanTitle.toLowerCase()}`, 'completed');
+          const list = getLocalContinueWatching().filter(it => it.media_id !== String(data.media_id) && it.title?.toLowerCase() !== cleanTitle.toLowerCase());
+          localStorage.setItem('storm_continue_watching', JSON.stringify(list));
+          window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { media_id: data.media_id, completed: true } }));
+        } catch (_) {}
+        return;
+      }
+    } else {
+      // Фильм полностью просмотрен — переносим в completed и очищаем из Continue Watching
+      try {
+        localStorage.setItem(`storm_status_${data.media_id}`, 'completed');
+        localStorage.setItem(`storm_status_title_${cleanTitle.toLowerCase()}`, 'completed');
+        const list = getLocalContinueWatching().filter(it => it.media_id !== String(data.media_id) && it.title?.toLowerCase() !== cleanTitle.toLowerCase());
+        localStorage.setItem('storm_continue_watching', JSON.stringify(list));
+        window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { media_id: data.media_id, completed: true } }));
+      } catch (_) {}
+      return;
+    }
+  }
+
+  if (pct < 2.0 && sec < 30 && ep <= 1) return;
 
   try {
     const list = getLocalContinueWatching();
     const now = Date.now();
-
-    const s = parseInt(data.season, 10) || 1;
-    const ep = parseInt(data.episode, 10) || 1;
-    const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1;
     const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
 
     const newEntry = {
@@ -511,7 +667,7 @@ export function saveLocalWatchProgress(data) {
       year: cleanYear,
       season: s,
       episode: ep,
-      total_episodes: data.total_episodes || 1,
+      total_episodes: totalEp || 1,
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: sec,
       progress_percent: pct,

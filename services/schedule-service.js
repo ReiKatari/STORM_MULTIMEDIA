@@ -935,15 +935,30 @@ export async function getAggregatedSchedule(week = 'current') {
   const dateMap = week === 'next' ? nxtDates : curDates;
 
   try {
-    const [shikiItems, tmdbItems] = await Promise.allSettled([
+    const [shikiItems, tmdbItems, aLibItems] = await Promise.allSettled([
       getShikimoriCalendar(),
-      getTmdbOnTheAir(week === 'next' ? 2 : 1)
+      getTmdbOnTheAir(week === 'next' ? 2 : 1),
+      getAniLibriaSchedule()
     ]);
 
     const liveShiki = shikiItems.status === 'fulfilled' && Array.isArray(shikiItems.value) ? shikiItems.value : [];
     const liveTmdb = tmdbItems.status === 'fulfilled' && Array.isArray(tmdbItems.value) ? tmdbItems.value : [];
+    const liveAniLib = aLibItems.status === 'fulfilled' && Array.isArray(aLibItems.value) ? aLibItems.value : [];
 
     const existingTitles = new Set(baseItems.map(i => (i.title || '').toLowerCase().trim()));
+
+    for (const al of liveAniLib) {
+      const lower = (al.title || '').toLowerCase().trim();
+      if (!lower || existingTitles.has(lower)) continue;
+      existingTitles.add(lower);
+
+      const dOfWeek = typeof al.day_of_week === 'number' ? al.day_of_week : 1;
+      baseItems.push({
+        ...al,
+        poster: wrapPoster(al.poster),
+        release_date: dateMap[dOfWeek] || '14.09.2026'
+      });
+    }
 
     for (const sh of liveShiki) {
       const lower = (sh.title || '').toLowerCase().trim();
@@ -989,4 +1004,69 @@ export async function getAggregatedSchedule(week = 'current') {
     dateRange: week === 'next' ? '21.09.2026 — 27.09.2026' : '14.09.2026 — 20.09.2026',
     items: baseItems
   };
+}
+
+/**
+ * Получение живого расписания онгоингов от AniLibria
+ */
+export async function getAniLibriaSchedule() {
+  const cacheKey = 'anilibria_live_schedule';
+  const cached = getCache('anilibria', cacheKey);
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+
+  const urls = [
+    'https://api.anilibria.tv/v3/title/schedule',
+    'https://anilibria.top/api/v3/title/schedule'
+  ];
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const items = [];
+          data.forEach(dayBlock => {
+            const aDay = dayBlock.day;
+            const stormDay = (aDay === 6) ? 0 : (aDay + 1);
+            if (Array.isArray(dayBlock.list)) {
+              dayBlock.list.forEach(anime => {
+                const title = anime.names?.ru || anime.names?.en || anime.code;
+                const posterPath = anime.posters?.small?.url || anime.posters?.original?.url || '';
+                const poster = posterPath ? (posterPath.startsWith('http') ? posterPath : `https://anilibria.tv${posterPath}`) : '';
+                const ep = anime.player?.series?.last || 1;
+                items.push({
+                  id: `anilib_${anime.id || anime.code}`,
+                  title,
+                  original_title: anime.names?.en || '',
+                  poster: wrapPoster(poster),
+                  year: String(anime.season?.year || '2026'),
+                  season: 1,
+                  episode: ep,
+                  episode_title: `Серия ${ep}`,
+                  day_of_week: stormDay,
+                  air_time: '18:00 МСК',
+                  studio: 'AniLibria',
+                  quality: '1080p FHD',
+                  is4K: false,
+                  rating: anime.type?.string || 8.5,
+                  genres: anime.genres ? (Array.isArray(anime.genres) ? anime.genres.join(', ') : String(anime.genres)) : 'Аниме',
+                  source: 'anilibria',
+                  description: anime.description || 'Свежий эпизод популярного аниме в профессиональном дубляже AniLibria.'
+                });
+              });
+            }
+          });
+          if (items.length > 0) {
+            setCache('anilibria', cacheKey, items, 3600);
+            return items;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  return [];
 }

@@ -828,12 +828,16 @@
       <div class="mobile-drawer-body">
         <!-- Блок профиля / входа -->
         <div class="mobile-drawer-user-card" id="mobile-drawer-user-card">
-          <img src="assets/favicon.svg" alt="Avatar" class="mobile-drawer-avatar" id="mobile-drawer-avatar">
-          <div class="mobile-drawer-user-info">
-            <div class="mobile-drawer-user-name" id="mobile-drawer-username">Гость</div>
-            <div class="mobile-drawer-user-status" id="mobile-drawer-user-status">Авторизуйтесь для синхронизации</div>
+          <div class="mobile-drawer-user-top">
+            <img src="assets/favicon.svg" alt="Avatar" class="mobile-drawer-avatar" id="mobile-drawer-avatar">
+            <div class="mobile-drawer-user-info">
+              <div class="mobile-drawer-user-name" id="mobile-drawer-username">Гость</div>
+              <div class="mobile-drawer-user-status" id="mobile-drawer-user-status">Авторизуйтесь для синхронизации</div>
+            </div>
           </div>
-          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="mobile-drawer-auth-btn">Войти</button>
+          <button type="button" class="storm-btn storm-btn-primary mobile-drawer-auth-btn" id="mobile-drawer-auth-btn">
+            <span>Войти</span>
+          </button>
         </div>
 
         <!-- Раздел таймера сна (Sleep Timer) -->
@@ -844,7 +848,6 @@
           <button type="button" class="drawer-sleep-pill" data-sleep-min="30">30 мин</button>
           <button type="button" class="drawer-sleep-pill" data-sleep-min="45">45 мин</button>
           <button type="button" class="drawer-sleep-pill" data-sleep-min="60">60 мин</button>
-          <button type="button" class="drawer-sleep-pill" data-sleep-min="end">Конец серии</button>
         </div>
         <div class="drawer-sleep-status" id="drawer-sleep-status" style="display: none;">
           <span class="sleep-status-icon">🌙</span>
@@ -913,75 +916,40 @@
           </button>
         </div>
 
-        <!-- Раздел быстрого выбора 8 визуальных тем -->
-        <div class="mobile-drawer-section-title">🎨 Тема оформления</div>
-        <div class="mobile-drawer-themes-grid" id="mobile-drawer-themes-grid">
-          <button type="button" class="drawer-theme-card active" data-theme-name="STORM DARK">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #090d16 0%, #00d2ff 100%);"></span>
-            <span class="theme-card-name">DARK</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM NIGHT">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #000000 0%, #00f0ff 100%);"></span>
-            <span class="theme-card-name">NIGHT</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM MATRIX">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #021206 0%, #00ff66 100%);"></span>
-            <span class="theme-card-name">MATRIX</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM CYBERPUNK">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #180324 0%, #ff007f 100%);"></span>
-            <span class="theme-card-name">CYBER</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM MIDNIGHT">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #110c24 0%, #a855f7 100%);"></span>
-            <span class="theme-card-name">MIDNIGHT</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM FANTASY">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #161005 0%, #f59e0b 100%);"></span>
-            <span class="theme-card-name">FANTASY</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM WARHAMMER 40K">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #12100d 0%, #d4af37 100%);"></span>
-            <span class="theme-card-name">WARHAMMER</span>
-          </button>
-          <button type="button" class="drawer-theme-card" data-theme-name="STORM DAY">
-            <span class="theme-card-preview" style="background: linear-gradient(135deg, #f8fafc 0%, #0284c7 100%);"></span>
-            <span class="theme-card-name">DAY</span>
-          </button>
-        </div>
-
-        <!-- Раздел языка и полноэкранного режима -->
-        <div class="mobile-drawer-section-title">Оформление и язык</div>
-        <div class="mobile-drawer-quick-settings">
-          <div class="mobile-drawer-setting-row">
-            <span>🌐 Язык</span>
-            <select class="storm-select" id="mobile-drawer-lang-select">
-              <option value="ru">Русский (RU)</option>
-              <option value="en">English (EN)</option>
-              <option value="de">Deutsch (DE)</option>
-              <option value="fr">Français (FR)</option>
-              <option value="zh">中文 (ZH)</option>
-              <option value="ja">日本語 (JA)</option>
-            </select>
+        <!-- Раздел управления экраном и памятью -->
+        <div class="mobile-drawer-section-title">📱 Экран и управление</div>
+        <div class="mobile-drawer-fullscreen-card">
+          <div class="drawer-fullscreen-info">
+            <span class="drawer-fullscreen-icon">⛶</span>
+            <div class="drawer-fullscreen-texts">
+              <span class="drawer-fullscreen-title">Полноэкранный режим</span>
+              <span class="drawer-fullscreen-desc">Просмотр без системных рамок и панелей</span>
+            </div>
           </div>
-          <div class="mobile-drawer-setting-row">
-            <span>📱 Полноэкранный режим</span>
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="mobile-drawer-fs-btn">
-              <span>⛶ Во весь экран</span>
-            </button>
-          </div>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm drawer-fs-toggle-btn" id="mobile-drawer-fs-btn">
+            <span>Во весь экран</span>
+          </button>
         </div>
 
         <!-- Раздел локального кэша и хранилища -->
         <div class="mobile-drawer-section-title">💾 Память и кэш</div>
         <div class="mobile-drawer-cache-card">
-          <div class="drawer-cache-info">
-            <span style="font-size: 12px; color: var(--text-secondary);">Кэш каталога и сессий:</span>
-            <strong id="mobile-drawer-cache-size" style="font-size: 13px; color: var(--accent);">Оптимизирован</strong>
+          <div class="drawer-cache-top">
+            <div class="drawer-cache-meta">
+              <span class="drawer-cache-badge">ОЗУ и диск</span>
+              <span class="drawer-cache-label">Кэш каталога и сессий</span>
+            </div>
+            <strong id="mobile-drawer-cache-size" class="drawer-cache-size-val">Оптимизирован</strong>
           </div>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="mobile-drawer-clear-cache-btn">
-            🧹 Очистить кэш
-          </button>
+          <div class="drawer-cache-meter-wrap">
+            <div class="drawer-cache-meter-bar"></div>
+          </div>
+          <div class="drawer-cache-actions">
+            <span class="drawer-cache-subtext">Быстрый доступ к постерам и метаданным</span>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm drawer-clear-cache-action" id="mobile-drawer-clear-cache-btn">
+              <span>🧹</span> <span>Очистить кэш</span>
+            </button>
+          </div>
         </div>
 
         <!-- Раздел информации о платформе и источниках (Мобильный подвал) -->

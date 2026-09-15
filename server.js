@@ -1581,6 +1581,22 @@ app.get('/api/media/schedule', async (req, res) => {
   }
 });
 
+// Календарь релизов (Release Calendar API)
+app.get('/api/media/calendar', async (req, res) => {
+  try {
+    const week = req.query.week === 'next' ? 'next' : 'current';
+    const schedule = await getAggregatedSchedule(week);
+    res.json({
+      success: true,
+      week,
+      schedule: schedule.items || []
+    });
+  } catch (err) {
+    console.error('Ошибка получения календаря релизов:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка получения календаря релизов', schedule: [] });
+  }
+});
+
 app.get('/api/media/search', async (req, res) => {
   try {
     const query = (req.query.q || '').trim();
@@ -2612,11 +2628,17 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                   applySpeedToPlayerJS(sp);
                 }
               }
+            });
+
             // STORM CleanView: In-Iframe Ad Neutralizer
             (function() {
+              try {
+                window.open = function() { return null; };
+                window.alert = function() {};
+              } catch(e) {}
               setInterval(function() {
                 try {
-                  var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"]');
+                  var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"], .close-ad, .ad-close, [class*="ad-btn"]');
                   for (var i = 0; i < skipBtns.length; i++) {
                     if (skipBtns[i].offsetParent !== null) skipBtns[i].click();
                   }
@@ -2627,6 +2649,13 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                       v.muted = true;
                       v.playbackRate = 16;
                       if (v.currentTime < v.duration - 0.4) v.currentTime = v.duration - 0.2;
+                    }
+                  }
+                  var banners = document.querySelectorAll('[class*="banner"], [id*="banner"], [class*="advert"], [id*="advert"], [class*="preroll"]:not(video)');
+                  for (var k = 0; k < banners.length; k++) {
+                    if (!banners[k].querySelector('video')) {
+                      banners[k].style.display = 'none';
+                      banners[k].style.pointerEvents = 'none';
                     }
                   }
                 } catch(e) {}
@@ -2748,8 +2777,44 @@ app.get('/api/player/kodik-embed', async (req, res) => {
 
     let html = await embedRes.text();
     const baseOrigin = new URL(cleanUrl).origin;
+    const kodikCleanViewInjection = `
+      <base href="${baseOrigin}/">
+      <meta name="referrer" content="no-referrer">
+      <script>
+      (function() {
+        try {
+          window.open = function() { return null; };
+          window.alert = function() {};
+        } catch(e) {}
+        setInterval(function() {
+          try {
+            var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"], .kodik-ad-skip, [id*="skip"], .close-ad, .ad-close, [class*="ad-btn"]');
+            for (var i = 0; i < skipBtns.length; i++) {
+              if (skipBtns[i].offsetParent !== null) skipBtns[i].click();
+            }
+            var vids = document.querySelectorAll('video');
+            for (var j = 0; j < vids.length; j++) {
+              var v = vids[j];
+              if (v.duration && v.duration < 65 && v.duration > 2) {
+                v.muted = true;
+                v.playbackRate = 16;
+                if (v.currentTime < v.duration - 0.4) v.currentTime = v.duration - 0.2;
+              }
+            }
+            var banners = document.querySelectorAll('[class*="banner"], [id*="banner"], [class*="advert"], [id*="advert"], [class*="preroll"]:not(video), .b-player__brand');
+            for (var k = 0; k < banners.length; k++) {
+              if (!banners[k].querySelector('video')) {
+                banners[k].style.display = 'none';
+                banners[k].style.pointerEvents = 'none';
+              }
+            }
+          } catch(e) {}
+        }, 350);
+      })();
+      </script>
+    `;
     if (!html.includes('<base ')) {
-      html = html.replace(/<head[^>]*>/i, `$&<base href="${baseOrigin}/"><meta name="referrer" content="no-referrer">`);
+      html = html.replace(/<head[^>]*>/i, `$&${kodikCleanViewInjection}`);
     }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
