@@ -4,7 +4,7 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection } from './bookmarks.js';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js';
 import { getUser, showToast } from './auth.js';
 import { t } from './i18n.js';
 import { trackClientAction } from './achievements.js';
@@ -370,7 +370,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 
 export async function openPlayerModal(mediaItem, options = {}) {
   const cleanTitle = cleanVideoTitle(mediaItem?.title || '');
-  let initialYr = mediaItem?.year || '';
+  const detectedType = detectClientMediaType(mediaItem);
+  let initialYr = detectClientYear(mediaItem) || mediaItem?.year || '';
   if (!initialYr) {
     const ym = String(mediaItem?.title || '').match(/\b(19\d\d|20\d\d)\b/);
     if (ym && parseInt(ym[1], 10) >= 1950 && parseInt(ym[1], 10) <= 2030 && ym[1] !== '2049') {
@@ -380,7 +381,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
       if (rm) initialYr = rm[1];
     }
   }
-  currentMedia = { ...mediaItem, title: cleanTitle, year: initialYr || mediaItem?.year || '' };
+  currentMedia = { ...mediaItem, title: cleanTitle, media_type: detectedType || mediaItem?.media_type || 'movie', year: initialYr || mediaItem?.year || '' };
   quickBarSeriesData = null;
   currentEpisodes = [];
   currentEpisodeIndex = 1;
@@ -470,9 +471,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
     const controller = new AbortController();
     const fetchTimeout = setTimeout(() => controller.abort(), 12000);
 
-    const mediaType = mediaItem.media_type || mediaItem.type || '';
+    const mediaType = detectClientMediaType(mediaItem) || mediaItem.media_type || mediaItem.type || '';
     const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
-    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(currentMedia?.year || mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}`;
+    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(currentMedia?.year || detectClientYear(mediaItem) || mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}`;
     
     let details = null;
     try {
@@ -5647,7 +5648,11 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   const container = document.getElementById('series-seasons-container');
   if (!container) return;
 
-  const isSeries = mediaDetails.media_type === 'series' || 
+  const detType = detectClientMediaType(mediaDetails);
+  const isSeries = detType === 'series' ||
+                   detType === 'cartoon-series' ||
+                   detType === 'anime-series' ||
+                   mediaDetails.media_type === 'series' || 
                    mediaDetails.category === 'Сериал' || 
                    mediaDetails.media_type === 'cartoon-series' || 
                    mediaDetails.media_type === 'anime-series' ||

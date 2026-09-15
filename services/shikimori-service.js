@@ -1,4 +1,5 @@
 import { getCache, setCache } from '../db.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
 
 const SHIKIMORI_BASE = 'https://shikimori.one';
 const USER_AGENT = 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)';
@@ -27,20 +28,22 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
 
     const data = await res.json();
     const items = data.map(item => {
-      let year = item.aired_on ? item.aired_on.substring(0, 4) : (item.released_on ? item.released_on.substring(0, 4) : '');
-      if (!year) {
-        const ym = `${item.russian || ''} ${item.name || ''}`.match(/\b(19\d\d|20\d\d)\b/);
-        if (ym) year = ym[1];
-      }
+      const title = item.russian || item.name;
+      const rawYear = item.aired_on ? item.aired_on.substring(0, 4) : (item.released_on ? item.released_on.substring(0, 4) : '');
+      const resolvedYear = resolveCanonicalYear(title, '', '', '', rawYear) || '2026';
+      const genres = resolveCanonicalGenres(title, 'anime', '', null);
+      const mediaType = item.kind === 'movie' ? 'anime-movie' : resolveCanonicalMediaType(title, '', 'anime-series', genres);
       return {
         id: String(item.id),
         source: 'shikimori',
-        title: item.russian || item.name,
+        title,
         original_title: item.name,
         poster: item.image?.original ? `${SHIKIMORI_BASE}${item.image.original}` : 'assets/favicon.svg',
-        year: year || '2024',
+        year: resolvedYear,
         rating: parseFloat(item.score) || 0,
-        media_type: item.kind === 'movie' ? 'anime-movie' : 'anime-series',
+        media_type: mediaType,
+        category: mediaType === 'anime-movie' ? 'Аниме-фильм' : 'Аниме-сериал',
+        genres,
         quality: 'HD 1080p',
         status: item.status === 'released' ? 'Вышел' : 'Онгоинг',
         episodes_total: item.episodes || 0,

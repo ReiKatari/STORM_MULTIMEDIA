@@ -5,7 +5,7 @@
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus } from './bookmarks.js';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 import { trackClientAction, renderProfileAchievements } from './achievements.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
@@ -1209,6 +1209,12 @@ function normalizeMediaTitle(title, originalTitle = '') {
 
 export function getMediaYear(item) {
   if (!item) return '';
+
+  // 0. Канонический интеллект клиента
+  const clientYr = detectClientYear(item);
+  if (clientYr) return clientYr;
+
+  // 1. Из года или даты релиза объекта
   if (item.year && String(item.year).trim()) {
     const ym = String(item.year).match(/\b(19\d\d|20\d\d)\b/);
     if (ym) return ym[1];
@@ -1223,7 +1229,7 @@ export function getMediaYear(item) {
     if (ym) return ym[1];
   }
 
-  // 1. Поиск в ссылке/URL (FanFilm4K часто содержит год: -2016.html)
+  // 2. Поиск в ссылке/URL (FanFilm4K часто содержит год: -2016.html или /4026-dzhek-richer-2022.html)
   const linkStr = String(item.link || item.url || item.fanfilm_4k_url || '');
   if (linkStr) {
     const lm = linkStr.match(/(?:-|_|\/|\b)(19\d\d|20\d\d)(?:\.html|\/|$)/) || linkStr.match(/-(\d{4})(?:-|\.html)/);
@@ -1233,7 +1239,7 @@ export function getMediaYear(item) {
     }
   }
 
-  // 2. Известные франшизы и фильмы
+  // 3. Известные франшизы и фильмы
   const normTitle = String(item.title || item.original_title || '').toLowerCase();
   if (normTitle.includes('изгой-один') || normTitle.includes('rogue one')) return '2016';
   if (normTitle.includes('интерстеллар') || normTitle.includes('interstellar')) return '2014';
@@ -1265,7 +1271,7 @@ export function getMediaYear(item) {
   if (normTitle.includes('возвращение короля')) return '2003';
   if (normTitle.includes('властелин колец')) return '2001';
 
-  // 3. Из заголовка в скобках или по границам слов
+  // 4. Из заголовка в скобках или по границам слов
   if (item.title || item.original_title) {
     const ym = String(item.title || item.original_title || '').match(/[\(\[]\s*(\d{4})\s*[\)\]]/) ||
                String(item.title || item.original_title || '').match(/\b(19\d\d|20\d\d)\b/);
@@ -1277,33 +1283,34 @@ export function getMediaYear(item) {
     }
   }
 
-  // 4. По умолчанию для предотвращения пустых карточек
-  const src = String(item.source || '').toLowerCase();
-  if (src === 'anilibria' || src === 'anixart' || src === 'shikimori') return '2024';
-  return '2025';
+  return '';
 }
 
 export function getMediaCategoryLabel(item, fallbackCategory = '') {
   if (!item) return 'Фильм';
-  const type = String(item.media_type || '').toLowerCase();
-  const cat = String(fallbackCategory || currentTab || '').toLowerCase();
+  const detectedType = detectClientMediaType(item);
+  const type = String(item.media_type || detectedType || '').toLowerCase();
+  const cat = String(fallbackCategory || item.category || currentTab || '').toLowerCase();
   const title = String(item.title || item.name || '').toLowerCase();
   const source = String(item.source || '').toLowerCase();
 
-  if (type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
+  if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
     return 'Аниме-сериал';
   }
-  if (type === 'anime-movie' || type === 'anime' || source === 'anixart' || source === 'anilibria' || source === 'shikimori' || cat === 'anime' || cat === 'anime-movies' || cat === 'anime-series') {
+  if (detectedType === 'anime-movie' || type === 'anime-movie' || cat === 'anime-movies') {
+    return 'Аниме-фильм';
+  }
+  if (type === 'anime' || source === 'anixart' || source === 'anilibria' || source === 'shikimori' || cat === 'anime' || cat === 'anime-series') {
     if (type.includes('series') || title.includes('сезон') || title.includes('сериал')) return 'Аниме-сериал';
     return 'Аниме';
   }
-  if (type === 'cartoon-series' || (type.includes('series') && (cat === 'cartoons' || type.includes('cartoon')))) {
+  if (detectedType === 'cartoon-series' || type === 'cartoon-series' || (type.includes('series') && (cat === 'cartoons' || type.includes('cartoon')))) {
     return 'Мультсериал';
   }
-  if (type === 'cartoon' || cat === 'cartoons' || title.includes('мульт')) {
+  if (detectedType === 'cartoon' || type === 'cartoon' || cat === 'cartoons' || title.includes('мульт')) {
     return 'Мультфильм';
   }
-  if (type === 'tv' || type === 'series' || cat === 'series' || title.includes('сериал') || title.includes('сезон')) {
+  if (detectedType === 'series' || type === 'tv' || type === 'series' || cat === 'series' || title.includes('сериал') || title.includes('сезон')) {
     return 'Сериал';
   }
   if (type === 'show' || cat === 'shows') {
@@ -1341,7 +1348,9 @@ function deduplicateMediaList(items) {
         ...existing,
         ...item,
         year: item.year || existing.year || '',
-        media_type: item.media_type || existing.media_type || '',
+        media_type: detectClientMediaType(item) || item.media_type || existing.media_type || '',
+        category: item.category || existing.category || '',
+        genres: item.genres || existing.genres || '',
         release_date: item.release_date || existing.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
         is4K: has4K,
@@ -1353,7 +1362,9 @@ function deduplicateMediaList(items) {
         ...item,
         ...existing,
         year: existing.year || item.year || '',
-        media_type: existing.media_type || item.media_type || '',
+        media_type: detectClientMediaType(existing) || existing.media_type || item.media_type || '',
+        category: existing.category || item.category || '',
+        genres: existing.genres || item.genres || '',
         release_date: existing.release_date || item.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
         is4K: has4K,
@@ -1508,7 +1519,8 @@ function renderHeroShowcase(items) {
           </div>
           <h1 class="hero-title">${formattedTitle}</h1>
           <div class="hero-meta-row">
-            <span>${item.year || '2026'}</span>
+            ${getMediaYear(item) || item.year ? `<span>${getMediaYear(item) || item.year}</span><span>•</span>` : ''}
+            <span>${getMediaCategoryLabel(item)}</span>
             ${genresHtml ? `<span>•</span><div class="hero-genres-chips">${genresHtml}</div>` : ''}
           </div>
           <p class="hero-desc">${item.description || 'Высочайшее качество видео и звука в формате 4K Ultra HD. Смотрите онлайн в любое удобное время на STORM MULTIMEDIA.'}</p>
@@ -1736,8 +1748,9 @@ function renderHomeView(items) {
       source: i.source || 'tmdb',
       title: i.title,
       poster: i.poster_url || i.poster,
-      media_type: i.media_type || 'movie',
-      year: i.year || '',
+      media_type: detectClientMediaType(i) || i.media_type || 'movie',
+      year: getMediaYear(i) || i.year || '',
+      genres: i.genres || '',
       progress_percent: Math.round(i.progress_percent || 0),
       user_status: (i.user_status === 'watching' || i.bookmark_status === 'watching') ? 'watching' : (i.user_status || i.bookmark_status || null),
       season: i.season || 1,
@@ -1747,21 +1760,23 @@ function renderHomeView(items) {
 
   // Рейл 2: Горячие премьеры 2026/2025
   const trendingItems = items.filter(i => {
-    const yr = parseInt(i.year, 10);
+    const yr = parseInt(getMediaYear(i) || i.year, 10);
     return yr >= 2025;
   }).slice(0, 16);
 
   // Рейл 3: Популярные фильмы
   const movieItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
-    if (i.category === 'series' || i.type === 'series' || i.seasons) return false;
+    const mType = detectClientMediaType(i);
+    if (mType === 'series' || mType === 'cartoon-series' || mType === 'anime-series' || i.category === 'series' || i.type === 'series' || i.seasons) return false;
     return true;
   }).slice(0, 16);
 
   // Рейл 4: Лучшие сериалы
   const seriesItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
-    return (i.category === 'series' || i.type === 'series' || i.seasons);
+    const mType = detectClientMediaType(i);
+    return (mType === 'series' || i.category === 'series' || i.type === 'series' || i.seasons);
   }).slice(0, 16);
 
   // Рейл 5: Топ аниме
@@ -3325,6 +3340,9 @@ function showCardHoverPreview(card, item) {
   const rawGenres = Array.isArray(item.genres) ? item.genres : (typeof item.genres === 'string' ? item.genres.split(/[,/]/).map(g => g.trim()) : []);
   const genres = rawGenres.slice(0, 4);
 
+  const previewYr = getMediaYear(item) || item.year || '';
+  const previewCat = getMediaCategoryLabel(item, item.media_type);
+
   preview.innerHTML = `
     <!-- Верхняя строка плашек -->
     <div class="hover-preview-top-row">
@@ -3333,7 +3351,7 @@ function showCardHoverPreview(card, item) {
         ${item.user_status ? getStatusBadge(item.user_status) : ''}
       </div>
       <div class="hover-preview-badges-right">
-        ${item.year ? `<span class="storm-badge" style="background:var(--bg-tertiary);border-color:var(--border-subtle);color:var(--text-secondary);">${item.year}</span>` : ''}
+        ${previewYr ? `<span class="storm-badge" style="background:var(--bg-tertiary);border-color:var(--border-subtle);color:var(--text-secondary);">${previewYr}</span>` : ''}
         ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
       </div>
     </div>
@@ -3347,7 +3365,7 @@ function showCardHoverPreview(card, item) {
     <!-- Метаданные и теги жанров -->
     <div class="hover-preview-meta-row">
       <span>🌐 ${sourceName}</span>
-      ${item.media_type ? `<span>• ${item.media_type === 'series' || item.category === 'Сериал' ? 'Сериал' : 'Фильм'}</span>` : ''}
+      <span>• ${previewCat}</span>
       ${genres.length > 0 ? `
         <div class="hover-preview-tags">
           ${genres.map(g => `<span class="hover-preview-tag">${g}</span>`).join('')}
@@ -3356,7 +3374,7 @@ function showCardHoverPreview(card, item) {
     </div>
 
     <!-- Синопсис / описание -->
-    <p class="hover-preview-desc">${item.description || 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.'}</p>
+    <p class="hover-preview-desc">${item.description || (previewCat.toLowerCase().includes('сериал') ? 'Просмотр сериала онлайн в высоком качестве с профессиональным русским дубляжем.' : 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.')}</p>
 
     <!-- Кнопки действий -->
     <div class="hover-preview-actions">

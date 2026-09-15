@@ -1,5 +1,6 @@
 import { Anixart, FilterSortType, ReleaseCategory } from 'anixapi';
 import { getCache, setCache } from '../db.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
 
 const client = new Anixart();
 
@@ -45,11 +46,11 @@ function formatAnimeRelease(rel) {
     ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`
     : 'assets/favicon.svg';
 
-  let year = String(rel.year || '').trim();
-  if (!year || year === '0') {
-    const ym = `${cleanTitle} ${cleanOrig} ${rel.description || ''}`.match(/\b(19\d\d|20\d\d)\b/);
-    if (ym) year = ym[1];
-  }
+  let rawYear = String(rel.year || '').trim();
+  if (rawYear === '0') rawYear = '';
+  const resolvedYear = resolveCanonicalYear(cleanTitle, '', '', '', rawYear) || '2026';
+  const canonicalGenres = resolveCanonicalGenres(cleanTitle, 'anime', rel.description || '', rel.genres);
+  const mediaType = rel.category?.name === 'Фильм' ? 'anime-movie' : resolveCanonicalMediaType(cleanTitle, '', 'anime-series', canonicalGenres);
 
   return {
     id: String(rel.id),
@@ -57,15 +58,15 @@ function formatAnimeRelease(rel) {
     title: cleanTitle,
     original_title: origTitle.trim(),
     poster,
-    year: year || '2024',
+    year: resolvedYear,
     rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : (typeof rel.rating === 'number' ? Math.round(rel.rating / 1000) / 10 : 0),
-    media_type: rel.category?.name === 'Фильм' ? 'anime-movie' : 'anime-series',
+    media_type: mediaType,
     quality: 'HD 1080p',
     status: rel.status?.name || 'Вышел',
-    category: rel.category?.name || 'Сериал',
+    category: mediaType === 'anime-movie' ? 'Аниме-фильм' : 'Аниме-сериал',
     episodes_released: rel.episodes_released || 0,
     episodes_total: rel.episodes_total || 0,
-    genres: rel.genres || '',
+    genres: canonicalGenres,
     studio: rel.studio || '',
     description: rel.description || '',
     country: rel.country || 'Япония',

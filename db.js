@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveCanonicalMediaType, resolveCanonicalYear, resolveCanonicalGenres } from './services/canonical-media-intel.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -861,6 +862,8 @@ export function logWatchProgress(userId, data) {
     return { media_id, season, episode, time_seconds, progress_percent: progressPercent, status: null };
   }
 
+  const cleanMediaType = resolveCanonicalMediaType(title, '', '', '', { season, episode, total_episodes, media_type });
+  const cleanYear = resolveCanonicalYear(title, '', poster_url, '', year);
   const now = Date.now();
 
   // Сохраняем в историю
@@ -870,6 +873,7 @@ export function logWatchProgress(userId, data) {
       season, episode, time_seconds, duration_seconds, progress_percent, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
+      media_type = excluded.media_type,
       year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
       time_seconds = excluded.time_seconds,
       duration_seconds = excluded.duration_seconds,
@@ -883,8 +887,8 @@ export function logWatchProgress(userId, data) {
     source,
     title,
     poster_url,
-    media_type,
-    year,
+    cleanMediaType,
+    cleanYear,
     season,
     episode,
     time_seconds,
@@ -979,7 +983,17 @@ export function getContinueWatching(userId, limit = 12) {
     }
   }
 
-  return Array.from(canonicalMap.values()).slice(0, limit);
+  return Array.from(canonicalMap.values()).slice(0, limit).map(row => {
+    const canonicalType = resolveCanonicalMediaType(row.title, '', '', '', row);
+    const canonicalYr = resolveCanonicalYear(row.title, '', row.poster_url, '', row.year);
+    const canonicalGenres = resolveCanonicalGenres(row.title, canonicalType, '', null);
+    return {
+      ...row,
+      media_type: canonicalType,
+      year: canonicalYr,
+      genres: canonicalGenres
+    };
+  });
 }
 
 // Кастомные списки и коллекции
