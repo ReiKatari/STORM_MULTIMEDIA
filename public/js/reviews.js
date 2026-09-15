@@ -149,10 +149,26 @@ export async function renderReviewsSection(containerElement, mediaItem) {
 
         <input type="text" class="storm-input" id="review-title-input" placeholder="Заголовок рецензии (необязательно)" style="margin-bottom: 10px;">
 
+        <!-- Панель быстрого форматирования Markdown и спойлеров -->
+        <div class="review-compose-toolbar" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-spoiler" title="Скрыть выделенный текст под спойлер">
+            ⚠️ Спойлер
+          </button>
+          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-bold" title="Жирный шрифт">
+            <strong>B</strong>
+          </button>
+          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-italic" title="Курсив">
+            <em>I</em>
+          </button>
+          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-quote" title="Цитата">
+            ❝ Цитата
+          </button>
+        </div>
+
         <div style="position: relative;">
-          <textarea class="storm-input review-textarea" id="review-content-input" placeholder="Поделитесь впечатлениями... Для скрытия спойлеров используйте: ||текст спойлера||" rows="4"></textarea>
+          <textarea class="storm-input review-textarea" id="review-content-input" placeholder="Поделитесь впечатлениями... Для скрытия спойлеров выделите текст и нажмите «⚠️ Спойлер»" rows="4"></textarea>
           <div style="display: flex; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--text-muted);">
-            <span>💡 Подсказка: <code>||спойлер||</code> скрывает сюжетные повороты под блюр</span>
+            <span>💡 Подсказка: кнопка «⚠️ Спойлер» или <code>||спойлер||</code> скрывает сюжетные повороты под интерактивный блюр</span>
           </div>
         </div>
 
@@ -229,6 +245,42 @@ export async function renderReviewsSection(containerElement, mediaItem) {
     cancelBtn.onclick = () => {
       composeCard.style.display = 'none';
     };
+  }
+
+  // Вспомогательная функция для обрамления текста в поле ввода
+  const contentInput = containerElement.querySelector('#review-content-input');
+  function wrapTextSelection(prefix, suffix, placeholder) {
+    if (!contentInput) return;
+    const start = contentInput.selectionStart;
+    const end = contentInput.selectionEnd;
+    const val = contentInput.value;
+    const selected = val.substring(start, end) || placeholder;
+    const replacement = prefix + selected + suffix;
+    contentInput.value = val.substring(0, start) + replacement + val.substring(end);
+    contentInput.focus();
+    const selStart = start + prefix.length;
+    const selEnd = selStart + selected.length;
+    contentInput.setSelectionRange(selStart, selEnd);
+  }
+
+  const spoilerBtn = containerElement.querySelector('#btn-insert-spoiler');
+  if (spoilerBtn) {
+    spoilerBtn.onclick = () => wrapTextSelection('||', '||', 'текст спойлера');
+  }
+
+  const boldBtn = containerElement.querySelector('#btn-insert-bold');
+  if (boldBtn) {
+    boldBtn.onclick = () => wrapTextSelection('**', '**', 'жирный текст');
+  }
+
+  const italicBtn = containerElement.querySelector('#btn-insert-italic');
+  if (italicBtn) {
+    italicBtn.onclick = () => wrapTextSelection('*', '*', 'курсив');
+  }
+
+  const quoteBtn = containerElement.querySelector('#btn-insert-quote');
+  if (quoteBtn) {
+    quoteBtn.onclick = () => wrapTextSelection('> ', '', 'цитата');
   }
 
   // Выбор звезд

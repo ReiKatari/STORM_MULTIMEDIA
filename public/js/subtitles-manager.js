@@ -18,8 +18,22 @@ let subSettings = {
   fontSize: 22,
   color: '#ffffff',
   bgColor: 'rgba(0, 0, 0, 0.7)',
-  bottom: 40
+  bottom: 40,
+  shadow: true
 };
+
+try {
+  const savedSubs = localStorage.getItem('storm_sub_settings');
+  if (savedSubs) {
+    subSettings = { ...subSettings, ...JSON.parse(savedSubs) };
+  }
+} catch {}
+
+function saveSubSettings() {
+  try {
+    localStorage.setItem('storm_sub_settings', JSON.stringify(subSettings));
+  } catch {}
+}
 
 export function initSubtitlesManager(videoElement, containerElement) {
   attachedVideo = videoElement;
@@ -50,6 +64,15 @@ function applySubtitleStyles() {
   subtitleOverlay.style.color = subSettings.color;
   subtitleOverlay.style.background = subSettings.bgColor;
   subtitleOverlay.style.bottom = `${subSettings.bottom}px`;
+  subtitleOverlay.style.textShadow = subSettings.shadow ? '0 2px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)' : 'none';
+  subtitleOverlay.style.fontWeight = '600';
+  subtitleOverlay.style.lineHeight = '1.35';
+  subtitleOverlay.style.borderRadius = '6px';
+  subtitleOverlay.style.padding = '4px 12px';
+  subtitleOverlay.style.maxWidth = '85%';
+  subtitleOverlay.style.textAlign = 'center';
+  subtitleOverlay.style.pointerEvents = 'none';
+  subtitleOverlay.style.transition = 'bottom 0.2s ease, font-size 0.2s ease';
 }
 
 function setupDropZone(dropTarget) {
@@ -199,8 +222,19 @@ export function getActiveSubtitleText(time) {
   return activeCue ? activeCue.text : null;
 }
 
+export function getSubtitleOffset() {
+  return timingOffset;
+}
+
+export function setSubtitleOffset(seconds) {
+  timingOffset = Math.round(parseFloat(seconds) * 10) / 10;
+  updateSubtitlesControlsUi();
+}
+
 export function adjustSubtitleOffset(deltaSeconds) {
-  timingOffset += deltaSeconds;
+  timingOffset = Math.round((timingOffset + deltaSeconds) * 10) / 10;
+  if (timingOffset > 15) timingOffset = 15;
+  if (timingOffset < -15) timingOffset = -15;
   showToast(`Сдвиг субтитров: ${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)} сек`, 'info');
   updateSubtitlesControlsUi();
 }
@@ -212,12 +246,32 @@ export function resetSubtitleOffset() {
 }
 
 export function setSubtitleFontSize(size) {
-  subSettings.fontSize = size;
+  subSettings.fontSize = parseInt(size, 10) || 22;
+  saveSubSettings();
   applySubtitleStyles();
 }
 
 export function setSubtitleColor(color) {
   subSettings.color = color;
+  saveSubSettings();
+  applySubtitleStyles();
+}
+
+export function setSubtitleBgColor(bgColor) {
+  subSettings.bgColor = bgColor;
+  saveSubSettings();
+  applySubtitleStyles();
+}
+
+export function setSubtitleBottom(bottom) {
+  subSettings.bottom = parseInt(bottom, 10) || 40;
+  saveSubSettings();
+  applySubtitleStyles();
+}
+
+export function setSubtitleShadow(enabled) {
+  subSettings.shadow = Boolean(enabled);
+  saveSubSettings();
   applySubtitleStyles();
 }
 
@@ -251,63 +305,208 @@ export function renderSubtitlesControls(containerElement) {
   if (!containerElement) return;
 
   containerElement.innerHTML = `
-    <div class="subtitles-panel-bar">
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+    <div class="subtitles-studio-container">
+      <!-- Верхняя панель: Загрузка файлов -->
+      <div class="subtitles-upload-row" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
         <label class="storm-btn storm-btn-secondary storm-btn-sm" style="margin: 0; cursor: pointer;">
-          💬 Субтитры (.srt/.vtt/.ass)
+          <span>💬</span>
+          <span>Загрузить субтитры (.srt/.vtt/.ass)</span>
           <input type="file" id="sub-file-input" accept=".srt,.vtt,.ass" style="display: none;">
         </label>
         <label class="storm-btn storm-btn-secondary storm-btn-sm" style="margin: 0; cursor: pointer;">
-          🎵 Внешнее аудио (.mp3)
+          <span>🎵</span>
+          <span>Внешняя дорожка (.mp3/.aac)</span>
           <input type="file" id="audio-file-input" accept=".mp3,.m4a,.aac,.wav" style="display: none;">
         </label>
+      </div>
 
-        <!-- Управление синхронизацией -->
-        <div class="sub-sync-group" id="sub-sync-controls" style="${currentCues.length > 0 ? 'display:flex;' : 'display:none;'} align-items: center; gap: 4px;">
-          <span style="font-size: 11px; color: var(--text-muted);">Сдвиг:</span>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-offset-minus">-0.5s</button>
-          <span id="sub-offset-label" style="font-size: 11px; font-weight: 800; min-width: 45px; text-align: center;">0.0s</span>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-offset-plus">+0.5s</button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-offset-reset">Сброс</button>
+      <!-- Секция 1: Синхронизация и сдвиг тайминга (Feature 3) -->
+      <div class="subtitles-studio-card" style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+            <span>⏱️</span>
+            <span>Синхронизация и задержка субтитров</span>
+          </span>
+          <span id="sub-offset-label" style="font-weight: 800; font-size: 14px; color: var(--color-cyan); min-width: 55px; text-align: right;">${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)}s</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+          <span style="font-size: 11px; color: var(--text-muted);">-10с</span>
+          <input type="range" id="sub-offset-slider" min="-10" max="10" step="0.1" value="${timingOffset}" style="flex: 1; accent-color: var(--color-cyan); cursor: pointer;">
+          <span style="font-size: 11px; color: var(--text-muted);">+10с</span>
+        </div>
+
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-m10">-1.0с</button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-m01">-0.1с</button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-zero" style="font-weight: 700;">Сброс (0с)</button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-p01">+0.1с</button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-p10">+1.0с</button>
+        </div>
+      </div>
+
+      <!-- Секция 2: Стилизация и оформление субтитров (Feature 4) -->
+      <div class="subtitles-studio-card" style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px;">
+        <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+          <span>🎨</span>
+          <span>Внешний вид и читаемость субтитров</span>
+        </div>
+
+        <!-- Размер шрифта -->
+        <div style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+            <span style="color: var(--text-secondary);">Размер шрифта</span>
+            <span id="sub-font-size-label" style="font-weight: 700; color: var(--color-cyan);">${subSettings.fontSize}px</span>
+          </div>
+          <input type="range" id="sub-font-size-slider" min="14" max="36" step="1" value="${subSettings.fontSize}" style="width: 100%; accent-color: var(--color-cyan); cursor: pointer;">
+        </div>
+
+        <!-- Высота от нижнего края -->
+        <div style="margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+            <span style="color: var(--text-secondary);">Положение по вертикали</span>
+            <span id="sub-bottom-label" style="font-weight: 700; color: var(--color-cyan);">${subSettings.bottom}px</span>
+          </div>
+          <input type="range" id="sub-bottom-slider" min="15" max="100" step="5" value="${subSettings.bottom}" style="width: 100%; accent-color: var(--color-cyan); cursor: pointer;">
+        </div>
+
+        <!-- Цвет текста -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Цвет текста</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="sub-color-pill ${subSettings.color === '#ffffff' ? 'active' : ''}" data-color="#ffffff" style="background:#ffffff; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Белый</button>
+            <button type="button" class="sub-color-pill ${subSettings.color === '#ffd700' ? 'active' : ''}" data-color="#ffd700" style="background:#ffd700; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Янтарный</button>
+            <button type="button" class="sub-color-pill ${subSettings.color === '#00f0ff' ? 'active' : ''}" data-color="#00f0ff" style="background:#00f0ff; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Неон Циан</button>
+            <button type="button" class="sub-color-pill ${subSettings.color === '#00ff66' ? 'active' : ''}" data-color="#00ff66" style="background:#00ff66; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Изумруд</button>
+          </div>
+        </div>
+
+        <!-- Подложка -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="storm-btn storm-btn-sm ${subSettings.bgColor === 'transparent' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="sub-bg-none">Без фона</button>
+            <button type="button" class="storm-btn storm-btn-sm ${subSettings.bgColor.includes('0.5') ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="sub-bg-soft">Мягкий фон</button>
+            <button type="button" class="storm-btn storm-btn-sm ${subSettings.bgColor.includes('0.85') ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="sub-bg-dark">Контрастный</button>
+          </div>
+
+          <label class="studio-autoskip-toggle" style="margin: 0; cursor: pointer;">
+            <input type="checkbox" id="sub-shadow-toggle" ${subSettings.shadow ? 'checked' : ''}>
+            <span class="studio-autoskip-box"></span>
+            <span class="studio-autoskip-label" style="font-size: 12px;">Тень и контур</span>
+          </label>
         </div>
       </div>
     </div>
   `;
 
+  // Обработчики загрузки файлов
   const subInput = containerElement.querySelector('#sub-file-input');
   if (subInput) {
     subInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) {
-        handleUploadedFile(e.target.files[0]);
-      }
+      if (e.target.files && e.target.files[0]) handleUploadedFile(e.target.files[0]);
     };
   }
 
   const audioInput = containerElement.querySelector('#audio-file-input');
   if (audioInput) {
     audioInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) {
-        handleUploadedFile(e.target.files[0]);
-      }
+      if (e.target.files && e.target.files[0]) handleUploadedFile(e.target.files[0]);
     };
   }
 
-  const minusBtn = containerElement.querySelector('#sub-offset-minus');
-  const plusBtn = containerElement.querySelector('#sub-offset-plus');
-  const resetBtn = containerElement.querySelector('#sub-offset-reset');
+  // Слайдер сдвига
+  const offsetSlider = containerElement.querySelector('#sub-offset-slider');
+  if (offsetSlider) {
+    offsetSlider.oninput = (e) => setSubtitleOffset(e.target.value);
+  }
 
-  if (minusBtn) minusBtn.onclick = () => adjustSubtitleOffset(-0.5);
-  if (plusBtn) plusBtn.onclick = () => adjustSubtitleOffset(0.5);
-  if (resetBtn) resetBtn.onclick = () => resetSubtitleOffset();
+  // Кнопки шагов
+  const btnM10 = containerElement.querySelector('#sub-step-m10');
+  const btnM01 = containerElement.querySelector('#sub-step-m01');
+  const btnZero = containerElement.querySelector('#sub-step-zero');
+  const btnP01 = containerElement.querySelector('#sub-step-p01');
+  const btnP10 = containerElement.querySelector('#sub-step-p10');
+
+  if (btnM10) btnM10.onclick = () => adjustSubtitleOffset(-1.0);
+  if (btnM01) btnM01.onclick = () => adjustSubtitleOffset(-0.1);
+  if (btnZero) btnZero.onclick = () => resetSubtitleOffset();
+  if (btnP01) btnP01.onclick = () => adjustSubtitleOffset(0.1);
+  if (btnP10) btnP10.onclick = () => adjustSubtitleOffset(1.0);
+
+  // Стилизация шрифта и отступа
+  const fontSlider = containerElement.querySelector('#sub-font-size-slider');
+  const fontLabel = containerElement.querySelector('#sub-font-size-label');
+  if (fontSlider) {
+    fontSlider.oninput = (e) => {
+      setSubtitleFontSize(e.target.value);
+      if (fontLabel) fontLabel.textContent = `${e.target.value}px`;
+    };
+  }
+
+  const bottomSlider = containerElement.querySelector('#sub-bottom-slider');
+  const bottomLabel = containerElement.querySelector('#sub-bottom-label');
+  if (bottomSlider) {
+    bottomSlider.oninput = (e) => {
+      setSubtitleBottom(e.target.value);
+      if (bottomLabel) bottomLabel.textContent = `${e.target.value}px`;
+    };
+  }
+
+  // Цвет
+  containerElement.querySelectorAll('.sub-color-pill').forEach(pill => {
+    pill.onclick = () => {
+      containerElement.querySelectorAll('.sub-color-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      setSubtitleColor(pill.dataset.color);
+    };
+  });
+
+  // Фон
+  const bgNone = containerElement.querySelector('#sub-bg-none');
+  const bgSoft = containerElement.querySelector('#sub-bg-soft');
+  const bgDark = containerElement.querySelector('#sub-bg-dark');
+
+  if (bgNone) {
+    bgNone.onclick = () => {
+      setSubtitleBgColor('transparent');
+      bgNone.className = 'storm-btn storm-btn-sm storm-btn-primary';
+      if (bgSoft) bgSoft.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+      if (bgDark) bgDark.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+    };
+  }
+
+  if (bgSoft) {
+    bgSoft.onclick = () => {
+      setSubtitleBgColor('rgba(0, 0, 0, 0.5)');
+      bgSoft.className = 'storm-btn storm-btn-sm storm-btn-primary';
+      if (bgNone) bgNone.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+      if (bgDark) bgDark.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+    };
+  }
+
+  if (bgDark) {
+    bgDark.onclick = () => {
+      setSubtitleBgColor('rgba(0, 0, 0, 0.85)');
+      bgDark.className = 'storm-btn storm-btn-sm storm-btn-primary';
+      if (bgNone) bgNone.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+      if (bgSoft) bgSoft.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+    };
+  }
+
+  // Тень
+  const shadowToggle = containerElement.querySelector('#sub-shadow-toggle');
+  if (shadowToggle) {
+    shadowToggle.onchange = (e) => setSubtitleShadow(e.target.checked);
+  }
 }
 
 function updateSubtitlesControlsUi() {
-  const syncGroup = document.getElementById('sub-sync-controls');
   const label = document.getElementById('sub-offset-label');
-  if (syncGroup) {
-    syncGroup.style.display = currentCues.length > 0 ? 'flex' : 'none';
-  }
+  const slider = document.getElementById('sub-offset-slider');
   if (label) {
     label.textContent = `${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)}s`;
+  }
+  if (slider) {
+    slider.value = timingOffset;
   }
 }

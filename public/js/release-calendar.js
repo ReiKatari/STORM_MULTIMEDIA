@@ -10,6 +10,7 @@ import { openPlayerModal } from './player.js';
 let selectedWeek = 'current'; // 'current' | 'next'
 let selectedDay = new Date().getDay(); // 0=ВС, 1=ПН, 2=ВТ...
 let activeCategoryFilter = 'all'; // 'all' | 'series' | 'anime' | 'movies'
+let currentViewMode = 'list'; // 'list' | 'epg'
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -18,6 +19,11 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+export function openLiveTvEpgModal() {
+  currentViewMode = 'epg';
+  openReleaseCalendarModal();
 }
 
 export function wrapPosterUrl(url, title = '') {
@@ -125,14 +131,41 @@ async function renderCalendarContent(container) {
         <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'anime' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="anime">Аниме</button>
         <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'movies' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="movies">Премьеры</button>
       </div>
+      <!-- Режим отображения: Карточки / Сетка EPG -->
+      <div class="cal-view-modes" style="display: flex; gap: 6px;">
+        <button type="button" class="storm-btn storm-btn-sm ${currentViewMode === 'list' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="cal-mode-list-btn" title="Отображение в виде карточек">
+          📅 Карточки
+        </button>
+        <button type="button" class="storm-btn storm-btn-sm ${currentViewMode === 'epg' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="cal-mode-epg-btn" title="Сетка телепередач и каналов (EPG Guide)">
+          📺 Сетка эфира (EPG)
+        </button>
+      </div>
     </div>
 
     <!-- Навигационная панель дней выбранной недели -->
     <div class="cal-days-navbar" id="cal-days-navbar"></div>
 
-    <!-- Контейнер карточек эпизодов -->
+    <!-- Контейнер карточек эпизодов или EPG сетки -->
     <div id="calendar-day-items-grid" class="cal-items-grid"></div>
   `;
+
+  // Переключение режимов отображения (Карточки / Сетка EPG)
+  const modeListBtn = container.querySelector('#cal-mode-list-btn');
+  const modeEpgBtn = container.querySelector('#cal-mode-epg-btn');
+  if (modeListBtn && modeEpgBtn) {
+    modeListBtn.onclick = () => {
+      currentViewMode = 'list';
+      modeListBtn.className = 'storm-btn storm-btn-sm storm-btn-primary';
+      modeEpgBtn.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+      loadAndRenderWeek(container);
+    };
+    modeEpgBtn.onclick = () => {
+      currentViewMode = 'epg';
+      modeListBtn.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+      modeEpgBtn.className = 'storm-btn storm-btn-sm storm-btn-primary';
+      loadAndRenderWeek(container);
+    };
+  }
 
   // Переключение недель
   const weekBtns = container.querySelectorAll('.cal-week-btn');
@@ -283,11 +316,96 @@ async function loadAndRenderWeek(container) {
     btn.onclick = () => {
       selectedDay = parseInt(btn.dataset.day, 10);
       daysNav.querySelectorAll('.cal-day-pill').forEach(b => b.classList.toggle('active', parseInt(b.dataset.day, 10) === selectedDay));
-      renderDayGrid(grid, dayGroups[selectedDay], selectedDay, selectedWeek);
+      renderActiveDayView(grid, dayGroups[selectedDay], selectedDay, selectedWeek);
     };
   });
 
-  renderDayGrid(grid, dayGroups[selectedDay], selectedDay, selectedWeek);
+  renderActiveDayView(grid, dayGroups[selectedDay], selectedDay, selectedWeek);
+}
+
+function renderActiveDayView(grid, items, dayId, week) {
+  if (currentViewMode === 'epg') {
+    grid.className = 'cal-epg-container';
+    renderEpgMatrixGuide(grid, items, dayId, week);
+  } else {
+    grid.className = 'cal-items-grid';
+    renderDayGrid(grid, items, dayId, week);
+  }
+}
+
+function renderEpgMatrixGuide(grid, items, dayId, week) {
+  if (!items || items.length === 0) {
+    grid.innerHTML = `
+      <div style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
+        <div style="font-size: 32px; margin-bottom: 8px;">📺</div>
+        <div style="font-size: 14px; font-weight: 600;">В этот день трансляций не запланировано</div>
+      </div>
+    `;
+    return;
+  }
+
+  const timeSlots = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'];
+  const studios = ['AniLibria', 'LostFilm', 'Red Head Sound', 'HDRezka Studio', 'TVShows', 'Apple TV+'];
+
+  grid.innerHTML = `
+    <div class="epg-matrix-table-wrap">
+      <div class="epg-matrix-timeline-header">
+        <div class="epg-channel-header-cell">Канал / Студия</div>
+        <div class="epg-times-ruler">
+          ${timeSlots.map(t => `<div class="epg-time-tick"><span>${t}</span></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="epg-matrix-channels-body">
+        ${studios.map(studio => {
+          const studioItems = items.filter(it => (it.studio && it.studio.toLowerCase().includes(studio.toLowerCase())) || (!it.studio && studio === 'LostFilm'));
+          return `
+            <div class="epg-matrix-row">
+              <div class="epg-matrix-channel-info">
+                <span class="epg-studio-badge">${escapeHtml(studio)}</span>
+              </div>
+              <div class="epg-matrix-shows-track">
+                ${studioItems.length > 0 ? studioItems.map(it => {
+                  const posterUrl = wrapPosterUrl(it.poster, it.title);
+                  return `
+                    <div class="epg-show-card" data-id="${it.id}" title="${escapeHtml(it.title)}: ${it.air_time || '20:00 МСК'}">
+                      <img src="${posterUrl}" class="epg-show-thumb" alt="${escapeHtml(it.title)}" onerror="this.src='assets/favicon.svg'">
+                      <div class="epg-show-meta">
+                        <div class="epg-show-time">${it.air_time || '20:00 МСК'}</div>
+                        <div class="epg-show-title">${escapeHtml(it.title)}</div>
+                        <div class="epg-show-ep">S${it.season || 1}:E${it.episode || 1}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('') : '<div class="epg-no-shows-slot">Нет эфира в этот день</div>'}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  grid.querySelectorAll('.epg-show-card').forEach(card => {
+    card.onclick = () => {
+      const itId = card.dataset.id;
+      const it = items.find(x => String(x.id) === String(itId));
+      if (it) {
+        openPlayerModal({
+          id: it.id,
+          title: it.title,
+          original_title: it.original_title || '',
+          poster: it.poster,
+          year: it.year,
+          source: it.source || 'fanfilm4k',
+          media_type: it.media_type || 'series'
+        }, {
+          initialSeason: it.season || 1,
+          initialEpisode: it.episode || 1
+        });
+      }
+    };
+  });
 }
 
 function renderDayGrid(grid, items, dayId, week) {

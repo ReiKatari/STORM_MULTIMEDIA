@@ -220,6 +220,13 @@ function initFullscreenControls() {
 
     const k = e.key;
 
+    // Снимаем фокус с кнопок и ссылок, чтобы стрелки не переключали меню
+    if (k === 'ArrowLeft' || k === 'ArrowRight' || k === ' ' || k === 'ArrowUp' || k === 'ArrowDown') {
+      if (activeEl && activeEl !== document.body && typeof activeEl.blur === 'function') {
+        activeEl.blur();
+      }
+    }
+
     // 1. Полноэкранный режим: F / А
     if (k === 'f' || k === 'F' || k === 'а' || k === 'А') {
       e.preventDefault();
@@ -973,6 +980,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   // Открываем модальное окно
   modal.classList.add('is-open');
+  applyAmbientBackdropGlow(mediaItem);
 
   // Немедленно инициализируем селекторы и кнопки, чтобы они были интерактивны СРАЗУ
   const cachedStatus = mediaItem.user_status || localStorage.getItem(`storm_status_${mediaItem.id}`) || null;
@@ -1132,6 +1140,14 @@ export function closePlayerModal() {
     modal.classList.remove('is-open', 'is-mini-pip');
     stopAmbilight();
     clearPlayerUrl();
+    dismissUpNextCountdownCard(false);
+    if (statsForNerdsInterval) {
+      clearInterval(statsForNerdsInterval);
+      statsForNerdsInterval = null;
+    }
+    isStatsForNerdsVisible = false;
+    const statsOverlay = document.getElementById('storm-nerd-stats-overlay');
+    if (statsOverlay) statsOverlay.remove();
 
     // Сброс мобильных состояний (блокировка экрана, соотношение сторон, PiP)
     const lockOverlay = document.getElementById('player-screen-locked-overlay');
@@ -3225,6 +3241,7 @@ function setupSkipLogic(video) {
   let lastHtml5Sync = 0;
   video.ontimeupdate = () => {
     const time = video.currentTime;
+    checkUpNextEpisodeCountdown(video);
 
     // Синхронизация ползунка прогресса
     if (video.duration) {
@@ -4427,6 +4444,450 @@ async function startWebTorrentStream(torrentIdentifier) {
   });
 }
 
+// ==========================================
+// ПРЯМОЙ ПОТОК (DIRECT STREAM)
+// ==========================================
+let forceDirectStream = localStorage.getItem('storm_force_direct_stream') === 'true';
+
+export function isForceDirectStream() {
+  return forceDirectStream;
+}
+
+export function setForceDirectStream(val) {
+  forceDirectStream = Boolean(val);
+  localStorage.setItem('storm_force_direct_stream', forceDirectStream ? 'true' : 'false');
+  showToast(forceDirectStream ? '⚡ Прямой поток активирован' : '🛡️ Стандартный режим (проксирование)', 'info');
+}
+
+// ==========================================
+// ДАННЫЕ О СЛЕДУЮЩЕЙ СЕРИИ И ПРЕДЗАГРУЗКА
+// ==========================================
+export function getNextEpisodeData() {
+  if (!checkIfMediaIsSeries(currentMedia)) return null;
+
+  // 1. Быстрая панель сезонов и серий
+  if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
+    const curSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
+    if (curSeasonObj?.episodes) {
+      const curEpIdx = curSeasonObj.episodes.findIndex(e => e.episode === quickBarActiveEpisode);
+      if (curEpIdx >= 0 && curEpIdx < curSeasonObj.episodes.length - 1) {
+        const nextEp = curSeasonObj.episodes[curEpIdx + 1];
+        return {
+          season: quickBarActiveSeason,
+          episode: nextEp.episode,
+          name: nextEp.title || nextEp.name || `Серия ${nextEp.episode}`,
+          still: nextEp.still || nextEp.still_path || currentMedia?.poster || 'assets/favicon.svg'
+        };
+      }
+    }
+  }
+
+  // 2. Сетка эпизодов TMDB
+  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
+  if (gridEl) {
+    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
+    const nextCard = activeCard?.nextElementSibling;
+    if (nextCard) {
+      const epNum = nextCard.dataset.epNum || (currentEpisodeIndex + 1);
+      const title = nextCard.querySelector('.series-episode-title')?.textContent || `Серия ${epNum}`;
+      const img = nextCard.querySelector('img')?.src || currentMedia?.poster || 'assets/favicon.svg';
+      return {
+        season: currentMedia?.season || 1,
+        episode: parseInt(epNum, 10),
+        name: title,
+        still: img
+      };
+    }
+  }
+
+  // 3. AniXart / AniLibria
+  if (currentEpisodes && currentEpisodes.length > 0) {
+    const curIdx = currentEpisodes.findIndex(e => (e.position || e.ordinal || 1) === currentEpisodeIndex);
+    if (curIdx >= 0 && curIdx < currentEpisodes.length - 1) {
+      const next = currentEpisodes[curIdx + 1];
+      const epNum = next.position || next.ordinal || (currentEpisodeIndex + 1);
+      return {
+        season: 1,
+        episode: epNum,
+        name: next.title || next.name || `Серия ${epNum}`,
+        still: next.still || currentMedia?.poster || 'assets/favicon.svg'
+      };
+    }
+  }
+
+  return null;
+}
+
+function triggerNextEpisodePrebuffer() {
+  try {
+    const nextEp = getNextEpisodeData();
+    if (!nextEp) return;
+    if (currentMedia?.source === 'anilibria' && nextEp.streamUrl) {
+      fetch(nextEp.streamUrl, { method: 'HEAD', priority: 'low' }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+// ==========================================
+// ПАРЯЩАЯ КАРТОЧКА СЛЕДУЮЩЕЙ СЕРИИ (UP NEXT)
+// ==========================================
+let upNextCountdownTimer = null;
+let upNextDismissedForEp = null;
+
+export function checkUpNextEpisodeCountdown(video) {
+  if (!video || !video.duration || video.duration < 60) return;
+  const timeLeft = video.duration - video.currentTime;
+
+  // Предварительная буферизация на 90% прогресса
+  if (video.currentTime >= video.duration * 0.90 && !video.dataset.hasPrebufferedNext) {
+    video.dataset.hasPrebufferedNext = 'true';
+    triggerNextEpisodePrebuffer();
+  }
+
+  // Показ карточки за 35 секунд до окончания серии
+  if (timeLeft <= 35 && timeLeft >= 2) {
+    const epKey = `${currentMedia?.id}_${currentEpisodeIndex}`;
+    if (upNextDismissedForEp === epKey) return;
+
+    const nextEp = getNextEpisodeData();
+    if (!nextEp) return;
+
+    showUpNextCountdownCard(nextEp, Math.min(15, Math.floor(timeLeft)));
+  } else if (timeLeft < 2) {
+    dismissUpNextCountdownCard(false);
+  }
+}
+
+function showUpNextCountdownCard(nextEp, secondsToWait) {
+  let card = document.getElementById('storm-up-next-card');
+  if (card) return;
+
+  const wrapper = document.getElementById('cinema-player-wrapper') || document.getElementById('cinema-player-container');
+  if (!wrapper) return;
+
+  card = document.createElement('div');
+  card.className = 'storm-up-next-card';
+  card.id = 'storm-up-next-card';
+
+  let remainingSec = secondsToWait;
+  const circumference = 2 * Math.PI * 18;
+
+  card.innerHTML = `
+    <div class="up-next-thumb-wrap">
+      <img src="${escapeHtml(nextEp.still || 'assets/favicon.svg')}" alt="${escapeHtml(nextEp.name)}" class="up-next-thumb" onerror="this.src='assets/favicon.svg'">
+      <div class="up-next-timer-svg-box">
+        <svg class="up-next-circle-svg" width="44" height="44" viewBox="0 0 44 44">
+          <circle class="up-next-circle-bg" cx="22" cy="22" r="18"></circle>
+          <circle class="up-next-circle-progress" id="up-next-circle-bar" cx="22" cy="22" r="18" stroke-dasharray="${circumference}" stroke-dashoffset="0"></circle>
+        </svg>
+        <span class="up-next-sec-count" id="up-next-sec-count">${remainingSec}</span>
+      </div>
+    </div>
+    <div class="up-next-info">
+      <div class="up-next-label">Следующая серия</div>
+      <div class="up-next-title">${escapeHtml(nextEp.name)}</div>
+      <div class="up-next-sub">Сезон ${nextEp.season || 1} • Серия ${nextEp.episode}</div>
+    </div>
+    <div class="up-next-actions">
+      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="up-next-play-btn">
+        ▶ Смотреть сейчас
+      </button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="up-next-cancel-btn" title="Отменить автопереход">
+        ✕ Отмена
+      </button>
+    </div>
+  `;
+
+  wrapper.appendChild(card);
+
+  const circleBar = card.querySelector('#up-next-circle-bar');
+  const secCount = card.querySelector('#up-next-sec-count');
+  const playBtn = card.querySelector('#up-next-play-btn');
+  const cancelBtn = card.querySelector('#up-next-cancel-btn');
+
+  if (playBtn) {
+    playBtn.onclick = (e) => {
+      e.stopPropagation();
+      dismissUpNextCountdownCard(false);
+      playNextEpisode();
+    };
+  }
+
+  if (cancelBtn) {
+    cancelBtn.onclick = (e) => {
+      e.stopPropagation();
+      dismissUpNextCountdownCard(true);
+    };
+  }
+
+  clearInterval(upNextCountdownTimer);
+  upNextCountdownTimer = setInterval(() => {
+    remainingSec--;
+    if (secCount) secCount.textContent = Math.max(0, remainingSec);
+    if (circleBar) {
+      const offset = circumference - (remainingSec / secondsToWait) * circumference;
+      circleBar.style.strokeDashoffset = offset;
+    }
+    if (remainingSec <= 0) {
+      clearInterval(upNextCountdownTimer);
+      upNextCountdownTimer = null;
+      dismissUpNextCountdownCard(false);
+      playNextEpisode();
+    }
+  }, 1000);
+}
+
+export function dismissUpNextCountdownCard(cancelledByUser = false) {
+  if (upNextCountdownTimer) {
+    clearInterval(upNextCountdownTimer);
+    upNextCountdownTimer = null;
+  }
+  const card = document.getElementById('storm-up-next-card');
+  if (card) card.remove();
+  if (cancelledByUser) {
+    const epKey = `${currentMedia?.id}_${currentEpisodeIndex}`;
+    upNextDismissedForEp = epKey;
+    showToast('Автопереход к следующей серии отменен', 'info');
+  }
+}
+
+// ==========================================
+// СТАТИСТИКА ДЛЯ ГИКОВ (STATS FOR NERDS)
+// ==========================================
+let statsForNerdsInterval = null;
+let isStatsForNerdsVisible = false;
+
+export function toggleStatsForNerds() {
+  const wrapper = document.getElementById('cinema-player-wrapper') || document.getElementById('cinema-player-container');
+  if (!wrapper) return;
+  let overlay = document.getElementById('storm-nerd-stats-overlay');
+
+  if (overlay && overlay.style.display !== 'none') {
+    overlay.style.display = 'none';
+    isStatsForNerdsVisible = false;
+    if (statsForNerdsInterval) {
+      clearInterval(statsForNerdsInterval);
+      statsForNerdsInterval = null;
+    }
+    return;
+  }
+
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'storm-nerd-stats-overlay';
+    overlay.id = 'storm-nerd-stats-overlay';
+    wrapper.appendChild(overlay);
+  }
+
+  overlay.style.display = 'block';
+  isStatsForNerdsVisible = true;
+  updateStatsForNerdsContent(overlay);
+
+  if (statsForNerdsInterval) clearInterval(statsForNerdsInterval);
+  statsForNerdsInterval = setInterval(() => {
+    if (isStatsForNerdsVisible) {
+      updateStatsForNerdsContent(overlay);
+    }
+  }, 1000);
+}
+
+function updateStatsForNerdsContent(overlay) {
+  if (!overlay) return;
+  const video = document.querySelector('#cinema-player-wrapper video');
+  const iframe = document.querySelector('#cinema-player-wrapper iframe');
+
+  let res = '—';
+  let viewport = '—';
+  let bufferHealth = '0.0 с';
+  let droppedFrames = '0';
+  let totalFrames = '0';
+  let dropRate = '0%';
+  let timeStr = '—';
+  let engine = iframe ? 'Iframe видеоплеер' : 'HTML5 Native Video';
+  let vol = '100%';
+  let speed = '1.0x';
+
+  if (video) {
+    if (video.videoWidth && video.videoHeight) {
+      res = `${video.videoWidth} × ${video.videoHeight}`;
+    }
+    viewport = `${video.clientWidth} × ${video.clientHeight}`;
+    timeStr = `${formatSeconds(video.currentTime)} / ${video.duration ? formatSeconds(video.duration) : '—'}`;
+    vol = `${Math.round(video.volume * 100)}%`;
+    speed = `${video.playbackRate}x`;
+
+    if (video.buffered && video.buffered.length > 0) {
+      const cur = video.currentTime;
+      let bufEnd = 0;
+      for (let i = 0; i < video.buffered.length; i++) {
+        if (video.buffered.start(i) <= cur && video.buffered.end(i) >= cur) {
+          bufEnd = video.buffered.end(i);
+          break;
+        }
+      }
+      bufferHealth = `${Math.max(0, bufEnd - cur).toFixed(1)} с`;
+    }
+
+    if (typeof video.getVideoPlaybackQuality === 'function') {
+      const q = video.getVideoPlaybackQuality();
+      droppedFrames = String(q.droppedVideoFrames || 0);
+      totalFrames = String(q.totalVideoFrames || 0);
+      if (q.totalVideoFrames > 0) {
+        dropRate = `${((q.droppedVideoFrames / q.totalVideoFrames) * 100).toFixed(2)}%`;
+      }
+    }
+
+    if (window.Hls && window.Hls.isSupported && window.Hls.isSupported()) {
+      engine = 'HLS.js Pipeline';
+    }
+    if (torrentClient) {
+      engine = 'WebTorrent P2P Engine';
+    }
+  }
+
+  overlay.innerHTML = `
+    <div class="nerd-stats-header">
+      <div class="nerd-stats-title">
+        <span style="color: var(--accent);">●</span> Статистика для гиков (Stats for Nerds)
+      </div>
+      <button type="button" class="nerd-stats-close-btn" id="close-nerd-stats-btn">✕</button>
+    </div>
+    <div class="nerd-stats-grid">
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Видеопоток и источник:</span>
+        <span class="nerd-stat-val">${escapeHtml(currentActivePlayer || currentMedia?.source || 'Auto')}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Разрешение видео:</span>
+        <span class="nerd-stat-val highlight">${res}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Область отображения:</span>
+        <span class="nerd-stat-val">${viewport}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Здоровье буфера (Buffer Health):</span>
+        <span class="nerd-stat-val highlight">${bufferHealth}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Пропущено кадров:</span>
+        <span class="nerd-stat-val ${parseInt(droppedFrames, 10) > 30 ? 'warn' : ''}">${droppedFrames} / ${totalFrames} (${dropRate})</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Движок рендеринга:</span>
+        <span class="nerd-stat-val">${engine}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Звуковой тракт:</span>
+        <span class="nerd-stat-val">${nightAudioModeEnabled ? '🌙 Pro WebAudio DRC (Ночной компрессор)' : '🔊 Pro Studio Master'}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Таймкод и длительность:</span>
+        <span class="nerd-stat-val">${timeStr}</span>
+      </div>
+      <div class="nerd-stat-row">
+        <span class="nerd-stat-key">Скорость и громкость:</span>
+        <span class="nerd-stat-val">${speed} • ${vol}</span>
+      </div>
+    </div>
+  `;
+
+  const closeBtn = overlay.querySelector('#close-nerd-stats-btn');
+  if (closeBtn) {
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleStatsForNerds();
+    };
+  }
+}
+
+// ==========================================
+// В РОЛЯХ (IN-PLAYER CAST DRAWER)
+// ==========================================
+async function renderInPlayerCastDrawer(body) {
+  body.innerHTML = `
+    <div style="display: flex; justify-content: center; padding: 25px;">
+      <div class="storm-spinner"></div>
+    </div>
+  `;
+
+  let cast = currentMedia?.cast || currentMedia?.credits?.cast || [];
+  if ((!cast || !cast.length) && currentMedia?.id) {
+    try {
+      const src = currentMedia.source || 'tmdb';
+      const res = await fetch(`/api/media/${encodeURIComponent(src)}/${encodeURIComponent(currentMedia.id)}/cast`);
+      if (res.ok) {
+        const data = await res.json();
+        cast = data.cast || data || [];
+      }
+    } catch (_) {}
+  }
+  if (!cast || !cast.length) {
+    cast = currentMedia?.actors || [];
+  }
+
+  if (!cast || !cast.length) {
+    body.innerHTML = `
+      <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+        🎭 Информация об актерском составе отсутствует для данного релиза.
+      </div>
+    `;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="inplayer-cast-drawer-content">
+      <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 12px;">
+        В главных ролях (${cast.length}) • Нажмите на актера для фильмографии
+      </div>
+      <div class="inplayer-cast-scroll-row">
+        ${cast.map(c => `
+          <div class="inplayer-cast-item-card" data-person-id="${escapeHtml(c.id || '')}" data-person-name="${escapeHtml(c.name || '')}">
+            <div class="inplayer-cast-img-box">
+              <img src="${escapeHtml(c.photo || c.profile_path || 'assets/favicon.svg')}" alt="${escapeHtml(c.name || '')}" class="inplayer-cast-img" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            </div>
+            <div class="inplayer-cast-name">${escapeHtml(c.name || 'Актер')}</div>
+            <div class="inplayer-cast-role">${escapeHtml(c.character || 'В ролях')}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  body.querySelectorAll('.inplayer-cast-item-card').forEach(card => {
+    card.onclick = () => {
+      const pid = card.dataset.personId;
+      const pname = card.dataset.personName;
+      if (pid && typeof openPersonModal === 'function') {
+        openPersonModal(pid, pname);
+      }
+    };
+  });
+}
+
+// ==========================================
+// VIBRANT ФОНОВАЯ ПОДСВЕТКА (AMBIENT GLOW)
+// ==========================================
+export function applyAmbientBackdropGlow(mediaItem) {
+  const modal = document.getElementById('cinema-modal');
+  if (!modal) return;
+
+  const colors = [
+    'rgba(0, 210, 255, 0.40)',
+    'rgba(168, 85, 247, 0.40)',
+    'rgba(255, 0, 127, 0.40)',
+    'rgba(0, 255, 102, 0.40)',
+    'rgba(245, 158, 11, 0.40)',
+    'rgba(2, 132, 199, 0.40)'
+  ];
+  const title = mediaItem?.title || '';
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) hash = (hash * 31 + title.charCodeAt(i)) >>> 0;
+  const picked = colors[hash % colors.length];
+
+  modal.style.setProperty('--ambient-backdrop-color', picked);
+}
+
 function renderPlayerUtilityButtons() {
   const container = document.getElementById('player-utility-actions');
   if (!container) return;
@@ -4461,6 +4922,14 @@ function renderPlayerUtilityButtons() {
         <div class="player-studio-section">
           <div class="player-studio-section-label">⚡ Сервисы и просмотр</div>
           <div class="player-studio-btn-grid">
+            <button type="button" class="studio-tab-btn" id="studio-tab-cast" title="В главных ролях и съемочная группа">
+              <span class="studio-tab-icon">🎭</span>
+              <span class="studio-tab-text">В ролях</span>
+            </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-stats" title="Статистика потока для гиков (Stats for Nerds)">
+              <span class="studio-tab-icon">📊</span>
+              <span class="studio-tab-text">Статистика</span>
+            </button>
             <button type="button" class="studio-tab-btn" id="studio-tab-services" title="Интеллектуальные сервисы: Whisper AI, X-Ray, Офлайн, Торренты">
               <span class="studio-tab-icon">⚡</span>
               <span class="studio-tab-text">Сервисы и ИИ</span>
@@ -4486,6 +4955,11 @@ function renderPlayerUtilityButtons() {
             <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
             <span class="studio-autoskip-box"></span>
             <span class="studio-autoskip-label">Автопропуск заставок и титров</span>
+          </label>
+          <label class="studio-autoskip-toggle" title="Прямой поток без транскодирования через промежуточный прокси">
+            <input type="checkbox" id="toggle-direct-stream" ${forceDirectStream ? 'checked' : ''}>
+            <span class="studio-autoskip-box"></span>
+            <span class="studio-autoskip-label">Прямой поток (Direct Stream)</span>
           </label>
         </div>
       </div>
@@ -4815,6 +5289,24 @@ function renderPlayerUtilityButtons() {
     };
   }
 
+  // 8. В главных ролях и съемочная группа
+  const tabCast = container.querySelector('#studio-tab-cast');
+  if (tabCast) {
+    tabCast.onclick = () => {
+      openDrawerTab('cast', '🎭', 'В ролях и съемочная группа', (body) => {
+        renderInPlayerCastDrawer(body);
+      });
+    };
+  }
+
+  // 9. Статистика для гиков (Stats for Nerds)
+  const tabStats = container.querySelector('#studio-tab-stats');
+  if (tabStats) {
+    tabStats.onclick = () => {
+      toggleStatsForNerds();
+    };
+  }
+
   // Быстрые кнопки панели справа
   const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
   if (nightAudioBtn) {
@@ -4827,6 +5319,13 @@ function renderPlayerUtilityButtons() {
       autoSkipEnabled = e.target.checked;
       localStorage.setItem('storm_auto_skip', autoSkipEnabled ? 'true' : 'false');
       showToast(`Автопропуск заставок: ${autoSkipEnabled ? 'Включен' : 'Выключен'}`, 'info');
+    };
+  }
+
+  const directStreamToggle = container.querySelector('#toggle-direct-stream');
+  if (directStreamToggle) {
+    directStreamToggle.onchange = (e) => {
+      setForceDirectStream(e.target.checked);
     };
   }
 }

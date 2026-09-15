@@ -103,6 +103,10 @@ let proWetGain = null;
 let proDryGain = null;
 let proMasterGain = null;
 let proDelayNode = null;
+let proAnalyser = null;
+let activeVisualizerCanvas = null;
+let visualizerRaf = null;
+let currentVisualizerMode = 'off'; // 'off', 'spectrum', 'wave', 'matrix'
 let attachedMediaElement = null;
 
 // ==========================================
@@ -391,6 +395,14 @@ export function initProAudioEngine(video = document.getElementById('storm-video-
 
           proDryGain.connect(proMasterGain);
           proWetGain.connect(proMasterGain);
+
+          // Анализатор спектра для визуализации (Feature 9)
+          try {
+            proAnalyser = proAudioCtx.createAnalyser();
+            proAnalyser.fftSize = 128;
+            proAnalyser.smoothingTimeConstant = 0.8;
+            proMasterGain.connect(proAnalyser);
+          } catch {}
 
           // Мастер-выход через ночной компрессор или напрямую
           proMasterGain.connect(proCompressor);
@@ -878,6 +890,25 @@ export function renderProAudioPanel(hostElement) {
         </div>
       </div>
 
+      <!-- Секция 7: Аудиовизуализатор реального времени (Feature 9) -->
+      <div class="pro-engine-section" style="margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <div class="pro-section-title" style="margin-bottom: 2px;">Аудиовизуализатор реального времени</div>
+            <div style="font-size: 11px; color: var(--text-muted);">Реактивная анимация звукового спектра и частот</div>
+          </div>
+          <div class="pro-pill-group" style="margin: 0;">
+            <button type="button" class="pro-pill-btn ${currentVisualizerMode === 'off' ? 'active' : ''}" data-visualizer="off">Выкл</button>
+            <button type="button" class="pro-pill-btn ${currentVisualizerMode === 'spectrum' ? 'active' : ''}" data-visualizer="spectrum">Спектр</button>
+            <button type="button" class="pro-pill-btn ${currentVisualizerMode === 'wave' ? 'active' : ''}" data-visualizer="wave">Волна</button>
+            <button type="button" class="pro-pill-btn ${currentVisualizerMode === 'matrix' ? 'active' : ''}" data-visualizer="matrix">Матрица</button>
+          </div>
+        </div>
+        <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px; text-align: center;">
+          <canvas id="pro-audio-visualizer-canvas" width="480" height="64" style="width: 100%; height: 64px; display: block; border-radius: 4px;"></canvas>
+        </div>
+      </div>
+
       <!-- Кнопка сброса настроек -->
       <div style="display: flex; justify-content: flex-end;">
         <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="reset-pro-audio-btn">
@@ -1026,14 +1057,167 @@ export function renderProAudioPanel(hostElement) {
     };
   }
 
+  // Инициализация аудиовизуализатора
+  const visualizerCanvas = hostElement.querySelector('#pro-audio-visualizer-canvas');
+  if (visualizerCanvas) {
+    if (currentVisualizerMode === 'off') {
+      currentVisualizerMode = 'spectrum';
+      const activeBtn = hostElement.querySelector('[data-visualizer="spectrum"]');
+      if (activeBtn) {
+        hostElement.querySelectorAll('[data-visualizer]').forEach(b => b.classList.remove('active'));
+        activeBtn.classList.add('active');
+      }
+    }
+    setAudioVisualizerMode(currentVisualizerMode, visualizerCanvas);
+  }
+
+  hostElement.querySelectorAll('[data-visualizer]').forEach(btn => {
+    btn.onclick = () => {
+      hostElement.querySelectorAll('[data-visualizer]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.visualizer;
+      const cvs = hostElement.querySelector('#pro-audio-visualizer-canvas');
+      setAudioVisualizerMode(mode, cvs);
+      showToast(mode === 'off' ? 'Визуализатор выключен' : `Визуализатор: ${btn.textContent}`, 'info');
+    };
+  });
+
   // Закрытие
   const closeBtn = hostElement.querySelector('#close-pro-audio-btn');
   if (closeBtn) {
     closeBtn.onclick = () => {
       hostElement.style.display = 'none';
+      if (visualizerRaf) {
+        cancelAnimationFrame(visualizerRaf);
+        visualizerRaf = null;
+      }
     };
   }
 
   // Немедленно активируем настройки звука при рендере
   applyProAudioSettings();
 }
+
+export function setAudioVisualizerMode(mode, canvas = null) {
+  currentVisualizerMode = mode || 'off';
+  if (canvas) activeVisualizerCanvas = canvas;
+  if (currentVisualizerMode === 'off') {
+    if (visualizerRaf) {
+      cancelAnimationFrame(visualizerRaf);
+      visualizerRaf = null;
+    }
+    if (activeVisualizerCanvas) {
+      const ctx = activeVisualizerCanvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, activeVisualizerCanvas.width, activeVisualizerCanvas.height);
+    }
+    return;
+  }
+  startVisualizerLoop();
+}
+
+function startVisualizerLoop() {
+  if (visualizerRaf) cancelAnimationFrame(visualizerRaf);
+  const canvas = activeVisualizerCanvas || document.getElementById('pro-audio-visualizer-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const render = () => {
+    if (currentVisualizerMode === 'off' || !canvas.isConnected) {
+      visualizerRaf = null;
+      return;
+    }
+    visualizerRaf = requestAnimationFrame(render);
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    if (!proAnalyser) {
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+      return;
+    }
+
+    const bufferLength = proAnalyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    if (currentVisualizerMode === 'wave') {
+      proAnalyser.getByteTimeDomainData(dataArray);
+      ctx.lineWidth = 2.5;
+      const gradient = ctx.createLinearGradient(0, 0, w, 0);
+      gradient.addColorStop(0, '#00f0ff');
+      gradient.addColorStop(0.5, '#00ff66');
+      gradient.addColorStop(1, '#ff007f');
+      ctx.strokeStyle = gradient;
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      const sliceWidth = w / bufferLength;
+      let x = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * h) / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (currentVisualizerMode === 'matrix') {
+      proAnalyser.getByteFrequencyData(dataArray);
+      const dotCount = 24;
+      const step = Math.floor(bufferLength / dotCount);
+      const dotRadius = Math.max(2, (w / dotCount) * 0.22);
+      for (let i = 0; i < dotCount; i++) {
+        const val = dataArray[i * step] / 255;
+        const x = (i + 0.5) * (w / dotCount);
+        const y = h - val * (h - 8) - 4;
+        ctx.fillStyle = val > 0.6 ? '#00ff66' : '#00d2ff';
+        ctx.shadowColor = '#00ff66';
+        ctx.shadowBlur = val * 8;
+        ctx.beginPath();
+        ctx.arc(x, y, dotRadius + val * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    } else {
+      // spectrum (default)
+      proAnalyser.getByteFrequencyData(dataArray);
+      const barCount = 28;
+      const barWidth = (w / barCount) - 3;
+      const step = Math.floor(bufferLength / barCount);
+      for (let i = 0; i < barCount; i++) {
+        const val = dataArray[i * step] / 255;
+        const barHeight = Math.max(4, val * (h - 6));
+        const x = i * (barWidth + 3);
+        const y = h - barHeight;
+
+        const grad = ctx.createLinearGradient(0, y, 0, h);
+        grad.addColorStop(0, '#00f0ff');
+        grad.addColorStop(1, 'rgba(0, 114, 255, 0.4)');
+        ctx.fillStyle = grad;
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = val * 8;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barHeight, [3, 3, 0, 0]);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+  };
+  render();
+}
+
+export function getAudioVisualizerMode() {
+  return currentVisualizerMode;
+}
+
+export function getProAudioAnalyser() {
+  return proAnalyser;
+}
+

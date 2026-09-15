@@ -6500,8 +6500,672 @@ body.player-dropdown-active .cinema-player-iframe {
   text-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
 }
 
+/* ==========================================================================
+   PLEX И EMBY ADVANCED MEDIA FEATURES (STORM PRO SUITE)
+   ========================================================================== */
 
+/* 1. СТАТИСТИКА ДЛЯ ГИКОВ (STATS FOR NERDS HUD) */
+.storm-nerd-stats-overlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 95;
+  background: rgba(10, 15, 26, 0.92);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85), 0 0 20px var(--accent-glow);
+  backdrop-filter: blur(14px);
+  color: #f1f5f9;
+  font-family: 'Consolas', 'Fira Code', 'Roboto Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  max-width: 440px;
+  width: calc(100% - 32px);
+  pointer-events: auto;
+  user-select: none;
+  animation: stormFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
+.nerd-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
 
+.nerd-stats-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
+.nerd-stats-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
 
+.nerd-stats-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nerd-stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nerd-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.nerd-stat-key {
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.nerd-stat-val {
+  color: #e2e8f0;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.nerd-stat-val.highlight {
+  color: var(--accent);
+  font-weight: 700;
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.nerd-stat-val.warn {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+/* 2. ПАРЯЩАЯ КАРТОЧКА СЛЕДУЮЩЕЙ СЕРИИ (UP NEXT COUNTDOWN CARD) */
+.storm-up-next-card {
+  position: absolute;
+  bottom: 84px;
+  right: 20px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: rgba(10, 15, 26, 0.94);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.92), 0 0 24px var(--accent-glow);
+  backdrop-filter: blur(16px);
+  max-width: 460px;
+  width: calc(100% - 40px);
+  animation: upNextSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+@keyframes upNextSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.up-next-thumb-wrap {
+  position: relative;
+  width: 72px;
+  height: 50px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.up-next-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.up-next-timer-svg-box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.up-next-circle-svg {
+  transform: rotate(-90deg);
+}
+
+.up-next-circle-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 3;
+}
+
+.up-next-circle-progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.95s linear;
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+.up-next-sec-count {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: monospace;
+}
+
+.up-next-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.up-next-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.up-next-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.up-next-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.up-next-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.up-next-actions .storm-btn {
+  white-space: nowrap;
+  font-size: 11.5px;
+  padding: 6px 12px;
+}
+
+/* 3. В РОЛЯХ (IN-PLAYER CAST DRAWER) */
+.inplayer-cast-drawer-content {
+  padding: 4px 0;
+}
+
+.inplayer-cast-scroll-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scrollbar-width: thin;
+}
+
+.inplayer-cast-item-card {
+  width: 105px;
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.inplayer-cast-item-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 12px var(--accent-glow);
+}
+
+.inplayer-cast-img-box {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 8px auto;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--border-subtle);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.inplayer-cast-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.inplayer-cast-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inplayer-cast-role {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 4. СЕТКА ЭФИРА ТЕЛЕГИДА (EPG MATRIX TABLE И TIMELINE GUIDE) */
+.epg-matrix-table-wrap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow-x: auto;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  scrollbar-width: thin;
+}
+
+.epg-matrix-timeline-header {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.epg-channel-header-cell {
+  width: 170px;
+  min-width: 170px;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+}
+
+.epg-times-ruler {
+  display: flex;
+  flex: 1;
+}
+
+.epg-time-tick {
+  flex: 1;
+  min-width: 130px;
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  border-right: 1px dashed rgba(255, 255, 255, 0.08);
+  font-family: monospace;
+}
+
+.epg-matrix-channels-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.epg-matrix-row {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 86px;
+  transition: background 0.15s ease;
+}
+
+.epg-matrix-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.epg-matrix-channel-info {
+  width: 170px;
+  min-width: 170px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.epg-studio-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.epg-matrix-shows-track {
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  align-items: center;
+}
+
+.epg-show-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 12px;
+  min-width: 230px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.epg-show-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px var(--accent-glow);
+}
+
+.epg-show-thumb {
+  width: 44px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.epg-show-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.epg-show-time {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: monospace;
+}
+
+.epg-show-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 2px 0;
+}
+
+.epg-show-ep {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.epg-no-shows-slot {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding-left: 10px;
+}
+
+/* 5. ЖИВЫЕ СЕССИИ АДМИНИСТРАТОРА (ADMIN LIVE SESSIONS) */
+.admin-live-sessions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.admin-session-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.admin-session-card:hover {
+  border-color: var(--border-color);
+}
+
+.admin-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-session-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-session-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+}
+
+.admin-session-username {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.admin-session-device {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.admin-session-live-badge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 3px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+  animation: stormPulse 2s infinite ease-in-out;
+}
+
+.admin-session-body {
+  display: flex;
+  gap: 12px;
+}
+
+.admin-session-poster {
+  width: 54px;
+  height: 76px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.admin-session-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.admin-session-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-session-ep {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.admin-session-badges {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+
+.admin-session-progress-wrap {
+  margin-top: 4px;
+}
+
+.admin-session-progress-bar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.admin-session-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.admin-session-time {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.admin-session-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 6. КАСТОМНЫЕ БЕЙДЖИ ВОЗМОЖНОСТЕЙ РЕЛИЗА И МЕТКА ПРОСМОТРЕНО */
+.storm-badge-1080p {
+  background: rgba(2, 132, 199, 0.22) !important;
+  border-color: #0284c7 !important;
+  color: #38bdf8 !important;
+  font-weight: 700;
+}
+
+.storm-badge-hdr {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.28) 0%, rgba(217, 119, 6, 0.18) 100%) !important;
+  border-color: #f59e0b !important;
+  color: #fbbf24 !important;
+  font-weight: 800;
+}
+
+.storm-badge-atmos {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.28) 0%, rgba(139, 92, 246, 0.18) 100%) !important;
+  border-color: #a855f7 !important;
+  color: #c084fc !important;
+  font-weight: 800;
+}
+
+.storm-badge-fps {
+  background: rgba(16, 185, 129, 0.22) !important;
+  border-color: #10b981 !important;
+  color: #34d399 !important;
+  font-weight: 700;
+}
+
+.storm-badge-dub {
+  background: rgba(100, 116, 139, 0.28) !important;
+  border-color: #94a3b8 !important;
+  color: #cbd5e1 !important;
+  font-weight: 700;
+}
+
+.media-card-watched-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: 1.5px solid #ffffff;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), 0 0 10px rgba(16, 185, 129, 0.5);
+  pointer-events: none;
+  animation: stormPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes stormPopIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* 7. РЕДАКТОР СЕКЦИЙ ВИТРИНЫ И ДЕТСКИЙ РЕЖИМ */
+.home-section-edit-item {
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.home-section-edit-item:hover {
+  border-color: var(--border-color) !important;
+}
+
+.kids-mode-active-indicator {
+  animation: stormPulse 3s infinite ease-in-out;
+}
