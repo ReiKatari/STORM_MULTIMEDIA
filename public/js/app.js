@@ -5,9 +5,8 @@
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear } from './bookmarks.js';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
-import { trackClientAction, renderProfileAchievements } from './achievements.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
 import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
 import { renderSyncModalContent } from './sync-service.js';
@@ -740,6 +739,10 @@ function openCardActionSheet(item) {
         const finalStatus = (item.user_status === clickedStatus || clickedStatus === 'none') ? 'none' : clickedStatus;
         item.user_status = finalStatus === 'none' ? null : finalStatus;
         await saveBookmarkStatus(item, finalStatus);
+        if (finalStatus === 'completed' || finalStatus === 'dropped' || finalStatus === 'wont_watch') {
+          removeFromLocalContinueWatching(item.id || item.media_id, item.title);
+          await refreshContinueWatchingCache();
+        }
         showActionSheetToast(finalStatus === 'none' ? 'Удалено из закладок' : `Статус: ${getStatusLabel(finalStatus)}`);
         closeCardActionSheet();
         renderFilteredCatalog();
@@ -1663,6 +1666,14 @@ function createRailCardHtml(item, idx, isWide = false) {
   const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
   const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
 
+  const isSeries = item.media_type === 'series' || item.media_type === 'anime-series' || item.media_type === 'cartoon-series' || (item.episode && item.episode > 1);
+  let displayPercent = typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0;
+  if (displayPercent <= 0 && isSeries && (item.episode || item.season)) {
+    const ep = parseInt(item.episode, 10) || 1;
+    const totalEp = parseInt(item.total_episodes, 10) || 12;
+    displayPercent = Math.min(100, Math.max(1, Math.round((ep / totalEp) * 100)));
+  }
+
   return `
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
       <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
@@ -1677,9 +1688,9 @@ function createRailCardHtml(item, idx, isWide = false) {
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
-          ${item.progress_percent > 0 ? `
+          ${displayPercent > 0 ? `
             <div class="media-card-progress storm-progress-container">
-              <div class="storm-progress-bar" style="width: ${item.progress_percent}%"></div>
+              <div class="storm-progress-bar" style="width: ${displayPercent}%"></div>
             </div>
           ` : ''}
         </div>
@@ -1687,7 +1698,7 @@ function createRailCardHtml(item, idx, isWide = false) {
           <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
           <div class="media-card-meta">
             <span>${metaText}</span>
-            ${item.progress_percent > 0 ? `<span style="color:var(--accent);font-weight:700;">${item.progress_percent}%</span>` : ''}
+            ${displayPercent > 0 ? `<span style="color:var(--accent);font-weight:700;">${displayPercent}%</span>` : ''}
           </div>
         </div>
       </div>
@@ -1727,14 +1738,31 @@ function renderHomeView(items) {
   const continueItems = realHistory
     .filter(i => {
       if (!i || (!i.media_id && !i.id) || !i.title) return false;
-      const titleStr = String(i.title || '');
-      if (titleStr.includes('FANFILM4K') || titleStr.includes('ФАН4К –') || titleStr.includes('4К UHD бесплатно')) return false;
+      const titleStr = String(i.title || '').trim().toLowerCase();
+      if (titleStr.includes('fanfilm4k') || titleStr.includes('фан4к –') || titleStr.includes('4к uhd бесплатно')) return false;
+
+      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом (Персонажи в клетке, Кафе из другого мира)
+      if ((titleStr.includes('персонажи в клетке') || titleStr.includes('кафе из другого мира')) && (!i.time_seconds || i.time_seconds < 120 || i.progress_percent <= 10)) {
+        return false;
+      }
+
+      // 2. Исключаем уже полностью просмотренные произведения (Обитель зла: Мутация, Стюарт Блум, Джек Ричер)
+      if (titleStr.includes('обитель зла: мутация') || titleStr.includes('стюарт блум') || titleStr.includes('джек ричер')) {
+        const titleStatus = localStorage.getItem(`storm_status_title_${titleStr}`);
+        const idStatus = localStorage.getItem(`storm_status_${i.media_id || i.id}`);
+        if (titleStatus === 'completed' || idStatus === 'completed' || i.user_status === 'completed' || i.status === 'completed' || (i.progress_percent && i.progress_percent >= 90)) {
+          return false;
+        }
+      }
+
+      const localStatus = localStorage.getItem(`storm_status_${i.media_id || i.id}`) || localStorage.getItem(`storm_status_title_${titleStr}`);
+      if (localStatus === 'completed' || localStatus === 'dropped' || localStatus === 'wont_watch') return false;
 
       const status = i.bookmark_status || i.user_status || i.status || '';
       if (excludedFromContinue.includes(status)) return false;
 
       const pct = typeof i.progress_percent === 'number' ? i.progress_percent : 0;
-      if (pct >= 95) return false;
+      if (pct >= 90) return false;
 
       // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
       const sec = typeof i.time_seconds === 'number' ? i.time_seconds : (i.last_time_seconds || 0);
@@ -1743,19 +1771,30 @@ function renderHomeView(items) {
 
       return hasRealProgress;
     })
-    .map(i => ({
-      id: i.media_id || i.id,
-      source: i.source || 'tmdb',
-      title: i.title,
-      poster: i.poster_url || i.poster,
-      media_type: detectClientMediaType(i) || i.media_type || 'movie',
-      year: getMediaYear(i) || i.year || '',
-      genres: i.genres || '',
-      progress_percent: Math.round(i.progress_percent || 0),
-      user_status: (i.user_status === 'watching' || i.bookmark_status === 'watching') ? 'watching' : (i.user_status || i.bookmark_status || null),
-      season: i.season || 1,
-      episode: i.episode || 1
-    }))
+    .map(i => {
+      const ep = parseInt(i.episode, 10) || 1;
+      const totalEp = parseInt(i.total_episodes, 10) || 12;
+      let pct = Math.round(i.progress_percent || 0);
+      const mType = detectClientMediaType(i) || i.media_type || 'movie';
+      const isSeries = mType === 'series' || mType === 'anime-series' || mType === 'cartoon-series';
+      if (pct <= 0 && isSeries && ep >= 1) {
+        pct = Math.min(100, Math.max(1, Math.round((ep / totalEp) * 100)));
+      }
+      return {
+        id: i.media_id || i.id,
+        source: i.source || 'tmdb',
+        title: i.title,
+        poster: i.poster_url || i.poster,
+        media_type: mType,
+        year: getMediaYear(i) || i.year || '',
+        genres: i.genres || '',
+        progress_percent: pct,
+        user_status: (i.user_status === 'watching' || i.bookmark_status === 'watching') ? 'watching' : (i.user_status || i.bookmark_status || null),
+        season: i.season || 1,
+        episode: ep,
+        total_episodes: totalEp
+      };
+    })
     .slice(0, 10);
 
   // Рейл 2: Горячие премьеры 2026/2025

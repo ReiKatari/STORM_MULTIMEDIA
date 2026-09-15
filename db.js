@@ -774,6 +774,19 @@ export function setBookmark(userId, data) {
       db.prepare(`DELETE FROM bookmarks WHERE id IN (${extraIds.join(',')})`).run();
     }
 
+    if (['completed', 'dropped', 'wont_watch'].includes(status)) {
+      try {
+        db.prepare(`
+          UPDATE watch_history
+          SET progress_percent = 100.0, updated_at = ?
+          WHERE user_id = ? AND (
+            (media_id = ? AND source = ?) OR
+            (LOWER(TRIM(title)) = LOWER(TRIM(?)))
+          )
+        `).run(now, userId, String(media_id), source, title);
+      } catch {}
+    }
+
     return db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(primary.id);
   }
 
@@ -801,6 +814,19 @@ export function setBookmark(userId, data) {
     last_time_seconds,
     now
   );
+
+  if (['completed', 'dropped', 'wont_watch'].includes(status)) {
+    try {
+      db.prepare(`
+        UPDATE watch_history
+        SET progress_percent = 100.0, updated_at = ?
+        WHERE user_id = ? AND (
+          (media_id = ? AND source = ?) OR
+          (LOWER(TRIM(title)) = LOWER(TRIM(?)))
+        )
+      `).run(now, userId, String(media_id), source, title);
+    } catch {}
+  }
 
   return getBookmark(userId, String(media_id), source);
 }
