@@ -21,3 +21,12 @@ logs/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Android build
+android_build/.gradle/
+android_build/.kotlin/
+android_build/build/
+android_build/app/build/
+android_build/local.properties
+*.apk
+*.jks

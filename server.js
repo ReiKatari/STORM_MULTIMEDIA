@@ -2331,6 +2331,30 @@ app.get('/api/media/soundtrack', async (req, res) => {
 });
 
 // ==========================================
+// 5.0 КАЛЕНДАРЬ РЕЛИЗОВ И СЕТКА ЭФИРА (EPG И SCHEDULE)
+// ==========================================
+app.get('/api/media/schedule', async (req, res) => {
+  try {
+    const week = req.query.week === 'next' ? 'next' : 'current';
+    const scheduleData = await getAggregatedSchedule(week);
+    res.json(scheduleData);
+  } catch (err) {
+    console.error('[API Schedule] Ошибка получения расписания:', err.message);
+    res.status(500).json({ error: 'Ошибка получения расписания', message: err.message, items: [] });
+  }
+});
+
+app.get('/api/media/calendar', async (req, res) => {
+  try {
+    const scheduleData = await getAggregatedSchedule('current');
+    res.json({ schedule: scheduleData.items });
+  } catch (err) {
+    console.error('[API Calendar] Ошибка получения календаря:', err.message);
+    res.status(500).json({ error: 'Ошибка получения календаря', message: err.message, schedule: [] });
+  }
+});
+
+// ==========================================
 // 5.1 СТИЛИЗОВАННЫЙ ПРОКСИ ПЛЕЕРА И СЕРИЙНЫХ ОПЦИЙ
 // ==========================================
 
@@ -2677,6 +2701,37 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 }
               }
             });
+
+            // STORM Clean Console: Suppress noisy ad/telemetry/WS balancer errors
+            (function() {
+              try {
+                var noisy = ['ERR_BLOCKED_BY_CLIENT', 'safetyTimeOut', 'AbortError', 'play()', 'close code=1006', 'wasOpen=true', 'PM count', 'test ready', 'fatal error', 'ERR_CONTENT_LENGTH_MISMATCH', 'ERR_CONNECTION_RESET', 'allowviewroll', 'vkvideo'];
+                var owarn = console.warn;
+                var oerr = console.error;
+                console.warn = function() {
+                  var s = Array.prototype.slice.call(arguments).join(' ');
+                  for (var i = 0; i < noisy.length; i++) { if (s.indexOf(noisy[i]) !== -1) return; }
+                  owarn.apply(console, arguments);
+                };
+                console.error = function() {
+                  var s = Array.prototype.slice.call(arguments).join(' ');
+                  for (var i = 0; i < noisy.length; i++) { if (s.indexOf(noisy[i]) !== -1) return; }
+                  oerr.apply(console, arguments);
+                };
+                window.addEventListener('error', function(e) {
+                  var m = (e && e.message) ? String(e.message) : '';
+                  for (var i = 0; i < noisy.length; i++) {
+                    if (m.indexOf(noisy[i]) !== -1) { e.preventDefault(); return; }
+                  }
+                });
+                window.addEventListener('unhandledrejection', function(e) {
+                  var m = (e && e.reason) ? String(e.reason.message || e.reason) : '';
+                  for (var i = 0; i < noisy.length; i++) {
+                    if (m.indexOf(noisy[i]) !== -1) { e.preventDefault(); return; }
+                  }
+                });
+              } catch(_) {}
+            })();
 
             // STORM CleanView: In-Iframe Ad Neutralizer
             (function() {
