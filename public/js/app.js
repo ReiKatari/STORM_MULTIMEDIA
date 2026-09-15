@@ -5,7 +5,7 @@
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus } from './bookmarks.js';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal } from './player.js';
 import { trackClientAction, renderProfileAchievements } from './achievements.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
@@ -89,6 +89,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       });
       renderFilteredCatalog();
+    }
+  });
+
+  // Живое обновление продолжения просмотра при начале или прогрессе фильма
+  window.addEventListener('storm:continue-watching-updated', () => {
+    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+    if (!isSearching) {
+      if (currentTab === 'continue') {
+        loadCurrentTab();
+      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+        renderHomeView(rawCatalogItems);
+      }
     }
   });
 
@@ -1600,11 +1612,29 @@ function renderHomeView(items) {
 
   // Рейл 1: Продолжить просмотр (исключаем Просмотрено, Брошено и Не буду смотреть)
   const excludedFromContinue = ['completed', 'dropped', 'wont_watch'];
-  const continueItems = items.filter(i => {
-    if (excludedFromContinue.includes(i.user_status) || excludedFromContinue.includes(i.status)) return false;
-    if ((i.progress_percent || 0) >= 95) return false;
-    return (i.progress_percent > 0 || i.user_status === 'watching');
-  }).slice(0, 10);
+  const localHistory = getLocalContinueWatching();
+  const rawContinueSources = localHistory.length > 0 ? localHistory : items;
+  const continueItems = rawContinueSources
+    .filter(i => {
+      const status = i.user_status || i.status || 'watching';
+      if (excludedFromContinue.includes(status)) return false;
+      const pct = i.progress_percent || 0;
+      if (pct >= 95) return false;
+      return pct > 0 || status === 'watching';
+    })
+    .map(i => ({
+      id: i.media_id || i.id,
+      source: i.source || 'tmdb',
+      title: i.title,
+      poster: i.poster_url || i.poster,
+      media_type: i.media_type || 'movie',
+      year: i.year || '',
+      progress_percent: i.progress_percent || 1,
+      user_status: i.user_status || i.status || 'watching',
+      season: i.season || 1,
+      episode: i.episode || 1
+    }))
+    .slice(0, 10);
 
   // Рейл 2: Горячие премьеры 2026/2025
   const trendingItems = items.filter(i => {
@@ -1809,9 +1839,9 @@ function renderMediaItems(items) {
     const isFiltered = currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'popular';
     container.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
-        <div style="font-size: 42px; margin-bottom: 12px;">📂</div>
-        <h3>Ничего не найдено</h3>
-        <p>${isFiltered ? 'Попробуйте изменить параметры фильтрации или сбросить активные фильтры' : 'Попробуйте изменить категорию или поисковый запрос'}</p>
+        <div style="font-size: 42px; margin-bottom: 12px;">${currentTab === 'continue' ? '⏱️' : '📂'}</div>
+        <h3>${currentTab === 'continue' ? 'История просмотров пуста' : 'Ничего не найдено'}</h3>
+        <p>${currentTab === 'continue' ? 'Откройте любой фильм в каталоге, и он автоматически появится здесь для быстрого продолжения просмотра.' : (isFiltered ? 'Попробуйте изменить параметры фильтрации или сбросить активные фильтры' : 'Попробуйте изменить категорию или поисковый запрос')}</p>
         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap;">
           ${isFiltered ? '<button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="empty-reset-filters-btn">✕ Сбросить фильтры</button>' : ''}
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="empty-retry-btn">🔄 Обновить каталог</button>

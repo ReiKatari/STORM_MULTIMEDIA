@@ -93,7 +93,66 @@ export async function deleteBookmark(mediaId, source, title = '') {
   }
 }
 
+// -------------------------------------------------------------
+// ЛОКАЛЬНАЯ И СЕРВЕРНАЯ ИСТОРИЯ ПРОСМОТРА (CONTINUE WATCHING)
+// -------------------------------------------------------------
+
+export function getLocalContinueWatching() {
+  try {
+    const raw = localStorage.getItem('storm_continue_watching');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalWatchProgress(data) {
+  if (!data || !data.media_id) return;
+  try {
+    const list = getLocalContinueWatching();
+    const now = Date.now();
+
+    const newEntry = {
+      media_id: String(data.media_id),
+      source: data.source || 'tmdb',
+      title: data.title || 'Видео',
+      poster_url: data.poster_url || data.poster || '',
+      media_type: data.media_type || 'movie',
+      year: data.year || '',
+      season: data.season || 1,
+      episode: data.episode || 1,
+      total_episodes: data.total_episodes || 1,
+      duration_seconds: data.duration_seconds || 7200,
+      time_seconds: data.time_seconds || 0,
+      progress_percent: data.progress_percent || 0,
+      status: data.status || 'watching',
+      updated_at: now
+    };
+
+    const existingIdx = list.findIndex(it =>
+      (it.media_id === newEntry.media_id && it.source === newEntry.source) ||
+      (it.title && newEntry.title && it.title.trim().toLowerCase() === newEntry.title.trim().toLowerCase())
+    );
+
+    if (existingIdx >= 0) {
+      list[existingIdx] = { ...list[existingIdx], ...newEntry, updated_at: now };
+    } else {
+      list.unshift(newEntry);
+    }
+
+    const trimmed = list.slice(0, 30);
+    localStorage.setItem('storm_continue_watching', JSON.stringify(trimmed));
+    window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: newEntry }));
+  } catch (e) {
+    console.error('Ошибка сохранения локального прогресса:', e);
+  }
+}
+
 export async function syncWatchProgress(data) {
+  if (!data) return;
+  // Всегда сохраняем локально, гарантируя фиксацию для гостей и локального режима
+  saveLocalWatchProgress(data);
+
   const token = getToken();
   if (!token) return;
 
@@ -112,18 +171,46 @@ export async function syncWatchProgress(data) {
 }
 
 export async function fetchContinueWatching() {
+  const localItems = getLocalContinueWatching();
   const token = getToken();
-  if (!token) return [];
 
-  try {
-    const res = await fetch('/api/media/continue-watching', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch (err) {
-    return [];
+  let serverItems = [];
+  if (token) {
+    try {
+      const res = await fetch('/api/media/continue-watching', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        serverItems = await res.json();
+      }
+    } catch (err) {
+      // Игнорируем сетевые сбои, отдавая локальный кэш
+    }
   }
+
+  // Объединяем серверную и локальную историю, исключая дубликаты
+  const mergedMap = new Map();
+
+  for (const item of serverItems) {
+    const key = (item.title ? item.title.toLowerCase().trim() : '') || `${item.source}_${item.media_id}`;
+    mergedMap.set(key, item);
+  }
+
+  for (const item of localItems) {
+    const key = (item.title ? item.title.toLowerCase().trim() : '') || `${item.source}_${item.media_id}`;
+    if (!mergedMap.has(key)) {
+      mergedMap.set(key, item);
+    } else {
+      const existing = mergedMap.get(key);
+      if ((item.updated_at || 0) >= (existing.updated_at || 0)) {
+        mergedMap.set(key, { ...existing, ...item });
+      }
+    }
+  }
+
+  const result = Array.from(mergedMap.values());
+  result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  return result;
 }
 
 // -------------------------------------------------------------

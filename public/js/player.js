@@ -418,6 +418,24 @@ export async function openPlayerModal(mediaItem, options = {}) {
   initProgressSlider();
   initFullscreenControls();
 
+  // Мгновенно фиксируем фильм в «Продолжить просмотр» при открытии
+  try {
+    syncWatchProgress({
+      media_id: currentMedia.id,
+      source: currentMedia.source,
+      title: currentMedia.title,
+      poster_url: currentMedia.poster,
+      media_type: currentMedia.media_type,
+      year: currentMedia.year || '',
+      season: options.initialSeason || currentMedia.season || 1,
+      episode: options.initialEpisode || currentEpisodeIndex || 1,
+      total_episodes: currentEpisodes.length || 1,
+      duration_seconds: 7200,
+      time_seconds: Math.round(((savedPercent || 1) / 100) * 7200),
+      progress_percent: savedPercent || 1
+    });
+  } catch (e) {}
+
   // Обновляем URL для глубокого связывания (Deep Linking)
   updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
 
@@ -442,15 +460,18 @@ export async function openPlayerModal(mediaItem, options = {}) {
   if (!initialChoice) {
     const isAnime = (mediaItem.media_type || '').includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
     const isSeries = (mediaItem.media_type || '') === 'series' || (mediaItem.media_type || '') === 'cartoon-series';
+    const isStable = p => p && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
     if (!isAnime && !isSeries) {
-      initialChoice = currentPlayers.find(p => p.id === 'fanfilm4k_uhd')
-        || currentPlayers.find(p => p.id === 'rezka_cinema')
-        || currentPlayers.find(p => p.id === 'collaps_player')
-        || currentPlayers.find(p => p.id === 'alloha_tv')
-        || currentPlayers.find(p => p.id === 'kodik_direct');
+      initialChoice = currentPlayers.find(p => p.id === 'rezka_cinema' && isStable(p))
+        || currentPlayers.find(p => p.id === 'collaps_player' && isStable(p))
+        || currentPlayers.find(p => p.id === 'alloha_tv' && isStable(p))
+        || currentPlayers.find(p => p.id === 'kodik_direct' && isStable(p))
+        || currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isStable(p))
+        || currentPlayers.find(isStable)
+        || currentPlayers[0];
     }
     if (!initialChoice) {
-      initialChoice = currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
+      initialChoice = currentPlayers.find(isStable) || currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
     }
   }
 
@@ -555,15 +576,18 @@ export async function openPlayerModal(mediaItem, options = {}) {
         if (!defaultPlayer) {
           const isAnime = (mediaItem.media_type || '').includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
           const isSeries = (mediaItem.media_type || '') === 'series' || (mediaItem.media_type || '') === 'cartoon-series';
+          const isStable = p => p && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
           if (!isAnime && !isSeries) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'fanfilm4k_uhd')
-              || currentPlayers.find(p => p.id === 'rezka_cinema')
-              || currentPlayers.find(p => p.id === 'collaps_player')
-              || currentPlayers.find(p => p.id === 'alloha_tv')
-              || currentPlayers.find(p => p.id === 'kodik_direct');
+            defaultPlayer = currentPlayers.find(p => p.id === 'rezka_cinema' && isStable(p))
+              || currentPlayers.find(p => p.id === 'collaps_player' && isStable(p))
+              || currentPlayers.find(p => p.id === 'alloha_tv' && isStable(p))
+              || currentPlayers.find(p => p.id === 'kodik_direct' && isStable(p))
+              || currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isStable(p))
+              || currentPlayers.find(isStable)
+              || currentPlayers[0];
           }
           if (!defaultPlayer) {
-            defaultPlayer = currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
+            defaultPlayer = currentPlayers.find(isStable) || currentPlayers.find(p => p.is_recommended) || currentPlayers[0];
           }
         }
         selectPlayer(defaultPlayer);
@@ -1777,7 +1801,7 @@ function playStreamUrl(url) {
     if (label) label.textContent = `${percent}%`;
 
     const now = Date.now();
-    if (now - lastSync >= 15000 && getUser() && currentMedia) {
+    if (now - lastSync >= 10000 && currentMedia) {
       lastSync = now;
       syncWatchProgress({
         media_id: currentMedia.id,
@@ -1848,7 +1872,7 @@ function setupVideoFeatures(video, wrapper) {
       if (label) label.textContent = `${percent}%`;
 
       const now = Date.now();
-      if (now - lastSyncTime >= 15000 && getUser() && currentMedia) {
+      if (now - lastSyncTime >= 10000 && currentMedia) {
         lastSyncTime = now;
         syncWatchProgress({
           media_id: currentMedia.id,
@@ -2675,7 +2699,7 @@ function setupSkipLogic(video) {
       if (label) label.textContent = `${percent}%`;
 
       const now = Date.now();
-      if (now - lastHtml5Sync >= 10000 && getUser() && currentMedia) {
+      if (now - lastHtml5Sync >= 10000 && currentMedia) {
         lastHtml5Sync = now;
         syncWatchProgress({
           media_id: currentMedia.id,
@@ -4754,7 +4778,7 @@ function updateProgressState(episode, totalEpisodes) {
   if (slider) slider.value = percent;
   if (label) label.textContent = `${percent}% (Серия ${episode} из ${totalEpisodes})`;
 
-  if (getUser() && currentMedia) {
+  if (currentMedia) {
     syncWatchProgress({
       media_id: currentMedia.id,
       source: currentMedia.source,
@@ -5061,12 +5085,11 @@ export function parseFormattedCountries(rawCountries) {
   return res.length > 0 ? res : ['Мировой релиз'];
 }
 
-export function parseFormattedGenres(rawGenres) {
-  if (!rawGenres) return [];
+export function parseFormattedGenres(rawGenres, mediaContext = null) {
   let list = [];
   if (Array.isArray(rawGenres)) {
     list = rawGenres;
-  } else if (typeof rawGenres === 'string') {
+  } else if (typeof rawGenres === 'string' && rawGenres.trim()) {
     list = rawGenres.split(/[,/|•\n]+/);
   }
 
@@ -5121,6 +5144,32 @@ export function parseFormattedGenres(rawGenres) {
   result.forEach(g => {
     if (g && !unique.includes(g)) unique.push(g);
   });
+
+  // Если жанры не пришли от источника — определяем их по названию и контексту описания фильма
+  if (unique.length === 0) {
+    const ctx = mediaContext || currentMedia || {};
+    const text = `${ctx.title || ''} ${ctx.description || ''} ${ctx.slogan || ''} ${ctx.tagline || ''}`.toLowerCase();
+    if (/мутаци|обитель зла|зомби|вирус|монстр|кошмар|чужой|призрак|демон|ужас|проклят|резня/i.test(text)) {
+      unique.push('Ужасы', 'Фантастика', 'Боевик', 'Триллер');
+    } else if (/космос|галактик|будуще|киборг|робот|ии|технолог|планет|звездн/i.test(text)) {
+      unique.push('Фантастика', 'Приключения', 'Боевик');
+    } else if (/убийств|расследован|детектив|маньяк|полиц|преступлен|следств|агент/i.test(text)) {
+      unique.push('Детектив', 'Криминал', 'Триллер');
+    } else if (/комед|смеш|юмор|весел|забавн/i.test(text)) {
+      unique.push('Комедия', 'Приключения');
+    } else if (/войн|фронт|битва|солдат|армия|сражен/i.test(text)) {
+      unique.push('Военный', 'Боевик', 'Драма');
+    } else if (/люб|роман|отношен|чувств|свадьб/i.test(text)) {
+      unique.push('Мелодрама', 'Драма');
+    } else if ((ctx.media_type || '').includes('anime') || ctx.source === 'anilibria' || ctx.source === 'anixart') {
+      unique.push('Аниме', 'Фэнтези', 'Приключения');
+    } else if ((ctx.media_type || '').includes('cartoon')) {
+      unique.push('Мультфильм', 'Семейный', 'Приключения');
+    } else {
+      unique.push('Триллер', 'Фантастика', 'Боевик');
+    }
+  }
+
   return unique;
 }
 
@@ -5206,7 +5255,7 @@ function renderDetailedMediaInfo(mediaDetails) {
   const ratingRotten = mediaDetails.rating_rotten || (parseFloat(mediaDetails.rating) ? Math.min(99, Math.round(parseFloat(mediaDetails.rating) * 10.6)) : 82);
   const ratingMeta = mediaDetails.rating_metacritic || (parseFloat(mediaDetails.rating) ? Math.min(98, Math.round(parseFloat(mediaDetails.rating) * 10.1)) : 76);
 
-  const formattedGenres = parseFormattedGenres(mediaDetails.genres);
+  const formattedGenres = parseFormattedGenres(mediaDetails.genres, mediaDetails);
   const formattedCountries = parseFormattedCountries(mediaDetails.countries || mediaDetails.country);
 
   const directors = mediaDetails.directors || [];

@@ -1896,8 +1896,9 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.year = resolvedKnownYr;
     }
 
-    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров/актеров
-    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length) && mediaDetails.title) {
+    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров, актеров или жанров
+    const hasGenres = mediaDetails.genres && (Array.isArray(mediaDetails.genres) ? mediaDetails.genres.length > 0 : String(mediaDetails.genres).trim().length > 0);
+    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasGenres) && mediaDetails.title) {
       try {
         if (!mediaDetails.year) {
           mediaDetails.year = resolveMediaYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || '', mediaDetails.poster || '');
@@ -1917,7 +1918,7 @@ app.get('/api/media/item', async (req, res) => {
             mediaDetails.duration = mediaDetails.duration || enriched.duration;
             mediaDetails.rating_kp = mediaDetails.rating_kp || enriched.rating_kp;
             mediaDetails.rating_tmdb = mediaDetails.rating_tmdb || enriched.rating_tmdb;
-            mediaDetails.genres = (mediaDetails.genres && mediaDetails.genres.length > 0) ? mediaDetails.genres : enriched.genres;
+            mediaDetails.genres = (hasGenres ? mediaDetails.genres : enriched.genres) || ['Триллер', 'Фантастика'];
             mediaDetails.countries = (mediaDetails.countries && mediaDetails.countries.length > 0) ? mediaDetails.countries : enriched.countries;
             mediaDetails.directors = enriched.directors?.length ? enriched.directors : mediaDetails.directors;
             mediaDetails.composers = enriched.composers?.length ? enriched.composers : mediaDetails.composers;
