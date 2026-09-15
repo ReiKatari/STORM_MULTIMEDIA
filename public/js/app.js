@@ -12,7 +12,7 @@ import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
 import { renderSyncModalContent } from './sync-service.js';
 import { joinWatchRoom, createWatchRoom } from './watch-together.js';
 import { openNeuralRecommenderModal } from './neural-recommender.js';
-import { openReleaseCalendarModal } from './release-calendar.js';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js';
 import { openRemoteQrModal } from './storm-remote.js';
 import { initAdminDashboard } from './admin-dashboard.js';
 import { renderOfflineLibrary } from './offline-storage.js';
@@ -1703,6 +1703,12 @@ function createRailCardHtml(item, idx, isWide = false) {
   const poster = item.poster || 'assets/favicon.svg';
   const formattedTitle = formatMediaTitle(item);
   const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+  const is1080p = !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
+  const hasHdr = item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr'));
+  const hasAtmos = item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos'));
+  const has60Fps = item.fps === 60 || (item.quality && item.quality.includes('60'));
+  const hasDub = Boolean(item.voiceover || (item.translations && item.translations.length > 0) || item.source === 'fanfilm4k');
+  const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
   const yr = getMediaYear(item);
   const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
   const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
@@ -1724,10 +1730,15 @@ function createRailCardHtml(item, idx, isWide = false) {
         <div class="media-card-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
-            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
+            ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
+            ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
+            ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
+            ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
             ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
+          ${isWatched ? '<div class="media-card-watched-tag" title="Просмотрено">✓</div>' : ''}
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
           <button type="button" class="media-card-menu-btn" title="Опции">⋮</button>
@@ -1752,6 +1763,143 @@ function createRailCardHtml(item, idx, isWide = false) {
   `;
 }
 
+// -------------------------------------------------------------
+// РЕДАКТОР И КОНФИГУРАЦИЯ БЛОКОВ ГЛАВНОЙ ВИТРИНЫ (FEATURE 12)
+// -------------------------------------------------------------
+const DEFAULT_HOME_SECTIONS = [
+  { id: 'rail-continue', name: 'Продолжить просмотр', enabled: true },
+  { id: 'rail-trending', name: 'Горячие премьеры', enabled: true },
+  { id: 'rail-movies', name: 'Популярные фильмы', enabled: true },
+  { id: 'rail-series', name: 'Лучшие сериалы', enabled: true },
+  { id: 'rail-anime', name: 'Топ аниме', enabled: true },
+  { id: 'rail-top-rated', name: 'Шедевры мирового кино', enabled: true }
+];
+
+export function getHomeSectionsConfig() {
+  try {
+    const raw = localStorage.getItem('storm_home_sections_config');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  return DEFAULT_HOME_SECTIONS.map(s => ({ ...s }));
+}
+
+export function saveHomeSectionsConfig(cfg) {
+  localStorage.setItem('storm_home_sections_config', JSON.stringify(cfg));
+}
+
+export function openHomeSectionsModal() {
+  let modal = document.getElementById('home-sections-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'storm-modal-backdrop';
+    modal.id = 'home-sections-modal';
+    modal.innerHTML = `
+      <div class="storm-modal" style="max-width: 480px; width: 92%;">
+        <div class="storm-modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">⚙️</span>
+            <h4 class="storm-modal-title" style="margin: 0;">Настройка витрины</h4>
+          </div>
+          <button type="button" class="storm-modal-close" id="close-home-sections-btn">✕</button>
+        </div>
+        <div class="storm-modal-body">
+          <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 16px 0;">
+            Настройте порядок и видимость горизонтальных блоков на главной странице. Используйте стрелки для изменения порядка.
+          </p>
+          <div class="home-sections-list" id="home-sections-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+        <div class="storm-modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px;">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="reset-home-sections-btn">Сброс</button>
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="save-home-sections-btn">Применить</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeBtn = modal.querySelector('#close-home-sections-btn');
+    if (closeBtn) closeBtn.onclick = () => modal.classList.remove('is-open');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('is-open'); };
+  }
+
+  let currentConfig = getHomeSectionsConfig();
+  const listEl = modal.querySelector('#home-sections-list');
+
+  const renderSectionItems = () => {
+    if (!listEl) return;
+    listEl.innerHTML = currentConfig.map((sec, idx) => `
+      <div class="home-section-edit-item" data-idx="${idx}" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-subtle);">
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
+          <input type="checkbox" class="section-enable-check" data-idx="${idx}" ${sec.enabled ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;">
+          <span style="font-size: 13.5px; font-weight: 700; color: ${sec.enabled ? 'var(--text-primary)' : 'var(--text-muted)'};">${escapeHtml(sec.name)}</span>
+        </label>
+        <div style="display: flex; gap: 4px;">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-xs btn-move-section-up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''} title="Переместить выше">▲</button>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-xs btn-move-section-down" data-idx="${idx}" ${idx === currentConfig.length - 1 ? 'disabled' : ''} title="Переместить ниже">▼</button>
+        </div>
+      </div>
+    `).join('');
+
+    listEl.querySelectorAll('.section-enable-check').forEach(chk => {
+      chk.onchange = (e) => {
+        const i = parseInt(chk.dataset.idx, 10);
+        currentConfig[i].enabled = e.target.checked;
+        renderSectionItems();
+      };
+    });
+
+    listEl.querySelectorAll('.btn-move-section-up').forEach(btn => {
+      btn.onclick = () => {
+        const i = parseInt(btn.dataset.idx, 10);
+        if (i > 0) {
+          const temp = currentConfig[i];
+          currentConfig[i] = currentConfig[i - 1];
+          currentConfig[i - 1] = temp;
+          renderSectionItems();
+        }
+      };
+    });
+
+    listEl.querySelectorAll('.btn-move-section-down').forEach(btn => {
+      btn.onclick = () => {
+        const i = parseInt(btn.dataset.idx, 10);
+        if (i < currentConfig.length - 1) {
+          const temp = currentConfig[i];
+          currentConfig[i] = currentConfig[i + 1];
+          currentConfig[i + 1] = temp;
+          renderSectionItems();
+        }
+      };
+    });
+  };
+
+  renderSectionItems();
+
+  const resetBtn = modal.querySelector('#reset-home-sections-btn');
+  if (resetBtn) {
+    resetBtn.onclick = () => {
+      currentConfig = DEFAULT_HOME_SECTIONS.map(s => ({ ...s }));
+      saveHomeSectionsConfig(currentConfig);
+      renderSectionItems();
+      showToast('Настройки витрины сброшены', 'info');
+    };
+  }
+
+  const saveBtn = modal.querySelector('#save-home-sections-btn');
+  if (saveBtn) {
+    saveBtn.onclick = () => {
+      saveHomeSectionsConfig(currentConfig);
+      modal.classList.remove('is-open');
+      showToast('Витрина обновлена', 'success');
+      renderHomeView(rawCatalogItems);
+    };
+  }
+
+  modal.classList.add('is-open');
+}
+
 function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
@@ -1765,6 +1913,15 @@ function renderHomeView(items) {
   hideCardHoverPreview();
   clearTimeout(hoverPreviewTimer);
   clearTimeout(hoverCloseTimer);
+
+  // 0. Детский режим (семейный контроль и фильтрация 18+ на главной)
+  if (isKidModeActive()) {
+    const blockedTerms = ['18+', 'эротика', 'ужасы', 'хоррор', 'порно', 'триллер', 'криминал'];
+    items = items.filter(item => {
+      const text = `${item.title || ''} ${item.description || ''} ${Array.isArray(item.genres) ? item.genres.join(' ') : (item.genres || '')} ${item.age_rating || ''}`.toLowerCase();
+      return !blockedTerms.some(term => text.includes(term));
+    });
+  }
 
   items = deduplicateMediaList(items);
   items.forEach(it => {
@@ -1949,9 +2106,33 @@ function renderHomeView(items) {
     });
   }
 
+  // Фильтрация и сортировка блоков витрины по пользовательским настройкам
+  const homeConfig = getHomeSectionsConfig();
+  const configOrderMap = new Map();
+  homeConfig.forEach((c, idx) => {
+    if (c.enabled) configOrderMap.set(c.id, idx);
+  });
+
+  const finalRails = rails
+    .filter(r => configOrderMap.has(r.id))
+    .sort((a, b) => (configOrderMap.get(a.id) ?? 99) - (configOrderMap.get(b.id) ?? 99));
+
   container.innerHTML = `
+    <div class="home-rails-top-bar" style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0 16px 0; padding: 0 4px; flex-wrap: wrap; gap: 8px;">
+      ${isKidModeActive() ? `
+        <div class="kids-mode-active-indicator" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(0, 255, 102, 0.12); border: 1px solid #00ff66; border-radius: 20px; font-size: 12px; font-weight: 700; color: #00ff66;">
+          <span>👶</span>
+          <span>Детский безопасный режим (18+ скрыто)</span>
+        </div>
+      ` : '<div></div>'}
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="btn-edit-home-sections" style="display: inline-flex; align-items: center; gap: 6px;" title="Изменить порядок и видимость блоков главной страницы">
+        <span>⚙️</span>
+        <span>Настроить витрину</span>
+      </button>
+    </div>
+
     <div class="storm-rails-container">
-      ${rails.map(rail => `
+      ${finalRails.map(rail => `
         <section class="storm-media-rail" data-rail="${rail.id}">
           <div class="rail-header">
             <div class="rail-title-wrap">
@@ -1972,9 +2153,14 @@ function renderHomeView(items) {
     </div>
   `;
 
+  const editSectionsBtn = container.querySelector('#btn-edit-home-sections');
+  if (editSectionsBtn) {
+    editSectionsBtn.onclick = () => openHomeSectionsModal();
+  }
+
   // Подключение обработчиков для каждого рейла
   container.querySelectorAll('.storm-media-rail').forEach((railEl, rIdx) => {
-    const railData = rails[rIdx];
+    const railData = finalRails[rIdx];
     if (!railData) return;
 
     // Кнопка перехода ко всей категории
@@ -2016,6 +2202,26 @@ function renderHomeView(items) {
           openCardActionSheet(item);
         };
       }
+
+      // Контекстное меню по правому клику (Desktop)
+      card.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCardActionSheet(item);
+      };
+
+      // Долгое нажатие на сенсорных экранах (Mobile Long Press)
+      let touchTimer = null;
+      card.ontouchstart = () => {
+        touchTimer = setTimeout(() => {
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(15); } catch (_) {}
+          }
+          openCardActionSheet(item);
+        }, 550);
+      };
+      card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
+      card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
 
       // Видеопревью при наведении курсора на десктопе
       card.onmouseenter = () => {
@@ -2091,6 +2297,12 @@ function renderMediaItems(items) {
       const poster = item.poster || 'assets/favicon.svg';
       const formattedTitle = formatMediaTitle(item);
       const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+      const is1080p = !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
+      const hasHdr = item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr'));
+      const hasAtmos = item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos'));
+      const has60Fps = item.fps === 60 || (item.quality && item.quality.includes('60'));
+      const hasDub = Boolean(item.voiceover || (item.translations && item.translations.length > 0) || item.source === 'fanfilm4k');
+      const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
       const yr = getMediaYear(item);
       const catLabel = getMediaCategoryLabel(item, currentTab);
       const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
@@ -2100,10 +2312,15 @@ function renderMediaItems(items) {
         <div class="media-card-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
-            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
+            ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
+            ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
+            ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
+            ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
             ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
+          ${isWatched ? '<div class="media-card-watched-tag" title="Просмотрено">✓</div>' : ''}
           ${item.rating ? `<div class="media-card-rating"><span class="storm-badge storm-badge-rating">★ ${item.rating}</span></div>` : ''}
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
           <button type="button" class="media-card-menu-btn" title="Опции" data-idx="${idx}">⋮</button>
@@ -2163,6 +2380,26 @@ function renderMediaItems(items) {
         };
       }
 
+      // Контекстное меню по правому клику (Desktop)
+      card.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCardActionSheet(items[idx]);
+      };
+
+      // Долгое нажатие на сенсорных экранах (Mobile Long Press)
+      let touchTimer = null;
+      card.ontouchstart = () => {
+        touchTimer = setTimeout(() => {
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(15); } catch (_) {}
+          }
+          openCardActionSheet(items[idx]);
+        }, 550);
+      };
+      card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
+      card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
+
       // Видеопревью при наведении курсора (Video Hover Preview) с задержкой 2 секунды
       card.onmouseenter = () => {
         clearTimeout(hoverCloseTimer);
@@ -2192,14 +2429,26 @@ function renderMediaItems(items) {
       const sourceName = getSourceName(item);
       const formattedTitle = formatMediaTitle(item);
       const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+      const is1080p = !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
+      const hasHdr = item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr'));
+      const hasAtmos = item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos'));
+      const has60Fps = item.fps === 60 || (item.quality && item.quality.includes('60'));
+      const hasDub = Boolean(item.voiceover || (item.translations && item.translations.length > 0) || item.source === 'fanfilm4k');
+      const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
+
       return `
       <div class="media-detailed-card" data-idx="${idx}">
         <div class="media-detailed-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
-            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
+            ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
+            ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
+            ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
+            ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
+          ${isWatched ? '<div class="media-card-watched-tag" title="Просмотрено" style="position: absolute; top: 6px; right: 6px;">✓</div>' : ''}
         </div>
         <div class="media-detailed-info">
           <div class="media-detailed-header">
@@ -2254,6 +2503,26 @@ function renderMediaItems(items) {
           openCardActionSheet(items[idx]);
         };
       }
+
+      // Контекстное меню по правому клику (Desktop)
+      card.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCardActionSheet(items[idx]);
+      };
+
+      // Долгое нажатие на сенсорных экранах (Mobile Long Press)
+      let touchTimer = null;
+      card.ontouchstart = () => {
+        touchTimer = setTimeout(() => {
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(15); } catch (_) {}
+          }
+          openCardActionSheet(items[idx]);
+        }, 550);
+      };
+      card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
+      card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
     });
     renderCatalogPagination(items.length);
     return;
@@ -3871,6 +4140,12 @@ function initNewCyberFeatures() {
     calBtn.onclick = () => openReleaseCalendarModal();
   }
 
+  // ТВ-гид и сетка эфира (EPG Matrix Guide)
+  const epgBtn = document.getElementById('header-epg-guide-btn');
+  if (epgBtn) {
+    epgBtn.onclick = () => openLiveTvEpgModal();
+  }
+
   // 7. STORM REMOTE (пульт со смартфона)
   const remBtn = document.getElementById('header-remote-btn');
   if (remBtn) {
@@ -4020,6 +4295,7 @@ function initMobileDrawer() {
 
   bindDrawerItem('drawer-recommender-btn', () => openNeuralRecommenderModal());
   bindDrawerItem('drawer-calendar-btn', () => openReleaseCalendarModal());
+  bindDrawerItem('drawer-epg-btn', () => openLiveTvEpgModal());
   bindDrawerItem('drawer-remote-btn', () => openRemoteQrModal());
   bindDrawerItem('drawer-rooms-btn', () => {
     const roomsModal = document.getElementById('rooms-modal');

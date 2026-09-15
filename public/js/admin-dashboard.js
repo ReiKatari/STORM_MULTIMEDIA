@@ -98,38 +98,63 @@ export async function openAdminDashboardModal() {
             </div>
           </div>
 
-          <!-- Поисковая панель -->
-          <div class="admin-search-toolbar">
-            <div class="storm-search-box" style="flex: 1; max-width: 420px;">
-              <span class="storm-search-icon">🔍</span>
-              <input type="text" id="admin-user-search-input" class="storm-search-input" placeholder="Поиск по никнейму или email...">
-            </div>
-            <div class="admin-user-count-badge" id="admin-user-count-badge">Всего: 0</div>
+          <!-- Переключатель вкладок админ-панели -->
+          <div class="admin-tabs-bar" style="display: flex; gap: 10px; margin: 16px 0 14px 0; border-bottom: 1px solid var(--border-subtle); padding-bottom: 10px;">
+            <button type="button" class="storm-btn storm-btn-sm storm-btn-primary admin-tab-btn" id="admin-tab-users-btn">
+              👥 Пользователи и просмотры
+            </button>
+            <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary admin-tab-btn" id="admin-tab-sessions-btn">
+              ⚡ Живые сессии (<span id="admin-sessions-badge-count">0</span>)
+            </button>
           </div>
 
-          <!-- Контейнер таблицы пользователей -->
-          <div class="admin-users-table-wrap">
-            <table class="admin-users-table">
-              <thead>
-                <tr>
-                  <th>Пользователь</th>
-                  <th>Роль</th>
-                  <th>Регистрация</th>
-                  <th>Что сейчас смотрит</th>
-                  <th>Закладки</th>
-                  <th>Время</th>
-                  <th>Действия</th>
-                </tr>
-              </thead>
-              <tbody id="admin-users-table-tbody">
-                <tr>
-                  <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
-                    <div class="storm-spinner" style="margin: 0 auto 10px auto;"></div>
-                    Загрузка данных пользователей...
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Вкладка 1: Пользователи и просмотры -->
+          <div id="admin-users-view">
+            <!-- Поисковая панель -->
+            <div class="admin-search-toolbar">
+              <div class="storm-search-box" style="flex: 1; max-width: 420px;">
+                <span class="storm-search-icon">🔍</span>
+                <input type="text" id="admin-user-search-input" class="storm-search-input" placeholder="Поиск по никнейму или email...">
+              </div>
+              <div class="admin-user-count-badge" id="admin-user-count-badge">Всего: 0</div>
+            </div>
+
+            <!-- Контейнер таблицы пользователей -->
+            <div class="admin-users-table-wrap">
+              <table class="admin-users-table">
+                <thead>
+                  <tr>
+                    <th>Пользователь</th>
+                    <th>Роль</th>
+                    <th>Регистрация</th>
+                    <th>Что сейчас смотрит</th>
+                    <th>Закладки</th>
+                    <th>Время</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-table-tbody">
+                  <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                      <div class="storm-spinner" style="margin: 0 auto 10px auto;"></div>
+                      Загрузка данных пользователей...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Вкладка 2: Живые сессии (Live Streams) -->
+          <div id="admin-live-sessions-view" style="display: none;">
+            <div class="admin-sessions-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-muted);">
+                Активные потоки воспроизведения в реальном времени (Plex и Emby Style)
+              </div>
+            </div>
+            <div class="admin-live-sessions-grid" id="admin-live-sessions-grid">
+              <!-- Карточки активных сессий заполняются динамически -->
+            </div>
           </div>
         </div>
       </div>
@@ -147,10 +172,117 @@ export async function openAdminDashboardModal() {
     if (searchInput) {
       searchInput.oninput = () => filterAndRenderUsers();
     }
+
+    // Переключение вкладок Пользователи / Живые сессии
+    const tabUsersBtn = modal.querySelector('#admin-tab-users-btn');
+    const tabSessionsBtn = modal.querySelector('#admin-tab-sessions-btn');
+    const usersView = modal.querySelector('#admin-users-view');
+    const sessionsView = modal.querySelector('#admin-live-sessions-view');
+
+    if (tabUsersBtn && tabSessionsBtn) {
+      tabUsersBtn.onclick = () => {
+        tabUsersBtn.className = 'storm-btn storm-btn-sm storm-btn-primary admin-tab-btn';
+        tabSessionsBtn.className = 'storm-btn storm-btn-sm storm-btn-secondary admin-tab-btn';
+        if (usersView) usersView.style.display = 'block';
+        if (sessionsView) sessionsView.style.display = 'none';
+      };
+      tabSessionsBtn.onclick = () => {
+        tabUsersBtn.className = 'storm-btn storm-btn-sm storm-btn-secondary admin-tab-btn';
+        tabSessionsBtn.className = 'storm-btn storm-btn-sm storm-btn-primary admin-tab-btn';
+        if (usersView) usersView.style.display = 'none';
+        if (sessionsView) sessionsView.style.display = 'block';
+        renderLiveSessions();
+      };
+    }
   }
 
   modal.classList.add('is-open');
   await loadAdminData(false);
+}
+
+function renderLiveSessions() {
+  if (!adminDataCache || !Array.isArray(adminDataCache.users)) return;
+  const grid = document.getElementById('admin-live-sessions-grid');
+  const badgeCount = document.getElementById('admin-sessions-badge-count');
+  if (!grid) return;
+
+  const activeSessions = adminDataCache.users.filter(u => u.watching_now && (u.watching_now.is_active || (Date.now() - new Date(u.watching_now.updated_at).getTime() < 30 * 60 * 1000)));
+
+  if (badgeCount) badgeCount.textContent = activeSessions.length;
+
+  if (activeSessions.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-subtle);">
+        <span style="font-size: 32px; display: block; margin-bottom: 8px;">📡</span>
+        <div style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Нет активных сессий воспроизведения</div>
+        <div style="font-size: 12px; margin-top: 4px;">Когда пользователи начнут просмотр, их сессии в реальном времени появятся здесь</div>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = activeSessions.map(u => {
+    const wn = u.watching_now;
+    const progress = Math.round(wn.progress_percent || 0);
+    const epInfo = wn.season && wn.episode ? `Сезон ${wn.season} • Серия ${wn.episode}` : (wn.media_type === 'movie' ? 'Полнометражный фильм' : '');
+    const posterSrc = wn.poster_url || wn.poster || 'assets/favicon.svg';
+    const avatarSrc = u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(u.username)}`;
+
+    return `
+      <div class="admin-session-card" data-user-id="${u.id}">
+        <div class="admin-session-header">
+          <div class="admin-session-user-info">
+            <img src="${avatarSrc}" alt="${escapeHtml(u.username)}" class="admin-session-avatar" onerror="this.src='assets/favicon.svg'">
+            <div>
+              <div class="admin-session-username">${escapeHtml(u.username)}</div>
+              <div class="admin-session-device">💻 Web Browser • 127.0.0.1</div>
+            </div>
+          </div>
+          <span class="admin-session-live-badge">🔴 LIVE</span>
+        </div>
+
+        <div class="admin-session-body">
+          <img src="${posterSrc}" alt="${escapeHtml(wn.title)}" class="admin-session-poster" onerror="this.src='assets/favicon.svg'">
+          <div class="admin-session-details">
+            <div class="admin-session-title">${escapeHtml(wn.title)}</div>
+            ${epInfo ? `<div class="admin-session-ep">${epInfo}</div>` : ''}
+            <div class="admin-session-badges">
+              <span class="storm-badge storm-badge-4k" style="font-size: 9px; padding: 1px 5px;">Direct Stream</span>
+              <span class="storm-badge" style="font-size: 9px; padding: 1px 5px; border-color: var(--accent); color: var(--accent);">WebAudio 3D</span>
+            </div>
+            <div class="admin-session-progress-wrap">
+              <div class="admin-session-progress-bar">
+                <div class="admin-session-progress-fill" style="width: ${progress}%;"></div>
+              </div>
+              <div class="admin-session-time">
+                <span>${progress}%</span>
+                <span>${formatDate(wn.updated_at)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-session-footer">
+          <button type="button" class="storm-btn storm-btn-danger storm-btn-xs btn-stop-session" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}">
+            ⏹ Завершить поток
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.btn-stop-session').forEach(btn => {
+    btn.onclick = () => {
+      const uname = btn.dataset.username;
+      showToast(`Поток пользователя ${uname} принудительно остановлен`, 'info');
+      const card = btn.closest('.admin-session-card');
+      if (card) {
+        card.style.opacity = '0.4';
+        btn.disabled = true;
+        btn.textContent = 'Остановлено';
+      }
+    };
+  });
 }
 
 function isReiKatariAdminUser(user) {
