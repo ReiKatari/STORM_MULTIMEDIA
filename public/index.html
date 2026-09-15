@@ -39,7 +39,8 @@
         <span class="storm-search-icon">🔍</span>
         <input type="text" id="global-search-input" class="storm-search-input" placeholder="Поиск фильмов, сериалов и аниме..." data-i18n-placeholder="search_placeholder" autocomplete="off">
         <div class="storm-search-right-tools">
-          <button type="button" id="search-clear-btn" class="storm-search-clear">✕</button>
+          <kbd class="search-shortcut-hint" id="search-shortcut-hint" title="Быстрый поиск (Ctrl+K или /)">Ctrl K</kbd>
+          <button type="button" id="search-clear-btn" class="storm-search-clear" title="Очистить поиск (Esc)">✕</button>
           <button type="button" id="voice-search-btn" class="storm-search-mic" title="Голосовой поиск и команды">🎙️</button>
         </div>
       </div>
@@ -1138,6 +1139,15 @@
       </div>
     </div>
   </div>
+
+  <!-- Плавающая кнопка быстрого возврата «Наверх» с круговым прогрессом страницы -->
+  <button type="button" class="storm-scroll-top-fab" id="scroll-to-top-btn" aria-label="Наверх" title="Наверх (Home)">
+    <svg class="scroll-progress-ring" width="44" height="44" viewBox="0 0 44 44">
+      <circle class="progress-ring-bg" cx="22" cy="22" r="18" fill="none" stroke-width="2.5" />
+      <circle class="progress-ring-fill" id="scroll-progress-ring-fill" cx="22" cy="22" r="18" fill="none" stroke-width="2.5" stroke-dasharray="113.1" stroke-dashoffset="113.1" />
+    </svg>
+    <span class="scroll-top-arrow">▲</span>
+  </button>
 
   <!-- Модуль приложения -->
   <script type="module" src="js/app.js?v=2.6.0"></script>
