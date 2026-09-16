@@ -57,11 +57,6 @@
           <span>📅</span> <span class="btn-text">Календарь</span>
         </button>
 
-        <!-- Кнопка ТВ-режима и ТВ-интерфейса (Smart TV 10-Foot UI) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-epg-guide-btn" title="ТВ-интерфейс (Smart TV 10-Foot UI)">
-          <span>📺</span> <span class="btn-text">ТВ-режим</span>
-        </button>
-
         <!-- Кнопка Пульта со смартфона (STORM REMOTE) -->
         <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-remote-btn" title="Пульт управления со смартфона (STORM REMOTE)">
           <span>📱</span> Пульт
@@ -695,6 +690,17 @@
               <option value="STORM DAY">STORM DAY</option>
             </select>
           </div>
+
+          <!-- Проверка обновлений STORM MULTIMEDIA -->
+          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
+            <div>
+              <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.1 • Официальный релиз</div>
+            </div>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
+              <span>🔄</span> Проверить обновления
+            </button>
+          </div>
         </div>
 
         <!-- 2. Вкладка достижений (STORM Achievements) -->
@@ -877,13 +883,6 @@
               <span class="mobile-nav-desc">График выхода свежих эпизодов</span>
             </div>
           </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-epg-btn">
-            <span class="mobile-nav-icon">📺</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">ТВ-режим и интерфейс</span>
-              <span class="mobile-nav-desc">Режим 10-Foot UI для ТВ и пультов</span>
-            </div>
-          </button>
           <button type="button" class="mobile-drawer-nav-item" id="drawer-remote-btn">
             <span class="mobile-nav-icon">📱</span>
             <div class="mobile-nav-texts">
@@ -929,18 +928,20 @@
         </div>
 
         <!-- Раздел управления экраном и памятью -->
-        <div class="mobile-drawer-section-title">📱 Экран и управление</div>
-        <div class="mobile-drawer-fullscreen-card">
-          <div class="drawer-fullscreen-info">
-            <span class="drawer-fullscreen-icon">⛶</span>
-            <div class="drawer-fullscreen-texts">
-              <span class="drawer-fullscreen-title">Полноэкранный режим</span>
-              <span class="drawer-fullscreen-desc">Просмотр без системных рамок и панелей</span>
+        <div id="drawer-screen-control-block">
+          <div class="mobile-drawer-section-title">📱 Экран и управление</div>
+          <div class="mobile-drawer-fullscreen-card">
+            <div class="drawer-fullscreen-info">
+              <span class="drawer-fullscreen-icon">⛶</span>
+              <div class="drawer-fullscreen-texts">
+                <span class="drawer-fullscreen-title">Полноэкранный режим</span>
+                <span class="drawer-fullscreen-desc">Просмотр без системных рамок и панелей</span>
+              </div>
             </div>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm drawer-fs-toggle-btn" id="mobile-drawer-fs-btn">
+              <span>Во весь экран</span>
+            </button>
           </div>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm drawer-fs-toggle-btn" id="mobile-drawer-fs-btn">
-            <span>Во весь экран</span>
-          </button>
         </div>
 
         <!-- Раздел локального кэша и хранилища -->

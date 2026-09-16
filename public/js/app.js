@@ -68,6 +68,7 @@ import { initAdminDashboard } from './admin-dashboard.js';
 import { renderOfflineLibrary } from './offline-storage.js';
 import { getBaselineCatalog } from './catalog-baseline.js';
 import { getStatusIconSvg } from './status-icons.js';
+import { checkForUpdates } from './updater.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -97,7 +98,17 @@ export async function refreshContinueWatchingCache() {
   return cachedContinueHistory;
 }
 
+export function isStormNativeApp() {
+  if (typeof window === 'undefined') return false;
+  return /StormMultimediaApp/i.test(navigator.userAgent) ||
+         window.location.protocol === 'file:' ||
+         Boolean(window.StormNativeApp);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  if (isStormNativeApp()) {
+    document.body.classList.add('is-native-app');
+  }
   document.body.dataset.activeTab = currentTab || 'home';
   initTheme();
   applyTranslations();
@@ -179,6 +190,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadCurrentTab();
   checkAuth();
   initDeepLinking();
+
+  // Автоматическая тихая проверка обновлений при старте
+  setTimeout(() => checkForUpdates(false), 2500);
 });
 
 async function initDeepLinking() {
@@ -4409,12 +4423,6 @@ function initNewCyberFeatures() {
     calBtn.onclick = () => openReleaseCalendarModal();
   }
 
-  // ТВ-режим и ТВ-интерфейс (Smart TV 10-Foot UI)
-  const epgBtn = document.getElementById('header-epg-guide-btn');
-  if (epgBtn) {
-    epgBtn.onclick = () => toggleTvMode();
-  }
-
   // 7. STORM REMOTE (пульт со смартфона)
   const remBtn = document.getElementById('header-remote-btn');
   if (remBtn) {
@@ -4425,6 +4433,12 @@ function initNewCyberFeatures() {
   const famBtn = document.getElementById('header-family-btn');
   if (famBtn) {
     famBtn.onclick = () => openProfileSwitcherModal();
+  }
+
+  // Проверка обновлений STORM MULTIMEDIA с GitHub
+  const updateBtn = document.getElementById('profile-check-update-btn');
+  if (updateBtn) {
+    updateBtn.onclick = () => checkForUpdates(true);
   }
 
   // 9. Мобильное выдвижное меню (Mobile Drawer)
@@ -4565,7 +4579,6 @@ function initMobileDrawer() {
 
   bindDrawerItem('drawer-recommender-btn', () => openNeuralRecommenderModal());
   bindDrawerItem('drawer-calendar-btn', () => openReleaseCalendarModal());
-  bindDrawerItem('drawer-epg-btn', () => toggleTvMode());
   bindDrawerItem('drawer-remote-btn', () => openRemoteQrModal());
   bindDrawerItem('drawer-rooms-btn', () => {
     const roomsModal = document.getElementById('rooms-modal');
