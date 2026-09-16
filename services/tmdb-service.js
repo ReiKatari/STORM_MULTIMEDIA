@@ -812,3 +812,53 @@ export async function findTmdbTvId(title) {
   return null;
 }
 
+/**
+ * Получение кинопремьер из TMDB
+ */
+export async function getTmdbUpcoming(page = 1) {
+  const cacheKey = `tmdb_upcoming_p${page}`;
+  const cached = getCache('tmdb', cacheKey);
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+
+  try {
+    const url = `${TMDB_BASE}/movie/upcoming?api_key=${TMDB_API_KEY}&language=ru-RU&page=${page}`;
+    const res = await tmdbFetch(url);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const items = (data.results || []).filter(m => m.poster_path).map((m, idx) => {
+      const year = m.release_date ? m.release_date.substring(0, 4) : '2026';
+      const dayOfWeek = (idx % 7);
+      return {
+        id: `tmdb_up_${m.id}`,
+        tmdb_id: m.id,
+        source: 'tmdb',
+        title: m.title || m.original_title,
+        original_title: m.original_title || '',
+        poster: `${IMAGE_BASE}${m.poster_path}`,
+        year,
+        season: 1,
+        episode: 1,
+        episode_title: 'Мировая премьера',
+        day_of_week: dayOfWeek,
+        air_time: '19:00 МСК',
+        studio: 'Red Head Sound',
+        quality: '4K UHD',
+        is4K: true,
+        rating: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 8.0,
+        genres: (m.genre_ids || []).map(id => TMDB_GENRES_RU[id]).filter(Boolean).join(', ') || 'Фильм',
+        media_type: 'movie',
+        description: m.overview || `Премьера фильма «${m.title || m.original_title}».`
+      };
+    });
+
+    if (items.length > 0) {
+      setCache('tmdb', cacheKey, items, 3600);
+    }
+    return items;
+  } catch (err) {
+    console.warn('[TMDB Upcoming] Ошибка:', err.message);
+    return [];
+  }
+}
+

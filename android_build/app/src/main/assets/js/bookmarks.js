@@ -273,7 +273,45 @@ export function detectClientMediaType(item) {
   const t = String(item.title || item.name || '').toLowerCase();
   const cat = String(item.category || '').toLowerCase();
   const link = String(item.link || item.url || item.fanfilm_4k_url || '').toLowerCase();
-  const src = String(item.source || '').toLowerCase();
+  // 1. Известные анимационные фильмы (Обитель зла: Мутация, Вырождение, Вендетта и др.)
+  const knownAnimatedMovies = [
+    'обитель зла: мутация', 'обитель зла мутация', 'resident evil: mutation',
+    'обитель зла: вендетта', 'обитель зла вендетта', 'resident evil: vendetta',
+    'обитель зла: вырождение', 'обитель зла вырождение', 'resident evil: degeneration',
+    'обитель зла: проклятие', 'обитель зла проклятие', 'resident evil: damnation',
+    'обитель зла: остров смерти', 'обитель зла остров смерти', 'resident evil: death island',
+    'человек-паук: через вселенные', 'spider-man: into the spider-verse',
+    'человек-паук: паутина вселенных', 'spider-man: across the spider-verse',
+    'кот в сапогах', 'puss in boots', 'головоломка', 'inside out',
+    'дикий робот', 'the wild robot', 'зверополис', 'zootopia',
+    'кунг-фу панда', 'kung fu panda', 'как приручить дракона', 'how to train your dragon',
+    'шрек', 'shrek', 'ледниковый период', 'ice age', 'гадкий я', 'despicable me',
+    'тайна коко', 'coco', 'валли', 'wall-e', 'вверх', 'up', 'рататуй', 'ratatouille'
+  ];
+  if (knownAnimatedMovies.some(m => t === m || t.startsWith(m + ' ') || t.includes(m))) {
+    return 'cartoon';
+  }
+
+  // 2. Известные мультсериалы (Рик и Морти, Симпсоны, Гриффины и др.)
+  const knownCartoonSeries = [
+    'рик и морти', 'rick and morty',
+    'гриффины', 'family guy',
+    'симпсоны', 'the simpsons',
+    'южный парк', 'south park',
+    'футурама', 'futurama',
+    'гравити фолз', 'gravity falls',
+    'время приключений', 'adventure time',
+    'войны клонов', 'the clone wars',
+    'человек-паук 1994', 'бэтмен 1992',
+    'аватар: легенда об аанге', 'легенда об аанге', 'легенда о корре',
+    'неуязвимый', 'invincible',
+    'любовь, смерть и роботы', 'любовь смерть и роботы', 'love, death & robots',
+    'губка боб', 'spongebob', 'первобытный', 'primal',
+    'смешарики', 'фиксики', 'маша и медведь', 'аркейн', 'arcane'
+  ];
+  if (knownCartoonSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
+    return 'cartoon-series';
+  }
 
   // Аниме
   if (src === 'anilibria' || src === 'anixart' || src === 'shikimori' ||
