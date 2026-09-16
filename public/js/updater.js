@@ -6,9 +6,9 @@
 
 import { showToast } from './auth.js';
 
-export const CURRENT_APP_VERSION = '1.0.5';
+export const CURRENT_APP_VERSION = '1.0.6';
 const GITHUB_REPO = 'ReiKatari/STORM_MULTIMEDIA';
-const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 часа
+const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 час для пассивных проверок в браузере
 
 /**
  * Семантическое сравнение версий (1.0.1 vs 1.0.0)
@@ -37,10 +37,17 @@ export function compareVersions(v1, v2) {
  * @param {boolean} manualTrigger true, если вызов инициирован пользователем вручную
  */
 export async function checkForUpdates(manualTrigger = false) {
+  const isNative = typeof window !== 'undefined' && (
+    /StormMultimediaApp/i.test(navigator.userAgent) ||
+    window.location.protocol === 'file:' ||
+    Boolean(window.StormNativeApp)
+  );
+
   const now = Date.now();
   const lastCheck = parseInt(localStorage.getItem('storm_last_update_check') || '0', 10);
 
-  if (!manualTrigger && (now - lastCheck < CHECK_INTERVAL_MS)) {
+  // В нативном приложении при запуске проверяем всегда без кулдауна, в браузере — с интервалом
+  if (!manualTrigger && !isNative && (now - lastCheck < CHECK_INTERVAL_MS)) {
     return null;
   }
 
@@ -48,11 +55,45 @@ export async function checkForUpdates(manualTrigger = false) {
     showToast('🔍 Проверка наличия обновлений на GitHub...', 'info');
   }
 
+  // 1. Первичная проверка через локальный серверный прокси (обходит лимиты и блокировки WebView)
+  try {
+    const srvRes = await fetch('/api/updates/check', { signal: AbortSignal.timeout(5000) });
+    if (srvRes.ok) {
+      const data = await srvRes.json();
+      if (data && data.success && data.latestVersion) {
+        localStorage.setItem('storm_last_update_check', String(now));
+        const hasNewer = compareVersions(data.latestVersion, CURRENT_APP_VERSION) > 0;
+        if (hasNewer) {
+          showUpdateModal({
+            name: data.releaseName,
+            tag_name: data.latestVersion,
+            body: data.body,
+            html_url: data.htmlUrl,
+            assets: (data.assets || []).map(a => ({
+              name: a.name,
+              size: a.size,
+              browser_download_url: a.downloadUrl
+            }))
+          }, data.latestVersion);
+          return data;
+        } else if (manualTrigger) {
+          showToast(`У вас актуальная версия STORM MULTIMEDIA (${CURRENT_APP_VERSION})`, 'success');
+          return null;
+        }
+        return null;
+      }
+    }
+  } catch (_) {
+    // В случае оффлайна или автономного file:// переходим к прямому запросу на GitHub
+  }
+
+  // 2. Fallback: прямой запрос к официальному API GitHub
   try {
     const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
       headers: {
         'Accept': 'application/vnd.github.v3+json'
-      }
+      },
+      signal: AbortSignal.timeout(7000)
     });
 
     localStorage.setItem('storm_last_update_check', String(now));
@@ -77,10 +118,6 @@ export async function checkForUpdates(manualTrigger = false) {
     const hasNewer = compareVersions(latestVersion, CURRENT_APP_VERSION) > 0;
 
     if (hasNewer) {
-      const dismissed = localStorage.getItem('storm_dismissed_update');
-      if (!manualTrigger && dismissed === latestVersion) {
-        return null;
-      }
       showUpdateModal(release, latestVersion);
       return release;
     } else {

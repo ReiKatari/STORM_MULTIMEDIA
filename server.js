@@ -3614,6 +3614,79 @@ app.get('/api/media/skip-times', async (req, res) => {
   }
 });
 
+// ==========================================
+// 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
+// ==========================================
+app.get('/api/updates/check', async (req, res) => {
+  const currentAppVersion = '1.0.6';
+  try {
+    const cached = getCache('system', 'github_latest_release');
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const response = await fetch('https://api.github.com/repos/ReiKatari/STORM_MULTIMEDIA/releases/latest', {
+      headers: {
+        'User-Agent': 'ReiKatari-STORM-Multimedia',
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: `GitHub API error: ${response.status}`,
+        currentVersion: currentAppVersion
+      });
+    }
+
+    const release = await response.json();
+    const tag = String(release.tag_name || '').replace(/^v/i, '').trim();
+    const apkAsset = (release.assets || []).find(a => a.name && a.name.endsWith('.apk'));
+    const downloadUrl = apkAsset?.browser_download_url || release.html_url;
+
+    const compareVer = (v1, v2) => {
+      const p1 = String(v1 || '').split('.').map(n => parseInt(n, 10) || 0);
+      const p2 = String(v2 || '').split('.').map(n => parseInt(n, 10) || 0);
+      const len = Math.max(p1.length, p2.length);
+      for (let i = 0; i < len; i++) {
+        const n1 = p1[i] || 0;
+        const n2 = p2[i] || 0;
+        if (n1 > n2) return 1;
+        if (n1 < n2) return -1;
+      }
+      return 0;
+    };
+
+    const result = {
+      success: true,
+      latestVersion: tag,
+      currentVersion: currentAppVersion,
+      updateAvailable: compareVer(tag, currentAppVersion) > 0,
+      releaseName: release.name || `Релиз ${tag}`,
+      body: release.body || '',
+      publishedAt: release.published_at,
+      downloadUrl,
+      htmlUrl: release.html_url,
+      assets: (release.assets || []).map(a => ({
+        name: a.name,
+        size: a.size,
+        downloadUrl: a.browser_download_url
+      }))
+    };
+
+    setCache('system', 'github_latest_release', result, 300); // 5 минут кэша
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      currentVersion: currentAppVersion
+    });
+  }
+});
+
 // Фронтенд fallback с защитой от возврата HTML на API и статические ассеты
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
