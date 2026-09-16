@@ -374,25 +374,61 @@ function handleSpatialKeyboard(e) {
 
   const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
 
+  // Проверяем, находится ли фокус конкретно на области видео/плеера
+  const isDirectVideoFocus = currentFocusedElement && (
+    currentFocusedElement.tagName === 'VIDEO' ||
+    currentFocusedElement.classList.contains('cinema-player-iframe') ||
+    currentFocusedElement.classList.contains('cinema-player-container') ||
+    currentFocusedElement.classList.contains('cinema-player-wrapper') ||
+    currentFocusedElement.classList.contains('player-video-box')
+  );
+
   switch (e.key) {
+    // Выделенные мультимедийные клавиши ТВ-пультов
+    case 'AudioVolumeUp':
+      e.preventDefault();
+      handlePlayerTvVolume(0.1);
+      break;
+    case 'AudioVolumeDown':
+      e.preventDefault();
+      handlePlayerTvVolume(-0.1);
+      break;
+    case 'MediaPlayPause':
+    case 'MediaPlay':
+    case 'MediaPause':
+      e.preventDefault();
+      handlePlayerTvPlayPause();
+      break;
+    case 'MediaFastForward':
+    case 'MediaTrackNext':
+      e.preventDefault();
+      handlePlayerTvSeek(10);
+      break;
+    case 'MediaRewind':
+    case 'MediaTrackPrevious':
+      e.preventDefault();
+      handlePlayerTvSeek(-10);
+      break;
+
+    // Навигационные стрелки пульта и геймпада
     case 'ArrowUp':
       e.preventDefault();
-      if (isPlayerOpen) handlePlayerTvVolume(0.1);
+      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(0.1);
       else moveFocus('up');
       break;
     case 'ArrowDown':
       e.preventDefault();
-      if (isPlayerOpen) handlePlayerTvVolume(-0.1);
+      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(-0.1);
       else moveFocus('down');
       break;
     case 'ArrowLeft':
       e.preventDefault();
-      if (isPlayerOpen) handlePlayerTvSeek(-10);
+      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvSeek(-10);
       else moveFocus('left');
       break;
     case 'ArrowRight':
       e.preventDefault();
-      if (isPlayerOpen) handlePlayerTvSeek(10);
+      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvSeek(10);
       else moveFocus('right');
       break;
     case ' ':
@@ -425,7 +461,7 @@ function handleSpatialKeyboard(e) {
 function getFocusableElements() {
   const activeModal = document.querySelector('.storm-modal-backdrop.is-open');
   const root = activeModal || document;
-  const selector = 'button:not([disabled]), [tabindex="0"], .media-card, .media-detailed-card, .media-table-table tbody tr, .cal-card, .rail-card, .hero-slide, .storm-tab-btn, .storm-filters-toggle-btn, .quick-dropdown-trigger, .storm-focusable, select:not([disabled]), input:not([disabled])';
+  const selector = 'button:not([disabled]), [tabindex="0"], .media-card, .media-detailed-card, .media-table-table tbody tr, .series-episode-card, .series-season-tab, .cal-card, .rail-card, .hero-slide, .storm-tab-btn, .storm-filters-toggle-btn, .quick-dropdown-trigger, .storm-modal-tool-btn, .storm-modal-fullscreen-btn, .storm-modal-close, .storm-focusable, select:not([disabled]), input:not([disabled])';
   return Array.from(root.querySelectorAll(selector)).filter(el => {
     return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
   });
@@ -434,6 +470,8 @@ function getFocusableElements() {
 function moveFocus(direction) {
   const focusables = getFocusableElements();
   if (focusables.length === 0) return;
+
+  const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
 
   if (!currentFocusedElement || !document.body.contains(currentFocusedElement)) {
     focusInitialElement();
@@ -474,7 +512,9 @@ function moveFocus(direction) {
   // Умный запасной переход между панелями (Header/Toolbar <-> Content Container)
   if (!bestCandidate && direction === 'down') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
-    if (mainArea && currentFocusedElement.closest('.storm-header, .storm-tabs-bar, .storm-toolbar')) {
+    const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container');
+    
+    if (mainArea && isTopArea) {
       const candidates = focusables.filter(el => mainArea.contains(el));
       if (candidates.length > 0) {
         bestCandidate = candidates[0];
@@ -483,17 +523,51 @@ function moveFocus(direction) {
           window.toggleFiltersCollapsible(true);
         }
       }
+    } else if (mainArea && mainArea.contains(currentFocusedElement)) {
+      // Ищем карточки или элементы ниже текущего
+      const belowCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().top > currentRect.top + 15);
+      if (belowCandidates.length > 0) {
+        bestCandidate = belowCandidates[0];
+      } else {
+        window.scrollBy({ top: 380, behavior: 'smooth' });
+      }
+    } else if (isPlayerOpen) {
+      const modalBody = document.querySelector('#cinema-modal .storm-modal-body') || document.querySelector('#cinema-modal .cinema-modal-dialog');
+      if (modalBody) {
+        const modalBelow = focusables.filter(el => modalBody.contains(el) && el.getBoundingClientRect().top > currentRect.top + 15);
+        if (modalBelow.length > 0) {
+          bestCandidate = modalBelow[0];
+        } else {
+          modalBody.scrollBy({ top: 260, behavior: 'smooth' });
+        }
+      }
     }
   }
 
   if (!bestCandidate && direction === 'up') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
     if (mainArea && mainArea.contains(currentFocusedElement)) {
-      const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar');
-      if (topArea) {
-        const candidates = focusables.filter(el => topArea.contains(el));
-        if (candidates.length > 0) {
-          bestCandidate = candidates[0];
+      const aboveCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().bottom < currentRect.bottom - 15);
+      if (aboveCandidates.length > 0) {
+        bestCandidate = aboveCandidates[aboveCandidates.length - 1];
+      } else {
+        const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
+        if (topArea) {
+          const candidates = focusables.filter(el => topArea.contains(el));
+          if (candidates.length > 0) {
+            bestCandidate = candidates[0];
+          }
+        }
+        window.scrollBy({ top: -380, behavior: 'smooth' });
+      }
+    } else if (isPlayerOpen) {
+      const modalBody = document.querySelector('#cinema-modal .storm-modal-body') || document.querySelector('#cinema-modal .cinema-modal-dialog');
+      if (modalBody) {
+        const modalAbove = focusables.filter(el => modalBody.contains(el) && el.getBoundingClientRect().bottom < currentRect.bottom - 15);
+        if (modalAbove.length > 0) {
+          bestCandidate = modalAbove[modalAbove.length - 1];
+        } else {
+          modalBody.scrollBy({ top: -260, behavior: 'smooth' });
         }
       }
     }
@@ -506,11 +580,15 @@ function moveFocus(direction) {
 }
 
 function setFocusTo(element) {
+  if (!element) return;
   clearFocusRing();
   currentFocusedElement = element;
   element.classList.add('tv-focused');
+  if (!element.getAttribute('tabindex') && !['BUTTON', 'SELECT', 'INPUT', 'A'].includes(element.tagName)) {
+    element.setAttribute('tabindex', '0');
+  }
   element.focus();
-  element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
 }
 
 function focusInitialElement() {

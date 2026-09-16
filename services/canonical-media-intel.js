@@ -484,6 +484,7 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
   const linkStr = String(link || '').toLowerCase();
   const catStr = String(category || '').toLowerCase();
   const genStr = (Array.isArray(genres) ? genres.join(' ') : String(genres || '')).toLowerCase();
+  const src = String(item?.source || item?.src || '').toLowerCase();
   // 0. Обитель зла: Мутация - строго художественный фильм (movie), не анимация и не сериал!
   if (norm.includes('обитель зла') && (norm.includes('мутация') || norm.includes('мутиция'))) {
     return 'movie';

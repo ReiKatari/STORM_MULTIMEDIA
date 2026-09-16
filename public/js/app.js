@@ -1844,7 +1844,7 @@ function createRailCardHtml(item, idx, isWide = false) {
 
   return `
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
-      <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
+      <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
@@ -2605,7 +2605,7 @@ function renderMediaItems(items) {
       const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
 
       return `
-      <div class="storm-card media-card" data-id="${item.id}" data-source="${item.source}">
+      <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
@@ -3320,6 +3320,11 @@ function initSourceFilterDropdown() {
         dropdown.classList.remove('is-open');
         menu.style.display = 'none';
 
+        // Автоматически сворачиваем фильтры при выборе, освобождая место на ТВ, мобильных и ПК
+        if (typeof toggleFiltersCollapsible === 'function') {
+          toggleFiltersCollapsible(true);
+        }
+
         if (searchQuery && searchQuery.length >= 2) {
           executeSearch(searchQuery);
         } else {
@@ -3407,6 +3412,11 @@ function setupFilterDropdown({ dropdownId, triggerId, labelId, menuId, searchId,
         dropdown.classList.remove('is-open');
         menu.style.display = 'none';
         onSelect(it.id);
+
+        // Автоматически сворачиваем фильтры при выборе, освобождая место на ТВ, мобильных и ПК
+        if (typeof toggleFiltersCollapsible === 'function') {
+          toggleFiltersCollapsible(true);
+        }
       };
       list.appendChild(el);
     });
