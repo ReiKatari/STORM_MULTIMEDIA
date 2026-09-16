@@ -2507,30 +2507,38 @@ button:active .storm-status-svg {
 .series-episode-card {
   display: flex;
   gap: 12px;
-  background: var(--bg-tertiary);
+  background: linear-gradient(135deg, rgba(20, 24, 36, 0.95) 0%, rgba(12, 16, 24, 0.98) 100%);
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 12px;
   cursor: pointer;
   position: relative;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: all 0.22s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  outline: none;
 }
 
-.series-episode-card:hover {
+.series-episode-card:hover,
+.series-episode-card:focus-visible,
+.series-episode-card.tv-focused {
   border-color: var(--accent);
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 12px var(--accent-glow);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5), 0 0 16px var(--accent-glow);
+}
+
+.series-episode-card:active {
+  transform: translateY(1.5px) scale(0.985);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .series-episode-card.active {
   border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.09);
-  box-shadow: 0 0 14px var(--accent-glow);
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.14) 0%, rgba(15, 23, 42, 0.98) 100%);
+  box-shadow: 0 0 20px var(--accent-glow), 0 6px 20px rgba(0, 0, 0, 0.5);
 }
 
 .series-episode-card.watched {
-  border-color: rgba(0, 255, 102, 0.4);
+  border-color: rgba(16, 185, 129, 0.45);
 }
 
 .series-episode-thumb-box,
@@ -2582,6 +2590,46 @@ button:active .storm-status-svg {
   padding: 2px 6px;
   border-radius: 4px;
   line-height: 1.2;
+}
+
+.series-episode-play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border-radius: 8px;
+  z-index: 5;
+}
+
+.series-episode-card:hover .series-episode-play-overlay,
+.series-episode-card:focus .series-episode-play-overlay,
+.series-episode-card.active .series-episode-play-overlay,
+.series-episode-card.tv-focused .series-episode-play-overlay {
+  opacity: 1;
+}
+
+.series-episode-play-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #030712;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px var(--accent-glow), 0 4px 10px rgba(0, 0, 0, 0.5);
+  transform: scale(0.9);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.series-episode-card:hover .series-episode-play-btn,
+.series-episode-card:focus .series-episode-play-btn,
+.series-episode-card.tv-focused .series-episode-play-btn {
+  transform: scale(1.08);
 }
 
 .series-episode-content,
@@ -4421,11 +4469,12 @@ button:active .storm-status-svg {
 
 .quick-dropdown-trigger {
   width: 100%;
-  height: 42px;
+  min-height: 44px;
+  height: auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 14px;
+  padding: 6px 14px;
   background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
@@ -4451,14 +4500,21 @@ button:active .storm-status-svg {
 .quick-dropdown-icon {
   font-size: 15px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .quick-dropdown-val {
   flex: 1;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  word-break: break-word;
+  line-height: 1.25;
 }
 
 .quick-dropdown-badge {
@@ -4606,8 +4662,8 @@ body.player-dropdown-active .cinema-player-iframe {
 
 .quick-episode-title {
   display: -webkit-box !important;
-  -webkit-line-clamp: 2 !important;
-  line-clamp: 2 !important;
+  -webkit-line-clamp: 3 !important;
+  line-clamp: 3 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -4620,6 +4676,7 @@ body.player-dropdown-active .cinema-player-iframe {
 }
 
 .quick-dropdown-item.active .quick-item-title,
+.quick-dropdown-item.active .quick-voice-title,
 .quick-dropdown-item.active .quick-season-title,
 .quick-dropdown-item.active .quick-episode-title {
   color: #000000 !important;
@@ -4701,10 +4758,17 @@ body.player-dropdown-active .cinema-player-iframe {
   flex-shrink: 0;
 }
 
-.quick-item-title {
-  white-space: nowrap;
+.quick-item-title,
+.quick-voice-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
   flex: 1;
   text-align: left;
 }

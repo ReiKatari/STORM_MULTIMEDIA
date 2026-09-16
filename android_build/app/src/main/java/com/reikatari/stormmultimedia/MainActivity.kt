@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.1"
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.5"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true

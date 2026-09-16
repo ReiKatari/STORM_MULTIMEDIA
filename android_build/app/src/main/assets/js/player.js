@@ -1672,7 +1672,17 @@ function renderQuickBarDropdowns() {
     seasonIconEl.textContent = curSeasonIcon;
   }
   if (seasonVal) {
-    seasonVal.textContent = currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`;
+    let displaySeasonName = currentSeasonObj.name || `Сезон ${quickBarActiveSeason}`;
+    const cleanMediaTitle = (currentMedia?.title || '').trim().toLowerCase();
+    const cleanMediaOrig = (currentMedia?.original_title || '').trim().toLowerCase();
+    const isDup = displaySeasonName.toLowerCase() === cleanMediaTitle ||
+                  (cleanMediaTitle.length > 8 && displaySeasonName.toLowerCase().startsWith(cleanMediaTitle)) ||
+                  (cleanMediaOrig && cleanMediaOrig.length > 8 && displaySeasonName.toLowerCase().startsWith(cleanMediaOrig));
+    if (isDup) {
+      displaySeasonName = `Сезон ${quickBarActiveSeason}`;
+    }
+    seasonVal.textContent = displaySeasonName;
+    seasonVal.title = displaySeasonName;
   }
 
   if (seasonList) {
@@ -1683,6 +1693,15 @@ function renderQuickBarDropdowns() {
       const validWatched = Array.from(watchedSet).filter(n => Number(n) >= 1 && Number(n) <= totalEp);
       const watchedCount = Math.min(validWatched.length, totalEp);
 
+      let sDisplayName = s.name || `Сезон ${s.season}`;
+      const cleanMediaTitle = (currentMedia?.title || '').trim().toLowerCase();
+      const cleanMediaOrig = (currentMedia?.original_title || '').trim().toLowerCase();
+      if (sDisplayName.toLowerCase() === cleanMediaTitle ||
+          (cleanMediaTitle.length > 8 && sDisplayName.toLowerCase().startsWith(cleanMediaTitle)) ||
+          (cleanMediaOrig && cleanMediaOrig.length > 8 && sDisplayName.toLowerCase().startsWith(cleanMediaOrig))) {
+        sDisplayName = `Сезон ${s.season}`;
+      }
+
       const sStatusInfo = curMediaId ? getSeasonStatusInfo(curMediaId, s.season, totalEp, s.episodes) : { status: 'planned' };
       const curSeasonStatus = sStatusInfo.status;
       const isAllWatched = curSeasonStatus === 'completed' || (totalEp > 0 && watchedCount >= totalEp);
@@ -1692,7 +1711,7 @@ function renderQuickBarDropdowns() {
       return `
         <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-season="${s.season}">
           <div class="quick-item-left" style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
-            <span class="quick-item-title quick-season-title" title="${escapeHtml(s.name)}">${s.name}</span>
+            <span class="quick-item-title quick-season-title" title="${escapeHtml(sDisplayName)}">${escapeHtml(sDisplayName)}</span>
           </div>
           <div class="quick-item-right" style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0;">
             <span class="quick-count-badge" title="Просмотрено ${watchedCount} из ${totalEp} серий">${watchedCount}/${totalEp}</span>
@@ -1963,7 +1982,10 @@ function renderQuickBarDropdowns() {
   }
   if (activeTrans) {
     quickBarActiveTranslationId = activeTrans.id;
-    if (voiceVal) voiceVal.textContent = activeTrans.name;
+    if (voiceVal) {
+      voiceVal.textContent = activeTrans.name;
+      voiceVal.title = activeTrans.name;
+    }
     if (voiceBadge) {
       voiceBadge.style.display = activeTrans.is_uhd ? 'inline-block' : 'none';
       voiceBadge.textContent = '4K UHD';
@@ -1974,8 +1996,8 @@ function renderQuickBarDropdowns() {
     voiceList.innerHTML = translations.map(t => {
       const isAct = t.id === quickBarActiveTranslationId;
       return `
-        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-trans-id="${t.id}">
-          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">${t.name}</span>
+        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-trans-id="${t.id}" title="${escapeHtml(t.name)}">
+          <span class="quick-voice-title">${escapeHtml(t.name)}</span>
           ${t.is_uhd ? '<span class="uhd-pill">4K UHD</span>' : '<span class="fhd-pill">' + (t.quality || 'FHD') + '</span>'}
         </div>
       `;
@@ -2233,6 +2255,18 @@ function playStreamUrl(url) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
+  const cleanStreamUrl = String(url || '').trim();
+  if (!cleanStreamUrl || cleanStreamUrl === '/' || cleanStreamUrl === 'undefined') {
+    container.innerHTML = `
+      <div class="player-video-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.92);border-radius:12px;gap:14px;">
+        <div style="font-size:42px;">🎬</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text-primary);">Видеопоток временно недоступен</div>
+        <div style="max-width:520px;font-size:13px;line-height:1.6;color:var(--text-secondary);">Попробуйте выбрать резервный плеер в списке доступных источников ниже.</div>
+      </div>
+    `;
+    return;
+  }
+
   if (currentMedia?.source === 'fanfilm4k') {
     trackClientAction('use_4k');
   }
@@ -2313,7 +2347,7 @@ function playStreamUrl(url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 
@@ -5728,6 +5762,7 @@ async function renderAnixartControls(details, options = {}) {
       if (unwatched) targetEpNum = unwatched.position || 1;
     }
 
+    const defaultSeasonLabel = currentMedia.year ? `1 сезон (${currentMedia.year})` : '1 сезон';
     currentMedia.seasons = isDandadan ? [
       {
         season_number: 1,
@@ -5743,7 +5778,7 @@ async function renderAnixartControls(details, options = {}) {
       }
     ] : [{
       season_number: 1,
-      name: currentMedia.title_ru || currentMedia.title || '1 сезон',
+      name: defaultSeasonLabel,
       episode_count: currentEpisodes.length || activeVoiceover.episodes_count || 12,
       overview: currentMedia.description || `Официальный релиз AniXart в озвучке «${activeVoiceover.name}».`
     }];
@@ -5796,7 +5831,7 @@ async function renderAnixartControls(details, options = {}) {
       animeSource: 'anixart',
       seasons: dandadanSeasons || [{
         season: 1,
-        name: currentMedia.title_ru || currentMedia.title || '1 сезон',
+        name: defaultSeasonLabel,
         episodes_count: currentEpisodes.length,
         episodes: currentEpisodes.map(ep => ({
           episode: ep.position || 1,
@@ -5919,18 +5954,28 @@ function playAnixartEpisode(episode) {
   renderQuickBarDropdowns();
   highlightActiveEpisodeInGrid(pos);
 
-  let streamUrl = episode.url || '';
-  if (streamUrl && streamUrl.includes('kodik') && !streamUrl.includes('/api/player/kodik-embed')) {
+  let streamUrl = (episode.url || '').trim();
+  if (!streamUrl || streamUrl === '/' || streamUrl === 'undefined') {
+    container.innerHTML = `
+      <div class="player-video-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.92);border-radius:12px;gap:14px;">
+        <div style="font-size:42px;">🎬</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text-primary);">Серия ${pos} временно недоступна в выбранной озвучке</div>
+        <div style="max-width:520px;font-size:13px;line-height:1.6;color:var(--text-secondary);">Выберите другую студию озвучки в верхней быстрой панели или переключите плеер в списке источников ниже.</div>
+      </div>
+    `;
+    return;
+  }
+
+  if (streamUrl.includes('kodik') && !streamUrl.includes('/api/player/kodik-embed')) {
     streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
   }
 
-  if (streamUrl) {
-    container.innerHTML = `
-      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
-        <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
-      </div>
-    `;
+  container.innerHTML = `
+    <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+      <div id="player-ambilight-aura" class="ambilight-aura"></div>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+    </div>
+  `;
 
     const vBox = container.querySelector('.player-video-box');
     if (vBox) {
@@ -5946,9 +5991,7 @@ function playAnixartEpisode(episode) {
     }
 
     updateProgressState(pos, currentEpisodes.length || 1);
-  }
 }
-
 function updateProgressState(episode, totalEpisodes) {
   const percent = Math.min(100, Math.round((episode / (totalEpisodes || 1)) * 100));
   currentProgressPercent = percent;
@@ -7021,6 +7064,44 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         seasonOverview = (!isTmdbSeasonOverviewDup && data.overview) || season.overview || `${season.name || `Сезон ${seasonNum}`} • ${episodes.length} серий.`;
       }
 
+      // Обогащаем названия и синопсисы эпизодов аниме из баз знаний TMDB / Shikimori
+      if ((mediaDetails.source === 'anixart' || mediaDetails.source === 'anilibria') && episodes.length > 0) {
+        try {
+          const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
+          const metaRes = await fetch(`/api/media/series-episodes?season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
+          if (metaRes.ok) {
+            const metaData = await metaRes.json();
+            if (metaData?.episodes && metaData.episodes.length > 0) {
+              episodes.forEach(ep => {
+                const match = metaData.episodes.find(m => m.episode_number === ep.episode_number);
+                if (match) {
+                  if (match.name && match.name !== `Серия ${ep.episode_number}` && match.name !== `Episode ${ep.episode_number}`) {
+                    ep.name = `${ep.episode_number} серия: ${match.name}`;
+                  }
+                  if (match.overview && (!ep.overview || ep.overview === mediaDetails.description)) {
+                    ep.overview = match.overview;
+                  }
+                  if (match.still && (!ep.still || ep.still === mediaDetails.poster)) {
+                    ep.still = match.still;
+                  }
+                  if (match.air_date && !ep.air_date) {
+                    ep.air_date = match.air_date;
+                  }
+                }
+              });
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Гарантируем качественный синопсис у каждого эпизода
+      episodes.forEach(ep => {
+        if (!ep.overview || ep.overview.trim() === '' || ep.overview === mediaDetails.description) {
+          const epTitle = (ep.name && ep.name !== `Серия ${ep.episode_number}`) ? `«${ep.name}»` : `серии ${ep.episode_number}`;
+          ep.overview = `Эпизод ${epTitle}. Смотрите ${ep.episode_number}-ю серию проекта «${mediaDetails.title}» в высоком разрешении со студийным переводом и субтитрами.`;
+        }
+      });
+
       if (episodes.length === 0) {
         gridEl.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted);">Серии не найдены</div>`;
         return;
@@ -7110,21 +7191,22 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         const epStatusClass = isWatched ? 'completed' : (isEpActive ? 'watching' : 'planned');
 
         return `
-        <div class="series-episode-card ${isEpActive ? 'active' : ''} ${isWatched ? 'watched' : ''}" data-ep-num="${ep.episode_number}">
+        <div class="series-episode-card storm-focusable ${isEpActive ? 'active' : ''} ${isWatched ? 'watched' : ''}" data-ep-num="${ep.episode_number}" tabindex="0">
           <div class="series-episode-thumb-box">
-            <img src="${ep.still || ep.still_path || 'assets/favicon.svg'}" alt="${ep.name}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            <img src="${ep.still || ep.still_path || 'assets/favicon.svg'}" alt="${escapeHtml(ep.name)}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            <div class="series-episode-play-overlay"><span>▶</span></div>
             <span class="series-episode-badge">Серия ${ep.episode_number}</span>
             ${ep.duration ? `<span class="series-episode-duration">${ep.duration}</span>` : ''}
           </div>
           <div class="series-episode-content">
-            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 6px;">
-              <div class="series-episode-title">${ep.name}</div>
-              <span class="season-status-chip ${epStatusClass} ep-status-toggle" data-ep-num="${ep.episode_number}" title="Нажмите для переключения статуса серии" style="font-size: 9px; padding: 1px 6px; cursor: pointer; flex-shrink: 0;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+              <div class="series-episode-title" title="${escapeHtml(ep.name)}">${escapeHtml(ep.name)}</div>
+              <span class="season-status-chip ${epStatusClass} ep-status-toggle" data-ep-num="${ep.episode_number}" title="Нажмите для переключения статуса серии" style="font-size: 9.5px; padding: 2px 7px; cursor: pointer; flex-shrink: 0;">
                 ${epStatusLabel}
               </span>
             </div>
-            <div class="series-episode-airdate">${ep.air_date ? 'Дата выхода: ' + ep.air_date : ''}</div>
-            <p class="series-episode-desc">${ep.overview || 'Смотрите серию онлайн в высоком качестве.'}</p>
+            <div class="series-episode-airdate">${ep.air_date ? '📅 ' + ep.air_date : ''}</div>
+            <p class="series-episode-desc" title="${escapeHtml(ep.overview)}">${escapeHtml(ep.overview)}</p>
           </div>
         </div>
       `;

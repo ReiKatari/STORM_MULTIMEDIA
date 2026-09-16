@@ -2863,9 +2863,14 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 app.get('/api/player/kodik-embed', async (req, res) => {
   try {
     const { url: targetUrl } = req.query;
-    if (!targetUrl) return res.status(400).send('URL не указан');
+    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.trim() || targetUrl === 'undefined') {
+      return res.status(400).type('text/plain; charset=utf-8').send('URL не указан');
+    }
 
     const cleanUrl = targetUrl.startsWith('//') ? 'https:' + targetUrl : targetUrl;
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      return res.status(400).type('text/plain; charset=utf-8').send('Некорректный URL');
+    }
     const embedRes = await fetch(cleanUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
@@ -2946,7 +2951,11 @@ app.get('/api/player/kodik-embed', async (req, res) => {
     return res.send(html);
   } catch (err) {
     console.warn('[Kodik Embed Proxy Error]:', err.message);
-    return res.redirect(req.query.url);
+    const fallbackUrl = String(req.query.url || '');
+    if (fallbackUrl.startsWith('http://') || fallbackUrl.startsWith('https://')) {
+      return res.redirect(fallbackUrl);
+    }
+    return res.status(502).type('text/plain; charset=utf-8').send('Ошибка загрузки плеера');
   }
 });
 
@@ -3605,8 +3614,15 @@ app.get('/api/media/skip-times', async (req, res) => {
   }
 });
 
-// Фронтенд fallback
+// Фронтенд fallback с защитой от возврата HTML на API и статические ассеты
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ success: false, error: 'API эндпоинт не найден' });
+  }
+  if (req.path.startsWith('/assets/') || /\.[a-zA-Z0-9]+$/.test(req.path)) {
+    return res.status(404).type('text/plain; charset=utf-8').send('Файл не найден');
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

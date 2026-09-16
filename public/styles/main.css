@@ -1180,10 +1180,36 @@ body {
    КИНОТЕАТРАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПЛЕЕРА (CINEMA MODAL)
    ------------------------------------------------------------- */
 .cinema-modal-dialog {
-  max-width: 1540px;
-  width: 96vw;
+  max-width: 1880px;
+  width: 98vw;
+  height: 96vh;
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   overflow-x: hidden !important;
+}
+
+#cinema-modal.is-fullscreen,
+#cinema-modal:fullscreen {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+}
+
+#cinema-modal.is-fullscreen .cinema-modal-dialog,
+#cinema-modal:fullscreen .cinema-modal-dialog {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .cinema-layout-grid {
@@ -3751,6 +3777,14 @@ body.drawer-open {
   .storm-mobile-bottom-bar,
   .storm-bottom-nav {
     display: none !important;
+  }
+}
+
+/* Адаптивная сетка карточек в альбомном режиме смартфона и планшета */
+@media (max-width: 1024px) and (orientation: landscape) {
+  .media-container.view-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+    gap: 12px !important;
   }
 }
 
