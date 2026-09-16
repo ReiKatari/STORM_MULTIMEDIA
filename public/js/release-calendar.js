@@ -244,7 +244,7 @@ async function loadAndRenderWeek(container) {
 
   // 1. Быстрая загрузка из локального кэша, если есть
   try {
-    const localCached = localStorage.getItem(`storm_cal_v101_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v106_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -278,7 +278,7 @@ async function loadAndRenderWeek(container) {
         });
 
         try {
-          localStorage.setItem(`storm_cal_v101_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v106_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
         // Если полученные данные идентичны текущим, не производим перерисовку (устраняет моргание)

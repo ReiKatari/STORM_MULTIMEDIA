@@ -980,6 +980,24 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   // Открываем модальное окно
   modal.classList.add('is-open');
+  document.body.classList.add('cinema-open');
+
+  // Мгновенный сброс скролла на 0, чтобы плеер открывался на весь экран сверху без необходимости пролистывать
+  const resetCinemaScroll = () => {
+    modal.scrollTop = 0;
+    const dialog = modal.querySelector('.cinema-modal-dialog');
+    if (dialog) dialog.scrollTop = 0;
+    const modalBody = modal.querySelector('.storm-modal-body');
+    if (modalBody) modalBody.scrollTop = 0;
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  };
+  resetCinemaScroll();
+  requestAnimationFrame(resetCinemaScroll);
+  setTimeout(resetCinemaScroll, 50);
+  setTimeout(resetCinemaScroll, 200);
+
   applyAmbientBackdropGlow(mediaItem);
 
   // Немедленно инициализируем селекторы и кнопки, чтобы они были интерактивны СРАЗУ
@@ -1138,6 +1156,7 @@ export function closePlayerModal() {
   const modal = document.getElementById('cinema-modal');
   if (modal) {
     modal.classList.remove('is-open', 'is-mini-pip');
+    document.body.classList.remove('cinema-open');
     stopAmbilight();
     clearPlayerUrl();
     dismissUpNextCountdownCard(false);
@@ -2128,7 +2147,6 @@ function highlightActiveEpisodeInGrid(episodeNum) {
     card.classList.toggle('active', isAct);
     if (isAct) {
       card.classList.add('watched');
-      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   });
 }
@@ -6770,11 +6788,12 @@ export async function renderFranchiseOrder(mediaItem) {
 
     section.style.display = 'block';
 
-    // Центрируем скролл на текущей части
+    // Центрируем горизонтальный скролл на текущей части без вертикального сдвига окна
     setTimeout(() => {
       const activeCard = listEl.querySelector('.franchise-card.current');
       if (activeCard) {
-        activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        const offset = activeCard.offsetLeft - (listEl.clientWidth / 2) + (activeCard.clientWidth / 2);
+        listEl.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' });
       }
     }, 200);
 
@@ -7271,7 +7290,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       if (effectiveTargetEp) {
         const activeCard = gridEl.querySelector(`.series-episode-card[data-ep-num="${effectiveTargetEp}"]`);
         if (activeCard) {
-          activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          activeCard.classList.add('active', 'watched');
         }
       }
     } catch (err) {

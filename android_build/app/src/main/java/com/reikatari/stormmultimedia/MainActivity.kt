@@ -102,11 +102,18 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.5"
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.6"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.requestFocusFromTouch()
+
+        webView.setDownloadListener { url, _, _, _, _ ->
+            try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                startActivity(intent)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun setupClients() {
