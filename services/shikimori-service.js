@@ -149,18 +149,25 @@ export async function getShikimoriCalendar() {
     if (!res.ok) return [];
 
     const data = await res.json();
-    const items = (data || []).filter(d => d.anime).map(d => {
+    const items = (data || []).filter(d => {
+      if (!d || !d.anime) return false;
+      const img = d.anime.image?.original || d.anime.image?.preview || '';
+      if (!img || img.includes('missing')) return false;
+      return true;
+    }).map(d => {
       const airDate = d.next_episode_at ? new Date(d.next_episode_at) : null;
       const dayOfWeek = airDate ? airDate.getDay() : 1; // 0=ВС, 1=ПН...
       const hours = airDate ? String(airDate.getHours()).padStart(2, '0') : '18';
       const mins = airDate ? String(airDate.getMinutes()).padStart(2, '0') : '30';
+      const posterPath = d.anime.image?.original || d.anime.image?.preview || '';
+      const poster = posterPath ? (posterPath.startsWith('http') ? posterPath : `${SHIKIMORI_BASE}${posterPath}`) : '';
 
       return {
         id: `shiki_${d.anime.id}`,
         shikimori_id: d.anime.id,
         title: d.anime.russian || d.anime.name,
         original_title: d.anime.name,
-        poster: d.anime.image?.original ? `${SHIKIMORI_BASE}${d.anime.image.original}` : 'assets/favicon.svg',
+        poster,
         year: d.anime.aired_on ? d.anime.aired_on.substring(0, 4) : '2026',
         season: 1,
         episode: d.next_episode || 1,

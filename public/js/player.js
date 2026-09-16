@@ -3642,8 +3642,17 @@ export function renderInPlayerEpisodesSheet(overlay) {
 
 export function checkIfMediaIsSeries(media) {
   if (!media) return false;
-  // Явные признаки фильма
-  if (media.media_type === 'movie' || media.type === 'movie' || media.category === 'Фильм' || media.category === 'фильм') {
+  const titleLower = String(media.title || media.name || '').toLowerCase();
+  // Анимационные и художественные фильмы серии "Обитель зла" (Мутация, Вендетта, Вырождение, Проклятие, Остров смерти) - строго фильмы
+  if (titleLower.includes('обитель зла') && (titleLower.includes('мутация') || titleLower.includes('вендетта') || titleLower.includes('вырождение') || titleLower.includes('проклятие') || titleLower.includes('остров смерти') || titleLower.includes('resident evil'))) {
+    return false;
+  }
+  // Мультсериал "Рик и Морти" - строго сериал с сериями
+  if (titleLower.includes('рик и морти') || titleLower.includes('rick and morty') || titleLower.includes('гриффины') || titleLower.includes('симпсоны') || titleLower.includes('южный парк')) {
+    return true;
+  }
+  // Явные признаки фильма или анимационного фильма (не сериала)
+  if (media.media_type === 'movie' || media.type === 'movie' || media.media_type === 'cartoon' || media.category === 'Фильм' || media.category === 'фильм' || media.category === 'Мультфильм') {
     return false;
   }
   // Явные сериалы, мультсериалы и аниме-сериалы

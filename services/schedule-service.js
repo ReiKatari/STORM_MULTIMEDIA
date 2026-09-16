@@ -8,7 +8,7 @@
 
 import { getCache, setCache } from '../db.js';
 import { getShikimoriCalendar } from './shikimori-service.js';
-import { getTmdbOnTheAir } from './tmdb-service.js';
+import { getTmdbOnTheAir, getTmdbUpcoming } from './tmdb-service.js';
 
 export function wrapPoster(url) {
   if (!url) return 'assets/favicon.svg';
@@ -901,7 +901,7 @@ export const VERIFIED_SCHEDULE_ITEMS = CURRENT_WEEK_ITEMS;
  * @param {'current' | 'next'} week
  */
 export async function getAggregatedSchedule(week = 'current') {
-  const cacheKey = `schedule_v2026_w3_${week}`;
+  const cacheKey = `schedule_v2026_w5_${week}`;
   const cached = getCache('schedule', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) {
     return {
@@ -935,14 +935,16 @@ export async function getAggregatedSchedule(week = 'current') {
   const dateMap = week === 'next' ? nxtDates : curDates;
 
   try {
-    const [shikiItems, tmdbItems, aLibItems] = await Promise.allSettled([
+    const [shikiItems, tmdbItems, tmdbUpItems, aLibItems] = await Promise.allSettled([
       getShikimoriCalendar(),
       getTmdbOnTheAir(week === 'next' ? 2 : 1),
+      getTmdbUpcoming(week === 'next' ? 2 : 1),
       getAniLibriaSchedule()
     ]);
 
     const liveShiki = shikiItems.status === 'fulfilled' && Array.isArray(shikiItems.value) ? shikiItems.value : [];
     const liveTmdb = tmdbItems.status === 'fulfilled' && Array.isArray(tmdbItems.value) ? tmdbItems.value : [];
+    const liveTmdbUp = tmdbUpItems.status === 'fulfilled' && Array.isArray(tmdbUpItems.value) ? tmdbUpItems.value : [];
     const liveAniLib = aLibItems.status === 'fulfilled' && Array.isArray(aLibItems.value) ? aLibItems.value : [];
 
     const existingTitles = new Set(baseItems.map(i => (i.title || '').toLowerCase().trim()));
@@ -960,19 +962,6 @@ export async function getAggregatedSchedule(week = 'current') {
       });
     }
 
-    for (const sh of liveShiki) {
-      const lower = (sh.title || '').toLowerCase().trim();
-      if (!lower || existingTitles.has(lower)) continue;
-      existingTitles.add(lower);
-
-      const dOfWeek = typeof sh.day_of_week === 'number' ? sh.day_of_week : 1;
-      baseItems.push({
-        ...sh,
-        poster: wrapPoster(sh.poster),
-        release_date: dateMap[dOfWeek] || '14.09.2026'
-      });
-    }
-
     for (const tm of liveTmdb) {
       const lower = (tm.title || '').toLowerCase().trim();
       if (!lower || existingTitles.has(lower)) continue;
@@ -985,24 +974,58 @@ export async function getAggregatedSchedule(week = 'current') {
         release_date: dateMap[dOfWeek] || '15.09.2026'
       });
     }
+
+    for (const up of liveTmdbUp) {
+      const lower = (up.title || '').toLowerCase().trim();
+      if (!lower || existingTitles.has(lower)) continue;
+      existingTitles.add(lower);
+
+      const dOfWeek = typeof up.day_of_week === 'number' ? up.day_of_week : 4;
+      baseItems.push({
+        ...up,
+        poster: wrapPoster(up.poster),
+        release_date: dateMap[dOfWeek] || '17.09.2026'
+      });
+    }
+
+    for (const sh of liveShiki) {
+      const lower = (sh.title || '').toLowerCase().trim();
+      if (!lower || existingTitles.has(lower)) continue;
+      existingTitles.add(lower);
+
+      const dOfWeek = typeof sh.day_of_week === 'number' ? sh.day_of_week : 1;
+      baseItems.push({
+        ...sh,
+        poster: wrapPoster(sh.poster),
+        release_date: dateMap[dOfWeek] || '14.09.2026'
+      });
+    }
   } catch (err) {
     console.warn('[Schedule Aggregation] Ошибка объединения онгоингов:', err.message);
   }
 
-  baseItems.sort((a, b) => {
+  // Строгая фильтрация: исключаем любые записи с отсутствующими или битыми постерами
+  const cleanItems = baseItems.filter(i => {
+    if (!i || !i.title) return false;
+    const p = String(i.poster || '');
+    if (!p || p.includes('missing') || p === 'assets/favicon.svg') return false;
+    return true;
+  });
+
+  cleanItems.sort((a, b) => {
     const dayA = a.day_of_week === 0 ? 7 : (a.day_of_week || 1);
     const dayB = b.day_of_week === 0 ? 7 : (b.day_of_week || 1);
     if (dayA !== dayB) return dayA - dayB;
     return (a.air_time || '').localeCompare(b.air_time || '');
   });
 
-  setCache('schedule', cacheKey, baseItems, 1800);
+  setCache('schedule', cacheKey, cleanItems, 1800);
 
   return {
     week,
     weekLabel: week === 'next' ? 'Следующая неделя (21.09 — 27.09.2026)' : 'Текущая неделя (14.09 — 20.09.2026)',
     dateRange: week === 'next' ? '21.09.2026 — 27.09.2026' : '14.09.2026 — 20.09.2026',
-    items: baseItems
+    items: cleanItems
   };
 }
 
@@ -1010,60 +1033,68 @@ export async function getAggregatedSchedule(week = 'current') {
  * Получение живого расписания онгоингов от AniLibria
  */
 export async function getAniLibriaSchedule() {
-  const cacheKey = 'anilibria_live_schedule';
+  const cacheKey = 'anilibria_live_schedule_v1';
   const cached = getCache('anilibria', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   const urls = [
-    'https://api.anilibria.tv/v3/title/schedule',
-    'https://anilibria.top/api/v3/title/schedule'
+    'https://anilibria.top/api/v1/anime/schedule/week',
+    'https://api.anilibria.tv/v3/title/schedule'
   ];
 
   for (const url of urls) {
     try {
       const res = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0' },
-        signal: AbortSignal.timeout(4000)
+        signal: AbortSignal.timeout(5000)
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const items = [];
-          data.forEach(dayBlock => {
-            const aDay = dayBlock.day;
-            const stormDay = (aDay === 6) ? 0 : (aDay + 1);
-            if (Array.isArray(dayBlock.list)) {
-              dayBlock.list.forEach(anime => {
-                const title = anime.names?.ru || anime.names?.en || anime.code;
-                const posterPath = anime.posters?.small?.url || anime.posters?.original?.url || '';
-                const poster = posterPath ? (posterPath.startsWith('http') ? posterPath : `https://anilibria.tv${posterPath}`) : '';
-                const ep = anime.player?.series?.last || 1;
-                items.push({
-                  id: `anilib_${anime.id || anime.code}`,
-                  title,
-                  original_title: anime.names?.en || '',
-                  poster: wrapPoster(poster),
-                  year: String(anime.season?.year || '2026'),
-                  season: 1,
-                  episode: ep,
-                  episode_title: `Серия ${ep}`,
-                  day_of_week: stormDay,
-                  air_time: '18:00 МСК',
-                  studio: 'AniLibria',
-                  quality: '1080p FHD',
-                  is4K: false,
-                  rating: anime.type?.string || 8.5,
-                  genres: anime.genres ? (Array.isArray(anime.genres) ? anime.genres.join(', ') : String(anime.genres)) : 'Аниме',
-                  source: 'anilibria',
-                  description: anime.description || 'Свежий эпизод популярного аниме в профессиональном дубляже AniLibria.'
-                });
-              });
-            }
-          });
-          if (items.length > 0) {
-            setCache('anilibria', cacheKey, items, 3600);
-            return items;
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const items = [];
+        data.forEach(entry => {
+          const r = entry.release || entry;
+          if (!r) return;
+          const title = r.name?.main || r.names?.ru || r.name?.russian || r.name?.english || r.title;
+          if (!title) return;
+          const rawPoster = r.poster?.src || r.poster?.preview || r.posters?.original?.url || r.posters?.small?.url || '';
+          const poster = rawPoster ? (rawPoster.startsWith('http') ? rawPoster : `https://anilibria.top${rawPoster}`) : '';
+
+          let stormDay = 1;
+          if (r.publish_day && typeof r.publish_day.value === 'number') {
+            stormDay = r.publish_day.value === 7 ? 0 : r.publish_day.value;
+          } else if (typeof entry.day === 'number') {
+            stormDay = entry.day === 6 ? 0 : (entry.day + 1);
           }
+
+          const ep = entry.next_release_episode_number || entry.published_release_episode || r.player?.series?.last || 1;
+          const genresStr = Array.isArray(r.genres) ? r.genres.map(g => (typeof g === 'object' ? g.name : g)).join(', ') : 'Аниме, Онгоинг';
+
+          items.push({
+            id: `anilib_${r.id || r.alias || Math.random().toString(36).substring(7)}`,
+            title,
+            original_title: r.name?.english || r.names?.en || '',
+            poster: wrapPoster(poster),
+            year: String(r.year || '2026'),
+            season: 1,
+            episode: ep,
+            episode_title: `Серия ${ep}`,
+            day_of_week: stormDay,
+            air_time: '18:30 МСК',
+            studio: 'AniLibria',
+            quality: '1080p FHD',
+            is4K: false,
+            rating: typeof r.shikimori?.rating === 'number' ? r.shikimori.rating : 8.5,
+            genres: genresStr,
+            media_type: 'anime-series',
+            source: 'anilibria',
+            description: r.description || `Свежий эпизод аниме «${title}» в дубляже AniLibria.`
+          });
+        });
+
+        if (items.length > 0) {
+          setCache('anilibria', cacheKey, items, 3600);
+          return items;
         }
       }
     } catch (_) {}

@@ -41,8 +41,8 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = Color.parseColor("#0a0d14")
         window.navigationBarColor = Color.parseColor("#0a0d14")
 
-        // В обычном режиме контент не должен заезжать под системные шторки (Status Bar и Navigation Bar)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        // Скрытие всех системных шторок (верхние, нижние, боковые) и использование 100% площади дисплея
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         rootLayout = FrameLayout(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -52,18 +52,9 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Color.parseColor("#0a0d14"))
         }
 
-        // Обработка системных отступов: контент отображается строго в безопасной зоне
-        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, windowInsets ->
-            if (customView == null) {
-                val insets = windowInsets.getInsets(
-                    WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
-                )
-                view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
-            } else {
-                view.setPadding(0, 0, 0, 0)
-            }
-            windowInsets
-        }
+        // Полноэкранный режим от края до края без урезания контента
+        rootLayout.setPadding(0, 0, 0, 0)
+        hideSystemUI()
 
         customViewContainer = FrameLayout(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -175,10 +166,10 @@ class MainActivity : ComponentActivity() {
                 customViewContainer.visibility = View.GONE
                 webView.visibility = View.VISIBLE
 
-                // Возврат в безопасную рабочую область с системными панелями
-                WindowCompat.setDecorFitsSystemWindows(window, true)
-                ViewCompat.requestApplyInsets(rootLayout)
-                showSystemUI()
+                // Возврат в полноэкранный иммерсивный режим без системных шторок
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                rootLayout.setPadding(0, 0, 0, 0)
+                hideSystemUI()
 
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
             }
@@ -206,14 +197,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showSystemUI() {
-        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
-            controller.show(WindowInsetsCompat.Type.systemBars())
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemUI()
         }
     }
 
     override fun onResume() {
         super.onResume()
+        hideSystemUI()
         webView.onResume()
     }
 

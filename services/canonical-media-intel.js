@@ -316,9 +316,61 @@ export const KNOWN_ANIME_SERIES = [
   'фрирен', 'frieren',
   'киберпанк: бегущие по краю', 'cyberpunk',
   'клеватесс', 'революция книжного червя', 'адский режим',
-  'блич', 'наруто', 'ван-пис', 'тетрадь смерти', 'токийский гуль',
-  'доктор стоун', 'берсерк', 'евангелион', 'код гиас',
-  'реинкарнация безработного', 'о моём перерождении в слизь'
+  'блич', 'наруто', 'ван-пис', 'тетрадь смерти', 'токийский гуль'
+];
+
+// Реестр известных анимационных фильмов (строго 'cartoon', никогда не 'series')
+export const KNOWN_ANIMATED_MOVIES = [
+  'обитель зла: мутация', 'обитель зла мутация', 'resident evil: mutation', 'resident evil mutation',
+  'обитель зла: вендетта', 'обитель зла вендетта', 'resident evil: vendetta',
+  'обитель зла: вырождение', 'обитель зла вырождение', 'resident evil: degeneration',
+  'обитель зла: проклятие', 'обитель зла проклятие', 'resident evil: damnation',
+  'обитель зла: остров смерти', 'обитель зла остров смерти', 'resident evil: death island',
+  'человек-паук: через вселенные', 'spider-man: into the spider-verse',
+  'человек-паук: паутина вселенных', 'spider-man: across the spider-verse',
+  'кот в сапогах: последнее желание', 'кот в сапогах', 'puss in boots',
+  'головоломка 2', 'головоломка', 'inside out',
+  'зверополис', 'zootopia',
+  'дикий робот', 'the wild robot',
+  'тайна коко', 'coco',
+  'кунг-фу панда', 'кунг-фу панда 4', 'kung fu panda',
+  'как приручить дракона', 'how to train your dragon',
+  'ледниковый период', 'ice age',
+  'гадкий я 4', 'гадкий я', 'despicable me',
+  'миньоны', 'minions',
+  'шрек', 'shrek',
+  'корпорация монстров', 'monsters inc',
+  'рататуй', 'ratatouille',
+  'валли', 'wall-e', 'валл-и',
+  'вверх', 'up'
+];
+
+// Реестр известных мультсериалов (строго 'cartoon-series')
+export const KNOWN_CARTOON_SERIES = [
+  'рик и морти', 'rick and morty',
+  'гриффины', 'family guy',
+  'симпсоны', 'the simpsons',
+  'южный парк', 'south park',
+  'футурама', 'futurama',
+  'гравити фолз', 'gravity falls',
+  'время приключений', 'adventure time',
+  'звёздные войны: войны клонов', 'войны клонов', 'the clone wars',
+  'звёздные войны: бракованная партия', 'the bad batch',
+  'человек-паук 1994', 'spider-man 1994',
+  'бэтмен 1992', 'batman the animated series',
+  'аватар: легенда об аанге', 'легенда об аанге', 'avatar: the last airbender',
+  'легенда о корре', 'the legend of korra',
+  'неуязвимый', 'invincible',
+  'любовь, смерть и роботы', 'любовь смерть и роботы', 'love, death & robots',
+  'губка боб', 'губка боб квадратные штаны', 'spongebob',
+  'первобытный', 'primal',
+  'смешарики', 'фиксики', 'маша и медведь',
+  'утиные истории', 'duck tales', 'ducktails',
+  'чип и дейл', 'chip n dale',
+  'трансформеры', 'transformers prime',
+  'аркейн', 'arcane',
+  'дом совы', 'the owl house',
+  'амфибия', 'amphibia'
 ];
 
 // Каноническая база жанров
@@ -423,7 +475,18 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
   const genStr = (Array.isArray(genres) ? genres.join(' ') : String(genres || '')).toLowerCase();
   const src = String(item.source || '').toLowerCase();
 
-  // 1. Признаки аниме
+  // 1. Приоритетная проверка известных анимационных фильмов (Обитель зла: Мутация, Вырождение, Вендетта и др.)
+  // Строго возвращает 'cartoon', предотвращая ложную классификацию как сериал из-за дубляжей или плееров
+  if (KNOWN_ANIMATED_MOVIES.some(m => norm === m || norm.startsWith(m + ' ') || norm.includes(m))) {
+    return 'cartoon';
+  }
+
+  // 2. Приоритетная проверка известных мультсериалов (Рик и Морти, Симпсоны, Гриффины и др.)
+  if (KNOWN_CARTOON_SERIES.some(s => norm === s || norm.startsWith(s + ' ') || norm.includes(s))) {
+    return 'cartoon-series';
+  }
+
+  // 3. Признаки аниме
   const isAnime = src === 'anilibria' || src === 'anixart' || src === 'shikimori' ||
                   catStr.includes('anime') || linkStr.includes('anime') || genStr.includes('аниме') ||
                   KNOWN_ANIME_SERIES.some(a => norm.includes(a));
@@ -435,7 +498,7 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
     return 'anime-series';
   }
 
-  // 2. Признаки мультфильмов
+  // 4. Признаки мультфильмов
   const isCartoon = catStr.includes('cartoon') || linkStr.includes('mult') || genStr.includes('мульт') || norm.includes('мульт');
   if (isCartoon) {
     const hasEpisodes = (parseInt(item.total_episodes, 10) > 1) || (parseInt(item.episode, 10) > 1) ||

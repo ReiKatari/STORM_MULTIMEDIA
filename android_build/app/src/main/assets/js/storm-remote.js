@@ -4,7 +4,6 @@
    ========================================================================== */
 
 import { showToast } from './auth.js';
-import { executeSearch } from './app.js';
 
 let remoteSessionId = localStorage.getItem('storm_remote_session') || ('storm_' + Math.random().toString(36).substring(2, 8));
 localStorage.setItem('storm_remote_session', remoteSessionId);
@@ -120,7 +119,9 @@ export function handleIncomingRemoteAction(data) {
       if (data.query) {
         const input = document.getElementById('global-search-input');
         if (input) input.value = data.query;
-        executeSearch(data.query);
+        if (typeof window.executeSearch === 'function') {
+          window.executeSearch(data.query);
+        }
         showToast(`🔍 Удаленный поиск: ${data.query}`, 'info');
       }
       break;

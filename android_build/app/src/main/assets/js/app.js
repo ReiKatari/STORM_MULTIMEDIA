@@ -313,13 +313,18 @@ export function switchTab(tab) {
     b.classList.toggle('active', isActive);
   });
 
-  // При смене вкладки мгновенно очищаем устаревший список карточек и показываем скелетон,
-  // если текущей вкладки ещё нет в кэше — полностью исключаем мелькание карточек
+  // При смене вкладки используем кэш или проверенный базовый каталог для мгновенной отрисовки без мельканий
   const targetCategory = tab === 'home' ? 'popular' : tab;
   const targetKey = `${targetCategory}_1_${currentSource}`;
   if (!clientTabCache.has(targetKey)) {
-    rawCatalogItems = [];
-    renderSkeletonGrid();
+    const baseline = getBaselineCatalog(targetCategory);
+    if (baseline && baseline.length > 0) {
+      rawCatalogItems = baseline;
+      renderFilteredCatalog();
+    } else {
+      rawCatalogItems = [];
+      renderSkeletonGrid();
+    }
   }
 
   loadCurrentTab();
@@ -330,7 +335,12 @@ if (typeof window !== 'undefined') {
   window.resetAllFilters = resetAllFilters;
 }
 
+let isBottomNavInitialized = false;
+
 function initBottomNav() {
+  if (isBottomNavInitialized) return;
+  isBottomNavInitialized = true;
+
   const syncBottomNavActive = (activeTab) => {
     document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
       b.classList.toggle('active', b.dataset.bottomTab === activeTab);
@@ -340,7 +350,12 @@ function initBottomNav() {
   let lastNavTriggerTime = 0;
 
   document.querySelectorAll('.storm-bottom-nav-item').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.onclick = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
       const now = Date.now();
       if (now - lastNavTriggerTime < 180) return;
       lastNavTriggerTime = now;
@@ -384,7 +399,7 @@ function initBottomNav() {
       } else if (tab === 'more') {
         toggleMobileDrawer();
       }
-    });
+    };
   });
 }
 
@@ -881,6 +896,20 @@ const clientTabCache = new Map();
 let activeTabLoadSeq = 0;
 let prefetchTimer = null;
 
+export function areMediaListsEquivalent(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const itemA = a[i];
+    const itemB = b[i];
+    if (String(itemA.id || itemA.media_id) !== String(itemB.id || itemB.media_id)) return false;
+    if (itemA.title !== itemB.title) return false;
+    if (itemA.user_status !== itemB.user_status) return false;
+    if (itemA.progress_percent !== itemB.progress_percent) return false;
+  }
+  return true;
+}
+
 function scheduleNextPagePrefetch(cat, page, src) {
   clearTimeout(prefetchTimer);
   if (page >= totalCatalogPages) return;
@@ -1187,9 +1216,14 @@ async function loadCurrentTab() {
     renderFilteredCatalog();
     scheduleNextPagePrefetch(category, currentPage, currentSource);
   } else {
-    // Чистая загрузка: никаких мельканий чужих карточек или старых тайтлов
-    rawCatalogItems = [];
-    renderSkeletonGrid();
+    const baseline = getBaselineCatalog(category);
+    if (baseline && baseline.length > 0) {
+      rawCatalogItems = baseline;
+      renderFilteredCatalog();
+    } else {
+      rawCatalogItems = [];
+      renderSkeletonGrid();
+    }
   }
 
   try {
@@ -1213,9 +1247,12 @@ async function loadCurrentTab() {
       if (currentPage > 1) {
         cleanList = filterPageDuplicates(cleanList, category, currentPage);
       }
+      const wasEquivalent = areMediaListsEquivalent(rawCatalogItems, cleanList);
       rawCatalogItems = cleanList;
       clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-      renderFilteredCatalog();
+      if (!wasEquivalent) {
+        renderFilteredCatalog();
+      }
       scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
       // Если по текущему источнику 0 элементов, пробуем сводный каталог
@@ -1371,6 +1408,14 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
   const cat = String(fallbackCategory || item.category || currentTab || '').toLowerCase();
   const title = String(item.title || item.name || '').toLowerCase();
   const source = String(item.source || '').toLowerCase();
+
+  // Специальные проверки франшиз
+  if (title.includes('обитель зла') && (title.includes('мутация') || title.includes('вендетта') || title.includes('вырождение') || title.includes('проклятие') || title.includes('остров смерти'))) {
+    return 'Анимационный фильм';
+  }
+  if (title.includes('рик и морти') || title.includes('rick and morty')) {
+    return 'Мультсериал';
+  }
 
   if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
     return 'Аниме-сериал';
@@ -1554,6 +1599,13 @@ function renderHeroShowcase(items) {
       hideHeroShowcase();
       return;
     }
+  }
+
+  const newFeaturedIds = rawList.map(x => String(x.id || x.media_id)).join(',');
+  const currentFeaturedIds = (heroSliderItems || []).map(x => String(x.id || x.media_id)).join(',');
+  const existingShowcase = container.querySelector('.hero-showcase');
+  if (existingShowcase && newFeaturedIds === currentFeaturedIds && heroSliderItems.length > 0) {
+    return;
   }
 
   container.style.display = 'block';
@@ -1945,9 +1997,16 @@ export function openHomeSectionsModal() {
   modal.classList.add('is-open');
 }
 
+let lastRenderedHomeKey = '';
+
 function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+
+  const currentHomeKey = `${(items || []).map(x => String(x.id || x.media_id)).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}`;
+  if (container.dataset.renderedView === 'home' && lastRenderedHomeKey === currentHomeKey) {
+    return;
+  }
 
   const paginationHost = document.getElementById('storm-pagination-host');
   if (paginationHost) {
@@ -2080,8 +2139,161 @@ function renderHomeView(items) {
            (Array.isArray(i.genres) && i.genres.some(g => String(g).toLowerCase().includes('аниме')));
   }).slice(0, 16);
 
-  // Рейл 6: Шедевры с высоким рейтингом
-  const topRatedItems = [...items].sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0)).slice(0, 16);
+  // Рейл 6: Шедевры мирового кино (СТРОГО полнометражные художественные фильмы мирового кинематографа, без аниме и сериалов)
+  const WORLD_CINEMA_LEGENDS = [
+    {
+      id: 'legend_interstellar',
+      title: 'Интерстеллар',
+      original_title: 'Interstellar',
+      poster: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
+      year: '2014',
+      rating: 8.7,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Драма, Приключения',
+      source: 'tmdb',
+      description: 'Команда исследователей отправляется сквозь червоточину в поисках нового дома для человечества.'
+    },
+    {
+      id: 'legend_oppenheimer',
+      title: 'Оппенгеймер',
+      original_title: 'Oppenheimer',
+      poster: 'https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
+      year: '2023',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, История, Биография',
+      source: 'tmdb',
+      description: 'История создания первой в мире атомной бомбы под руководством физика Роберта Оппенгеймера.'
+    },
+    {
+      id: 'legend_dune_2',
+      title: 'Дюна: Часть вторая',
+      original_title: 'Dune: Part Two',
+      poster: 'https://image.tmdb.org/t/p/w500/czembW0RJJ1rboOmCY2eo9NjhbL.jpg',
+      year: '2024',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Боевик, Приключения',
+      source: 'tmdb',
+      description: 'Пол Атрейдес объединяется с фременами, чтобы отомстить заговорщикам, уничтожившим его семью.'
+    },
+    {
+      id: 'legend_blade_runner_2049',
+      title: 'Бегущий по лезвию 2049',
+      original_title: 'Blade Runner 2049',
+      poster: 'https://image.tmdb.org/t/p/w500/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg',
+      year: '2017',
+      rating: 8.1,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Неонуар, Драма',
+      source: 'tmdb',
+      description: 'Офицер Кей раскрывает тайну, способную погрузить остатки цивилизации в необратимый хаос.'
+    },
+    {
+      id: 'legend_dark_knight',
+      title: 'Тёмный рыцарь',
+      original_title: 'The Dark Knight',
+      poster: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
+      year: '2008',
+      rating: 9.0,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Боевик, Криминал, Драма',
+      source: 'tmdb',
+      description: 'Бэтмен сталкивается с гением хаоса Джокером, погружающим Готэм в пучину анархии.'
+    },
+    {
+      id: 'legend_inception',
+      title: 'Начало',
+      original_title: 'Inception',
+      poster: 'https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
+      year: '2010',
+      rating: 8.8,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Боевик, Триллер',
+      source: 'tmdb',
+      description: 'Искусный похититель тайн из подсознания получает задачу не украсть, а внедрить мысль.'
+    },
+    {
+      id: 'legend_matrix',
+      title: 'Матрица',
+      original_title: 'The Matrix',
+      poster: 'https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
+      year: '1999',
+      rating: 8.7,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Боевик',
+      source: 'tmdb',
+      description: 'Хакер Нео узнает шокирующую правду: весь привычный мир — иллюзия, созданная машинами.'
+    },
+    {
+      id: 'legend_gladiator',
+      title: 'Гладиатор',
+      original_title: 'Gladiator',
+      poster: 'https://image.tmdb.org/t/p/w500/ty8TGRuvJLPUmAR1H1nRIsgwvim.jpg',
+      year: '2000',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Боевик, Драма, История',
+      source: 'tmdb',
+      description: 'Преданный полководец Максимус становится гладиатором на арене римского Колизея.'
+    }
+  ];
+
+  const candidateMovies = items.filter(i => {
+    if (!i) return false;
+    if (isAnimeItemClient(i)) return false;
+    const mType = detectClientMediaType(i);
+    if (mType !== 'movie' && i.media_type !== 'movie') return false;
+    if (['anixart', 'shikimori', 'anilibria', 'animevost'].includes(i.source)) return false;
+    const norm = String(i.title || '').toLowerCase();
+    if (norm.includes('сериал') || norm.includes('сезон') || norm.includes('серия')) return false;
+    if (i.seasons || i.episodes || i.total_episodes > 1) return false;
+    return (parseFloat(i.rating) || 0) >= 7.2;
+  });
+
+  const sortedCandidateMovies = candidateMovies.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
+
+  const topRatedItems = [];
+  const addedMovieTitles = new Set();
+  for (const m of sortedCandidateMovies) {
+    const k = (m.title || '').toLowerCase().trim();
+    if (k && !addedMovieTitles.has(k)) {
+      addedMovieTitles.add(k);
+      topRatedItems.push(m);
+    }
+  }
+  for (const leg of WORLD_CINEMA_LEGENDS) {
+    const k = leg.title.toLowerCase().trim();
+    if (!addedMovieTitles.has(k)) {
+      addedMovieTitles.add(k);
+      topRatedItems.push(leg);
+    }
+  }
+  topRatedItems.splice(16);
 
   const rails = [];
 
@@ -2287,6 +2499,9 @@ function renderHomeView(items) {
       };
     });
   });
+
+  container.dataset.renderedView = 'home';
+  lastRenderedHomeKey = currentHomeKey;
 }
 
 // -------------------------------------------------------------
@@ -2295,6 +2510,9 @@ function renderHomeView(items) {
 function renderMediaItems(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+
+  container.dataset.renderedView = currentTab;
+  lastRenderedHomeKey = '';
 
   hideHeroShowcase();
   hideCardHoverPreview();
@@ -2924,6 +3142,10 @@ function initSearch() {
   }
 
   initSourceFilterDropdown();
+}
+
+if (typeof window !== 'undefined') {
+  window.executeSearch = executeSearch;
 }
 
 // -------------------------------------------------------------
@@ -4187,10 +4409,10 @@ function initNewCyberFeatures() {
     calBtn.onclick = () => openReleaseCalendarModal();
   }
 
-  // ТВ-гид и сетка эфира (EPG Matrix Guide)
+  // ТВ-режим и ТВ-интерфейс (Smart TV 10-Foot UI)
   const epgBtn = document.getElementById('header-epg-guide-btn');
   if (epgBtn) {
-    epgBtn.onclick = () => openLiveTvEpgModal();
+    epgBtn.onclick = () => toggleTvMode();
   }
 
   // 7. STORM REMOTE (пульт со смартфона)
@@ -4343,7 +4565,7 @@ function initMobileDrawer() {
 
   bindDrawerItem('drawer-recommender-btn', () => openNeuralRecommenderModal());
   bindDrawerItem('drawer-calendar-btn', () => openReleaseCalendarModal());
-  bindDrawerItem('drawer-epg-btn', () => openLiveTvEpgModal());
+  bindDrawerItem('drawer-epg-btn', () => toggleTvMode());
   bindDrawerItem('drawer-remote-btn', () => openRemoteQrModal());
   bindDrawerItem('drawer-rooms-btn', () => {
     const roomsModal = document.getElementById('rooms-modal');

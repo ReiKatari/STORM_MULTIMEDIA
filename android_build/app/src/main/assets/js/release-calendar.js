@@ -27,9 +27,41 @@ export function openLiveTvEpgModal() {
   openReleaseCalendarModal();
 }
 
+export const POSTER_FALLBACK_SVG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%230c1017"/><stop offset="100%" stop-color="%23141a24"/></linearGradient><linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%2300D2FF"/><stop offset="100%" stop-color="%2300F0FF"/></linearGradient></defs><rect width="300" height="450" fill="url(%23bg)"/><rect x="10" y="10" width="280" height="430" rx="10" fill="%230f141d" stroke="%231e2838" stroke-width="1.5"/><circle cx="150" cy="190" r="44" fill="%2300D2FF" fill-opacity="0.08" stroke="%2300D2FF" stroke-opacity="0.25" stroke-width="2"/><path d="M140 172 L168 190 L140 208 Z" fill="url(%23glow)"/><text x="150" y="270" fill="%2300D2FF" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="700" letter-spacing="1.5" text-anchor="middle">STORM CINEMA</text><text x="150" y="294" fill="%2364748b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="11" font-weight="500" text-anchor="middle">АФИША РЕЛИЗА</text></svg>';
+
+export function unwrapPosterUrl(url) {
+  if (!url) return '';
+  if (url.includes('/api/media/image-proxy?')) {
+    try {
+      const q = url.split('?')[1];
+      const params = new URLSearchParams(q);
+      const target = params.get('url');
+      if (target) return target;
+    } catch (_) {}
+  }
+  return url;
+}
+
 export function wrapPosterUrl(url, title = '') {
-  if (!url) return 'assets/favicon.svg';
-  if (url.startsWith('/api/media/image-proxy') || url.startsWith('assets/')) return url;
+  if (!url) return POSTER_FALLBACK_SVG;
+  if (url.startsWith('data:') || url.startsWith('assets/')) return url;
+
+  // Если открыто в офлайн WebView (file:), возвращаем прямой или распакованный URL
+  if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+    const unwrapped = unwrapPosterUrl(url);
+    if (unwrapped.startsWith('http://') || unwrapped.startsWith('https://')) {
+      return unwrapped;
+    }
+    return unwrapPosterUrl(url);
+  }
+
+  if (url.startsWith('/api/media/image-proxy')) return url;
+
+  // Прямые проверенные CDN, отдающие изображения без блокировок
+  if (url.includes('image.tmdb.org') || url.includes('anilibria.top')) {
+    return url;
+  }
+
   return `/api/media/image-proxy?url=${encodeURIComponent(url)}${title ? `&title=${encodeURIComponent(title)}` : ''}`;
 }
 
@@ -194,6 +226,17 @@ async function renderCalendarContent(container) {
   await loadAndRenderWeek(container);
 }
 
+function areCalendarListsEqual(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (String(a[i].id) !== String(b[i].id)) return false;
+    if (a[i].poster !== b[i].poster) return false;
+    if (a[i].episode !== b[i].episode) return false;
+  }
+  return true;
+}
+
 async function loadAndRenderWeek(container) {
   const daysConfig = selectedWeek === 'next' ? getWeekDays(1) : getWeekDays(0);
   const defaultItems = selectedWeek === 'next' ? DEFAULT_NEXT_WEEK : DEFAULT_CURRENT_WEEK;
@@ -234,7 +277,10 @@ async function loadAndRenderWeek(container) {
           localStorage.setItem(`storm_cal_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
-        renderScheduleDaysAndGrid(container, combined, daysConfig);
+        // Если полученные данные идентичны текущим, не производим перерисовку (устраняет моргание)
+        if (!areCalendarListsEqual(scheduleItems, combined)) {
+          renderScheduleDaysAndGrid(container, combined, daysConfig);
+        }
       }
     }
   } catch (_) {
@@ -356,7 +402,7 @@ function renderEpgMatrixGuide(grid, items, dayId, week) {
                   const posterUrl = wrapPosterUrl(it.poster, it.title);
                   return `
                     <div class="epg-show-card" data-id="${it.id}" title="${escapeHtml(it.title)}: ${it.air_time || '20:00 МСК'}">
-                      <img src="${posterUrl}" class="epg-show-thumb" alt="${escapeHtml(it.title)}" onerror="this.src='assets/favicon.svg'">
+                      <img src="${posterUrl}" class="epg-show-thumb" alt="${escapeHtml(it.title)}" onerror="if(!this.dataset.triedDirect && this.src && this.src.includes('/api/media/image-proxy')){ this.dataset.triedDirect='1'; try { const u = new URLSearchParams(this.src.split('?')[1]).get('url'); if(u){ this.src=u; return; } }catch(_){} } this.onerror=null; this.src='${POSTER_FALLBACK_SVG}';">
                       <div class="epg-show-meta">
                         <div class="epg-show-time">${it.air_time || '20:00 МСК'}</div>
                         <div class="epg-show-title">${escapeHtml(it.title)}</div>
@@ -439,7 +485,7 @@ function renderDayGrid(grid, items, dayId, week) {
       <div class="cal-card storm-card" data-id="${it.id}">
         <!-- Постер с обложкой релиза -->
         <div class="cal-poster-wrap">
-          <img src="${posterUrl}" class="cal-poster-img" alt="${escapeHtml(it.title)}" loading="lazy" onerror="this.src='assets/favicon.svg'">
+          <img src="${posterUrl}" class="cal-poster-img" alt="${escapeHtml(it.title)}" loading="lazy" onerror="if(!this.dataset.triedDirect && this.src && this.src.includes('/api/media/image-proxy')){ this.dataset.triedDirect='1'; try { const u = new URLSearchParams(this.src.split('?')[1]).get('url'); if(u){ this.src=u; return; } }catch(_){} } this.onerror=null; this.src='${POSTER_FALLBACK_SVG}';">
           <span class="cal-poster-ep-badge">${epBadge}</span>
           ${is4K ? '<span class="cal-poster-4k-badge">4K UHD</span>' : ''}
         </div>
