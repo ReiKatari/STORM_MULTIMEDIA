@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.1"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
@@ -110,6 +111,21 @@ class MainActivity : ComponentActivity() {
 
     private fun setupClients() {
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val url = request?.url?.toString() ?: return false
+                if (url.endsWith(".apk") || url.contains("/releases/download/")) {
+                    try {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
+                        startActivity(intent)
+                        return true
+                    } catch (_: Exception) {}
+                }
+                return false
+            }
+
             override fun onReceivedError(
                 view: WebView?,
                 request: WebResourceRequest?,

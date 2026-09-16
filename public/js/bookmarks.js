@@ -273,6 +273,7 @@ export function detectClientMediaType(item) {
   const t = String(item.title || item.name || '').toLowerCase();
   const cat = String(item.category || '').toLowerCase();
   const link = String(item.link || item.url || item.fanfilm_4k_url || '').toLowerCase();
+  const src = String(item.source || item.provider || '').toLowerCase();
   // 1. Известные анимационные фильмы (Обитель зла: Мутация, Вырождение, Вендетта и др.)
   const knownAnimatedMovies = [
     'обитель зла: мутация', 'обитель зла мутация', 'resident evil: mutation',

@@ -5683,3 +5683,11 @@ body[data-active-tab="home"] #hero-showcase-container {
     height: 42px;
   }
 }
+
+/* Скрытие пульта и блока управления экраном в нативном Android-приложении */
+body.is-native-app #header-remote-btn,
+body.is-native-app #drawer-remote-btn,
+body.is-native-app #drawer-screen-control-block {
+  display: none !important;
+}
+
