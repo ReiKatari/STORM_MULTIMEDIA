@@ -124,7 +124,49 @@ body.tv-mode .storm-tab-btn:focus {
 }
 
 body.tv-mode .storm-toolbar {
-  padding: 12px 36px 14px;
+  padding: 10px 36px 12px;
+}
+
+/* Сворачиваемая панель фильтров в ТВ-режиме */
+.storm-filters-toggle-btn {
+  display: none;
+}
+
+body.tv-mode .storm-filters-toggle-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  border: 1.5px solid var(--accent);
+  color: var(--text-primary);
+  margin-right: 10px;
+  box-shadow: 0 0 12px var(--accent-glow);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+body.tv-mode .storm-filters-toggle-btn .storm-toggle-icon {
+  transition: transform 0.25s ease;
+  font-size: 11px;
+}
+
+body.tv-mode .storm-filters-toggle-btn.is-collapsed .storm-toggle-icon {
+  transform: rotate(180deg);
+}
+
+body.tv-mode .storm-filters-collapsible.is-collapsed {
+  display: none !important;
+}
+
+.storm-filters-collapsible {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* Сетка карточек в ТВ-режиме: более крупные и четкие постеры для просмотра с расстояния 3-5 метров */
@@ -140,6 +182,34 @@ body.tv-mode .media-card {
   transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.25s ease, outline 0.2s ease;
 }
 
+body.tv-mode .media-detailed-card {
+  border-radius: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, outline 0.2s ease;
+}
+
+body.tv-mode .media-detailed-card:focus,
+body.tv-mode .media-detailed-card.tv-focused {
+  outline: 3.5px solid var(--accent) !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 28px var(--accent-glow), 0 10px 26px rgba(0, 0, 0, 0.8) !important;
+  transform: scale(1.02) translateY(-3px) !important;
+  z-index: 100 !important;
+}
+
+body.tv-mode .media-table-table tbody tr {
+  transition: transform 0.15s ease, background 0.15s ease, outline 0.15s ease;
+}
+
+body.tv-mode .media-table-table tbody tr:focus,
+body.tv-mode .media-table-table tbody tr.tv-focused {
+  outline: 3px solid var(--accent) !important;
+  outline-offset: -2px !important;
+  background: rgba(0, 210, 255, 0.18) !important;
+  box-shadow: 0 0 20px var(--accent-glow) !important;
+  transform: scale(1.01) !important;
+  z-index: 100 !important;
+}
+
 body.tv-mode .media-card-title {
   font-size: 16px !important;
   font-weight: 700;
@@ -152,6 +222,8 @@ body.tv-mode .media-card-meta {
 /* Пространственный неоновый фокус Smart TV и геймпада */
 .tv-focused,
 body.tv-mode .media-card:focus,
+body.tv-mode .media-detailed-card:focus,
+body.tv-mode .media-table-table tbody tr:focus,
 body.tv-mode .storm-tab-btn:focus,
 body.tv-mode .storm-btn:focus,
 body.tv-mode button:focus-visible,
@@ -160,7 +232,7 @@ body.tv-mode input:focus-visible {
   outline: 3.5px solid var(--accent) !important;
   outline-offset: 4px !important;
   box-shadow: 0 0 32px var(--accent-glow), 0 12px 30px rgba(0, 0, 0, 0.85) !important;
-  transform: scale(1.08) translateY(-4px) !important;
+  transform: scale(1.06) translateY(-4px) !important;
   z-index: 200 !important;
   position: relative;
 }

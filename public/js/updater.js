@@ -6,7 +6,7 @@
 
 import { showToast } from './auth.js';
 
-export const CURRENT_APP_VERSION = '1.0.1';
+export const CURRENT_APP_VERSION = '1.0.3';
 const GITHUB_REPO = 'ReiKatari/STORM_MULTIMEDIA';
 const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 часа
 
@@ -69,7 +69,7 @@ export async function checkForUpdates(manualTrigger = false) {
 
     if (!latestVersion) {
       if (manualTrigger) {
-        showToast('У вас установлена актуальная версия STORM MULTIMEDIA (1.0.1)', 'success');
+        showToast(`У вас установлена актуальная версия STORM MULTIMEDIA (${CURRENT_APP_VERSION})`, 'success');
       }
       return null;
     }

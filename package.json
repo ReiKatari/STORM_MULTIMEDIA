@@ -1,7 +1,7 @@
 {
   "name": "storm-multimedia",
-  "version": "1.0.1",
-  "description": "Мультимедийный портал STORM MULTIMEDIA с фильмами, сериалами, аниме и мультфильмами",
+  "version": "1.0.3",
+  "description": "STORM MULTIMEDIA - Премиальный мультимедийный кинотеатр, агрегатор и медиакомбайн",
   "main": "server.js",
   "type": "module",
   "scripts": {

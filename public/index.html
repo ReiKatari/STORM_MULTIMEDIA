@@ -128,103 +128,112 @@
   <!-- Панель инструментов: Фильтры, источники и режимы отображения -->
   <div class="storm-toolbar">
     <div class="storm-toolbar-left">
-      <!-- Стилизованный выпадающий список источников с поиском (15+ источников) -->
-      <div class="storm-custom-dropdown" id="catalog-source-dropdown" style="min-width: 210px;">
-        <button type="button" class="storm-btn storm-btn-secondary" id="catalog-source-trigger" style="width: 100%; justify-content: space-between; padding: 8px 14px;">
-          <span style="display: flex; align-items: center; gap: 8px;">
-            <span id="catalog-source-badge">🌐</span>
-            <span id="catalog-source-label" style="font-weight: 700;">Все источники</span>
-          </span>
-          <span class="storm-dropdown-arrow">▼</span>
-        </button>
-        <div class="storm-dropdown-menu" id="catalog-source-menu" style="display: none; width: 280px; left: 0; right: auto;">
-          <div class="storm-dropdown-search-wrap">
-            <input type="text" class="storm-dropdown-search" id="catalog-source-search" placeholder="🔍 Поиск источника..." autocomplete="off">
-          </div>
-          <div class="storm-dropdown-list" id="catalog-source-list">
-            <!-- Заполняется динамически -->
-          </div>
-        </div>
-      </div>
-      <input type="hidden" id="source-filter-select" value="all">
-
-      <!-- Фильтр по жанрам с поиском -->
-      <div class="storm-custom-dropdown" id="filter-genre-dropdown" style="min-width: 170px;">
-        <button type="button" class="storm-btn storm-btn-secondary" id="filter-genre-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
-          <span style="display: flex; align-items: center; gap: 6px;">
-            <span>🎭</span>
-            <span id="filter-genre-label" style="font-weight: 600;">Все жанры</span>
-          </span>
-          <span class="storm-dropdown-arrow">▼</span>
-        </button>
-        <div class="storm-dropdown-menu" id="filter-genre-menu" style="display: none; width: 220px; left: 0; right: auto;">
-          <div class="storm-dropdown-search-wrap">
-            <input type="text" class="storm-dropdown-search" id="filter-genre-search" placeholder="🔍 Поиск жанра..." autocomplete="off">
-          </div>
-          <div class="storm-dropdown-list" id="filter-genre-list"></div>
-        </div>
-      </div>
-
-      <!-- Фильтр по году выхода -->
-      <div class="storm-custom-dropdown" id="filter-year-dropdown" style="min-width: 145px;">
-        <button type="button" class="storm-btn storm-btn-secondary" id="filter-year-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
-          <span style="display: flex; align-items: center; gap: 6px;">
-            <span>📅</span>
-            <span id="filter-year-label" style="font-weight: 600;">Все года</span>
-          </span>
-          <span class="storm-dropdown-arrow">▼</span>
-        </button>
-        <div class="storm-dropdown-menu" id="filter-year-menu" style="display: none; width: 175px; left: 0; right: auto;">
-          <div class="storm-dropdown-list" id="filter-year-list"></div>
-        </div>
-      </div>
-
-      <!-- Фильтр по рейтингу -->
-      <div class="storm-custom-dropdown" id="filter-rating-dropdown" style="min-width: 165px;">
-        <button type="button" class="storm-btn storm-btn-secondary" id="filter-rating-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
-          <span style="display: flex; align-items: center; gap: 6px;">
-            <span style="color: var(--color-amber);">★</span>
-            <span id="filter-rating-label" style="font-weight: 600;">Любой рейтинг</span>
-          </span>
-          <span class="storm-dropdown-arrow">▼</span>
-        </button>
-        <div class="storm-dropdown-menu" id="filter-rating-menu" style="display: none; width: 190px; left: 0; right: auto;">
-          <div class="storm-dropdown-list" id="filter-rating-list"></div>
-        </div>
-      </div>
-
-      <!-- Фильтр по статусу просмотра -->
-      <div class="storm-custom-dropdown" id="filter-status-dropdown" style="min-width: 165px;">
-        <button type="button" class="storm-btn storm-btn-secondary" id="filter-status-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
-          <span style="display: flex; align-items: center; gap: 6px;">
-            <span id="filter-status-badge">🏷️</span>
-            <span id="filter-status-label" style="font-weight: 600;">Все статусы</span>
-          </span>
-          <span class="storm-dropdown-arrow">▼</span>
-        </button>
-        <div class="storm-dropdown-menu" id="filter-status-menu" style="display: none; width: 195px; left: 0; right: auto;">
-          <div class="storm-dropdown-list" id="filter-status-list"></div>
-        </div>
-      </div>
-
-      <!-- Сортировка -->
-      <div class="storm-custom-dropdown" id="filter-sort-dropdown" style="min-width: 175px;">
-        <button type="button" class="storm-btn storm-btn-secondary" id="filter-sort-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
-          <span style="display: flex; align-items: center; gap: 6px;">
-            <span>📅</span>
-            <span id="filter-sort-label" style="font-weight: 600;">По дате</span>
-          </span>
-          <span class="storm-dropdown-arrow">▼</span>
-        </button>
-        <div class="storm-dropdown-menu" id="filter-sort-menu" style="display: none; width: 200px; left: 0; right: auto;">
-          <div class="storm-dropdown-list" id="filter-sort-list"></div>
-        </div>
-      </div>
-
-      <!-- Кнопка быстрого сброса фильтров -->
-      <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="reset-filters-btn" style="display: none; padding: 8px 12px;" title="Сбросить все фильтры и сортировку">
-        <span>✕ Сброс</span>
+      <!-- Кнопка быстрого сворачивания фильтров (Smart TV и компактный вид) -->
+      <button type="button" class="storm-btn storm-btn-secondary storm-filters-toggle-btn" id="storm-filters-toggle-btn" title="Свернуть или развернуть фильтры">
+        <span>⚡</span>
+        <span id="storm-filters-toggle-label">Свернуть фильтры</span>
+        <span class="storm-toggle-icon">▲</span>
       </button>
+
+      <div class="storm-filters-collapsible" id="storm-filters-collapsible">
+        <!-- Стилизованный выпадающий список источников с поиском (15+ источников) -->
+        <div class="storm-custom-dropdown" id="catalog-source-dropdown" style="min-width: 210px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="catalog-source-trigger" style="width: 100%; justify-content: space-between; padding: 8px 14px;">
+            <span style="display: flex; align-items: center; gap: 8px;">
+              <span id="catalog-source-badge">🌐</span>
+              <span id="catalog-source-label" style="font-weight: 700;">Все источники</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="catalog-source-menu" style="display: none; width: 280px; left: 0; right: auto;">
+            <div class="storm-dropdown-search-wrap">
+              <input type="text" class="storm-dropdown-search" id="catalog-source-search" placeholder="🔍 Поиск источника..." autocomplete="off">
+            </div>
+            <div class="storm-dropdown-list" id="catalog-source-list">
+              <!-- Заполняется динамически -->
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="source-filter-select" value="all">
+
+        <!-- Фильтр по жанрам с поиском -->
+        <div class="storm-custom-dropdown" id="filter-genre-dropdown" style="min-width: 170px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="filter-genre-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>🎭</span>
+              <span id="filter-genre-label" style="font-weight: 600;">Все жанры</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="filter-genre-menu" style="display: none; width: 220px; left: 0; right: auto;">
+            <div class="storm-dropdown-search-wrap">
+              <input type="text" class="storm-dropdown-search" id="filter-genre-search" placeholder="🔍 Поиск жанра..." autocomplete="off">
+            </div>
+            <div class="storm-dropdown-list" id="filter-genre-list"></div>
+          </div>
+        </div>
+
+        <!-- Фильтр по году выхода -->
+        <div class="storm-custom-dropdown" id="filter-year-dropdown" style="min-width: 145px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="filter-year-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>📅</span>
+              <span id="filter-year-label" style="font-weight: 600;">Все года</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="filter-year-menu" style="display: none; width: 175px; left: 0; right: auto;">
+            <div class="storm-dropdown-list" id="filter-year-list"></div>
+          </div>
+        </div>
+
+        <!-- Фильтр по рейтингу -->
+        <div class="storm-custom-dropdown" id="filter-rating-dropdown" style="min-width: 165px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="filter-rating-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span style="color: var(--color-amber);">★</span>
+              <span id="filter-rating-label" style="font-weight: 600;">Любой рейтинг</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="filter-rating-menu" style="display: none; width: 190px; left: 0; right: auto;">
+            <div class="storm-dropdown-list" id="filter-rating-list"></div>
+          </div>
+        </div>
+
+        <!-- Фильтр по статусу просмотра -->
+        <div class="storm-custom-dropdown" id="filter-status-dropdown" style="min-width: 165px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="filter-status-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span id="filter-status-badge">🏷️</span>
+              <span id="filter-status-label" style="font-weight: 600;">Все статусы</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="filter-status-menu" style="display: none; width: 195px; left: 0; right: auto;">
+            <div class="storm-dropdown-list" id="filter-status-list"></div>
+          </div>
+        </div>
+
+        <!-- Сортировка -->
+        <div class="storm-custom-dropdown" id="filter-sort-dropdown" style="min-width: 175px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="filter-sort-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>📅</span>
+              <span id="filter-sort-label" style="font-weight: 600;">По дате</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="filter-sort-menu" style="display: none; width: 200px; left: 0; right: auto;">
+            <div class="storm-dropdown-list" id="filter-sort-list"></div>
+          </div>
+        </div>
+
+        <!-- Кнопка быстрого сброса фильтров -->
+        <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="reset-filters-btn" style="display: none; padding: 8px 12px;" title="Сбросить все фильтры и сортировку">
+          <span>✕ Сброс</span>
+        </button>
+      </div>
 
       <!-- Мобильная кнопка вызова шторки фильтров (Filter Bottom Sheet) -->
       <button type="button" class="storm-btn storm-btn-secondary mobile-filter-sheet-trigger" id="mobile-filter-sheet-trigger" title="Фильтры и сортировка">
@@ -243,7 +252,6 @@
         <button class="view-mode-btn" data-view="table" title="Таблица">📑</button>
       </div>
     </div>
-  </div>
   </div>
 
   <!-- Основной динамический контейнер медиа-каталога -->
@@ -695,7 +703,7 @@
           <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.1 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.3 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления

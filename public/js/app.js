@@ -280,8 +280,20 @@ const CATEGORY_DEFAULT_PAGES = {
   'home': 500
 };
 
+export function closeAllActiveModals() {
+  document.querySelectorAll('.storm-modal-backdrop.is-open, .modal-backdrop.is-open').forEach(m => {
+    m.classList.remove('is-open');
+  });
+  document.body.classList.remove('modal-open');
+  if (typeof closePlayerModal === 'function') {
+    closePlayerModal();
+  }
+}
+
 export function switchTab(tab) {
   closePlayerModal();
+  closeAllActiveModals();
+  closeMobileDrawer();
   currentTab = tab;
   document.body.dataset.activeTab = tab;
   currentPage = 1;
@@ -306,8 +318,6 @@ export function switchTab(tab) {
     const clearBtn = document.getElementById('search-clear-btn');
     if (clearBtn) clearBtn.classList.remove('is-visible');
   }
-
-  closeMobileDrawer();
 
   document.querySelectorAll('.storm-tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
@@ -347,6 +357,7 @@ export function switchTab(tab) {
 if (typeof window !== 'undefined') {
   window.switchTab = switchTab;
   window.resetAllFilters = resetAllFilters;
+  window.closeAllActiveModals = closeAllActiveModals;
 }
 
 let isBottomNavInitialized = false;
@@ -378,16 +389,15 @@ function initBottomNav() {
         try { navigator.vibrate(15); } catch (_) {}
       }
 
+      closeAllActiveModals();
+      closeMobileDrawer();
+
       const tab = btn.dataset.bottomTab;
       if (tab === 'home') {
-        closeMobileDrawer();
-        closePlayerModal();
         switchTab('home');
         syncBottomNavActive('home');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'catalog') {
-        closeMobileDrawer();
-        closePlayerModal();
         if (currentTab === 'home' || currentTab === 'bookmarks') {
           switchTab('movies');
         } else {
@@ -397,16 +407,12 @@ function initBottomNav() {
         syncBottomNavActive('catalog');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (tab === 'search') {
-        closeMobileDrawer();
-        closePlayerModal();
         const searchInput = document.getElementById('global-search-input');
         if (searchInput) {
           searchInput.focus();
           searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       } else if (tab === 'bookmarks') {
-        closeMobileDrawer();
-        closePlayerModal();
         switchTab('bookmarks');
         syncBottomNavActive('bookmarks');
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1424,7 +1430,10 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
   const source = String(item.source || '').toLowerCase();
 
   // Специальные проверки франшиз
-  if (title.includes('обитель зла') && (title.includes('мутация') || title.includes('вендетта') || title.includes('вырождение') || title.includes('проклятие') || title.includes('остров смерти'))) {
+  if (title.includes('обитель зла') && (title.includes('мутация') || title.includes('мутиция'))) {
+    return 'Фильм';
+  }
+  if (title.includes('обитель зла') && (title.includes('вендетта') || title.includes('вырождение') || title.includes('проклятие') || title.includes('остров смерти'))) {
     return 'Анимационный фильм';
   }
   if (title.includes('рик и морти') || title.includes('rick and morty')) {
@@ -2128,13 +2137,23 @@ function renderHomeView(items) {
     return yr >= 2025;
   }).slice(0, 16);
 
-  // Рейл 3: Популярные фильмы (строго исключаем сериалы)
+  const EXPLICIT_KNOWN_SERIES = [
+    'король талсы', 'tulsa king', 'основание', 'foundation', 'целую, китти', 'целую китти', 'xo, kitty', 'xo kitty',
+    'голяк', 'brassic', 'рыцарь семи королевств', 'a knight of the seven kingdoms', 'сорвиголова', 'daredevil',
+    'гангстерленд', 'mobland', 'медленные лошади', 'slow horses', 'йеллоустоун', 'yellowstone',
+    'мэр кингстауна', 'mayor of kingstown', 'извне', 'from', 'ричер', 'reacher', 'пацаны', 'the boys',
+    'белый лотос', 'the white lotus', 'дом дракона', 'house of the dragon', 'фоллаут', 'fallout', 'уэнсдэй', 'уэнсдей'
+  ];
+
+  // Рейл 3: Популярные фильмы (строго исключаем сериалы и аниме)
   const movieItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
-    if (mType === 'series' || mType === 'cartoon-series' || mType === 'anime-series' || i.category === 'series' || i.type === 'series' || i.media_type === 'series' || i.seasons) return false;
+    if (mType === 'series' || mType === 'cartoon-series' || mType === 'anime-series') return false;
+    if (i.category === 'series' || i.category === 'Сериал' || i.type === 'series' || i.media_type === 'series' || i.seasons) return false;
     const normTitle = String(i.title || '').toLowerCase();
     if (normTitle.includes('сериал') || normTitle.includes('сезон') || /сезон\s*\d+/i.test(normTitle)) return false;
+    if (EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s))) return false;
     return true;
   }).slice(0, 16);
 
@@ -2143,7 +2162,8 @@ function renderHomeView(items) {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
     const normTitle = String(i.title || '').toLowerCase();
-    return (mType === 'series' || i.category === 'series' || i.type === 'series' || i.media_type === 'series' || i.seasons || normTitle.includes('сериал') || normTitle.includes('сезон'));
+    const isExplicit = EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s));
+    return (mType === 'series' || i.category === 'series' || i.category === 'Сериал' || i.type === 'series' || i.media_type === 'series' || i.seasons || isExplicit || normTitle.includes('сериал') || normTitle.includes('сезон'));
   }).slice(0, 16);
 
   // Рейл 5: Топ аниме
@@ -2716,7 +2736,7 @@ function renderMediaItems(items) {
       const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
 
       return `
-      <div class="media-detailed-card" data-idx="${idx}">
+      <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
         <div class="media-detailed-poster">
           <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
@@ -2828,7 +2848,7 @@ function renderMediaItems(items) {
             const poster = item.poster || 'assets/favicon.svg';
             const formattedTitle = formatMediaTitle(item);
             return `
-            <tr data-idx="${idx}" style="cursor:pointer;">
+            <tr data-idx="${idx}" class="storm-focusable" tabindex="0" role="button" style="cursor:pointer;">
               <td class="td-center"><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
               <td><strong>${formattedTitle}</strong>${item.next_up ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up}</span>` : ''}</td>
               <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
@@ -3156,10 +3176,34 @@ function initSearch() {
   }
 
   initSourceFilterDropdown();
+  initFiltersCollapsible();
+}
+
+export function toggleFiltersCollapsible(forceState = null) {
+  const collapsible = document.getElementById('storm-filters-collapsible');
+  const toggleBtn = document.getElementById('storm-filters-toggle-btn');
+  if (!collapsible) return;
+  const isCollapsed = forceState !== null ? forceState : !collapsible.classList.contains('is-collapsed');
+  collapsible.classList.toggle('is-collapsed', isCollapsed);
+  if (toggleBtn) {
+    toggleBtn.classList.toggle('is-collapsed', isCollapsed);
+    const label = toggleBtn.querySelector('#storm-filters-toggle-label');
+    if (label) {
+      label.textContent = isCollapsed ? 'Развернуть фильтры' : 'Свернуть фильтры';
+    }
+  }
+}
+
+function initFiltersCollapsible() {
+  const toggleBtn = document.getElementById('storm-filters-toggle-btn');
+  if (toggleBtn) {
+    toggleBtn.onclick = () => toggleFiltersCollapsible();
+  }
 }
 
 if (typeof window !== 'undefined') {
   window.executeSearch = executeSearch;
+  window.toggleFiltersCollapsible = toggleFiltersCollapsible;
 }
 
 // -------------------------------------------------------------
@@ -3600,6 +3644,10 @@ export function renderFilteredCatalog() {
     resetBtn.style.display = isFiltered ? 'inline-flex' : 'none';
   }
   updateFilterBadge();
+
+  if (isFiltered && document.body.classList.contains('tv-mode')) {
+    toggleFiltersCollapsible(true);
+  }
 
   let items = [...rawCatalogItems];
   items.forEach(it => {
