@@ -1,0 +1,308 @@
+[
+  {
+    "query": "Король Талсы",
+    "canonicalTitle": "Король Талсы",
+    "originalTitle": "Tulsa King",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/8lZrK8t4IVaugD2ho7JbtaPhazs.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Основание",
+    "canonicalTitle": "Основание",
+    "originalTitle": "Foundation",
+    "mediaType": "series",
+    "year": "2021",
+    "posterPath": "https://image.tmdb.org/t/p/w500/b68nx8h5Lag2j0TSUkg6Xg6F7l8.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Целую, Китти",
+    "canonicalTitle": "Целую, Китти",
+    "originalTitle": "XO, Kitty",
+    "mediaType": "series",
+    "year": "2023",
+    "posterPath": "https://image.tmdb.org/t/p/w500/2iHQDv0RJCPyLcBR6qgGx3wFZK5.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Голяк",
+    "canonicalTitle": "Голяк",
+    "originalTitle": "Brassic",
+    "mediaType": "series",
+    "year": "2019",
+    "posterPath": "https://image.tmdb.org/t/p/w500/dEuCQMmjaaqQ4qfADHWAS0WBbrl.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Рыцарь Семи Королевств",
+    "canonicalTitle": "Рыцарь Семи Королевств",
+    "originalTitle": "A Knight of the Seven Kingdoms",
+    "mediaType": "series",
+    "year": "2026",
+    "posterPath": "https://image.tmdb.org/t/p/w500/2b8iO1xalT46apE20IGS3gt0qjC.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Медленные лошади",
+    "canonicalTitle": "Медленные лошади",
+    "originalTitle": "Slow Horses",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/fcXBCozEg3rCc9h8RPypLvnPSzU.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Йеллоустоун",
+    "canonicalTitle": "Йеллоустоун",
+    "originalTitle": "Yellowstone",
+    "mediaType": "series",
+    "year": "2018",
+    "posterPath": "https://image.tmdb.org/t/p/w500/muLDL6UrK6Rh47OwgbNZbNcwUc.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Мэр Кингстауна",
+    "canonicalTitle": "Мэр Кингстауна",
+    "originalTitle": "Mayor of Kingstown",
+    "mediaType": "series",
+    "year": "2021",
+    "posterPath": "https://image.tmdb.org/t/p/w500/2VVEGvSTJILFlgxTNDr6PRGSl9D.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Извне",
+    "canonicalTitle": "Извне",
+    "originalTitle": "FROM",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/dFJ8exnjJoEfTlHoR58L4OlTSEu.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Ричер",
+    "canonicalTitle": "Ричер",
+    "originalTitle": "Reacher",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/zLqlW0rXmHwOZRhmOjeod14sGiT.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Белый лотос",
+    "canonicalTitle": "Белый лотос",
+    "originalTitle": "The White Lotus",
+    "mediaType": "series",
+    "year": "2021",
+    "posterPath": "https://image.tmdb.org/t/p/w500/m50tjkb2PuvVmGHifRpVXCMswxn.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Разделение",
+    "canonicalTitle": "Разделение",
+    "originalTitle": "Severance",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Одни из нас",
+    "canonicalTitle": "Одни из нас",
+    "originalTitle": "The Last of Us",
+    "mediaType": "series",
+    "year": "2023",
+    "posterPath": "https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Укрытие",
+    "canonicalTitle": "Укрытие",
+    "originalTitle": "Silo",
+    "mediaType": "series",
+    "year": "2023",
+    "posterPath": "https://image.tmdb.org/t/p/w500/gRkvq6FgiGRdtCwhVIozaUqhoDL.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Игра в кальмара",
+    "canonicalTitle": "Игра в кальмара",
+    "originalTitle": "오징어 게임",
+    "mediaType": "series",
+    "year": "2021",
+    "posterPath": "https://image.tmdb.org/t/p/w500/6zHKgCKht3vwrtSXFvSUntSRsJh.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Очень странные дела",
+    "canonicalTitle": "Очень странные дела",
+    "originalTitle": "Stranger Things",
+    "mediaType": "series",
+    "year": "2016",
+    "posterPath": "https://image.tmdb.org/t/p/w500/nW3cral1e2r3xfLySPE1U9bailS.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Андор",
+    "canonicalTitle": "Андор Брудер",
+    "originalTitle": "Andor Bruder",
+    "mediaType": "series",
+    "year": "",
+    "posterPath": "",
+    "posterValid": false
+  },
+  {
+    "query": "Пацаны",
+    "canonicalTitle": "Пацаны",
+    "originalTitle": "The Boys",
+    "mediaType": "series",
+    "year": "2019",
+    "posterPath": "https://image.tmdb.org/t/p/w500/3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Миротворец",
+    "canonicalTitle": "Миротворец",
+    "originalTitle": "Peacemaker",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/seuVs7Swm0LLAlrsSI9KRti8ttX.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Медведь",
+    "canonicalTitle": "Маша и Медведь",
+    "originalTitle": "Маша и Медведь",
+    "mediaType": "series",
+    "year": "2009",
+    "posterPath": "https://image.tmdb.org/t/p/w500/5kPSIxxZ98rA93XRHEwn8V0r4OB.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Дом Дракона",
+    "canonicalTitle": "Дом Дракона",
+    "originalTitle": "House of the Dragon",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/hXyYN6LFo7QnKUA3QBx7B3KsnJE.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Фоллаут",
+    "canonicalTitle": "Фоллаут",
+    "originalTitle": "Fallout",
+    "mediaType": "series",
+    "year": "2024",
+    "posterPath": "https://image.tmdb.org/t/p/w500/7o3XRf31lEtAaRNtgupOGTDD3sP.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Уэнсдэй",
+    "canonicalTitle": "Уэнздей",
+    "originalTitle": "Wednesday",
+    "mediaType": "series",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/lx7ipUuzHmbOa1qzMPj4ypZ7A8u.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Чёрное зеркало",
+    "canonicalTitle": "«Чёрное зеркало» по-русски",
+    "originalTitle": "«Чёрное зеркало» по-русски",
+    "mediaType": "movie",
+    "year": "2019",
+    "posterPath": "https://image.tmdb.org/t/p/w500/ypakHp2MsOq1AMPhM3jEGg5EzBL.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Эйфория",
+    "canonicalTitle": "Эйфория",
+    "originalTitle": "Euphoria",
+    "mediaType": "series",
+    "year": "2019",
+    "posterPath": "https://image.tmdb.org/t/p/w500/yJz0VPfztciUt8cYulEOnk7wQhs.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Декстер: Первородный грех",
+    "canonicalTitle": "Декстер: Первородный грех",
+    "originalTitle": "Dexter: Original Sin",
+    "mediaType": "series",
+    "year": "2024",
+    "posterPath": "https://image.tmdb.org/t/p/w500/dSIlT4WFGwDyISM14t45A53EAcz.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Аватар",
+    "canonicalTitle": "Аватар",
+    "originalTitle": "Avatar",
+    "mediaType": "movie",
+    "year": "2009",
+    "posterPath": "https://image.tmdb.org/t/p/w500/lUKcrcO3wEPhNnzGq06JIX7GIEb.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Аватар: Путь воды",
+    "canonicalTitle": "Аватар: Путь воды",
+    "originalTitle": "Avatar: The Way of Water",
+    "mediaType": "movie",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/yFNn7uWudLLWDJqfj3fwh5CcUdR.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Аватар 2: Путь воды",
+    "canonicalTitle": "Аватар: Путь воды",
+    "originalTitle": "Avatar: The Way of Water",
+    "mediaType": "movie",
+    "year": "2022",
+    "posterPath": "https://image.tmdb.org/t/p/w500/yFNn7uWudLLWDJqfj3fwh5CcUdR.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Аватар 3: Пламя и пепел",
+    "canonicalTitle": "Аватар: Пламя и пепел",
+    "originalTitle": "Avatar: Fire and Ash",
+    "mediaType": "movie",
+    "year": "2025",
+    "posterPath": "https://image.tmdb.org/t/p/w500/kpxYvaCnbRi7btNnpLCJrehy77e.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Хищник: Планета смерти",
+    "canonicalTitle": "Хищник: Планета смерти",
+    "originalTitle": "Predator: Badlands",
+    "mediaType": "movie",
+    "year": "2025",
+    "posterPath": "https://image.tmdb.org/t/p/w500/pu5Aj7nyx9ISKMcmWvUjZv68GLs.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Проект «Конец света»",
+    "canonicalTitle": "Проект «Конец света»",
+    "originalTitle": "Project Hail Mary",
+    "mediaType": "movie",
+    "year": "2026",
+    "posterPath": "https://image.tmdb.org/t/p/w500/jucD9FzLjVsFfBiFcSdoLa6rPOl.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Я не киллер",
+    "canonicalTitle": "Я не киллер",
+    "originalTitle": "Hit Man",
+    "mediaType": "movie",
+    "year": "2024",
+    "posterPath": "https://image.tmdb.org/t/p/w500/zilBOq5Ht3qFYp3ZjA8G0DYAsQg.jpg",
+    "posterValid": true
+  },
+  {
+    "query": "Обитель зла: Мутация",
+    "canonicalTitle": "Обитель зла: Мутация",
+    "originalTitle": "The Cure",
+    "mediaType": "movie",
+    "year": "2026",
+    "posterPath": "https://image.tmdb.org/t/p/w500/lIuCbRc2jSB1uPDvjdQ1SuESt4O.jpg",
+    "posterValid": true
+  }
+]

@@ -425,9 +425,9 @@ function handleSpatialKeyboard(e) {
 function getFocusableElements() {
   const activeModal = document.querySelector('.storm-modal-backdrop.is-open');
   const root = activeModal || document;
-  const selector = 'button:not([disabled]), [tabindex="0"], .media-card, .storm-tab-btn, .cal-card, .quick-dropdown-trigger, select:not([disabled]), input:not([disabled])';
+  const selector = 'button:not([disabled]), [tabindex="0"], .media-card, .media-detailed-card, .media-table-table tbody tr, .cal-card, .rail-card, .hero-slide, .storm-tab-btn, .storm-filters-toggle-btn, .quick-dropdown-trigger, .storm-focusable, select:not([disabled]), input:not([disabled])';
   return Array.from(root.querySelectorAll(selector)).filter(el => {
-    return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none';
+    return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
   });
 }
 
@@ -470,6 +470,34 @@ function moveFocus(direction) {
       bestCandidate = el;
     }
   });
+
+  // Умный запасной переход между панелями (Header/Toolbar <-> Content Container)
+  if (!bestCandidate && direction === 'down') {
+    const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
+    if (mainArea && currentFocusedElement.closest('.storm-header, .storm-tabs-bar, .storm-toolbar')) {
+      const candidates = focusables.filter(el => mainArea.contains(el));
+      if (candidates.length > 0) {
+        bestCandidate = candidates[0];
+        // Если перешли в контент в TV режиме — автоматически сворачиваем фильтры, освобождая 100% экрана
+        if (typeof window.toggleFiltersCollapsible === 'function' && document.body.classList.contains('tv-mode')) {
+          window.toggleFiltersCollapsible(true);
+        }
+      }
+    }
+  }
+
+  if (!bestCandidate && direction === 'up') {
+    const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
+    if (mainArea && mainArea.contains(currentFocusedElement)) {
+      const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar');
+      if (topArea) {
+        const candidates = focusables.filter(el => topArea.contains(el));
+        if (candidates.length > 0) {
+          bestCandidate = candidates[0];
+        }
+      }
+    }
+  }
 
   if (bestCandidate) {
     setFocusTo(bestCandidate);

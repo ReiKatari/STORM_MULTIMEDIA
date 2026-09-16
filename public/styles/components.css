@@ -1607,6 +1607,13 @@ button:active .storm-status-svg {
   gap: 10px;
 }
 
+@media (max-width: 768px) {
+  .achievements-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+}
+
 .achievement-card {
   display: flex;
   align-items: center;

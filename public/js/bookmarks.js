@@ -274,9 +274,14 @@ export function detectClientMediaType(item) {
   const cat = String(item.category || '').toLowerCase();
   const link = String(item.link || item.url || item.fanfilm_4k_url || '').toLowerCase();
   const src = String(item.source || item.provider || '').toLowerCase();
-  // 1. Известные анимационные фильмы (Обитель зла: Мутация, Вырождение, Вендетта и др.)
+
+  // 0. Обитель зла: Мутация - строго фильм, не анимация!
+  if (t.includes('обитель зла') && (t.includes('мутация') || t.includes('мутиция'))) {
+    return 'movie';
+  }
+
+  // 1. Известные анимационные фильмы (Вырождение, Вендетта и др.)
   const knownAnimatedMovies = [
-    'обитель зла: мутация', 'обитель зла мутация', 'resident evil: mutation',
     'обитель зла: вендетта', 'обитель зла вендетта', 'resident evil: vendetta',
     'обитель зла: вырождение', 'обитель зла вырождение', 'resident evil: degeneration',
     'обитель зла: проклятие', 'обитель зла проклятие', 'resident evil: damnation',
@@ -369,8 +374,14 @@ export function detectClientMediaType(item) {
     'кухня', 'интерны', 'эпидемия', 'фишер', 'корона', 'the crown', 'уэнсдэй', 'уэнсдей', 'wednesday', 'миротворец',
     'бумажный дом', 'money heist', 'озарк', 'ozark', 'академия амбрелла', 'the umbrella academy',
     'ганнибал', 'hannibal', 'гримм', 'grimm', 'бесстыжие', 'shameless', 'ривердейл', 'riverdale', 'эйфория', 'euphoria',
-    'люцифер', 'lucifer', 'теория большого взрыва', 'the big bang theory', 'детство шелдона', 'young sheldon',
-    'друзья', 'friends', 'офис', 'the office', 'клиника', 'scrubs', 'универ', 'реальные пацаны', 'след', 'глухарь', 'невский'
+    'друзья', 'friends', 'офис', 'the office', 'клиника', 'scrubs', 'универ', 'реальные пацаны', 'след', 'глухарь', 'невский',
+    'король талсы', 'tulsa king', 'основание', 'foundation',
+    'целую, китти', 'целую китти', 'xo, kitty', 'xo kitty',
+    'голяк', 'brassic',
+    'рыцарь семи королевств', 'a knight of the seven kingdoms',
+    'сорвиголова: рождённый заново', 'сорвиголова: рожденный заново', 'daredevil: born again',
+    'гангстерленд', 'mobland',
+    'белый лотос', 'the white lotus'
   ];
 
   if (knownSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
@@ -516,8 +527,11 @@ export function detectClientYear(item) {
     'severance': '2022',
     'дом дракона': '2022',
     'властелин колец кольца власти': '2022',
-    'андор': '2022',
+    'аватар 2 путь воды': '2022',
+    'аватар 2': '2022',
     'аватар путь воды': '2022',
+    'avatar the way of water': '2022',
+    'avatar 2': '2022',
     'кот в сапогах 2': '2022',
     'скуби ду шалость или сладость': '2022',
     'дюна': '2021',

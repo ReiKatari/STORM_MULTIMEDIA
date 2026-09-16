@@ -239,9 +239,14 @@ export const KNOWN_RELEASE_YEARS = {
   'пираты карибского моря: сундук мертвеца': '2006',
   'пираты карибского моря: на краю света': '2007',
   'пираты карибского моря: на странных берегах': '2011',
-  'пираты карибского моря: мертвецы не рассказывают сказки': '2017',
-  'аватар': '2009',
+  'аватар 2 путь воды': '2022',
+  'аватар 2: путь воды': '2022',
+  'аватар 2': '2022',
+  'аватар путь воды': '2022',
   'аватар: путь воды': '2022',
+  'avatar the way of water': '2022',
+  'avatar 2': '2022',
+  'аватар': '2009',
   'бойцовский клуб': '1999',
   'криминальное чтиво': '1994',
   'побег из шоушенка': '1994',
@@ -296,7 +301,14 @@ export const KNOWN_SERIES = [
   'бумажный дом', 'money heist', 'озарк', 'ozark', 'академия амбрелла', 'the umbrella academy',
   'ганнибал', 'hannibal', 'гримм', 'grimm', 'бесстыжие', 'shameless', 'ривердейл', 'riverdale', 'эйфория', 'euphoria',
   'люцифер', 'lucifer', 'теория большого взрыва', 'the big bang theory', 'детство шелдона', 'young sheldon',
-  'друзья', 'friends', 'офис', 'the office', 'клиника', 'scrubs', 'универ', 'реальные пацаны', 'след', 'глухарь', 'невский'
+  'друзья', 'friends', 'офис', 'the office', 'клиника', 'scrubs', 'универ', 'реальные пацаны', 'след', 'глухарь', 'невский',
+  'король талсы', 'tulsa king', 'основание', 'foundation',
+  'целую, китти', 'целую китти', 'xo, kitty', 'xo kitty',
+  'голяк', 'brassic',
+  'рыцарь семи королевств', 'a knight of the seven kingdoms',
+  'сорвиголова: рождённый заново', 'сорвиголова: рожденный заново', 'daredevil: born again',
+  'гангстерленд', 'mobland',
+  'белый лотос', 'the white lotus'
 ];
 
 // Реестр известных аниме (по умолчанию 'anime-series', если не фильм)
@@ -321,7 +333,6 @@ export const KNOWN_ANIME_SERIES = [
 
 // Реестр известных анимационных фильмов (строго 'cartoon', никогда не 'series')
 export const KNOWN_ANIMATED_MOVIES = [
-  'обитель зла: мутация', 'обитель зла мутация', 'resident evil: mutation', 'resident evil mutation',
   'обитель зла: вендетта', 'обитель зла вендетта', 'resident evil: vendetta',
   'обитель зла: вырождение', 'обитель зла вырождение', 'resident evil: degeneration',
   'обитель зла: проклятие', 'обитель зла проклятие', 'resident evil: damnation',
@@ -473,9 +484,12 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
   const linkStr = String(link || '').toLowerCase();
   const catStr = String(category || '').toLowerCase();
   const genStr = (Array.isArray(genres) ? genres.join(' ') : String(genres || '')).toLowerCase();
-  const src = String(item.source || '').toLowerCase();
+  // 0. Обитель зла: Мутация - строго художественный фильм (movie), не анимация и не сериал!
+  if (norm.includes('обитель зла') && (norm.includes('мутация') || norm.includes('мутиция'))) {
+    return 'movie';
+  }
 
-  // 1. Приоритетная проверка известных анимационных фильмов (Обитель зла: Мутация, Вырождение, Вендетта и др.)
+  // 1. Приоритетная проверка известных анимационных фильмов (Вырождение, Вендетта и др.)
   // Строго возвращает 'cartoon', предотвращая ложную классификацию как сериал из-за дубляжей или плееров
   if (KNOWN_ANIMATED_MOVIES.some(m => norm === m || norm.startsWith(m + ' ') || norm.includes(m))) {
     return 'cartoon';
