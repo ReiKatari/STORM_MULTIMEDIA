@@ -11,6 +11,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -143,6 +144,54 @@ class MainActivity : ComponentActivity() {
                     isOfflineFallbackLoaded = true
                     webView.loadUrl(fallbackUrl)
                 }
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                val url = request?.url ?: return super.shouldInterceptRequest(view, request)
+                val host = url.host?.lowercase()
+
+                // Мгновенный запуск: отдаем локальные HTML, CSS, JS и медиа-ассеты без сетевых задержек и таймаутов под VPN
+                if (host == "stormmultimedia.ru" || host == "www.stormmultimedia.ru") {
+                    val path = url.path ?: "/"
+                    if (path == "/" || path == "/index.html") {
+                        return try {
+                            val stream = assets.open("index.html")
+                            WebResourceResponse("text/html", "UTF-8", stream)
+                        } catch (_: Exception) {
+                            super.shouldInterceptRequest(view, request)
+                        }
+                    }
+
+                    if (path.startsWith("/styles/") || path.startsWith("/js/") || path.startsWith("/assets/") || path == "/manifest.json") {
+                        val assetPath = path.removePrefix("/")
+                        val cleanPath = assetPath.substringBefore("?")
+                        val mimeType = when {
+                            cleanPath.endsWith(".css") -> "text/css"
+                            cleanPath.endsWith(".js") -> "application/javascript"
+                            cleanPath.endsWith(".svg") -> "image/svg+xml"
+                            cleanPath.endsWith(".png") -> "image/png"
+                            cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg") -> "image/jpeg"
+                            cleanPath.endsWith(".webp") -> "image/webp"
+                            cleanPath.endsWith(".ico") -> "image/x-icon"
+                            cleanPath.endsWith(".woff2") -> "font/woff2"
+                            cleanPath.endsWith(".woff") -> "font/woff"
+                            cleanPath.endsWith(".ttf") -> "font/ttf"
+                            cleanPath.endsWith(".json") -> "application/json"
+                            else -> "application/octet-stream"
+                        }
+                        return try {
+                            val stream = assets.open(cleanPath)
+                            WebResourceResponse(mimeType, "UTF-8", stream)
+                        } catch (_: Exception) {
+                            super.shouldInterceptRequest(view, request)
+                        }
+                    }
+                }
+
+                return super.shouldInterceptRequest(view, request)
             }
 
             @SuppressLint("WebViewClientOnReceivedSslError")

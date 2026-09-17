@@ -2889,9 +2889,17 @@ body.drawer-open {
     z-index: 25 !important;
   }
 
-  #cinema-modal .player-series-quick-bar .quick-select-dropdown {
-    flex: 1 1 calc(33.33% - 8px) !important;
-    min-width: 110px !important;
+  #cinema-modal .player-series-quick-bar #quick-season-dropdown,
+  #cinema-modal .player-series-quick-bar #quick-episode-dropdown {
+    flex: 1 1 calc(50% - 4px) !important;
+    min-width: 0 !important;
+    position: relative !important;
+  }
+
+  #cinema-modal .player-series-quick-bar #quick-voiceover-dropdown {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 100% !important;
     position: relative !important;
   }
 

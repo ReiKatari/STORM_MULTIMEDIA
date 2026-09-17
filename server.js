@@ -2433,14 +2433,81 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     try {
       const embedRes = await fetch(finalUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://v17.fanfilm4k.media/'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+          'Referer': 'https://v17.fanfilm4k.media/',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+          'X-Forwarded-For': '87.255.6.63',
+          'X-Real-IP': '87.255.6.63'
         },
         signal: AbortSignal.timeout(6000)
       });
 
       if (embedRes.ok) {
         let html = await embedRes.text();
+        const lowerHtml = html.toLowerCase();
+        const isNotFound = lowerHtml.includes('контент не найден') ||
+                           lowerHtml.includes('приносим свои извинения') ||
+                           lowerHtml.includes('видео удалено') ||
+                           lowerHtml.includes('файл не найден') ||
+                           lowerHtml.includes('видеофайл не найден') ||
+                           lowerHtml.includes('404 not found');
+
+        if (isNotFound) {
+          console.warn('FanFilm embed: обнаружен экран "контент не найден", переключаем на следующий источник');
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          return res.send(`
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                body {
+                  margin: 0; background: #0a0b10; color: #ffffff;
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                  display: flex; align-items: center; justify-content: center;
+                  height: 100vh; text-align: center;
+                }
+                .vpn-card {
+                  background: rgba(15, 23, 42, 0.85);
+                  border: 1px solid rgba(0, 210, 255, 0.35);
+                  border-radius: 14px; padding: 24px 20px; max-width: 440px;
+                  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+                  display: flex; flex-direction: column; align-items: center; gap: 12px;
+                }
+                .vpn-icon { font-size: 36px; }
+                .vpn-title { font-size: 16px; font-weight: 700; color: #00d2ff; }
+                .vpn-desc { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+                .vpn-btn {
+                  background: linear-gradient(135deg, #00d2ff, #0077ff);
+                  color: #fff; border: none; border-radius: 8px;
+                  padding: 10px 18px; font-size: 13px; font-weight: 700;
+                  cursor: pointer; box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3);
+                  transition: transform 0.15s, opacity 0.15s;
+                }
+                .vpn-btn:hover { transform: translateY(-1px); opacity: 0.95; }
+              </style>
+            </head>
+            <body>
+              <div class="vpn-card">
+                <div class="vpn-icon">🔄</div>
+                <div class="vpn-title">Переключение источника</div>
+                <div class="vpn-desc">В данном потоке файл не найден. Выполняется автоматическое переключение на стабильный балансер (HDRezka / Collaps)...</div>
+                <button type="button" class="vpn-btn" onclick="triggerNext()">Переключить сейчас</button>
+              </div>
+              <script>
+                function triggerNext() {
+                  try {
+                    window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'FANFILM_NOT_FOUND' }, '*');
+                  } catch(e) {}
+                }
+                setTimeout(triggerNext, 1200);
+              </script>
+            </body>
+            </html>
+          `);
+        }
+
         const baseOrigin = new URL(finalUrl).origin;
         const proAudioInjection = `
           <base href="${baseOrigin}/">
@@ -2952,6 +3019,140 @@ app.get('/api/player/kodik-embed', (req, res) => {
     return res.redirect(cleanUrl);
   } catch (err) {
     return res.status(500).type('text/plain; charset=utf-8').send('Ошибка перенаправления');
+  }
+});
+
+// Проксирование сторонних плееров и потоков для надежного обхода зарубежных блокировок VPN
+app.get('/api/player/vpn-proxy', async (req, res) => {
+  try {
+    const { url: rawUrl } = req.query;
+    if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl === 'undefined') {
+      return res.status(400).type('text/plain; charset=utf-8').send('URL не указан');
+    }
+
+    let cleanUrl = rawUrl.trim();
+    if (cleanUrl.startsWith('//')) cleanUrl = 'https:' + cleanUrl;
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      return res.status(400).type('text/plain; charset=utf-8').send('Некорректный URL');
+    }
+
+    const targetParsed = new URL(cleanUrl);
+    const targetOrigin = targetParsed.origin;
+
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Permissions-Policy', 'fullscreen=*');
+
+    const proxyRes = await fetch(cleanUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Referer': targetOrigin + '/',
+        'Origin': targetOrigin,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'X-Forwarded-For': '87.255.6.63',
+        'X-Real-IP': '87.255.6.63'
+      },
+      signal: AbortSignal.timeout(8000),
+      redirect: 'follow'
+    });
+
+    const contentType = proxyRes.headers.get('content-type') || '';
+
+    if (contentType.includes('text/html')) {
+      let html = await proxyRes.text();
+      const lowerHtml = html.toLowerCase();
+      const isNotFound = lowerHtml.includes('контент не найден') ||
+                         lowerHtml.includes('приносим свои извинения') ||
+                         lowerHtml.includes('видео удалено') ||
+                         lowerHtml.includes('файл не найден') ||
+                         lowerHtml.includes('404 not found');
+
+      if (!proxyRes.ok || isNotFound) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(`
+          <!DOCTYPE html>
+          <html lang="ru">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body { margin: 0; background: #0a0b10; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; text-align: center; }
+              .vpn-card { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(0, 210, 255, 0.35); border-radius: 14px; padding: 24px 20px; max-width: 440px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+              .vpn-icon { font-size: 36px; }
+              .vpn-title { font-size: 16px; font-weight: 700; color: #00d2ff; }
+              .vpn-desc { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+              .vpn-btn { background: linear-gradient(135deg, #00d2ff, #0077ff); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(0,210,255,0.3); }
+            </style>
+          </head>
+          <body>
+            <div class="vpn-card">
+              <div class="vpn-icon">🛡️</div>
+              <div class="vpn-title">Обход VPN: переключение источника</div>
+              <div class="vpn-desc">Балансер недоступен. Выполняется автоматический переход к следующему онлайн-плееру...</div>
+              <button type="button" class="vpn-btn" onclick="triggerNext()">Переключить источник</button>
+            </div>
+            <script>
+              function triggerNext() {
+                try {
+                  window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'VPN_PROXY_FALLBACK' }, '*');
+                } catch(e) {}
+              }
+              setTimeout(triggerNext, 1200);
+            </script>
+          </body>
+          </html>
+        `);
+      }
+
+      const finalOrigin = new URL(proxyRes.url || cleanUrl).origin;
+      const injection = `
+        <base href="${finalOrigin}/">
+        <script>
+        (function() {
+          try {
+            window.open = function() { return null; };
+            window.alert = function() {};
+            setInterval(function() {
+              try {
+                var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"], .close-ad, .ad-close');
+                for (var i = 0; i < skipBtns.length; i++) {
+                  if (skipBtns[i].offsetParent !== null) skipBtns[i].click();
+                }
+              } catch(e) {}
+            }, 300);
+          } catch(e) {}
+        })();
+        </script>
+      `;
+      html = html.replace('<head>', '<head>' + injection);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(html);
+    }
+
+    res.setHeader('Content-Type', contentType || 'application/octet-stream');
+    const buffer = await proxyRes.arrayBuffer();
+    return res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.warn('Ошибка /api/player/vpn-proxy:', err.message);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(`
+      <!DOCTYPE html>
+      <html lang="ru">
+      <head>
+        <meta charset="utf-8">
+        <script>
+          try {
+            window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'VPN_PROXY_ERROR' }, '*');
+          } catch(e) {}
+        </script>
+        <style>body{margin:0;background:#0a0b10;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;}</style>
+      </head>
+      <body>
+        <div style="color:#00d2ff;font-size:14px;">Переключение на следующий источник...</div>
+      </body>
+      </html>
+    `);
   }
 });
 
@@ -3614,7 +3815,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.10';
+  const currentAppVersion = '1.0.11';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {

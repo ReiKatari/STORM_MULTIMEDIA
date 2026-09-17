@@ -81,6 +81,7 @@ const AMBILIGHT_PRESETS = [
 // Skip Intro и Outro
 let skipIntervals = null;
 let autoSkipEnabled = localStorage.getItem('storm_auto_skip') === 'true';
+let vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
 
 // WebTorrent
 let torrentClient = null;
@@ -2375,6 +2376,9 @@ function playStreamUrl(url) {
     }
     if (streamUrl.startsWith('//')) {
       streamUrl = 'https:' + streamUrl;
+    }
+    if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
+      streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
     }
   }
 
@@ -5038,6 +5042,11 @@ function renderPlayerUtilityButtons() {
             <span class="studio-autoskip-box"></span>
             <span class="studio-autoskip-label">Прямой поток</span>
           </label>
+          <label class="studio-autoskip-toggle" title="Обход ограничений зарубежного VPN через защищенный российский сервер STORM">
+            <input type="checkbox" id="toggle-vpn-bypass" ${vpnBypassEnabled ? 'checked' : ''}>
+            <span class="studio-autoskip-box"></span>
+            <span class="studio-autoskip-label">Обход VPN</span>
+          </label>
         </div>
       </div>
 
@@ -5403,6 +5412,18 @@ function renderPlayerUtilityButtons() {
   if (directStreamToggle) {
     directStreamToggle.onchange = (e) => {
       setForceDirectStream(e.target.checked);
+    };
+  }
+
+  const vpnBypassToggle = container.querySelector('#toggle-vpn-bypass');
+  if (vpnBypassToggle) {
+    vpnBypassToggle.onchange = (e) => {
+      vpnBypassEnabled = e.target.checked;
+      localStorage.setItem('storm_vpn_bypass', vpnBypassEnabled ? 'true' : 'false');
+      showToast(`Обход VPN: ${vpnBypassEnabled ? 'Включен' : 'Выключен'}`, 'info');
+      if (currentActivePlayer) {
+        selectPlayer(currentActivePlayer);
+      }
     };
   }
 }
