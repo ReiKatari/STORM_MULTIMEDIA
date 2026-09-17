@@ -88,6 +88,7 @@ let searchQuery = '';
 let hoverPreviewTimer = null;
 let hoverCloseTimer = null;
 let cachedContinueHistory = null;
+let isBottomNavInitialized = false;
 
 export async function refreshContinueWatchingCache() {
   try {
@@ -193,12 +194,6 @@ async function startStormApp() {
 
   // Автоматическая тихая проверка обновлений при старте
   setTimeout(() => checkForUpdates(false), 2500);
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startStormApp);
-} else {
-  startStormApp();
 }
 
 async function initDeepLinking() {
@@ -365,8 +360,6 @@ if (typeof window !== 'undefined') {
   window.resetAllFilters = resetAllFilters;
   window.closeAllActiveModals = closeAllActiveModals;
 }
-
-let isBottomNavInitialized = false;
 
 function initBottomNav() {
   if (isBottomNavInitialized) return;
@@ -4841,3 +4834,17 @@ window.stormRefreshCatalog = () => {
   clientTabCache.clear();
   loadCurrentTab();
 };
+
+// =============================================================
+// БЕЗОПАСНЫЙ СТАРТ ПРИЛОЖЕНИЯ (ПОСЛЕ ПОЛНОЙ ИНИЦИАЛИЗАЦИИ ВСЕХ МОДУЛЕЙ И ПЕРЕМЕННЫХ)
+// =============================================================
+if (typeof window !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      startStormApp();
+    });
+  } else {
+    // В Android WebView при loadDataWithBaseURL DOM уже готов — запускаем через микротаск
+    setTimeout(startStormApp, 0);
+  }
+}
