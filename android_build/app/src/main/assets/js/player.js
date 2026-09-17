@@ -1711,6 +1711,19 @@ async function initSeriesQuickBar(playerUrl) {
     if (autoVoiceMatched && matchedTrans) {
       showToast(`🎙️ Умный выбор озвучки: ${matchedTrans.name}`, 'info');
     }
+
+    // Синхронизируем список сезонов и серий при обнаружении многосезонного релиза
+    if (data.seasons && data.seasons.length > 0) {
+      if (!currentMedia.seasons || currentMedia.seasons.length < data.seasons.length) {
+        currentMedia.seasons = data.seasons.map(s => ({
+          season_number: s.season,
+          name: s.name || `Сезон ${s.season}`,
+          episode_count: s.episodes?.length || s.episodes_count || 8,
+          overview: ''
+        }));
+        renderSeriesSeasons(currentMedia, quickBarActiveSeason, quickBarActiveEpisode);
+      }
+    }
   } catch (err) {
     console.warn('Ошибка быстрой панели серий:', err);
     quickBar.style.display = 'none';
@@ -2259,6 +2272,7 @@ async function selectQuickSeason(seasonNum) {
   quickBarActiveEpisode = 1;
   renderQuickBarDropdowns();
   updateQuickIframeSrc();
+  renderSeriesSeasons(currentMedia, seasonNum, 1);
 
   showToast(`📺 Сезон ${seasonNum}`, 'info');
   trackClientAction('watch_series_episode', { season: seasonNum, episode: 1 });
@@ -4017,6 +4031,7 @@ export function renderInPlayerVoiceSheet(sheet) {
         }
         const voiceVal = document.getElementById('quick-voiceover-val');
         if (voiceVal) voiceVal.textContent = vName;
+        sheet.classList.remove('is-open');
         sheet.style.display = 'none';
         const voiceBtn = document.getElementById('inplayer-voice-btn');
         if (voiceBtn) voiceBtn.classList.remove('active');
@@ -4050,6 +4065,7 @@ export function renderInPlayerVoiceSheet(sheet) {
       const vName = item.dataset.voiceName;
       quickBarActiveTranslationId = vId;
       await selectQuickVoiceover(vId);
+      sheet.classList.remove('is-open');
       sheet.style.display = 'none';
       const voiceBtn = document.getElementById('inplayer-voice-btn');
       if (voiceBtn) voiceBtn.classList.remove('active');
@@ -4415,7 +4431,7 @@ export function mountInPlayerOverlay(videoBox) {
     epBtn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      if (voiceSheet) { voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
+      if (voiceSheet) { voiceSheet.classList.remove('is-open'); voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
       if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); }
       toggleInPlayerEpisodesSheet(overlay);
     };
@@ -4428,24 +4444,32 @@ export function mountInPlayerOverlay(videoBox) {
     };
   }
 
-  // 2. Кнопка «Озвучка»
+  // 2. Кнопка «Озвучка» (боковая выдвижная шторка)
   if (voiceBtn && voiceSheet) {
     voiceBtn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      if (episodesSheet) { episodesSheet.classList.remove('is-open'); epBtn?.classList.remove('active'); }
+      if (episodesSheet) { episodesSheet.classList.remove('is-open'); episodesSheet.style.display = 'none'; epBtn?.classList.remove('active'); }
       if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); }
 
-      const isOpen = voiceSheet.style.display !== 'none';
-      voiceSheet.style.display = isOpen ? 'none' : 'flex';
-      voiceBtn.classList.toggle('active', !isOpen);
-      if (!isOpen) renderInPlayerVoiceSheet(voiceSheet);
+      const isOpen = voiceSheet.classList.contains('is-open');
+      if (isOpen) {
+        voiceSheet.classList.remove('is-open');
+        voiceSheet.style.display = 'none';
+        voiceBtn.classList.remove('active');
+      } else {
+        voiceSheet.style.display = 'flex';
+        renderInPlayerVoiceSheet(voiceSheet);
+        voiceSheet.classList.add('is-open');
+        voiceBtn.classList.add('active');
+      }
     };
   }
 
   if (voiceCloseBtn && voiceSheet) {
     voiceCloseBtn.onclick = (e) => {
       e.stopPropagation();
+      voiceSheet.classList.remove('is-open');
       voiceSheet.style.display = 'none';
       if (voiceBtn) voiceBtn.classList.remove('active');
     };
@@ -4478,7 +4502,7 @@ export function mountInPlayerOverlay(videoBox) {
     jogBtn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      if (voiceSheet) { voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
+      if (voiceSheet) { voiceSheet.classList.remove('is-open'); voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
       if (episodesSheet) { episodesSheet.classList.remove('is-open'); epBtn?.classList.remove('active'); }
 
       const isOpen = jogWidget.style.display !== 'none';
@@ -4499,54 +4523,32 @@ export function mountInPlayerOverlay(videoBox) {
   if (jogBack) jogBack.onclick = (e) => { e.stopPropagation(); doJogStep(-10); };
   if (jogFwd) jogFwd.onclick = (e) => { e.stopPropagation(); doJogStep(10); };
 
-  if (jogWheel) {
-    jogWheel.onwheel = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const delta = e.deltaY > 0 ? -5 : 5;
-      doJogStep(delta);
-    };
-  }
-
-  // Ротационный драг мыши / сенсора на колесике джога
   if (jogWheelWrap) {
-    let isDraggingJog = false;
-    let lastAngle = 0;
-
-    const getAngle = (clientX, clientY) => {
-      const rect = jogWheelWrap.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
-    };
+    let isJogDragging = false;
+    let jogStartY = 0;
 
     jogWheelWrap.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      isDraggingJog = true;
-      lastAngle = getAngle(e.clientX, e.clientY);
+      isJogDragging = true;
+      jogStartY = e.clientY;
       try { jogWheelWrap.setPointerCapture(e.pointerId); } catch {}
-      jogWheelWrap.style.cursor = 'grabbing';
     });
 
     jogWheelWrap.addEventListener('pointermove', (e) => {
-      if (!isDraggingJog) return;
+      if (!isJogDragging) return;
       e.stopPropagation();
-      const curAngle = getAngle(e.clientX, e.clientY);
-      let diff = curAngle - lastAngle;
-      if (diff > 180) diff -= 360;
-      if (diff < -180) diff += 360;
-
-      if (Math.abs(diff) >= 14) {
-        const step = diff > 0 ? 5 : -5;
-        doJogStep(step);
-        lastAngle = curAngle;
+      const deltaY = jogStartY - e.clientY;
+      if (Math.abs(deltaY) > 8) {
+        const step = deltaY > 0 ? 1 : -1;
+        doJogStep(step * 5);
+        jogStartY = e.clientY;
       }
     });
 
     const stopJogDrag = (e) => {
-      if (isDraggingJog) {
-        isDraggingJog = false;
-        jogWheelWrap.style.cursor = 'grab';
+      if (isJogDragging) {
+        e.stopPropagation();
+        isJogDragging = false;
         try { jogWheelWrap.releasePointerCapture(e.pointerId); } catch {}
       }
     };
@@ -4555,7 +4557,7 @@ export function mountInPlayerOverlay(videoBox) {
     jogWheelWrap.addEventListener('pointercancel', stopJogDrag);
   }
 
-  // 4. Кнопка «Фокус» (Clean Canvas)
+  // 4. Кнопка «Фокус» (Кинотеатральный режим)
   if (focusBtn) {
     const modal = document.getElementById('cinema-modal');
     if (modal && modal.classList.contains('is-focus-mode')) {
@@ -4567,7 +4569,7 @@ export function mountInPlayerOverlay(videoBox) {
       if (modal) {
         const isFocus = modal.classList.toggle('is-focus-mode');
         focusBtn.classList.toggle('active', isFocus);
-        showToast(isFocus ? '👁️ Режим фокуса включен (Clean Canvas)' : 'Режим фокуса выключен', 'info');
+        showToast(isFocus ? '👁️ Кинотеатральный режим (Фокус) включен' : 'Кинотеатральный режим выключен', 'info');
       }
     };
   }
@@ -7833,6 +7835,19 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
                    (mediaDetails.episodes && mediaDetails.episodes.length > 0);
   let seasons = mediaDetails.seasons || [];
 
+  if (quickBarSeriesData?.seasons && quickBarSeriesData.seasons.length > seasons.length) {
+    seasons = quickBarSeriesData.seasons.map(qs => {
+      const existing = (mediaDetails.seasons || []).find(s => s.season_number === qs.season);
+      return {
+        season_number: qs.season,
+        name: qs.name || `Сезон ${qs.season}`,
+        episode_count: qs.episodes?.length || qs.episodes_count || 8,
+        overview: existing?.overview || ''
+      };
+    });
+    mediaDetails.seasons = seasons;
+  }
+
   if (!isSeries) {
     container.style.display = 'none';
     return;
@@ -7860,15 +7875,17 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
 
   if (!tabsContainer || !gridEl) return;
 
-  // Если список сезонов пуст, динамически запрашиваем сезоны из TMDB / базы серий
-  if (seasons.length === 0 && mediaDetails.source !== 'anilibria' && mediaDetails.source !== 'anixart') {
-    tabsContainer.innerHTML = `
-      <div style="padding: 10px 16px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
-        <div class="storm-spinner" style="width: 16px; height: 16px;"></div>
-        <span>Поиск сезонов и серий...</span>
-      </div>
-    `;
-    gridEl.innerHTML = '';
+  // Если список сезонов пуст или содержит только 1 сезон, пробуем динамически обогатить полным списком сезонов из TMDB
+  if (seasons.length <= 1 && mediaDetails.source !== 'anilibria' && mediaDetails.source !== 'anixart') {
+    if (seasons.length === 0) {
+      tabsContainer.innerHTML = `
+        <div style="padding: 10px 16px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+          <div class="storm-spinner" style="width: 16px; height: 16px;"></div>
+          <span>Поиск сезонов и серий...</span>
+        </div>
+      `;
+      gridEl.innerHTML = '';
+    }
 
     try {
       const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
@@ -7876,7 +7893,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       const itemRes = await fetch(`/api/media/item?title=${encodeURIComponent(cleanSerTitle)}&source=tmdb&media_type=series`);
       if (itemRes.ok) {
         const itemData = await itemRes.json();
-        if (itemData?.seasons && itemData.seasons.length > 0) {
+        if (itemData?.seasons && itemData.seasons.length > seasons.length) {
           mediaDetails.seasons = itemData.seasons;
           seasons = itemData.seasons;
           if (itemData.tmdb_id) {
@@ -7915,7 +7932,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       mediaDetails.seasons = [{
         season_number: 1,
         name: 'Сезон 1',
-        episode_count: 1,
+        episode_count: 8,
         overview: ''
       }];
       seasons = mediaDetails.seasons;
@@ -7982,7 +7999,12 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         activeEpisodeNum = 1;
         renderSeasonTabs();
         loadSeasonEpisodes(sNum, 1);
-        if (mediaDetails.source !== 'anilibria' && mediaDetails.source !== 'anixart') {
+        if (quickBarSeriesData) {
+          quickBarActiveSeason = sNum;
+          quickBarActiveEpisode = 1;
+          renderQuickBarDropdowns();
+          updateQuickIframeSrc();
+        } else if (mediaDetails.source !== 'anilibria' && mediaDetails.source !== 'anixart') {
           updatePlayerUrl(mediaDetails, sNum, 1, currentActivePlayer);
         }
       };
@@ -8037,6 +8059,21 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           }
         } catch (fetchErr) {
           console.warn('Сбой загрузки серий из API:', fetchErr);
+        }
+
+        // Если из API не пришли детальные серии, проверяем quickBarSeriesData
+        if ((!episodes || episodes.length === 0) && quickBarSeriesData?.seasons) {
+          const qSeason = quickBarSeriesData.seasons.find(s => s.season === seasonNum);
+          if (qSeason && qSeason.episodes?.length > 0) {
+            episodes = qSeason.episodes.map(qe => ({
+              episode_number: qe.episode,
+              name: qe.name || `${qe.episode} серия`,
+              still: qe.still || mediaDetails.poster || 'assets/favicon.svg',
+              duration: qe.duration || '50 мин.',
+              air_date: qe.air_date || '',
+              overview: qe.overview || `Серия ${qe.episode}. Смотрите ${qe.episode}-ю серию проекта «${cleanSerTitle}» в высоком разрешении со студийным переводом.`
+            }));
+          }
         }
       }
 
@@ -8108,9 +8145,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <strong style="font-size: 13.5px; color: #ffffff;">${season.name || `Сезон ${seasonNum}`}</strong>
               <span class="season-status-chip ${sStatus.status}">${sStatus.label}</span>
-              <div class="season-status-select-wrap" style="display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;">
-                <label for="season-status-select" style="font-size: 11px; color: var(--text-muted);">Статус:</label>
-                <select class="storm-select season-status-select" id="season-status-select" style="padding: 3px 8px; font-size: 11.5px; border-radius: 6px; background: rgba(18, 22, 34, 0.9); color: var(--text-primary); border: 1px solid var(--border-subtle); cursor: pointer;">
+              <div class="season-status-select-wrap">
+                <label for="season-status-select">Статус:</label>
+                <select class="storm-select season-status-select" id="season-status-select">
                   <option value="planned" ${sStatus.status === 'planned' ? 'selected' : ''}>📋 В планах</option>
                   <option value="watching" ${sStatus.status === 'watching' ? 'selected' : ''}>▶ Смотрю</option>
                   <option value="completed" ${sStatus.status === 'completed' ? 'selected' : ''}>✓ Просмотрен</option>
