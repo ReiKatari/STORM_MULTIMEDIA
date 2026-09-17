@@ -8016,52 +8016,185 @@ body.player-dropdown-active .cinema-player-iframe {
   50% { opacity: 0.4; transform: scale(0.8); }
 }
 
-/* 2. Focus Mode (Кинотеатральный режим / Theater Mode) */
+/* 2. Focus Mode (Чистый кинематографический холст / Clean Theater Canvas) */
+#cinema-modal.is-focus-mode {
+  padding: 0 !important;
+  background: rgba(2, 4, 8, 0.98) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  overflow: hidden !important;
+}
+
 #cinema-modal.is-focus-mode .cinema-modal-dialog {
-  max-width: 96vw !important;
-  width: 96vw !important;
-  transition: max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 100vw !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #000000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+#cinema-modal.is-focus-mode .storm-modal-header {
+  height: 48px !important;
+  min-height: 48px !important;
+  max-height: 48px !important;
+  padding: 0 16px !important;
+  background: rgba(8, 11, 18, 0.92) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-bottom: 1px solid rgba(0, 210, 255, 0.2) !important;
+  z-index: 100 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-shrink: 0 !important;
+}
+
+#cinema-modal.is-focus-mode .storm-modal-title {
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  color: #f8fafc !important;
+}
+
+#cinema-modal.is-focus-mode .storm-modal-body {
+  flex: 1 !important;
+  height: calc(100vh - 48px) !important;
+  max-height: calc(100vh - 48px) !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  background: #000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 #cinema-modal.is-focus-mode .cinema-layout-grid {
   display: flex !important;
   flex-direction: column !important;
-  gap: 20px !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 #cinema-modal.is-focus-mode .cinema-main-column {
   width: 100% !important;
+  height: 100% !important;
   max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 #cinema-modal.is-focus-mode .cinema-player-container {
   width: 100% !important;
+  height: 100% !important;
   max-width: 100% !important;
+  max-height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 #cinema-modal.is-focus-mode .cinema-player-wrapper {
   width: 100% !important;
+  height: 100% !important;
+  max-height: calc(100vh - 48px) !important;
+  max-width: calc((100vh - 48px) * 16 / 9) !important;
   aspect-ratio: 16 / 9 !important;
-  max-height: 78vh !important;
-  height: auto !important;
-  border-radius: 12px !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 210, 255, 0.15) !important;
-  transition: max-height 0.3s ease, aspect-ratio 0.3s ease;
+  margin: auto !important;
+  border-radius: 4px !important;
+  border: none !important;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.95), 0 0 25px rgba(0, 210, 255, 0.1) !important;
+  background: #000000 !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 #cinema-modal.is-focus-mode .player-video-box {
   width: 100% !important;
   height: 100% !important;
-  border-radius: 12px !important;
+  border-radius: 4px !important;
+  overflow: hidden !important;
+  background: #000000 !important;
 }
 
-#cinema-modal.is-focus-mode .cinema-side-column {
+#cinema-modal.is-focus-mode .cinema-player-iframe {
   width: 100% !important;
-  max-width: 100% !important;
-  margin-top: 10px;
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
-  gap: 16px !important;
+  height: 100% !important;
+  border-radius: 4px !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Полное скрытие всех отвлекающих боковых и подвальных блоков страницы в режиме фокуса */
+#cinema-modal.is-focus-mode .cinema-side-column,
+#cinema-modal.is-focus-mode .player-fallback-bar,
+#cinema-modal.is-focus-mode .player-selector-dropdown-wrap,
+#cinema-modal.is-focus-mode #player-utility-actions,
+#cinema-modal.is-focus-mode #ambilight-settings-panel-host,
+#cinema-modal.is-focus-mode #cinema-modal-desc-wrap,
+#cinema-modal.is-focus-mode .series-seasons-container,
+#cinema-modal.is-focus-mode #anixart-controls-container,
+#cinema-modal.is-focus-mode .franchise-order-section,
+#cinema-modal.is-focus-mode .cinema-screenshots-gallery,
+#cinema-modal.is-focus-mode #cinema-modal-screenshots-container,
+#cinema-modal.is-focus-mode #cinema-reviews-container,
+#cinema-modal.is-focus-mode #player-series-quick-bar,
+#cinema-modal.is-focus-mode .cinema-modal-drag-handle,
+#cinema-modal.is-focus-mode .cinema-main-column > div:not(.cinema-player-container) {
+  display: none !important;
+}
+
+/* Кнопка выхода из режима фокуса в шапке */
+.cinema-focus-exit-badge {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 210, 255, 0.16);
+  border: 1px solid rgba(0, 210, 255, 0.45);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #00f0ff;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.15s ease;
+}
+
+.cinema-focus-exit-badge:hover {
+  background: rgba(0, 210, 255, 0.28);
+  border-color: #00f0ff;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+#cinema-modal.is-focus-mode .cinema-focus-exit-badge {
+  display: inline-flex !important;
 }
 
 /* 3. Премиальный студийный контроллер Джог-дайл (Rotary Studio Scrubbing) */
