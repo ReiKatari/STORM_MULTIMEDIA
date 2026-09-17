@@ -2203,7 +2203,8 @@ async function switchAnixartVoiceover(voiceoverId) {
     host.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;gap:10px;color:var(--text-muted);"><div class="storm-spinner"></div><span>Смена озвучки AniXart...</span></div>';
   }
   try {
-    const res = await fetch(`/api/anixart/episodes/${currentMedia.id}/${voiceoverId}`);
+    const relId = currentMedia?.anixart_release_id || currentMedia?.id;
+    const res = await fetch(`/api/anixart/episodes/${relId}/${voiceoverId}`);
     const rawEpisodes = await res.json();
     currentEpisodes = (rawEpisodes || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
 
@@ -2360,6 +2361,10 @@ function playStreamUrl(url) {
   } else if (!quickBarSeriesData?.isAnime) {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
+  }
+
+  if (typeof streamUrl === 'string' && streamUrl.includes('kodik') && !streamUrl.includes('/api/player/kodik-embed')) {
+    streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
   }
 
     container.innerHTML = `

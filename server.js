@@ -2859,6 +2859,49 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
   }
 });
 
+// Проксирование внутренних запросов плеера Kodik (/ftor, /stats)
+app.post(['/ftor', '/api/player/kodik-ftor'], express.urlencoded({ extended: true }), async (req, res) => {
+  try {
+    const formData = new URLSearchParams();
+    if (req.body && typeof req.body === 'object') {
+      for (const [k, v] of Object.entries(req.body)) {
+        if (v !== undefined && v !== null) {
+          formData.append(k, String(v));
+        }
+      }
+    }
+    const ftorRes = await fetch('https://kodikplayer.com/ftor', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': req.headers.referer || 'https://anixart.tv/',
+        'Origin': 'https://kodikplayer.com',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body: formData.toString(),
+      signal: AbortSignal.timeout(8000)
+    });
+    const data = await ftorRes.json().catch(() => null);
+    if (!data) {
+      return res.status(ftorRes.status || 502).json({ success: false, error: 'Ошибка получения видеопотока' });
+    }
+    return res.json(data);
+  } catch (err) {
+    console.error('[Kodik /ftor Proxy Error]:', err.message);
+    return res.status(502).json({ success: false, error: err.message });
+  }
+});
+
+app.post(['/stats', '/api/player/kodik-stats'], (req, res) => {
+  res.json({ success: true });
+});
+
+// Автоматическое перенаправление внутренних переходов Kodik (/seria/*, /video/*, /uv/*, /episode/*)
+app.get(['/seria/*', '/video/*', '/uv/*', '/episode/*', '/serial/*', '/season/*'], (req, res) => {
+  const target = `https://kodikplayer.com${req.originalUrl}`;
+  return res.redirect(`/api/player/kodik-embed?url=${encodeURIComponent(target)}`);
+});
+
 // Проксирующий плеер Kodik / AniXart с авторизованным Referer (устраняет ошибку «Плеер не найден»)
 app.get('/api/player/kodik-embed', async (req, res) => {
   try {
@@ -2894,6 +2937,37 @@ app.get('/api/player/kodik-embed', async (req, res) => {
           window.open = function() { return null; };
           window.alert = function() {};
         } catch(e) {}
+
+        // Перехват внутренних замен URL Kodik
+        try {
+          var origReplace = window.location.replace;
+          if (origReplace) {
+            window.location.replace = function(url) {
+              if (typeof url === 'string' && (url.startsWith('/seria/') || url.startsWith('/video/') || url.startsWith('/uv/') || url.startsWith('/episode/') || url.startsWith('/serial/') || url.startsWith('/season/'))) {
+                url = '/api/player/kodik-embed?url=' + encodeURIComponent('${baseOrigin}' + url);
+              }
+              return origReplace.call(window.location, url);
+            };
+          }
+          var origAssign = window.location.assign;
+          if (origAssign) {
+            window.location.assign = function(url) {
+              if (typeof url === 'string' && (url.startsWith('/seria/') || url.startsWith('/video/') || url.startsWith('/uv/') || url.startsWith('/episode/') || url.startsWith('/serial/') || url.startsWith('/season/'))) {
+                url = '/api/player/kodik-embed?url=' + encodeURIComponent('${baseOrigin}' + url);
+              }
+              return origAssign.call(window.location, url);
+            };
+          }
+        } catch(e) {}
+
+        // Автостарт воспроизведения при готовности
+        window.addEventListener('DOMContentLoaded', function() {
+          setTimeout(function() {
+            var pb = document.querySelector('.play_button, .play_background');
+            if (pb) pb.click();
+          }, 400);
+        });
+
         setInterval(function() {
           try {
             var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"], .kodik-ad-skip, [id*="skip"], .close-ad, .ad-close, [class*="ad-btn"]');
@@ -3618,7 +3692,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.6';
+  const currentAppVersion = '1.0.7';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
@@ -3687,8 +3761,12 @@ app.get('/api/updates/check', async (req, res) => {
   }
 });
 
-// Фронтенд fallback с защитой от возврата HTML на API и статические ассеты
+// Фронтенд fallback с защитой от возврата HTML на API, статические ассеты и вложенные iframe
 app.get('*', (req, res) => {
+  // Защита: iframe или вложенный плеер никогда не должны рендерить index.html портала
+  if (req.headers['sec-fetch-dest'] === 'iframe' || req.headers['sec-fetch-mode'] === 'nested-navigate') {
+    return res.status(404).type('text/plain; charset=utf-8').send('Кадр плеера не найден');
+  }
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ success: false, error: 'API эндпоинт не найден' });
   }
