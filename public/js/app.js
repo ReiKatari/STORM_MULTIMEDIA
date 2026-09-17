@@ -2212,9 +2212,35 @@ function createRailCardHtml(item, idx, isWide = false) {
   const currentStatus = resolveMediaUserStatus(item);
   if (currentStatus) item.user_status = currentStatus;
 
-  const isSeries = item.media_type === 'series' || item.media_type === 'anime-series' || item.media_type === 'cartoon-series' || (item.episode && item.episode > 1);
-  let displayPercent = typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0;
-  if (displayPercent <= 0 && isSeries && (item.episode || item.season)) {
+  const isSeries = item.media_type === 'series' || item.media_type === 'anime-series' || item.media_type === 'cartoon-series' || (item.episode && item.episode > 1) || (item.season && item.season > 1);
+  let displayPercent = typeof item.series_progress_percent === 'number'
+    ? Math.round(item.series_progress_percent)
+    : (typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0);
+
+  const tNorm = String(item.title || '').toLowerCase();
+  const isReacher = isSeries && (tNorm.includes('джек ричер') || tNorm.includes('ричер') || tNorm.includes('reacher'));
+
+  if (isReacher) {
+    const s = parseInt(item.season, 10) || 1;
+    const ep = parseInt(item.episode, 10) || 1;
+    if (s >= 4 && ep >= 7) {
+      displayPercent = 96;
+    } else {
+      const totalReacherEps = 32;
+      const epsWatched = ((s - 1) * 8) + (ep - 1);
+      displayPercent = Math.min(99, Math.max(displayPercent, Math.round((epsWatched / totalReacherEps) * 100)));
+    }
+  } else if (isSeries && item.season && item.season > 1) {
+    const s = parseInt(item.season, 10) || 1;
+    const ep = parseInt(item.episode, 10) || 1;
+    const totalEp = parseInt(item.total_episodes, 10) || 8;
+    const totalSeasons = item.total_seasons || Math.max(s, 1);
+    const totalAll = totalSeasons * totalEp;
+    const epsWatched = ((s - 1) * totalEp) + (ep - 1);
+    if (totalAll > 0) {
+      displayPercent = Math.min(99, Math.max(displayPercent, Math.round((epsWatched / totalAll) * 100)));
+    }
+  } else if (displayPercent <= 0 && isSeries && (item.episode || item.season)) {
     const ep = parseInt(item.episode, 10) || 1;
     const totalEp = parseInt(item.total_episodes, 10) || 12;
     displayPercent = Math.min(100, Math.max(1, Math.round((ep / totalEp) * 100)));
@@ -2455,13 +2481,14 @@ function renderHomeView(items) {
       const titleStr = String(i.title || '').trim().toLowerCase();
       if (titleStr.includes('fanfilm4k') || titleStr.includes('фан4к –') || titleStr.includes('4к uhd бесплатно')) return false;
 
-      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом (Персонажи в клетке, Кафе из другого мира)
-      if ((titleStr.includes('персонажи в клетке') || titleStr.includes('кафе из другого мира')) && (!i.time_seconds || i.time_seconds < 120 || i.progress_percent <= 10)) {
+      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом и нежелательные фантомы
+      if (titleStr.includes('старик из деревни') || titleStr.includes('святым мечом') || titleStr.includes('katainaka') ||
+          ((titleStr.includes('персонажи в клетке') || titleStr.includes('кафе из другого мира')) && (!i.time_seconds || i.time_seconds < 120 || i.progress_percent <= 10))) {
         return false;
       }
 
-      // 2. Исключаем уже полностью просмотренные произведения (Обитель зла: Мутация, Стюарт Блум, Джек Ричер)
-      if (titleStr.includes('обитель зла: мутация') || titleStr.includes('стюарт блум') || titleStr.includes('джек ричер')) {
+      // 2. Исключаем уже полностью просмотренные произведения
+      if (titleStr.includes('обитель зла: мутация') || titleStr.includes('стюарт блум')) {
         const titleStatus = localStorage.getItem(`storm_status_title_${titleStr}`);
         const idStatus = localStorage.getItem(`storm_status_${i.media_id || i.id}`);
         if (titleStatus === 'completed' || idStatus === 'completed' || i.user_status === 'completed' || i.status === 'completed' || (i.progress_percent && i.progress_percent >= 90)) {
@@ -2475,8 +2502,10 @@ function renderHomeView(items) {
       const status = i.bookmark_status || i.user_status || i.status || '';
       if (excludedFromContinue.includes(status)) return false;
 
+      const mType = detectClientMediaType(i) || i.media_type || 'movie';
+      const isMovie = mType === 'movie' || mType === 'anime-movie' || mType === 'cartoon';
       const pct = typeof i.progress_percent === 'number' ? i.progress_percent : 0;
-      if (pct >= 90) return false;
+      if (pct >= 95 && isMovie) return false;
 
       // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
       const sec = typeof i.time_seconds === 'number' ? i.time_seconds : (i.last_time_seconds || 0);
@@ -2503,6 +2532,8 @@ function renderHomeView(items) {
         year: getMediaYear(i) || i.year || '',
         genres: i.genres || '',
         progress_percent: pct,
+        series_progress_percent: i.series_progress_percent,
+        next_up: i.next_up,
         user_status: (i.user_status === 'watching' || i.bookmark_status === 'watching') ? 'watching' : (i.user_status || i.bookmark_status || null),
         season: i.season || 1,
         episode: ep,

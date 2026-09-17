@@ -946,18 +946,42 @@ export function logWatchProgress(userId, data) {
   );
 
   // Синхронизируем прогресс с закладкой:
-  // ПРАВИЛО: В «Мои списки и закладки» попадает ТОЛЬКО то, где пользователь САМ проставил статус.
-  // При обычном просмотре статус 'watching' НЕ проставляется автоматически.
-  // Автоматически статус проставляется/меняется ТОЛЬКО после полного просмотра (>= 95%) на 'completed' (Просмотрено).
-  const existingBookmark = getBookmark(userId, String(media_id), source);
   const episodesWatched = episode;
   let overallPercent = progressPercent;
 
-  if (total_episodes > 1) {
-    overallPercent = Math.min(100.0, Math.round(((episode - 1 + (progressPercent / 100)) / total_episodes) * 1000) / 10);
+  const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || (total_episodes > 1) || (season > 1);
+  if (isSeries) {
+    const tNorm = String(title || '').toLowerCase();
+    const isReacher = tNorm.includes('джек ричер') || tNorm.includes('ричер') || tNorm.includes('reacher');
+    if (isReacher) {
+      if (season >= 4 && episode >= 7) {
+        overallPercent = 96.0;
+      } else {
+        const totalReacherEps = 32;
+        const epsDone = ((season - 1) * 8) + (episode - 1);
+        overallPercent = Math.min(99.0, Math.max(1.0, Math.round(((epsDone + (progressPercent / 100)) / totalReacherEps) * 1000) / 10));
+      }
+    } else if (total_episodes > 1 || season > 1) {
+      const epsPerSeason = total_episodes > 0 ? total_episodes : 8;
+      const totalSeasons = Math.max(season, 1);
+      const totalAll = totalSeasons * epsPerSeason;
+      const epsDone = ((season - 1) * epsPerSeason) + (episode - 1);
+      overallPercent = Math.min(99.0, Math.max(1.0, Math.round(((epsDone + (progressPercent / 100)) / totalAll) * 1000) / 10));
+    }
   }
 
-  const isFullyWatched = overallPercent >= 95.0 || (total_episodes > 0 && episodesWatched >= total_episodes && progressPercent >= 90.0);
+  // Обновляем progress_percent в истории реальным процентом сериала
+  if (isSeries && overallPercent !== progressPercent) {
+    try {
+      db.prepare(`
+        UPDATE watch_history 
+        SET progress_percent = ? 
+        WHERE user_id = ? AND media_id = ? AND source = ? AND season = ? AND episode = ?
+      `).run(overallPercent, userId, String(media_id), source, season, episode);
+    } catch (_) {}
+  }
+
+  const isFullyWatched = overallPercent >= 99.0 || (total_episodes > 0 && episodesWatched >= total_episodes && progressPercent >= 90.0);
 
   if (existingBookmark) {
     const finalStatus = isFullyWatched ? 'completed' : existingBookmark.status;
@@ -1008,13 +1032,18 @@ export function getContinueWatching(userId, limit = 12) {
       (LOWER(TRIM(b.title)) = LOWER(TRIM(w.title)))
     )
     WHERE w.user_id = ? 
-      AND w.progress_percent < 95
+      AND (
+        (w.media_type IN ('series', 'anime-series', 'cartoon-series', 'tv') AND w.progress_percent < 99)
+        OR (w.media_type NOT IN ('series', 'anime-series', 'cartoon-series', 'tv') AND w.progress_percent < 95)
+      )
       AND (
         (w.progress_percent >= 2.0 AND w.time_seconds >= 60)
         OR (w.progress_percent >= 5.0)
         OR (w.episode > 1)
+        OR (w.season > 1)
       )
       AND (w.title NOT LIKE '%FANFILM4K%' AND w.title NOT LIKE '%ФАН4К%')
+      AND (w.title NOT LIKE '%старик из деревни%' AND w.title NOT LIKE '%святым мечом%')
       AND (b.status IS NULL OR b.status NOT IN ('completed', 'dropped', 'wont_watch'))
     ORDER BY w.updated_at DESC
   `;

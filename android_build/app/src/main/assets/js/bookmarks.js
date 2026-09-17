@@ -614,8 +614,9 @@ export function getLocalContinueWatching() {
       const t = String(item.title || '').trim().toLowerCase();
       if (t.includes('fanfilm4k') || t.includes('фан4к –') || t.includes('4к uhd бесплатно')) return false;
 
-      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом
-      if ((t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) && (!item.time_seconds || item.time_seconds < 120 || item.progress_percent <= 10)) {
+      // 1. Исключаем не запускавшиеся пользователем видео с фиктивным прогрессом и нежелательные фантомы
+      if (t.includes('старик из деревни') || t.includes('святым мечом') || t.includes('katainaka') ||
+          ((t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) && (!item.time_seconds || item.time_seconds < 120 || item.progress_percent <= 10))) {
         hasChanges = true;
         return false;
       }
@@ -673,7 +674,9 @@ export function getLocalContinueWatching() {
 export function saveLocalWatchProgress(data) {
   if (!data || !data.media_id) return;
   const cleanTitle = String(data.title || '').trim();
+  const tNorm = cleanTitle.toLowerCase();
   if (!cleanTitle || cleanTitle.includes('FANFILM4K') || cleanTitle.includes('ФАН4К –') || cleanTitle.includes('4К UHD бесплатно')) return;
+  if (tNorm.includes('старик из деревни') || tNorm.includes('святым мечом') || tNorm.includes('katainaka')) return;
 
   let pct = typeof data.progress_percent === 'number' ? data.progress_percent : 0;
   let sec = typeof data.time_seconds === 'number' ? data.time_seconds : 0;
@@ -688,6 +691,27 @@ export function saveLocalWatchProgress(data) {
   const cleanMediaType = detectClientMediaType(data);
   const cleanYear = detectClientYear(data) || data.year || '';
   const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1;
+
+  // Расчет общего прогресса по всем сезонам сериала
+  let seriesOverallPercent = pct;
+  if (isSeries) {
+    const isReacher = tNorm.includes('джек ричер') || tNorm.includes('ричер') || tNorm.includes('reacher');
+    if (isReacher) {
+      const totalReacherEps = 32;
+      const epsWatched = ((s - 1) * 8) + (ep - 1);
+      if (s >= 4 && ep >= 7) {
+        seriesOverallPercent = 96;
+      } else {
+        seriesOverallPercent = Math.min(99, Math.max(1, Math.round(((epsWatched + (pct / 100)) / totalReacherEps) * 100)));
+      }
+    } else if (s > 1 || totalEp > 1) {
+      const epsPerSeason = totalEp > 0 ? totalEp : 8;
+      const totalSeasons = data.total_seasons || Math.max(s, 1);
+      const totalAllEpisodes = totalSeasons * epsPerSeason;
+      const epsWatched = ((s - 1) * epsPerSeason) + (ep - 1) + (pct / 100);
+      seriesOverallPercent = Math.min(99, Math.max(1, Math.round((epsWatched / totalAllEpisodes) * 100)));
+    }
+  }
 
   // Плекс и Эмби модель прогресса просмотра:
   if (pct >= 90) {
@@ -745,7 +769,9 @@ export function saveLocalWatchProgress(data) {
       total_episodes: totalEp || 1,
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: sec,
-      progress_percent: pct,
+      progress_percent: isSeries ? seriesOverallPercent : pct,
+      episode_progress_percent: pct,
+      series_progress_percent: seriesOverallPercent,
       status: data.status || data.user_status || null,
       user_status: data.user_status || data.status || null,
       next_up: nextUpText,

@@ -934,6 +934,30 @@ export async function getFanFilmDetails(idOrUrl) {
     const canonicalGenres = resolveCanonicalGenres(title, '', description, genres);
     const resolvedYear = year || resolveCanonicalYear(title, url, poster, premiere) || '2026';
 
+    let formattedDuration = duration;
+    if (duration) {
+      const durNum = parseInt(duration, 10);
+      if (durNum && !duration.includes('ч')) {
+        const h = Math.floor(durNum / 60);
+        const m = durNum % 60;
+        formattedDuration = h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
+      }
+    }
+
+    const directorsList = director ? director.split(/[,;/]+/).map((d, i) => ({
+      id: i + 1,
+      name: d.trim(),
+      role: 'Режиссер',
+      photo: null
+    })).filter(d => d.name) : [];
+
+    const castList = actors ? actors.split(/[,;/]+/).map((a, i) => ({
+      id: i + 1,
+      name: a.trim(),
+      character: 'В главных ролях',
+      photo: null
+    })).filter(a => a.name) : [];
+
     const result = {
       id: String(idOrUrl),
       source: 'fanfilm4k',
@@ -950,8 +974,10 @@ export async function getFanFilmDetails(idOrUrl) {
       category: detectedType === 'series' ? 'Сериал' : (detectedType.includes('anime') ? 'Аниме' : (detectedType.includes('cartoon') ? 'Мультфильм' : 'Фильм')),
       countries,
       director,
+      directors: directorsList,
       actors,
-      duration,
+      cast: castList,
+      duration: formattedDuration,
       slogan,
       is4K: Boolean(player4kIframe),
       quality: player4kIframe ? '4K Ultra HD' : '1080p Full HD',

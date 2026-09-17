@@ -3159,19 +3159,20 @@ button:active .storm-status-svg {
 .cinema-meta-chips-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
+  gap: 7px;
+  justify-content: flex-start;
+  align-items: center;
 }
 
 .cinema-meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 7px;
   background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-card) 100%);
   border: 1px solid var(--border-subtle);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
   color: var(--text-primary);
   cursor: pointer;
@@ -3183,13 +3184,35 @@ button:active .storm-status-svg {
 .cinema-meta-chip:hover {
   border-color: var(--accent);
   color: var(--accent);
-  transform: translateY(-1px);
+  transform: translateY(-1.5px);
   box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .cinema-meta-chip:active {
   transform: translateY(1px);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.cinema-meta-chip.genre-chip {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(15, 23, 42, 0.75) 100%);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  color: #f1f5f9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.cinema-meta-chip.genre-chip:hover {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.16) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border-color: #00f0ff;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 210, 255, 0.35);
+}
+
+.cinema-meta-chip.genre-chip .genre-icon {
+  font-size: 13.5px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cinema-section-subtitle {

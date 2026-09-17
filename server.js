@@ -1954,7 +1954,8 @@ app.get('/api/media/item', async (req, res) => {
                      mediaDetails.media_type === 'anime-series';
     const needsSeasons = isSeries && (!mediaDetails.seasons || mediaDetails.seasons.length === 0);
 
-    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasGenres || !hasValidDesc || needsSeasons) && mediaDetails.title) {
+    const hasRichCast = mediaDetails.cast?.some(c => Boolean(c.photo));
+    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasRichCast || !hasGenres || !hasValidDesc || needsSeasons) && mediaDetails.title) {
       try {
         if (!mediaDetails.year) {
           mediaDetails.year = resolveMediaYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || '', mediaDetails.poster || '');
@@ -1979,10 +1980,14 @@ app.get('/api/media/item', async (req, res) => {
             }
             mediaDetails.release_date = enriched.release_date || mediaDetails.release_date;
             mediaDetails.year = enriched.year || mediaDetails.year || (mediaDetails.release_date ? mediaDetails.release_date.match(/\b(19\d\d|20\d\d)\b/)?.[1] : '');
-            mediaDetails.duration = mediaDetails.duration || enriched.duration;
+            mediaDetails.duration = enriched.duration || mediaDetails.duration;
             mediaDetails.rating_kp = mediaDetails.rating_kp || enriched.rating_kp;
             mediaDetails.rating_tmdb = mediaDetails.rating_tmdb || enriched.rating_tmdb;
-            mediaDetails.genres = (hasGenres ? mediaDetails.genres : enriched.genres) || ['Триллер', 'Фантастика'];
+            if (enriched.genres?.length) {
+              mediaDetails.genres = enriched.genres;
+            } else if (!hasGenres) {
+              mediaDetails.genres = ['Боевик', 'Приключения', 'Фантастика'];
+            }
             mediaDetails.countries = (mediaDetails.countries && mediaDetails.countries.length > 0) ? mediaDetails.countries : enriched.countries;
             mediaDetails.directors = enriched.directors?.length ? enriched.directors : mediaDetails.directors;
             mediaDetails.composers = enriched.composers?.length ? enriched.composers : mediaDetails.composers;
