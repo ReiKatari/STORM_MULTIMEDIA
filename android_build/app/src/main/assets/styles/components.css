@@ -2341,13 +2341,14 @@ button:active .storm-status-svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 18px;
+  gap: 10px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  transition: all 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
   width: 100%;
   box-sizing: border-box;
+  min-height: 48px;
 }
 
 .player-dropdown-item:last-child {
@@ -2356,37 +2357,270 @@ button:active .storm-status-svg {
 
 .player-dropdown-item:hover {
   background: var(--bg-tertiary);
-  transform: translateX(4px);
-  border-left: 3px solid var(--accent);
+  transform: translateX(2px);
+}
+
+.player-dropdown-item:active {
+  transform: scale(0.99);
 }
 
 .player-dropdown-item.active {
   background: rgba(0, 210, 255, 0.12);
-  border-left: 4px solid var(--accent);
+  border-left: 3px solid var(--accent);
 }
 
-.player-item-header {
+.player-item-main {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 220px;
+  flex-direction: column;
+  gap: 3px;
   flex: 1;
+  min-width: 0;
 }
 
-.player-item-details {
+.player-item-title-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
 }
 
-.player-item-right {
+.player-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-source-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.player-source-badge.badge-fanfilm4k {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(245, 158, 11, 0.25) 100%);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ff5555;
+}
+
+.player-source-badge.badge-fanfilmhd {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%);
+  border-color: rgba(0, 210, 255, 0.5);
+  color: #00d2ff;
+}
+
+.player-source-badge.badge-kodik {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.25) 100%);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #10b981;
+}
+
+.player-source-badge.badge-hdrezka {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
+  border-color: rgba(168, 85, 247, 0.5);
+  color: #c084fc;
+}
+
+.player-source-badge.badge-rhs {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.25) 0%, rgba(225, 29, 72, 0.25) 100%);
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #fb7185;
+}
+
+.player-source-badge.badge-anixart, .player-source-badge.badge-shikimori {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25) 0%, rgba(219, 39, 119, 0.25) 100%);
+  border-color: rgba(236, 72, 153, 0.5);
+  color: #f472b6;
+}
+
+.player-item-sub-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   font-size: 11px;
   color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-item-quality-pill {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.player-item-quality-pill.pill-4k {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  border: none;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.player-item-quality-pill.pill-fhd {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.player-item-dot {
+  opacity: 0.4;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
+.player-item-audio {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-item-aside {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.player-item-status {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #10b981;
+  white-space: nowrap;
+}
+
+.player-item-status.status-down {
+  color: #ef4444;
+}
+
+.player-item-check {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   СТИЛИЗОВАННОЕ МОДАЛЬНОЕ ОКНО ВЫХОДА ИЗ STORM MULTIMEDIA (STORM EXIT MODAL)
+   ========================================================================== */
+.storm-exit-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 12, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 100000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: stormFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.storm-exit-modal-backdrop.is-open {
+  display: flex;
+}
+
+.storm-exit-modal-card {
+  width: 100%;
+  max-width: 380px;
+  background: linear-gradient(165deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
+  border: 1px solid var(--accent);
+  border-radius: 18px;
+  padding: 24px 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 30px var(--accent-glow);
+  text-align: center;
+  transform: scale(0.95);
+  animation: stormScaleUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.storm-exit-modal-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 0 16px var(--accent-glow));
+}
+
+.storm-exit-modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+
+.storm-exit-modal-text {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+
+.storm-exit-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.storm-exit-btn-cancel {
+  flex: 1;
+  padding: 11px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+}
+
+.storm-exit-btn-cancel:hover {
+  background: var(--bg-card);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.storm-exit-btn-cancel:active {
+  transform: translateY(1px);
+}
+
+.storm-exit-btn-confirm {
+  flex: 1;
+  padding: 11px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4), 0 0 16px rgba(239, 68, 68, 0.3);
+}
+
+.storm-exit-btn-confirm:hover {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+  transform: translateY(-1px);
+}
+
+.storm-exit-btn-confirm:active {
+  transform: translateY(1.5px) scale(0.98);
 }
 
 /* ==========================================================================

@@ -121,8 +121,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
 
     // Red Head Sound (Дубляж RHS)
     const rhsUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&voice=rhs${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&voice=rhs${typeFilter}${episodeParam}`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rhs${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
     players.push({
       id: 'rhs_player',
       name: 'Red Head Sound (Дубляж RHS)',
@@ -136,10 +136,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       url: rhsUrl
     });
 
-    // HDRezka Cinema (FHD и 4K)
+    // HDRezka Cinema (FHD и 4K) - официальные переводы HDRezka Studio
     const rezkaUrl = kp_id
-      ? `https://stream.voidboost.cc/embed/${kp_id}`
-      : `https://stream.voidboost.cc/embed/search?title=${safeTitle}${yearParam}`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=hdrezka${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
     players.push({
       id: 'rezka_cinema',
       name: 'HDRezka Cinema (FHD и 4K)',
@@ -153,38 +153,21 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       url: rezkaUrl
     });
 
-    // Collaps Плеер (мировые премьеры)
-    const collapsUrl = kp_id
-      ? `https://api.strvid.ws/embed/movie?kinopoisk=${kp_id}`
-      : `https://api.strvid.ws/embed/movie?title=${safeTitle}${yearParam}`;
+    // LostFilm TV (Официальный дубляж и релизы)
+    const lostfilmUrl = kp_id
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=lostfilm${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
     players.push({
-      id: 'collaps_player',
-      name: 'Collaps Плеер (мировые премьеры)',
+      id: 'lostfilm_player',
+      name: 'LostFilm TV (Студийный перевод)',
       type: 'iframe',
       quality: '1080p FHD',
-      badge: 'COLLAPS',
+      badge: 'LOSTFILM',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Чистый Full HD поток без рекламы',
-      speed: '⚡ Стабильный CDN',
-      url: collapsUrl
-    });
-
-    // Alloha TV (стабильный FHD поток)
-    const allohaUrl = kp_id
-      ? `https://api.strvid.ws/embed/movie?kinopoisk=${kp_id}&player=alloha`
-      : `https://api.strvid.ws/embed/movie?title=${safeTitle}${yearParam}&player=alloha`;
-    players.push({
-      id: 'alloha_tv',
-      name: 'Alloha TV (стабильный FHD поток)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'ALLOHA',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Профессиональный многоголосый перевод',
-      speed: '⚡ Скоростной поток',
-      url: allohaUrl
+      audio_info: 'Фирменная многоголосая озвучка LostFilm',
+      speed: '⚡ Быстрый CDN',
+      url: lostfilmUrl
     });
 
     // Vidsrc Cinema (Original)

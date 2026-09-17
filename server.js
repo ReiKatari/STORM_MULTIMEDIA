@@ -2081,8 +2081,44 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.rating_rotten = mediaDetails.rating_rotten || Math.min(99, Math.round(baseRating * 10.6));
     mediaDetails.rating_metacritic = mediaDetails.rating_metacritic || Math.min(98, Math.round(baseRating * 10.1));
 
-    // Собираем расширенный список плееров (FanFilm 4K, Kodik, Трейлер, и др.)
-    const fanfilmStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url || mediaDetails.fanfilm_4k_url;
+    // Автоматический поиск и привязка FanFilm 4K и HD потоков при их отсутствии
+    let fanfilmStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url || mediaDetails.fanfilm_4k_url;
+    let fanfilmHdStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm_hd')?.url || mediaDetails.fanfilm_hd_url;
+
+    if (!fanfilmStreamUrl && !fanfilmHdStreamUrl && mediaDetails.title) {
+      try {
+        const cleanT = mediaDetails.title
+          .replace(/\s*[\(\[]?\s*\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон\s*[\)\]]?/gi, '')
+          .replace(/\s*[\(\[]?\s*season\s*\d+\s*[\)\]]?/gi, '')
+          .replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '')
+          .trim();
+        const ffResults = await searchFanFilm(cleanT);
+        if (ffResults && ffResults.length > 0) {
+          const ffItem = ffResults[0];
+          const ffDetails = await getFanFilmDetails(ffItem.link || ffItem.url || ffItem.id);
+          if (ffDetails) {
+            if (ffDetails.fanfilm_4k_url) fanfilmStreamUrl = ffDetails.fanfilm_4k_url;
+            if (ffDetails.fanfilm_hd_url) fanfilmHdStreamUrl = ffDetails.fanfilm_hd_url;
+            if (!mediaDetails.kp_id && ffDetails.kp_id) mediaDetails.kp_id = ffDetails.kp_id;
+            if (ffDetails.players && ffDetails.players.length > 0) {
+              mediaDetails.players = mediaDetails.players || [];
+              ffDetails.players.forEach(p => {
+                if (!mediaDetails.players.some(mp => mp.id === p.id || mp.url === p.url)) {
+                  mediaDetails.players.unshift(p);
+                }
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Server] Автоматический поиск потоков FanFilm:', err.message);
+      }
+    }
+
+    mediaDetails.fanfilm_4k_url = fanfilmStreamUrl;
+    mediaDetails.fanfilm_hd_url = fanfilmHdStreamUrl;
+
+    // Собираем расширенный список плееров (FanFilm 4K, HD, Kodik, RHS, LostFilm)
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
@@ -2092,6 +2128,7 @@ app.get('/api/media/item', async (req, res) => {
       genres: mediaDetails.genres,
       source: mediaDetails.source || source,
       fanfilm_4k_url: fanfilmStreamUrl,
+      fanfilm_hd_url: fanfilmHdStreamUrl,
       trailer_url: mediaDetails.trailer_url,
       is_upcoming: mediaDetails.is_upcoming
     });
@@ -3926,7 +3963,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.16';
+  const currentAppVersion = '1.0.17';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
