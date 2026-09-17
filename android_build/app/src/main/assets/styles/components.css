@@ -3655,68 +3655,6 @@ button:active .storm-status-svg {
 }
 
 /* ==========================================================================
-   ТЕЛЕМЕТРИЯ СТРИМА И СТАТИСТИКА (STATS DRAWER)
-   ========================================================================== */
-.stats-drawer-container {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.stats-telemetry-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.telemetry-metric-card {
-  background: rgba(18, 24, 38, 0.7);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: all 0.2s ease;
-}
-
-.telemetry-metric-card:hover {
-  border-color: rgba(0, 210, 255, 0.3);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-.telemetry-metric-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.telemetry-metric-value {
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--text-primary);
-  word-break: break-all;
-}
-
-.telemetry-metric-value.highlight {
-  color: var(--accent);
-  text-shadow: 0 0 12px var(--accent-glow);
-}
-
-.telemetry-metric-value.warn {
-  color: var(--color-red, #ff4757);
-}
-
-.telemetry-metric-sub {
-  font-size: 10.5px;
-  color: var(--text-muted);
-}
-
-/* ==========================================================================
    ИНТЕРАКТИВНЫЙ X-RAY DRAWER ВНУТРИ СТУДИИ
    ========================================================================== */
 .xray-drawer-view {

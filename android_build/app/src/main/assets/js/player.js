@@ -5552,134 +5552,6 @@ function renderDrawerXRayView(body, onBack) {
 }
 
 // ==========================================
-// СТАТИСТИКА И ТЕЛЕМЕТРИЯ (IN-PLAYER STATS DRAWER)
-// ==========================================
-function renderInPlayerStatsDrawer(body) {
-  const video = document.querySelector('#cinema-player-wrapper video');
-  const iframe = document.querySelector('#cinema-player-wrapper iframe');
-
-  function update() {
-    let res = '3840 × 2160 (4K Ultra HD)';
-    let viewport = '—';
-    let bufferHealth = '60.0 с';
-    let droppedFrames = '0';
-    let totalFrames = '0';
-    let dropRate = '0%';
-    let timeStr = '—';
-    let engine = iframe ? 'FanFilm4K 4K UHD Engine' : 'HTML5 Native Video';
-    let vol = '100%';
-    let speed = '1.0x';
-
-    if (video) {
-      if (video.videoWidth && video.videoHeight) {
-        res = `${video.videoWidth} × ${video.videoHeight}`;
-      }
-      viewport = `${video.clientWidth} × ${video.clientHeight}`;
-      timeStr = `${formatSeconds(video.currentTime)} / ${video.duration ? formatSeconds(video.duration) : '—'}`;
-      vol = `${Math.round(video.volume * 100)}%`;
-      speed = `${video.playbackRate}x`;
-
-      if (video.buffered && video.buffered.length > 0) {
-        const cur = video.currentTime;
-        let bufEnd = 0;
-        for (let i = 0; i < video.buffered.length; i++) {
-          if (video.buffered.start(i) <= cur && video.buffered.end(i) >= cur) {
-            bufEnd = video.buffered.end(i);
-            break;
-          }
-        }
-        bufferHealth = `${Math.max(0, bufEnd - cur).toFixed(1)} с`;
-      }
-
-      if (typeof video.getVideoPlaybackQuality === 'function') {
-        const q = video.getVideoPlaybackQuality();
-        droppedFrames = String(q.droppedVideoFrames || 0);
-        totalFrames = String(q.totalVideoFrames || 0);
-        if (q.totalVideoFrames > 0) {
-          dropRate = `${((q.droppedVideoFrames / q.totalVideoFrames) * 100).toFixed(2)}%`;
-        }
-      }
-
-      if (window.Hls && window.Hls.isSupported && window.Hls.isSupported()) {
-        engine = 'HLS.js Pipeline (120с Smart-Cache)';
-      }
-    } else if (iframe) {
-      res = currentMedia?.quality || '4K Ultra HD';
-      bufferHealth = 'Потоковый буфер активен';
-      viewport = `${iframe.clientWidth || 1280} × ${iframe.clientHeight || 720}`;
-    }
-
-    body.innerHTML = `
-      <div class="stats-drawer-container">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-          <div style="font-size: 13px; font-weight: 800; color: var(--accent); display: flex; align-items: center; gap: 8px;">
-            <span>📊</span> Телеметрия потока и статистика воспроизведения
-          </div>
-          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="pin-stats-overlay-btn" style="padding: 5px 12px;">
-            📌 Закрепить оверлей поверх видео
-          </button>
-        </div>
-
-        <div class="stats-telemetry-grid">
-          <div class="telemetry-metric-card">
-            <div class="telemetry-metric-label">Разрешение видео</div>
-            <div class="telemetry-metric-value highlight">${res}</div>
-            <div class="telemetry-metric-sub">Область рендера: ${viewport}</div>
-          </div>
-
-          <div class="telemetry-metric-card">
-            <div class="telemetry-metric-label">Здоровье буфера</div>
-            <div class="telemetry-metric-value highlight">${bufferHealth}</div>
-            <div class="telemetry-metric-sub">Упреждающий кэш: 120 сек</div>
-          </div>
-
-          <div class="telemetry-metric-card">
-            <div class="telemetry-metric-label">Кадры и дропы</div>
-            <div class="telemetry-metric-value ${parseInt(droppedFrames, 10) > 30 ? 'warn' : ''}">${droppedFrames} / ${totalFrames}</div>
-            <div class="telemetry-metric-sub">Потери кадров: ${dropRate}</div>
-          </div>
-
-          <div class="telemetry-metric-card">
-            <div class="telemetry-metric-label">Активный плеер</div>
-            <div class="telemetry-metric-value">${escapeHtml(currentActivePlayer || currentMedia?.source || 'Auto')}</div>
-            <div class="telemetry-metric-sub">${escapeHtml(currentMedia?.quality || '4K Ultra HD')}</div>
-          </div>
-
-          <div class="telemetry-metric-card">
-            <div class="telemetry-metric-label">Движок стриминга</div>
-            <div class="telemetry-metric-value">${engine}</div>
-            <div class="telemetry-metric-sub">Аппаратное ускорение WebGL</div>
-          </div>
-
-          <div class="telemetry-metric-card">
-            <div class="telemetry-metric-label">Звук и скорость</div>
-            <div class="telemetry-metric-value">${vol} • Скорость: ${speed}</div>
-            <div class="telemetry-metric-sub">Таймкод: ${timeStr}</div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const pinBtn = body.querySelector('#pin-stats-overlay-btn');
-    if (pinBtn) {
-      pinBtn.onclick = () => {
-        toggleStatsForNerds();
-        showToast('Оверлей статистики выведен поверх видеоплеера', 'info');
-      };
-    }
-  }
-
-  update();
-  const timer = setInterval(() => {
-    if (!document.contains(body)) {
-      clearInterval(timer);
-      return;
-    }
-    update();
-  }, 1000);
-}
-
-// ==========================================
 // VIBRANT ФОНОВАЯ ПОДСВЕТКА (AMBIENT GLOW)
 // ==========================================
 export function applyAmbientBackdropGlow(mediaItem) {
@@ -5739,10 +5611,6 @@ function renderPlayerUtilityButtons() {
             <button type="button" class="studio-tab-btn" id="studio-tab-cast" title="В главных ролях и съемочная группа">
               <span class="studio-tab-icon">🎭</span>
               <span class="studio-tab-text">В ролях</span>
-            </button>
-            <button type="button" class="studio-tab-btn" id="studio-tab-stats" title="Статистика потока для гиков (Stats for Nerds)">
-              <span class="studio-tab-icon">📊</span>
-              <span class="studio-tab-text">Статистика</span>
             </button>
             <button type="button" class="studio-tab-btn" id="studio-tab-services" title="Интеллектуальные сервисы: Whisper AI, X-Ray, Офлайн, Торренты">
               <span class="studio-tab-icon">⚡</span>
@@ -6139,16 +6007,6 @@ function renderPlayerUtilityButtons() {
     tabCast.onclick = () => {
       openDrawerTab('cast', '🎭', 'В ролях и съемочная группа', (body) => {
         renderInPlayerCastDrawer(body);
-      });
-    };
-  }
-
-  // 9. Статистика для гиков (Stats for Nerds)
-  const tabStats = container.querySelector('#studio-tab-stats');
-  if (tabStats) {
-    tabStats.onclick = () => {
-      openDrawerTab('stats', '📊', 'Телеметрия потока и статистика воспроизведения', (body) => {
-        renderInPlayerStatsDrawer(body);
       });
     };
   }
