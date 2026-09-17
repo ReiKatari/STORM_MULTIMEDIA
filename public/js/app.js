@@ -105,7 +105,7 @@ export function isStormNativeApp() {
          Boolean(window.StormNativeApp);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function startStormApp() {
   if (isStormNativeApp()) {
     document.body.classList.add('is-native-app');
   }
@@ -193,7 +193,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Автоматическая тихая проверка обновлений при старте
   setTimeout(() => checkForUpdates(false), 2500);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startStormApp);
+} else {
+  startStormApp();
+}
 
 async function initDeepLinking() {
   try {

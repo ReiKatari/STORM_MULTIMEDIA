@@ -7417,3 +7417,83 @@ body.player-dropdown-active .cinema-player-iframe {
 .kids-mode-active-indicator {
   animation: stormPulse 3s infinite ease-in-out;
 }
+
+/* ==========================================================================
+   ПАНЕЛЬ АВАРИЙНОГО ПЕРЕКЛЮЧЕНИЯ ПЛЕЕРА (STORM ELEVATED 3D FALLBACK BAR)
+   ========================================================================== */
+.player-fallback-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(15, 23, 42, 0.94));
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.player-fallback-text-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.player-fallback-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.player-fallback-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-fallback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #00d2ff, #0077ff);
+  color: #ffffff !important;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 2.5px 8px rgba(0, 210, 255, 0.4);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.player-fallback-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 210, 255, 0.6);
+}
+
+.player-fallback-btn:active {
+  transform: translateY(1.5px) scale(0.98);
+  box-shadow: 0 1px 4px rgba(0, 210, 255, 0.2);
+}
+
+@media (max-width: 600px) {
+  .player-fallback-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .player-fallback-btn {
+    justify-content: center;
+    width: 100%;
+    padding: 8px 12px;
+  }
+}

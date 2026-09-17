@@ -2392,6 +2392,47 @@ app.get('/api/media/calendar', async (req, res) => {
 // 5.1 СТИЛИЗОВАННЫЙ ПРОКСИ ПЛЕЕРА И СЕРИЙНЫХ ОПЦИЙ
 // ==========================================
 
+// Быстрая проверка доступности стриминговых ссылок и обнаружение мертвых потоков FanFilm / Stravers
+app.get('/api/player/check-stream', async (req, res) => {
+  try {
+    const targetUrl = req.query.url;
+    if (!targetUrl) return res.json({ alive: true });
+
+    let checkUrl = targetUrl;
+    if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
+      const pageRes = await fetch(targetUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(2500)
+      });
+      const pageHtml = await pageRes.text();
+      const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+      if (m) {
+        checkUrl = m[1].startsWith('//') ? 'https:' + m[1] : m[1];
+      }
+    }
+
+    const chk = await fetch(checkUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Referer': 'https://v17.fanfilm4k.media/'
+      },
+      signal: AbortSignal.timeout(2500)
+    });
+
+    if (!chk.ok) return res.json({ alive: false });
+    const text = await chk.text();
+    const lower = text.toLowerCase();
+    const isDead = lower.includes('не найден') ||
+                   lower.includes('приносим свои извинения') ||
+                   lower.includes('видео удалено') ||
+                   lower.includes('файл не найден') ||
+                   lower.includes('404 not found');
+    return res.json({ alive: !isDead });
+  } catch {
+    return res.json({ alive: true });
+  }
+});
+
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
@@ -3815,7 +3856,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.11';
+  const currentAppVersion = '1.0.12';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {

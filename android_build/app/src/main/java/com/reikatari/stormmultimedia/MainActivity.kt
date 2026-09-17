@@ -31,8 +31,6 @@ class MainActivity : ComponentActivity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     private val primaryUrl = "https://stormmultimedia.ru/"
-    private val fallbackUrl = "file:///android_asset/index.html"
-    private var isOfflineFallbackLoaded = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,7 +80,22 @@ class MainActivity : ComponentActivity() {
         setupClients()
         setupBackNavigation()
 
-        webView.loadUrl(primaryUrl)
+        loadAppContent()
+    }
+
+    private fun loadAppContent() {
+        try {
+            val html = assets.open("index.html").bufferedReader().use { it.readText() }
+            webView.loadDataWithBaseURL(
+                "https://stormmultimedia.ru/",
+                html,
+                "text/html",
+                "UTF-8",
+                "https://stormmultimedia.ru/"
+            )
+        } catch (_: Exception) {
+            webView.loadUrl(primaryUrl)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -93,6 +106,8 @@ class MainActivity : ComponentActivity() {
         settings.databaseEnabled = true
         settings.allowFileAccess = true
         settings.allowContentAccess = true
+        settings.allowFileAccessFromFileURLs = true
+        settings.allowUniversalAccessFromFileURLs = true
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -103,7 +118,7 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.7"
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.12"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
@@ -114,6 +129,21 @@ class MainActivity : ComponentActivity() {
                 val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
                 startActivity(intent)
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun createAssetResponse(mimeType: String, assetPath: String): WebResourceResponse? {
+        return try {
+            val stream = assets.open(assetPath)
+            val headers = mapOf(
+                "Access-Control-Allow-Origin" to "*",
+                "Access-Control-Allow-Methods" to "GET, POST, OPTIONS, HEAD",
+                "Access-Control-Allow-Headers" to "*",
+                "Cache-Control" to "no-cache, no-store, must-revalidate"
+            )
+            WebResourceResponse(mimeType, "UTF-8", 200, "OK", headers, stream)
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -140,9 +170,8 @@ class MainActivity : ComponentActivity() {
                 error: WebResourceError?
             ) {
                 super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame == true && !isOfflineFallbackLoaded) {
-                    isOfflineFallbackLoaded = true
-                    webView.loadUrl(fallbackUrl)
+                if (request?.isForMainFrame == true) {
+                    loadAppContent()
                 }
             }
 
@@ -157,12 +186,7 @@ class MainActivity : ComponentActivity() {
                 if (host == "stormmultimedia.ru" || host == "www.stormmultimedia.ru") {
                     val path = url.path ?: "/"
                     if (path == "/" || path == "/index.html") {
-                        return try {
-                            val stream = assets.open("index.html")
-                            WebResourceResponse("text/html", "UTF-8", stream)
-                        } catch (_: Exception) {
-                            super.shouldInterceptRequest(view, request)
-                        }
+                        return createAssetResponse("text/html", "index.html") ?: super.shouldInterceptRequest(view, request)
                     }
 
                     if (path.startsWith("/styles/") || path.startsWith("/js/") || path.startsWith("/assets/") || path == "/manifest.json") {
@@ -182,12 +206,7 @@ class MainActivity : ComponentActivity() {
                             cleanPath.endsWith(".json") -> "application/json"
                             else -> "application/octet-stream"
                         }
-                        return try {
-                            val stream = assets.open(cleanPath)
-                            WebResourceResponse(mimeType, "UTF-8", stream)
-                        } catch (_: Exception) {
-                            super.shouldInterceptRequest(view, request)
-                        }
+                        return createAssetResponse(mimeType, cleanPath) ?: super.shouldInterceptRequest(view, request)
                     }
                 }
 
