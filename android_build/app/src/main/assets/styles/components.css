@@ -8064,30 +8064,33 @@ body.player-dropdown-active .cinema-player-iframe {
   gap: 16px !important;
 }
 
-/* 3. Jog Dial Controller (Rotary Scrubbing) */
+/* 3. Премиальный студийный контроллер Джог-дайл (Rotary Studio Scrubbing) */
 .inplayer-jog-dial-widget {
   position: absolute;
   right: 20px;
   bottom: 80px;
-  width: 170px;
-  background: rgba(10, 11, 16, 0.94);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  padding: 12px;
+  width: 216px;
+  max-width: calc(100vw - 32px);
+  background: linear-gradient(165deg, rgba(14, 18, 28, 0.96) 0%, rgba(7, 10, 17, 0.98) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  border-radius: 18px;
+  padding: 12px 14px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   z-index: 95 !important;
   pointer-events: auto !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75), 0 0 16px rgba(0, 210, 255, 0.15);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 210, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: slideInJog 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 @keyframes slideInJog {
-  from { opacity: 0; transform: scale(0.9) translateY(15px); }
+  from { opacity: 0; transform: scale(0.92) translateY(14px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
@@ -8096,79 +8099,274 @@ body.player-dropdown-active .cinema-player-iframe {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11.5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.jog-dial-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: #f1f5f9;
+  letter-spacing: 0.3px;
+}
+
+.jog-dial-header-title svg {
+  color: #00f0ff;
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.5));
 }
 
 .jog-dial-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
   cursor: pointer;
-  font-size: 12px;
-  padding: 2px 5px;
-  border-radius: 4px;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
 }
 
 .jog-dial-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
   color: #fff;
+  transform: scale(1.08);
 }
 
+/* Обертка ротора и шкала делений */
 .jog-dial-wheel-wrap {
   position: relative;
-  width: 100px;
-  height: 100px;
+  width: 126px;
+  height: 126px;
+  margin: 2px auto;
   cursor: grab;
-  user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.jog-dial-wheel {
+.jog-dial-wheel-wrap:active {
+  cursor: grabbing;
+}
+
+/* Внешнее кольцо шкалы градаций */
+.jog-dial-bezel {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 210, 255, 0.25);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.12), inset 0 0 12px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.jog-dial-bezel-svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+
+/* Вращающийся ротор */
+.jog-dial-wheel {
+  width: 110px;
+  height: 110px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #2a2d3d 0%, #12141c 70%);
-  border: 3px solid rgba(0, 210, 255, 0.4);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8), inset 0 2px 6px rgba(255, 255, 255, 0.15);
+  background: conic-gradient(
+    from 0deg,
+    #171c26 0deg,
+    #2b3446 45deg,
+    #171c26 90deg,
+    #2b3446 135deg,
+    #171c26 180deg,
+    #2b3446 225deg,
+    #171c26 270deg,
+    #2b3446 315deg,
+    #171c26 360deg
+  );
+  border: 2.5px solid rgba(0, 210, 255, 0.55);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.22), 0 0 14px rgba(0, 210, 255, 0.25);
   position: relative;
-  transition: transform 0.1s ease-out;
+  will-change: transform;
 }
 
-.jog-dial-tick {
+/* Концентрические канавки ротора */
+.jog-dial-rotor-grooves {
   position: absolute;
-  background: rgba(255, 255, 255, 0.35);
-  border-radius: 1px;
+  inset: 5px;
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle at 50% 50%,
+    transparent 0,
+    transparent 3px,
+    rgba(0, 0, 0, 0.25) 4px
+  );
+  pointer-events: none;
+  opacity: 0.85;
 }
-.jog-dial-tick.t1 { top: 6px; left: 50%; transform: translateX(-50%); width: 2px; height: 8px; }
-.jog-dial-tick.t2 { bottom: 6px; left: 50%; transform: translateX(-50%); width: 2px; height: 8px; }
-.jog-dial-tick.t3 { left: 6px; top: 50%; transform: translateY(-50%); width: 8px; height: 2px; }
-.jog-dial-tick.t4 { right: 6px; top: 50%; transform: translateY(-50%); width: 8px; height: 2px; }
 
-.jog-dial-indicator {
+/* Углубление для пальца с неоновым LED */
+.jog-dial-dimple {
   position: absolute;
-  top: 10px;
+  top: 9px;
   left: 50%;
   transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #0e1219 0%, #222938 100%);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.95), 0 1px 1px rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.jog-dial-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00f0ff;
+  box-shadow: 0 0 8px #00f0ff, 0 0 16px rgba(0, 240, 255, 0.85);
+}
+
+/* Центральный медальон / хаб ротора */
+.jog-dial-hub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #252d3d 0%, #0c0f16 100%);
+  border: 1.5px solid rgba(0, 210, 255, 0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.75), inset 0 1px 2px rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.jog-dial-hub-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent, #00f0ff);
-  box-shadow: 0 0 8px var(--accent, #00f0ff);
+  background: rgba(0, 210, 255, 0.5);
+  box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
 }
 
-.jog-dial-controls {
+/* Цифровой HUD дисплей информации */
+.jog-dial-hud {
+  width: 100%;
+  background: rgba(4, 7, 13, 0.8);
+  border: 1px solid rgba(0, 210, 255, 0.2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.jog-hud-time-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
   justify-content: space-between;
+  width: 100%;
 }
 
-.jog-dial-time-display {
-  font-size: 12px;
+.jog-hud-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.5px;
+}
+
+.jog-hud-time {
+  font-family: ui-monospace, 'Consolas', 'JetBrains Mono', monospace;
+  font-size: 13.5px;
   font-weight: 800;
-  color: var(--accent, #00f0ff);
+  color: #00f0ff;
+  letter-spacing: 0.4px;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
   font-variant-numeric: tabular-nums;
+}
+
+/* Всплывающий бейдж дельты */
+.jog-hud-delta-badge {
+  font-family: ui-monospace, 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  color: #38bdf8;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: rgba(0, 210, 255, 0.14);
+  border: 1px solid rgba(0, 210, 255, 0.28);
+  transition: opacity 0.25s ease, transform 0.2s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Кнопки управления 3D */
+.jog-dial-controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  width: 100%;
+}
+
+.jog-btn {
+  padding: 6px 2px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: linear-gradient(180deg, #1e2638 0%, #101522 100%);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #f1f5f9;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.jog-btn:hover {
+  border-color: #00f0ff;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(0, 210, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.jog-btn:active {
+  transform: translateY(1.5px) scale(0.96);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  background: #0b0e17;
+  border-color: #00f0ff;
+}
+
+.jog-btn-micro {
+  color: #38bdf8;
+  border-color: rgba(0, 210, 255, 0.22);
+}
+
+/* Подсказка снизу */
+.jog-dial-footer {
+  font-size: 9.5px;
+  color: #64748b;
+  text-align: center;
+  letter-spacing: 0.2px;
 }
 
 /* 4. Live Voice Track Switcher Right Sidebar (Identical to Episodes Sidebar) */
