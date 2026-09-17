@@ -978,6 +978,7 @@ export async function getFanFilmDetails(idOrUrl) {
       actors,
       cast: castList,
       duration: formattedDuration,
+      runtime_minutes: (duration && parseInt(duration, 10)) ? parseInt(duration, 10) : null,
       slogan,
       is4K: Boolean(player4kIframe),
       quality: player4kIframe ? '4K Ultra HD' : '1080p Full HD',

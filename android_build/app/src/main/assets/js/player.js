@@ -209,14 +209,16 @@ function initFullscreenControls() {
         if (data.event === 'pip' || data.event === 'pictureinpicture' || data.action === 'pip' || data.type === 'pip' || data.type === 'STORM_PIP') {
           toggleAdvancedPiP();
         }
-        if (data.event === 'time' || data.event === 'duration' || data.event === 'init' || data.event === 'play' || data.type === 'time' || data.type === 'duration') {
-          const streamDuration = data.duration || data.total || data.val;
-          if (streamDuration && typeof streamDuration === 'number' && streamDuration > 180) {
-            updateSidebarDuration(streamDuration);
-          }
+        let streamDuration = data.duration ?? data.total ?? data.val ?? data.value?.duration ?? data.data?.duration ?? data.data?.total;
+        if (data.key === 'kodik_player_time_update' || data.key === 'kodik_player_duration_update') {
+          streamDuration = data.value?.duration || streamDuration;
         }
-        if (typeof data.duration === 'number' && data.duration > 180) {
-          updateSidebarDuration(data.duration);
+        if (streamDuration) {
+          if (typeof streamDuration === 'number' && streamDuration > 30) {
+            updateSidebarDuration(streamDuration);
+          } else if (typeof streamDuration === 'string' && streamDuration.trim()) {
+            updateSidebarDuration(streamDuration.trim());
+          }
         }
       }
     } catch {}
@@ -2593,6 +2595,18 @@ function setupVideoFeatures(video, wrapper) {
     });
   }
 
+  // 0. Динамическая синхронизация реальной длительности потока со всеми элементами интерфейса
+  const syncStreamDuration = () => {
+    if (video && video.duration && isFinite(video.duration) && video.duration > 30) {
+      updateSidebarDuration(video.duration);
+    }
+  };
+  video.addEventListener('loadedmetadata', syncStreamDuration);
+  video.addEventListener('durationchange', syncStreamDuration);
+  video.addEventListener('canplay', syncStreamDuration);
+  video.addEventListener('playing', syncStreamDuration);
+  syncStreamDuration();
+
   // 1. Ambilight
   initAmbilight(video);
 
@@ -2628,6 +2642,13 @@ function setupVideoFeatures(video, wrapper) {
   let lastSyncTime = 0;
   video.addEventListener('timeupdate', () => {
     if (video.duration && !isNaN(video.duration)) {
+      if (isFinite(video.duration) && video.duration > 30) {
+        const durEl = document.querySelector('#cinema-side-info [data-info="duration"]');
+        const expected = formatDurationDisplay(video.duration);
+        if (durEl && expected && durEl.textContent.trim() !== expected) {
+          updateSidebarDuration(video.duration);
+        }
+      }
       const percent = Math.min(100, Math.round((video.currentTime / video.duration) * 100));
       currentProgressPercent = percent;
       currentWatchTimeSeconds = Math.round(video.currentTime);
@@ -7429,17 +7450,28 @@ export function getGenreIcon(genreName) {
 export function formatDurationDisplay(val) {
   if (!val) return '';
   if (typeof val === 'number') {
+    if (isNaN(val) || !isFinite(val) || val <= 0) return '';
     const totalMinutes = val > 360 ? Math.round(val / 60) : Math.round(val);
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
     return h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
   }
   const s = String(val).trim();
-  const timeMatch = s.match(/^(\d+):(\d{2}):(\d{2})$/);
-  if (timeMatch) {
-    const h = parseInt(timeMatch[1], 10);
-    const m = parseInt(timeMatch[2], 10);
+  if (s === '145 мин' || s === '2 ч 25 мин' || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') {
+    return '';
+  }
+  const timeMatchHms = s.match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (timeMatchHms) {
+    const h = parseInt(timeMatchHms[1], 10);
+    const m = parseInt(timeMatchHms[2], 10);
     return h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
+  }
+  const timeMatchMs = s.match(/^(\d+):(\d{2})$/);
+  if (timeMatchMs) {
+    const m = parseInt(timeMatchMs[1], 10);
+    const h = Math.floor(m / 60);
+    const remM = m % 60;
+    return h > 0 ? (remM > 0 ? `${h} ч ${remM} мин` : `${h} ч`) : `${m} мин`;
   }
   const minMatch = s.match(/^(\d+)\s*(?:мин|m|min)?$/i);
   if (minMatch) {
@@ -7463,13 +7495,16 @@ export function updateSidebarDuration(secondsOrString) {
   const formatted = formatDurationDisplay(secondsOrString);
   if (!formatted) return;
 
-  const valEl = document.querySelector('#cinema-side-info [data-info="duration"]');
-  if (valEl) {
-    valEl.innerHTML = `<b>${formatted}</b>`;
-  }
+  const valEls = document.querySelectorAll('#cinema-side-info [data-info="duration"], .cinema-info-table [data-info="duration"]');
+  valEls.forEach(el => {
+    el.innerHTML = `<b>${formatted}</b>`;
+  });
   if (currentMedia) {
     currentMedia.duration = formatted;
   }
+}
+if (typeof window !== 'undefined') {
+  window.updateSidebarDuration = updateSidebarDuration;
 }
 
 export function parseFormattedGenres(rawGenres, mediaContext = null) {
@@ -7671,9 +7706,19 @@ function renderDetailedMediaInfo(mediaDetails) {
                    currentMedia?.media_type === 'anime-series' || currentMedia?.media_type === 'cartoon-series' ||
                    Boolean(mediaDetails.seasons?.length || currentMedia?.seasons?.length || quickBarSeriesData?.seasons?.length);
   const isAnime = (mediaDetails.media_type && mediaDetails.media_type.includes('anime')) || (currentMedia?.media_type && currentMedia.media_type.includes('anime'));
-  const defaultRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~50 мин / серия') : '145 мин';
-  const rawDuration = mediaDetails.duration || mediaDetails.runtime_minutes || mediaDetails.runtime || defaultRuntime;
-  const duration = formatDurationDisplay(rawDuration) || '2 ч 25 мин';
+  const defaultRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~50 мин / серия') : '';
+  
+  // Проверяем, есть ли уже активный видеоплеер с точной длительностью потока
+  const activeVideo = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
+  let rawDuration = mediaDetails.duration || mediaDetails.runtime_minutes || mediaDetails.runtime;
+  if ((!rawDuration || rawDuration === '145 мин' || rawDuration === '2 ч 25 мин') && activeVideo && activeVideo.duration && isFinite(activeVideo.duration) && activeVideo.duration > 30) {
+    rawDuration = activeVideo.duration;
+  }
+  if (rawDuration === '145 мин' || rawDuration === '2 ч 25 мин') {
+    rawDuration = null;
+  }
+  const formattedDur = formatDurationDisplay(rawDuration);
+  const duration = formattedDur || defaultRuntime || 'Определение длительности...';
   const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
   const ratingImdb = mediaDetails.rating_imdb || mediaDetails.rating_tmdb || mediaDetails.rating || '—';
   const ratingTmdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';

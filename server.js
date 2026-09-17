@@ -1955,7 +1955,8 @@ app.get('/api/media/item', async (req, res) => {
     const needsSeasons = isSeries && (!mediaDetails.seasons || mediaDetails.seasons.length === 0);
 
     const hasRichCast = mediaDetails.cast?.some(c => Boolean(c.photo));
-    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasRichCast || !hasGenres || !hasValidDesc || needsSeasons) && mediaDetails.title) {
+    const needsDurationEnrichment = !mediaDetails.duration || !mediaDetails.runtime_minutes || mediaDetails.duration === '1 ч 45 мин' || mediaDetails.duration === '145 мин' || mediaDetails.duration === '2 ч 25 мин';
+    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasRichCast || !hasGenres || !hasValidDesc || needsDurationEnrichment || needsSeasons) && mediaDetails.title) {
       try {
         if (!mediaDetails.year) {
           mediaDetails.year = resolveMediaYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || '', mediaDetails.poster || '');
@@ -1980,7 +1981,12 @@ app.get('/api/media/item', async (req, res) => {
             }
             mediaDetails.release_date = enriched.release_date || mediaDetails.release_date;
             mediaDetails.year = enriched.year || mediaDetails.year || (mediaDetails.release_date ? mediaDetails.release_date.match(/\b(19\d\d|20\d\d)\b/)?.[1] : '');
-            mediaDetails.duration = enriched.duration || mediaDetails.duration;
+            if (enriched.duration) {
+              mediaDetails.duration = enriched.duration;
+            }
+            if (enriched.runtime_minutes) {
+              mediaDetails.runtime_minutes = enriched.runtime_minutes;
+            }
             mediaDetails.rating_kp = mediaDetails.rating_kp || enriched.rating_kp;
             mediaDetails.rating_tmdb = mediaDetails.rating_tmdb || enriched.rating_tmdb;
             if (enriched.genres?.length) {
