@@ -1881,6 +1881,9 @@ app.get('/api/media/item', async (req, res) => {
             if (ffDetails.kp_id && !mediaDetails.kp_id) {
               mediaDetails.kp_id = ffDetails.kp_id;
             }
+            if (ffDetails.fanfilm_hd_url) {
+              mediaDetails.fanfilm_hd_url = ffDetails.fanfilm_hd_url;
+            }
             if (ffDetails.players && ffDetails.players.length > 0) {
               mediaDetails.players = mediaDetails.players || [];
               ffDetails.players.forEach(p => {
@@ -1899,8 +1902,6 @@ app.get('/api/media/item', async (req, res) => {
         mediaDetails = await getFanFilmDetails(url || id);
         if (mediaDetails) {
           mediaDetails.fanfilm_4k_url = url || id;
-          mediaDetails.is4K = true;
-          mediaDetails.quality = '4K Ultra HD';
         }
       } catch {
         mediaDetails = null;
@@ -2399,15 +2400,39 @@ app.get('/api/player/check-stream', async (req, res) => {
     if (!targetUrl) return res.json({ alive: true });
 
     let checkUrl = targetUrl;
+    let fallbackHdUrl = null;
+
     if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
       const pageRes = await fetch(targetUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
         signal: AbortSignal.timeout(2500)
       });
       const pageHtml = await pageRes.text();
+
+      // HD Плеер
+      const hdMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+      const insMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-id=["']([^"']+)["']/i);
+      const pubMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-publisher-id=["']([^"']+)["']/i);
+      if (hdMatch) {
+        fallbackHdUrl = hdMatch[1].startsWith('//') ? 'https:' + hdMatch[1] : hdMatch[1];
+      } else if (insMatch) {
+        fallbackHdUrl = `https://river-3-329.kinescopecdn.net/${pubMatch ? pubMatch[1] : '675571372'}/embed-kp/${insMatch[1]}?design=2&lang=ru`;
+      }
+
+      const isHdActive = pageHtml.includes('class="tab-btn is-active" data-tab="hdplayer"') || pageHtml.includes('data-tab="hdplayer" class="tab-btn is-active"');
+      const is4kActive = pageHtml.includes('class="tab-btn is-active" data-tab="4kplayer"') || pageHtml.includes('data-tab="4kplayer" class="tab-btn is-active"');
+
+      // 4K Плеер
       const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
       if (m) {
         checkUrl = m[1].startsWith('//') ? 'https:' + m[1] : m[1];
+      } else if (fallbackHdUrl) {
+        return res.json({ alive: true, active_player: 'hd', fallback_url: fallbackHdUrl });
+      }
+
+      if (isHdActive && !is4kActive && fallbackHdUrl) {
+        // Сайт сам активировал проверенный HD поток
+        return res.json({ alive: true, active_player: 'hd', fallback_url: fallbackHdUrl });
       }
     }
 
@@ -2419,7 +2444,7 @@ app.get('/api/player/check-stream', async (req, res) => {
       signal: AbortSignal.timeout(2500)
     });
 
-    if (!chk.ok) return res.json({ alive: false });
+    if (!chk.ok) return res.json({ alive: false, fallback_url: fallbackHdUrl });
     const text = await chk.text();
     const lower = text.toLowerCase();
     const isDead = lower.includes('не найден') ||
@@ -2427,7 +2452,7 @@ app.get('/api/player/check-stream', async (req, res) => {
                    lower.includes('видео удалено') ||
                    lower.includes('файл не найден') ||
                    lower.includes('404 not found');
-    return res.json({ alive: !isDead });
+    return res.json({ alive: !isDead, fallback_url: fallbackHdUrl });
   } catch {
     return res.json({ alive: true });
   }
@@ -2436,28 +2461,67 @@ app.get('/api/player/check-stream', async (req, res) => {
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
-    let { url: targetUrl, season, episode, translation, hidden } = req.query;
+    let { url: targetUrl, season, episode, translation, hidden, prefer } = req.query;
     if (!targetUrl) {
       return res.status(400).send('URL плеера не указан');
     }
 
     if (!targetUrl.includes('stravers.live') && !targetUrl.includes('fanfilm4k')) {
-      // Для сторонних плееров (Kodik, HDRezka и др.) делаем безопасный редирект, исключая 403 Forbidden
+      // Для сторонних плееров (Kinescope, Kodik, HDRezka и др.) делаем прямой безопасный редирект
       return res.redirect(targetUrl);
     }
 
     let directIframe = targetUrl;
+    let fallbackHdIframe = null;
+
     if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
       const pageRes = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        },
+        signal: AbortSignal.timeout(3500)
       });
       const pageHtml = await pageRes.text();
-      const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
-      if (m) {
-        directIframe = m[1].startsWith('//') ? 'https:' + m[1] : m[1];
+
+      // 1. Извлечение HD плеера (Kinescope CDN)
+      const hdMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+      const insMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-id=["']([^"']+)["']/i);
+      const pubMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-publisher-id=["']([^"']+)["']/i);
+      const designMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-design=["']([^"']+)["']/i);
+      if (hdMatch) {
+        fallbackHdIframe = hdMatch[1].startsWith('//') ? 'https:' + hdMatch[1] : hdMatch[1];
+      } else if (insMatch) {
+        const pubId = pubMatch ? pubMatch[1] : '675571372';
+        const design = designMatch ? designMatch[1] : '2';
+        fallbackHdIframe = `https://river-3-329.kinescopecdn.net/${pubId}/embed-kp/${insMatch[1]}?design=${design}&lang=ru`;
       }
+
+      // 2. Определение активной вкладки
+      const isHdActive = pageHtml.includes('class="tab-btn is-active" data-tab="hdplayer"') || pageHtml.includes('data-tab="hdplayer" class="tab-btn is-active"');
+      const is4kActive = pageHtml.includes('class="tab-btn is-active" data-tab="4kplayer"') || pageHtml.includes('data-tab="4kplayer" class="tab-btn is-active"');
+
+      // 3. Извлечение 4K плеера
+      const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+      const fourKIframe = m ? (m[1].startsWith('//') ? 'https:' + m[1] : m[1]) : '';
+
+      const userPref = (prefer || '').toLowerCase();
+      if (userPref === '4k' && fourKIframe) {
+        directIframe = fourKIframe;
+      } else if (userPref === 'hd' && fallbackHdIframe) {
+        directIframe = fallbackHdIframe;
+      } else if (isHdActive && fallbackHdIframe) {
+        // Сайт сам выставил HD плеер как активный — используем рабочий Kinescope поток
+        directIframe = fallbackHdIframe;
+      } else if (fourKIframe) {
+        directIframe = fourKIframe;
+      } else if (fallbackHdIframe) {
+        directIframe = fallbackHdIframe;
+      }
+    }
+
+    // Если итоговый плеер — Kinescope CDN, перенаправляем сразу без промежуточных оберток
+    if (directIframe.includes('kinescopecdn.net')) {
+      return res.redirect(directIframe);
     }
 
     const urlObj = new URL(directIframe);
@@ -2494,6 +2558,10 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                            lowerHtml.includes('404 not found');
 
         if (isNotFound) {
+          if (fallbackHdIframe) {
+            console.warn('FanFilm embed: 4K поток недоступен, выполняем мгновенный авто-переход на HD Kinescope CDN');
+            return res.redirect(fallbackHdIframe);
+          }
           console.warn('FanFilm embed: обнаружен экран "контент не найден", переключаем на следующий источник');
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           return res.send(`
@@ -3213,10 +3281,12 @@ app.get('/api/player/series-options', async (req, res) => {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       });
-      const pageHtml = await pageRes.text();
+      const isHdActive = pageHtml.includes('class="tab-btn is-active" data-tab="hdplayer"') || pageHtml.includes('data-tab="hdplayer" class="tab-btn is-active"');
       const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
-      if (m) {
+      if (m && !isHdActive) {
         iframeSrc = m[1].startsWith('//') ? 'https:' + m[1] : m[1];
+      } else {
+        return res.json({ success: false, is_kinescope: true });
       }
     }
 
@@ -3856,7 +3926,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.15';
+  const currentAppVersion = '1.0.16';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
