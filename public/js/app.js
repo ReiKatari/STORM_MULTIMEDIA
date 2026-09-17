@@ -65,7 +65,7 @@ import { openNeuralRecommenderModal } from './neural-recommender.js';
 import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js';
 import { openRemoteQrModal } from './storm-remote.js';
 import { initAdminDashboard } from './admin-dashboard.js';
-import { renderOfflineLibrary } from './offline-storage.js';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js';
 import { getBaselineCatalog } from './catalog-baseline.js';
 import { getStatusIconSvg } from './status-icons.js';
 import { checkForUpdates } from './updater.js';
@@ -128,6 +128,7 @@ async function startStormApp() {
   initLanguageSwitcher();
   initNewCyberFeatures();
   initAdminDashboard();
+  initDynamicMediaIsland();
   updateFamilyProfileHeader();
 
   // Предзагрузка реальной истории просмотров без выдумок
@@ -1070,6 +1071,223 @@ function showActionSheetToast(msg) {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
   }, 2200);
+}
+
+// ==========================================
+// RADIAL QUICK ACTION RING (КОЛЬЦЕВОЕ 3D МЕНЮ)
+// ==========================================
+let radialPortal = null;
+
+export function openRadialActionRing(event, item) {
+  if (!item) return;
+
+  if (!radialPortal) {
+    radialPortal = document.createElement('div');
+    radialPortal.id = 'storm-radial-menu-portal';
+    radialPortal.className = 'storm-radial-menu-portal';
+    document.body.appendChild(radialPortal);
+  }
+
+  const clientX = (event.touches && event.touches[0]) ? event.touches[0].clientX : (event.clientX || window.innerWidth / 2);
+  const clientY = (event.touches && event.touches[0]) ? event.touches[0].clientY : (event.clientY || window.innerHeight / 2);
+
+  const menuRadius = 110;
+  const posX = Math.max(menuRadius + 20, Math.min(window.innerWidth - menuRadius - 20, clientX));
+  const posY = Math.max(menuRadius + 20, Math.min(window.innerHeight - menuRadius - 20, clientY));
+
+  radialPortal.style.left = `${posX}px`;
+  radialPortal.style.top = `${posY}px`;
+
+  const posterSrc = item.poster || 'assets/favicon.svg';
+  const cleanTitle = cleanVideoTitle(item.title || '');
+
+  radialPortal.innerHTML = `
+    <div class="radial-ring-backdrop" id="radial-ring-backdrop"></div>
+    <div class="radial-ring-center">
+      <img src="${posterSrc}" alt="${escapeHtml(cleanTitle)}" class="radial-center-thumb" onerror="this.src='assets/favicon.svg'">
+      <div class="radial-center-title">${escapeHtml(cleanTitle)}</div>
+    </div>
+    <div class="radial-actions-wheel">
+      <button type="button" class="radial-action-item action-watch" data-action="watch" title="Смотреть фильм или серию">
+        <span class="radial-action-icon">🎬</span>
+        <span class="radial-action-label">Смотреть</span>
+      </button>
+      <button type="button" class="radial-action-item action-trailer" data-action="trailer" title="Смотреть трейлер">
+        <span class="radial-action-icon">🍿</span>
+        <span class="radial-action-label">Трейлер</span>
+      </button>
+      <button type="button" class="radial-action-item action-bookmark" data-action="bookmark" title="Добавить в закладки">
+        <span class="radial-action-icon">🔖</span>
+        <span class="radial-action-label">Закладки</span>
+      </button>
+      <button type="button" class="radial-action-item action-download" data-action="download" title="Сохранить в офлайн-память">
+        <span class="radial-action-icon">💾</span>
+        <span class="radial-action-label">Скачать</span>
+      </button>
+      <button type="button" class="radial-action-item action-share" data-action="share" title="Поделиться релизом">
+        <span class="radial-action-icon">🔗</span>
+        <span class="radial-action-label">Ссылка</span>
+      </button>
+    </div>
+  `;
+
+  radialPortal.classList.add('is-open');
+
+  const closeRadial = () => {
+    radialPortal.classList.remove('is-open');
+  };
+
+  const backdrop = radialPortal.querySelector('#radial-ring-backdrop');
+  if (backdrop) backdrop.onclick = closeRadial;
+
+  radialPortal.querySelectorAll('.radial-action-item').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      closeRadial();
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(15); } catch (_) {}
+      }
+
+      switch (action) {
+        case 'watch':
+          openPlayerModal(item);
+          break;
+        case 'trailer':
+          openPlayerModal(item, { isTrailer: true });
+          break;
+        case 'bookmark':
+          saveBookmarkStatus(item, 'planned');
+          showToast(`«${cleanTitle}» добавлен в закладки «Буду смотреть»`, 'success');
+          break;
+        case 'download':
+          saveMediaForOffline(item);
+          break;
+        case 'share':
+          const shareUrl = `${window.location.origin}/#${encodeURIComponent(item.id || '')}`;
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(shareUrl).then(() => {
+              showToast('🔗 Ссылка скопирована в буфер обмена', 'info');
+            }).catch(() => {
+              showToast('Не удалось скопировать ссылку', 'warning');
+            });
+          }
+          break;
+      }
+    };
+  });
+}
+
+function formatMediaTime(sec) {
+  if (!sec || isNaN(sec)) return '00:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+export function renderSegmentedEpisodeBar(percent, totalEp = 8) {
+  const segCount = Math.min(10, Math.max(6, totalEp || 8));
+  const activeCount = Math.round((percent / 100) * segCount);
+  let ticks = '';
+  for (let i = 0; i < segCount; i++) {
+    const isDone = i < activeCount;
+    const isCurrent = i === activeCount && percent > 0 && percent < 100;
+    const cls = isDone ? 'seg-done' : (isCurrent ? 'seg-current' : 'seg-unwatched');
+    ticks += `<span class="segmented-tick ${cls}"></span>`;
+  }
+  return `
+    <div class="media-card-segments-bar" title="${percent}% просмотрено">
+      ${ticks}
+    </div>
+  `;
+}
+
+// ==========================================
+// DYNAMIC MEDIA ISLAND (ПЛАВАЮЩИЙ 3D MINI-HUD)
+// ==========================================
+let dynamicIslandEl = null;
+
+export function initDynamicMediaIsland() {
+  if (dynamicIslandEl) return;
+
+  dynamicIslandEl = document.createElement('div');
+  dynamicIslandEl.id = 'storm-dynamic-media-island';
+  dynamicIslandEl.className = 'storm-dynamic-media-island';
+  dynamicIslandEl.innerHTML = `
+    <div class="island-content">
+      <div class="island-eq-anim">
+        <span></span><span></span><span></span>
+      </div>
+      <img class="island-poster" src="assets/favicon.svg" alt="Постер">
+      <div class="island-text-group">
+        <div class="island-title" id="island-media-title">Воспроизведение...</div>
+        <div class="island-time" id="island-media-time">00:00</div>
+      </div>
+      <div class="island-controls">
+        <button type="button" class="island-ctrl-btn" id="island-play-btn" title="Пауза и воспроизведение">⏯</button>
+        <button type="button" class="island-ctrl-btn" id="island-expand-btn" title="Развернуть кинотеатр">⤢</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dynamicIslandEl);
+
+  const expandBtn = dynamicIslandEl.querySelector('#island-expand-btn');
+  if (expandBtn) {
+    expandBtn.onclick = () => {
+      const modal = document.getElementById('cinema-modal');
+      if (modal) {
+        modal.classList.remove('is-mini-pip');
+        modal.classList.add('is-open');
+        hideDynamicMediaIsland();
+      }
+    };
+  }
+
+  const playBtn = dynamicIslandEl.querySelector('#island-play-btn');
+  if (playBtn) {
+    playBtn.onclick = () => {
+      const v = document.getElementById('storm-video-player');
+      if (v) {
+        if (v.paused) v.play();
+        else v.pause();
+      }
+    };
+  }
+
+  setInterval(() => {
+    const modal = document.getElementById('cinema-modal');
+    const v = document.getElementById('storm-video-player');
+    const isModalOpen = modal?.classList.contains('is-open');
+    const isMiniPip = modal?.classList.contains('is-mini-pip');
+    const isPlaying = v && !v.paused && !v.ended;
+
+    if (isPlaying && (isMiniPip || window.scrollY > 400)) {
+      showDynamicMediaIsland(v);
+    } else if (!isPlaying && !isMiniPip) {
+      hideDynamicMediaIsland();
+    }
+  }, 1000);
+}
+
+function showDynamicMediaIsland(video) {
+  if (!dynamicIslandEl) return;
+  dynamicIslandEl.classList.add('is-visible');
+
+  const titleEl = dynamicIslandEl.querySelector('#island-media-title');
+  const timeEl = dynamicIslandEl.querySelector('#island-media-time');
+  const modalTitle = document.getElementById('cinema-modal-title');
+
+  if (titleEl && modalTitle) {
+    titleEl.textContent = modalTitle.textContent || 'Воспроизведение';
+  }
+  if (video && timeEl) {
+    timeEl.textContent = `${formatMediaTime(video.currentTime)} / ${formatMediaTime(video.duration || 0)}`;
+  }
+}
+
+function hideDynamicMediaIsland() {
+  if (dynamicIslandEl) dynamicIslandEl.classList.remove('is-visible');
 }
 
 const clientTabCache = new Map();
@@ -2025,11 +2243,13 @@ function createRailCardHtml(item, idx, isWide = false) {
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
-          ${displayPercent > 0 ? `
+          ${displayPercent > 0 ? (
+            isSeries ? renderSegmentedEpisodeBar(displayPercent, parseInt(item.total_episodes, 10) || 8) : `
             <div class="media-card-progress storm-progress-container">
               <div class="storm-progress-bar" style="width: ${displayPercent}%"></div>
             </div>
-          ` : ''}
+            `
+          ) : ''}
         </div>
         <div class="media-card-content">
           <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
@@ -2654,22 +2874,22 @@ function renderHomeView(items) {
         };
       }
 
-      // Контекстное меню по правому клику (Desktop)
+      // Контекстное кольцевое 3D-меню по правому клику (Desktop)
       card.oncontextmenu = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openCardActionSheet(item);
+        openRadialActionRing(e, item);
       };
 
-      // Долгое нажатие на сенсорных экранах (Mobile Long Press)
+      // Долгое нажатие на сенсорных экранах (Mobile Radial Action Ring)
       let touchTimer = null;
-      card.ontouchstart = () => {
+      card.ontouchstart = (e) => {
         touchTimer = setTimeout(() => {
           if (typeof navigator !== 'undefined' && navigator.vibrate) {
             try { navigator.vibrate(15); } catch (_) {}
           }
-          openCardActionSheet(item);
-        }, 550);
+          openRadialActionRing(e, item);
+        }, 500);
       };
       card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
       card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
@@ -2786,11 +3006,13 @@ function renderMediaItems(items) {
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
-          ${item.progress_percent > 0 ? `
+          ${item.progress_percent > 0 ? (
+            checkIfMediaIsSeries(item) ? renderSegmentedEpisodeBar(item.progress_percent, parseInt(item.total_episodes, 10) || 8) : `
             <div class="media-card-progress storm-progress-container">
               <div class="storm-progress-bar" style="width: ${item.progress_percent}%"></div>
             </div>
-          ` : ''}
+            `
+          ) : ''}
         </div>
         <div class="media-card-content">
           <div class="media-card-title" title="${formattedTitle}">${formattedTitle}</div>
@@ -2839,22 +3061,22 @@ function renderMediaItems(items) {
         };
       }
 
-      // Контекстное меню по правому клику (Desktop)
+      // Контекстное кольцевое 3D-меню по правому клику (Desktop)
       card.oncontextmenu = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openCardActionSheet(items[idx]);
+        openRadialActionRing(e, items[idx]);
       };
 
-      // Долгое нажатие на сенсорных экранах (Mobile Long Press)
+      // Долгое нажатие на сенсорных экранах (Mobile Radial Action Ring)
       let touchTimer = null;
-      card.ontouchstart = () => {
+      card.ontouchstart = (e) => {
         touchTimer = setTimeout(() => {
           if (typeof navigator !== 'undefined' && navigator.vibrate) {
             try { navigator.vibrate(15); } catch (_) {}
           }
-          openCardActionSheet(items[idx]);
-        }, 550);
+          openRadialActionRing(e, items[idx]);
+        }, 500);
       };
       card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
       card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
@@ -3262,7 +3484,23 @@ export async function executeSearch(query = null) {
     try {
       const res = await fetch(`/api/media/search?q=${encodeURIComponent(q)}&source=${currentSource}`);
       const data = await res.json();
-      rawCatalogItems = deduplicateMediaList(data.items || []);
+      let items = data.items || [];
+
+      // Семантический поиск по смыслу и синопсису если обычный поиск не нашел совпадений
+      if (items.length === 0 && q.length >= 3) {
+        try {
+          const semRes = await fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`);
+          if (semRes.ok) {
+            const semData = await semRes.json();
+            if (semData?.items?.length > 0) {
+              items = semData.items;
+              showToast('💡 Показаны результаты семантического поиска по смыслу и сюжету', 'info');
+            }
+          }
+        } catch (_) {}
+      }
+
+      rawCatalogItems = deduplicateMediaList(items);
       totalCatalogItems = rawCatalogItems.length;
       totalCatalogPages = 1;
       currentPage = 1;
@@ -3312,6 +3550,55 @@ function initSearch() {
       executeSearch('');
     }
   });
+
+  // Автоматическое распознавание вставки прямой ссылки на видеопоток (Direct Stream Link)
+  input.addEventListener('paste', (e) => {
+    const pasted = (e.clipboardData || window.clipboardData)?.getData('text')?.trim() || '';
+    if (pasted.startsWith('http://') || pasted.startsWith('https://')) {
+      if (pasted.includes('.m3u8') || pasted.includes('.mp4') || pasted.includes('stravers.live') || pasted.includes('fanfilm')) {
+        e.preventDefault();
+        input.value = pasted;
+        showToast('🚀 Обнаружена ссылка на видеопоток! Запуск в кинотеатре...', 'success');
+        openPlayerModal({ streamUrl: pasted, title: 'Прямой видеопоток' });
+      }
+    }
+  });
+
+  // Визуальный поиск по постеру через Drag & Drop в поле поиска
+  const searchBox = document.querySelector('.storm-search-box');
+  if (searchBox) {
+    searchBox.ondragover = (e) => {
+      e.preventDefault();
+      searchBox.classList.add('search-drag-over');
+    };
+    searchBox.ondragleave = () => {
+      searchBox.classList.remove('search-drag-over');
+    };
+    searchBox.ondrop = async (e) => {
+      e.preventDefault();
+      searchBox.classList.remove('search-drag-over');
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+        showToast('🔍 Визуальный поиск по постеру...', 'info');
+        const formData = new FormData();
+        formData.append('image', files[0]);
+        try {
+          const res = await fetch('/api/search/visual', { method: 'POST', body: formData });
+          const data = await res.json();
+          if (data?.matchedQuery) {
+            input.value = data.matchedQuery;
+            executeSearch(data.matchedQuery);
+            showToast(`Найдено по постеру: ${data.matchedQuery}`, 'success');
+          } else if (data?.items?.length) {
+            rawCatalogItems = deduplicateMediaList(data.items);
+            renderFilteredCatalog();
+          }
+        } catch (err) {
+          showToast('Не удалось распознать постер', 'warning');
+        }
+      }
+    };
+  }
 
   input.addEventListener('input', (e) => {
     clearTimeout(debounceTimer);

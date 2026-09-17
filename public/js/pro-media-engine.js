@@ -22,6 +22,7 @@ const DEFAULT_VIDEO_SETTINGS = {
   casSharpness: 'off', // 'off', 'soft', 'standard', 'ultra'
   filmGrain: 'off', // 'off', 'subtle', 'cinema_35mm'
   aspectRatio: '16:9', // '16:9', '21:9', 'fit', 'auto'
+  upscalerShader: 'off', // 'off', 'cas', 'anime4k', 'fsr'
   brightness: 100, // 70 - 150 %
   contrast: 100, // 70 - 160 %
   saturation: 100, // 0 - 200 %
@@ -55,6 +56,7 @@ export const EQ_PRESETS = {
 const DEFAULT_AUDIO_SETTINGS = {
   spatialMode: 'stereo', // 'stereo', 'atmos', 'dtsx', 'headphones'
   voiceBoost: 'off', // 'off', 'mild', 'strong'
+  speechIsolation: 'off', // 'off', 'mild', 'strong', 'cinema'
   bassBoost: 'off', // 'off', 'cinema', 'ultra'
   nightMode: false,
   eqPreset: 'cinema',
@@ -91,6 +93,33 @@ export function getProAudioNightMode() {
   return !!proAudioSettings.nightMode;
 }
 
+export function setProAudioSpeechIsolation(mode) {
+  proAudioSettings.speechIsolation = mode || 'off';
+  try {
+    localStorage.setItem('storm_pro_audio_settings', JSON.stringify(proAudioSettings));
+    localStorage.setItem('storm_speech_isolation', proAudioSettings.speechIsolation);
+  } catch {}
+  applyProAudioSettings();
+  return proAudioSettings.speechIsolation;
+}
+
+export function getProAudioSpeechIsolation() {
+  return proAudioSettings.speechIsolation || 'off';
+}
+
+export function setVideoUpscalerShader(mode) {
+  proVideoSettings.upscalerShader = mode || 'off';
+  try {
+    localStorage.setItem('storm_pro_video_settings', JSON.stringify(proVideoSettings));
+  } catch {}
+  applyProVideoSettings();
+  return proVideoSettings.upscalerShader;
+}
+
+export function getVideoUpscalerShader() {
+  return proVideoSettings.upscalerShader || 'off';
+}
+
 // Узлы Web Audio API
 let proAudioCtx = null;
 let proSourceNode = null;
@@ -108,6 +137,296 @@ let activeVisualizerCanvas = null;
 let visualizerRaf = null;
 let currentVisualizerMode = 'off'; // 'off', 'spectrum', 'wave', 'matrix'
 let attachedMediaElement = null;
+
+// Speech Isolation DSP (Mid-Side Matrix)
+let proSpeechSplitter = null;
+let proSpeechMerger = null;
+let proSpeechHighPass = null;
+let proSpeechPeaking = null;
+let proSpeechMidGain = null;
+let proSpeechSideGain = null;
+
+// WebGL Canvas Video Upscaler
+let glCanvas = null;
+let gl = null;
+let glProgram = null;
+let glTexture = null;
+let glRafId = null;
+let glPositionBuffer = null;
+let glTexCoordBuffer = null;
+
+const VS_SOURCE = `
+attribute vec2 a_position;
+attribute vec2 a_texCoord;
+varying vec2 v_texCoord;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+  v_texCoord = a_texCoord;
+}
+`;
+
+const FS_CAS = `
+precision mediump float;
+varying vec2 v_texCoord;
+uniform sampler2D u_image;
+uniform vec2 u_resolution;
+
+void main() {
+  vec2 step = 1.0 / u_resolution;
+  vec4 c = texture2D(u_image, v_texCoord);
+  vec4 n = texture2D(u_image, v_texCoord + vec2(0.0, -step.y));
+  vec4 s = texture2D(u_image, v_texCoord + vec2(0.0, step.y));
+  vec4 w = texture2D(u_image, v_texCoord + vec2(-step.x, 0.0));
+  vec4 e = texture2D(u_image, v_texCoord + vec2(step.x, 0.0));
+
+  vec4 minColor = min(min(min(min(c, n), s), w), e);
+  vec4 maxColor = max(max(max(max(c, n), s), w), e);
+  vec4 diff = maxColor - minColor;
+  vec4 weight = clamp(diff * 3.5, 0.0, 0.35);
+
+  vec4 sharpened = c + (c - (n + s + w + e) * 0.25) * weight;
+  gl_FragColor = clamp(sharpened, 0.0, 1.0);
+}
+`;
+
+const FS_ANIME4K = `
+precision mediump float;
+varying vec2 v_texCoord;
+uniform sampler2D u_image;
+uniform vec2 u_resolution;
+
+void main() {
+  vec2 step = 1.0 / u_resolution;
+  vec4 c = texture2D(u_image, v_texCoord);
+  vec4 n = texture2D(u_image, v_texCoord + vec2(0.0, -step.y));
+  vec4 s = texture2D(u_image, v_texCoord + vec2(0.0, step.y));
+  vec4 w = texture2D(u_image, v_texCoord + vec2(-step.x, 0.0));
+  vec4 e = texture2D(u_image, v_texCoord + vec2(step.x, 0.0));
+
+  float gradX = length(e.rgb - w.rgb);
+  float gradY = length(s.rgb - n.rgb);
+  float edge = clamp((gradX + gradY) * 2.8, 0.0, 1.0);
+
+  vec3 smoothed = (n.rgb + s.rgb + w.rgb + e.rgb + c.rgb * 2.0) / 6.0;
+  vec3 sharpened = c.rgb * 1.15 - smoothed * 0.15;
+  vec3 result = mix(smoothed, sharpened, edge);
+  gl_FragColor = vec4(clamp(result, 0.0, 1.0), c.a);
+}
+`;
+
+const FS_FSR = `
+precision mediump float;
+varying vec2 v_texCoord;
+uniform sampler2D u_image;
+uniform vec2 u_resolution;
+
+void main() {
+  vec2 step = 1.0 / u_resolution;
+  vec4 c = texture2D(u_image, v_texCoord);
+  vec4 nw = texture2D(u_image, v_texCoord + vec2(-step.x, -step.y));
+  vec4 ne = texture2D(u_image, v_texCoord + vec2(step.x, -step.y));
+  vec4 sw = texture2D(u_image, v_texCoord + vec2(-step.x, step.y));
+  vec4 se = texture2D(u_image, v_texCoord + vec2(step.x, step.y));
+
+  vec4 avg = (nw + ne + sw + se + c * 4.0) / 8.0;
+  vec4 diff = c - avg;
+  vec4 fsrOut = c + diff * 1.35;
+  gl_FragColor = clamp(fsrOut, 0.0, 1.0);
+}
+`;
+
+function compileShader(glContext, type, source) {
+  const shader = glContext.createShader(type);
+  glContext.shaderSource(shader, source);
+  glContext.compileShader(shader);
+  if (!glContext.getShaderParameter(shader, glContext.COMPILE_STATUS)) {
+    console.warn('Shader compile error:', glContext.getShaderInfoLog(shader));
+    glContext.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+function createProgram(glContext, vs, fs) {
+  const program = glContext.createProgram();
+  glContext.attachShader(program, vs);
+  glContext.attachShader(program, fs);
+  glContext.linkProgram(program);
+  if (!glContext.getProgramParameter(program, glContext.LINK_STATUS)) {
+    console.warn('Program link error:', glContext.getProgramInfoLog(program));
+    glContext.deleteProgram(program);
+    return null;
+  }
+  return program;
+}
+
+export function runAudioLatencyTest() {
+  const video = document.getElementById('storm-video-player');
+  if (!proAudioCtx) {
+    initProAudioEngine(video);
+  }
+  if (proAudioCtx && proAudioCtx.state === 'suspended') {
+    proAudioCtx.resume().catch(() => {});
+  }
+
+  let flashOverlay = document.getElementById('audio-sync-flash-overlay');
+  if (!flashOverlay) {
+    flashOverlay = document.createElement('div');
+    flashOverlay.id = 'audio-sync-flash-overlay';
+    flashOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,210,255,0.45);z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.05s ease;';
+    document.body.appendChild(flashOverlay);
+  }
+
+  flashOverlay.style.opacity = '1';
+  setTimeout(() => {
+    flashOverlay.style.opacity = '0';
+  }, 100);
+
+  try {
+    if (proAudioCtx) {
+      const osc = proAudioCtx.createOscillator();
+      const gain = proAudioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, proAudioCtx.currentTime);
+      gain.gain.setValueAtTime(0.3, proAudioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, proAudioCtx.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(proAudioCtx.destination);
+      osc.start();
+      osc.stop(proAudioCtx.currentTime + 0.12);
+    }
+  } catch {}
+}
+
+export function initVideoUpscalerShaders(video) {
+  if (!video) return;
+  const container = video.closest('.player-video-box') || video.parentElement;
+  if (!container) return;
+
+  if (!glCanvas) {
+    glCanvas = document.createElement('canvas');
+    glCanvas.id = 'storm-pro-webgl-canvas';
+    glCanvas.className = 'storm-pro-webgl-canvas';
+    glCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:4;display:none;';
+    container.style.position = 'relative';
+    container.appendChild(glCanvas);
+  }
+
+  const mode = proVideoSettings.upscalerShader || 'off';
+  if (mode === 'off') {
+    stopVideoUpscalerShaders();
+    return;
+  }
+
+  try {
+    gl = glCanvas.getContext('webgl', { preserveDrawingBuffer: true }) || glCanvas.getContext('experimental-webgl');
+    if (!gl) return;
+
+    let fsSource = FS_CAS;
+    if (mode === 'anime4k') fsSource = FS_ANIME4K;
+    else if (mode === 'fsr') fsSource = FS_FSR;
+
+    const vs = compileShader(gl, gl.VERTEX_SHADER, VS_SOURCE);
+    const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
+    if (!vs || !fs) return;
+
+    glProgram = createProgram(gl, vs, fs);
+    gl.useProgram(glProgram);
+
+    glPositionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, glPositionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+       1,  1
+    ]), gl.STATIC_DRAW);
+
+    glTexCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, glTexCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      0, 1,
+      1, 1,
+      0, 0,
+      1, 0
+    ]), gl.STATIC_DRAW);
+
+    glTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, glTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    glCanvas.style.display = 'block';
+    video.style.opacity = '0.001';
+
+    startGlRenderLoop(video);
+  } catch (err) {
+    console.warn('WebGL Upscaler note:', err.message);
+    stopVideoUpscalerShaders();
+  }
+}
+
+export function stopVideoUpscalerShaders() {
+  if (glRafId) {
+    cancelAnimationFrame(glRafId);
+    glRafId = null;
+  }
+  if (glCanvas) {
+    glCanvas.style.display = 'none';
+  }
+  const video = document.getElementById('storm-video-player');
+  if (video) {
+    video.style.opacity = '1';
+  }
+}
+
+function startGlRenderLoop(video) {
+  if (glRafId) cancelAnimationFrame(glRafId);
+
+  const posLoc = gl.getAttribLocation(glProgram, 'a_position');
+  const texLoc = gl.getAttribLocation(glProgram, 'a_texCoord');
+  const resLoc = gl.getUniformLocation(glProgram, 'u_resolution');
+
+  const render = () => {
+    if (proVideoSettings.upscalerShader === 'off' || !glCanvas || glCanvas.style.display === 'none') {
+      return;
+    }
+
+    if (video && video.readyState >= 2 && !video.paused && !video.ended) {
+      if (glCanvas.width !== video.videoWidth || glCanvas.height !== video.videoHeight) {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          glCanvas.width = video.videoWidth;
+          glCanvas.height = video.videoHeight;
+          gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+        }
+      }
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, glTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, glPositionBuffer);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, glTexCoordBuffer);
+      gl.enableVertexAttribArray(texLoc);
+      gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 0, 0);
+
+      if (resLoc) {
+        gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
+      }
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    glRafId = requestAnimationFrame(render);
+  };
+
+  glRafId = requestAnimationFrame(render);
+}
 
 // ==========================================
 // 3. ПРИМЕНЕНИЕ ВИДЕО-НАСТРОЕК (CSS & SVG FILTERS)
@@ -265,6 +584,15 @@ export function applyProVideoSettings(target = null) {
     }
   }
 
+  // 3. WebGL шейдерный апскейлер (FSR 1.0, CAS, Anime4K)
+  if (videoEl && videoEl.tagName === 'VIDEO') {
+    if (s.upscalerShader && s.upscalerShader !== 'off') {
+      initVideoUpscalerShaders(videoEl);
+    } else {
+      stopVideoUpscalerShaders();
+    }
+  }
+
   // Сохраняем в память
   try {
     localStorage.setItem('storm_pro_video_settings', JSON.stringify(proVideoSettings));
@@ -375,7 +703,58 @@ export function initProAudioEngine(video = document.getElementById('storm-video-
 
           let lastNode = proSourceNode;
           lastNode.connect(proDelayNode);
-          lastNode = delayNode = proDelayNode;
+          lastNode = proDelayNode;
+
+          // Mid-Side Speech Isolation Matrix
+          proSpeechSplitter = proAudioCtx.createChannelSplitter(2);
+          proSpeechMerger = proAudioCtx.createChannelMerger(2);
+
+          proSpeechHighPass = proAudioCtx.createBiquadFilter();
+          proSpeechHighPass.type = 'highpass';
+          proSpeechHighPass.frequency.setValueAtTime(120, proAudioCtx.currentTime);
+
+          proSpeechPeaking = proAudioCtx.createBiquadFilter();
+          proSpeechPeaking.type = 'peaking';
+          proSpeechPeaking.frequency.setValueAtTime(2800, proAudioCtx.currentTime);
+          proSpeechPeaking.Q.setValueAtTime(1.2, proAudioCtx.currentTime);
+
+          proSpeechMidGain = proAudioCtx.createGain();
+          proSpeechSideGain = proAudioCtx.createGain();
+
+          lastNode.connect(proSpeechSplitter);
+
+          const midSumL = proAudioCtx.createGain();
+          midSumL.gain.setValueAtTime(0.5, proAudioCtx.currentTime);
+          const midSumR = proAudioCtx.createGain();
+          midSumR.gain.setValueAtTime(0.5, proAudioCtx.currentTime);
+          proSpeechSplitter.connect(midSumL, 0);
+          proSpeechSplitter.connect(midSumR, 1);
+
+          midSumL.connect(proSpeechHighPass);
+          midSumR.connect(proSpeechHighPass);
+          proSpeechHighPass.connect(proSpeechPeaking);
+          proSpeechPeaking.connect(proSpeechMidGain);
+
+          const sideDiffL = proAudioCtx.createGain();
+          sideDiffL.gain.setValueAtTime(0.5, proAudioCtx.currentTime);
+          const sideDiffR = proAudioCtx.createGain();
+          sideDiffR.gain.setValueAtTime(-0.5, proAudioCtx.currentTime);
+          proSpeechSplitter.connect(sideDiffL, 0);
+          proSpeechSplitter.connect(sideDiffR, 1);
+
+          sideDiffL.connect(proSpeechSideGain);
+          sideDiffR.connect(proSpeechSideGain);
+
+          const sideInvertR = proAudioCtx.createGain();
+          sideInvertR.gain.setValueAtTime(-1.0, proAudioCtx.currentTime);
+          proSpeechSideGain.connect(sideInvertR);
+
+          proSpeechMidGain.connect(proSpeechMerger, 0, 0);
+          proSpeechSideGain.connect(proSpeechMerger, 0, 0);
+          proSpeechMidGain.connect(proSpeechMerger, 0, 1);
+          sideInvertR.connect(proSpeechMerger, 0, 1);
+
+          lastNode = proSpeechMerger;
 
           lastNode.connect(proBassFilter);
           lastNode = proBassFilter;
@@ -465,6 +844,32 @@ export function applyProAudioSettings() {
       const voiceGains = { off: 0, mild: 7.0, strong: 12.5 };
       const gain = voiceGains[s.voiceBoost] || 0;
       proVoiceFilter.gain.setTargetAtTime(gain, now, 0.05);
+    }
+
+    // 2.1 Локальный звуковой процессор выделения диалогов (Speech Isolation DSP - Mid-Side Matrix)
+    if (proSpeechMidGain && proSpeechSideGain) {
+      const mode = s.speechIsolation || 'off';
+      if (mode === 'mild') {
+        proSpeechMidGain.gain.setTargetAtTime(1.4, now, 0.05);
+        proSpeechSideGain.gain.setTargetAtTime(0.55, now, 0.05);
+        if (proSpeechPeaking) proSpeechPeaking.gain.setTargetAtTime(5.5, now, 0.05);
+        if (proSpeechHighPass) proSpeechHighPass.frequency.setTargetAtTime(100, now, 0.05);
+      } else if (mode === 'strong') {
+        proSpeechMidGain.gain.setTargetAtTime(2.0, now, 0.05);
+        proSpeechSideGain.gain.setTargetAtTime(0.2, now, 0.05);
+        if (proSpeechPeaking) proSpeechPeaking.gain.setTargetAtTime(9.5, now, 0.05);
+        if (proSpeechHighPass) proSpeechHighPass.frequency.setTargetAtTime(140, now, 0.05);
+      } else if (mode === 'cinema') {
+        proSpeechMidGain.gain.setTargetAtTime(1.25, now, 0.05);
+        proSpeechSideGain.gain.setTargetAtTime(0.7, now, 0.05);
+        if (proSpeechPeaking) proSpeechPeaking.gain.setTargetAtTime(3.5, now, 0.05);
+        if (proSpeechHighPass) proSpeechHighPass.frequency.setTargetAtTime(80, now, 0.05);
+      } else {
+        proSpeechMidGain.gain.setTargetAtTime(1.0, now, 0.05);
+        proSpeechSideGain.gain.setTargetAtTime(1.0, now, 0.05);
+        if (proSpeechPeaking) proSpeechPeaking.gain.setTargetAtTime(0.0, now, 0.05);
+        if (proSpeechHighPass) proSpeechHighPass.frequency.setTargetAtTime(20, now, 0.05);
+      }
     }
 
     // 3. Эквалайзер 10 полос
@@ -615,6 +1020,23 @@ export function renderProVideoPanel(hostElement) {
         </div>
       </div>
 
+      <!-- Секция: Нейросетевой апскейлер 4K (WebGL GPU Shaders) -->
+      <div class="pro-engine-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div class="pro-section-title" style="margin: 0;">Шейдерный апскейлер 4K (WebGL GPU Shaders)</div>
+          <span style="font-size: 11px; color: var(--accent); font-weight: 700;">60 FPS GPU</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+          Аппаратное масштабирование и повышение четкости классических релизов прямо в веб-плеере
+        </div>
+        <div class="pro-pill-group">
+          <button type="button" class="pro-pill-btn ${s.upscalerShader === 'off' ? 'active' : ''}" data-upscaler="off">Выкл</button>
+          <button type="button" class="pro-pill-btn ${s.upscalerShader === 'cas' ? 'active' : ''}" data-upscaler="cas">AMD CAS</button>
+          <button type="button" class="pro-pill-btn ${s.upscalerShader === 'anime4k' ? 'active' : ''}" data-upscaler="anime4k">Anime4K Bilateral</button>
+          <button type="button" class="pro-pill-btn ${s.upscalerShader === 'fsr' ? 'active' : ''}" data-upscaler="fsr">AMD FSR 1.0 Spatial</button>
+        </div>
+      </div>
+
       <!-- Секция 3: Соотношение сторон (Aspect Ratio & 21:9 Cinemascope) -->
       <div class="pro-engine-section">
         <div class="pro-section-title">Соотношение сторон и кадрирование</div>
@@ -674,6 +1096,16 @@ export function renderProVideoPanel(hostElement) {
       btn.classList.add('active');
       proVideoSettings.preset = btn.dataset.preset;
       applyProVideoSettings();
+    };
+  });
+
+  // Шейдерный апскейлер WebGL
+  hostElement.querySelectorAll('[data-upscaler]').forEach(btn => {
+    btn.onclick = () => {
+      hostElement.querySelectorAll('[data-upscaler]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setVideoUpscalerShader(btn.dataset.upscaler);
+      showToast(`Шейдер апскейлера: ${btn.textContent.trim()}`, 'info');
     };
   });
 
@@ -790,14 +1222,21 @@ export function renderProAudioPanel(hostElement) {
         </div>
       </div>
 
-      <!-- Секция 2: Выделение речи и Усиление баса -->
+      <!-- Секция 2: Выделение речи (Speech Isolation DSP) и Усиление баса -->
       <div class="pro-engine-grid-2col">
         <div class="pro-engine-section">
-          <div class="pro-section-title">Интеллектуальное выделение речи (AI Voice)</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+            <div class="pro-section-title" style="margin: 0;">Выделение диалогов (Speech Isolation DSP)</div>
+            <span style="font-size: 10px; color: var(--accent); font-weight: 700;">Mid-Side Matrix</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">
+            Изолирует центральный речевой канал и приглушает боковые взрывы и фоновую музыку
+          </div>
           <div class="pro-pill-group">
-            <button type="button" class="pro-pill-btn ${s.voiceBoost === 'off' ? 'active' : ''}" data-voice="off">Выкл</button>
-            <button type="button" class="pro-pill-btn ${s.voiceBoost === 'mild' ? 'active' : ''}" data-voice="mild">Четкие диалоги (+3dB)</button>
-            <button type="button" class="pro-pill-btn ${s.voiceBoost === 'strong' ? 'active' : ''}" data-voice="strong">Максимум (+6dB)</button>
+            <button type="button" class="pro-pill-btn ${s.speechIsolation === 'off' ? 'active' : ''}" data-speech-iso="off">Выкл</button>
+            <button type="button" class="pro-pill-btn ${s.speechIsolation === 'mild' ? 'active' : ''}" data-speech-iso="mild">Мягкое (+4dB)</button>
+            <button type="button" class="pro-pill-btn ${s.speechIsolation === 'strong' ? 'active' : ''}" data-speech-iso="strong">Максимум (+8dB)</button>
+            <button type="button" class="pro-pill-btn ${s.speechIsolation === 'cinema' ? 'active' : ''}" data-speech-iso="cinema">Киноцентр</button>
           </div>
         </div>
 
@@ -874,12 +1313,13 @@ export function renderProAudioPanel(hostElement) {
 
       <!-- Секция 6: Синхронизация звука и видео (Audio Sync Offset) -->
       <div class="pro-engine-section" style="margin-bottom: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <div>
-            <div class="pro-section-title" style="margin-bottom: 2px;">Синхронизация звука и видео (Audio Offset)</div>
-            <div style="font-size: 11px; color: var(--text-muted);">Устранение задержки аудио дорожки при просмотре</div>
+            <div class="pro-section-title" style="margin-bottom: 2px;">Синхронизация звука и видео (Bluetooth Latency)</div>
+            <div style="font-size: 11px; color: var(--text-muted);">Устранение задержки аудио дорожки для беспроводных наушников</div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="audio-delay-test-btn" title="Проверить синхронизацию вспышкой и звуком">⚡ Тест синхронизации</button>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="audio-delay-minus">-50 мс</button>
             <span id="audio-delay-val" style="font-size: 13px; font-weight: 800; min-width: 70px; text-align: center; color: var(--accent);">
               ${s.audioDelayMs > 0 ? '+' + s.audioDelayMs : s.audioDelayMs} мс
@@ -962,6 +1402,17 @@ export function renderProAudioPanel(hostElement) {
     };
   });
 
+  // Выделение речи (Speech Isolation DSP)
+  hostElement.querySelectorAll('[data-speech-iso]').forEach(btn => {
+    btn.onclick = () => {
+      hostElement.querySelectorAll('[data-speech-iso]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.speechIso;
+      setProAudioSpeechIsolation(mode);
+      showToast(`🎙️ Выделение диалогов: ${btn.textContent.trim()}`, 'info');
+    };
+  });
+
   // Усиление баса
   hostElement.querySelectorAll('[data-bass]').forEach(btn => {
     btn.onclick = () => {
@@ -1019,6 +1470,13 @@ export function renderProAudioPanel(hostElement) {
       valEl.textContent = `${proAudioSettings.audioDelayMs > 0 ? '+' + proAudioSettings.audioDelayMs : proAudioSettings.audioDelayMs} мс`;
     }
   };
+
+  const testDelayBtn = hostElement.querySelector('#audio-delay-test-btn');
+  if (testDelayBtn) {
+    testDelayBtn.onclick = () => {
+      runAudioLatencyTest();
+    };
+  }
 
   const delayMinus = hostElement.querySelector('#audio-delay-minus');
   if (delayMinus) {

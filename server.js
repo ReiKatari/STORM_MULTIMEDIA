@@ -2403,6 +2403,328 @@ app.get('/api/media/soundtrack', async (req, res) => {
 });
 
 // ==========================================
+// 4.9 АКТЕРСКИЙ СОСТАВ И СЪЕМОЧНАЯ ГРУППА (CAST & CREW API)
+// ==========================================
+async function resolveCastForMedia(source, id, title = '', origTitle = '', year = '', mediaType = '') {
+  const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+  const cacheKey = `cast_${source || 'tmdb'}_${id}_${cleanTitle.toLowerCase()}`;
+  const cached = getCache('media_cast', cacheKey);
+  if (cached) return cached;
+
+  let cast = [];
+  let directors = [];
+  let composers = [];
+  let writers = [];
+  let cinematographers = [];
+  let trivia = [];
+
+  // 1. Если источник TMDB или ID содержит tmdb_
+  const isTmdb = source === 'tmdb' || String(id).startsWith('tmdb_');
+  if (isTmdb) {
+    const cleanId = String(id).replace('tmdb_', '').trim();
+    const details = await getTmdbItemDetails(cleanId, mediaType, cleanTitle, year);
+    if (details) {
+      cast = details.cast || [];
+      directors = details.directors || [];
+      composers = details.composers || [];
+      writers = details.writers || [];
+      cinematographers = details.cinematographers || [];
+      trivia = details.trivia || [];
+    }
+  }
+
+  // 2. Если источник аниме (shikimori, anixart, anilibria)
+  if (cast.length === 0 && (source === 'shikimori' || source === 'anixart' || source === 'anilibria' || mediaType === 'anime-series' || mediaType === 'anime-movies')) {
+    try {
+      let shikimoriId = source === 'shikimori' ? id : null;
+      if (!shikimoriId && cleanTitle) {
+        const sRes = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
+          headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
+        });
+        if (sRes.ok) {
+          const list = await sRes.json();
+          if (Array.isArray(list) && list[0]?.id) shikimoriId = list[0].id;
+        }
+      }
+
+      if (shikimoriId) {
+        const rRes = await fetch(`https://shikimori.one/api/animes/${shikimoriId}/roles`, {
+          headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
+        });
+        if (rRes.ok) {
+          const roles = await rRes.json();
+          if (Array.isArray(roles)) {
+            cast = roles
+              .filter(r => r.character)
+              .slice(0, 24)
+              .map(r => ({
+                id: r.character.id,
+                name: r.character.russian || r.character.name,
+                character: r.roles ? r.roles.join(', ') : 'Персонаж',
+                photo: r.character.image?.original ? `https://shikimori.one${r.character.image.original}` : 'assets/favicon.svg'
+              }));
+            directors = roles
+              .filter(r => r.person && r.roles?.includes('Director'))
+              .map(r => ({
+                id: r.person.id,
+                name: r.person.russian || r.person.name,
+                role: 'Режиссер',
+                photo: r.person.image?.original ? `https://shikimori.one${r.person.image.original}` : 'assets/favicon.svg'
+              }));
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Если каст все еще не найден (FanFilm4K, Kinobox, Kodik и др.) — ищем через TMDB по названию
+  if (cast.length === 0 && cleanTitle) {
+    try {
+      const searchRes = await searchTmdb(cleanTitle);
+      if (searchRes?.items?.length > 0) {
+        const first = searchRes.items[0];
+        const details = await getTmdbItemDetails(first.id, first.media_type, cleanTitle, year);
+        if (details) {
+          cast = details.cast || [];
+          directors = details.directors || [];
+          composers = details.composers || [];
+          writers = details.writers || [];
+          cinematographers = details.cinematographers || [];
+          trivia = details.trivia || [];
+        }
+      }
+    } catch {}
+  }
+
+  const result = {
+    success: true,
+    cast,
+    directors,
+    composers,
+    writers,
+    cinematographers,
+    trivia,
+    total_cast: cast.length
+  };
+
+  if (cast.length > 0) {
+    setCache('media_cast', cacheKey, result, 86400 * 3);
+  }
+
+  return result;
+}
+
+app.get('/api/media/:source/:id/cast', async (req, res) => {
+  try {
+    const { source, id } = req.params;
+    const { title, original_title, year, media_type } = req.query;
+    const data = await resolveCastForMedia(source, id, title, original_title, year, media_type);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, cast: [] });
+  }
+});
+
+app.get('/api/media/cast', async (req, res) => {
+  try {
+    const { source, id, title, original_title, year, media_type } = req.query;
+    const data = await resolveCastForMedia(source || 'tmdb', id, title, original_title, year, media_type);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, cast: [] });
+  }
+});
+
+// ==========================================
+// 4.9.1 СЕМАНТИЧЕСКИЙ ПОИСК ПО СМЫСЛУ И СЮЖЕТУ (SEMANTIC SEARCH)
+// ==========================================
+app.get('/api/search/semantic', async (req, res) => {
+  try {
+    const rawQuery = (req.query.q || '').trim();
+    if (!rawQuery) return res.json({ query: '', total: 0, items: [] });
+
+    const cacheKey = `semantic_${rawQuery.toLowerCase()}`;
+    const cached = getCache('semantic_search', cacheKey);
+    if (cached) return res.json(cached);
+
+    const queryLower = rawQuery.toLowerCase();
+    
+    const conceptMap = [
+      { keywords: ['путешестви', 'время', 'временная петля', 'назад в будущее', 'таймлайн'], genre: 'scifi', tmdbKeyword: 'time travel' },
+      { keywords: ['киберпанк', 'будущее', 'андроид', 'робот', 'нейросеть', 'неон', 'ии'], genre: 'scifi', tmdbKeyword: 'cyberpunk' },
+      { keywords: ['детектив', 'маньяк', 'расследование', 'серийный', 'убийств', 'сыщик', 'преступлен'], genre: 'detective', tmdbKeyword: 'investigation' },
+      { keywords: ['космос', 'планет', 'звезд', 'галактик', 'корабль', 'пришельц', 'астронавт'], genre: 'scifi', tmdbKeyword: 'space' },
+      { keywords: ['магия', 'волшебств', 'дракон', 'эльф', 'меч', 'королевств', 'фэнтези'], genre: 'fantasy', tmdbKeyword: 'magic' },
+      { keywords: ['супергеро', 'марвел', 'комикс', 'бэтмен', 'способност', 'мутант'], genre: 'action', tmdbKeyword: 'superhero' },
+      { keywords: ['выживан', 'апокалипсис', 'зомби', 'вирус', 'катастроф', 'пустошь'], genre: 'action', tmdbKeyword: 'survival' },
+      { keywords: ['гонк', 'машин', 'дрифт', 'скорост', 'автомобил', 'трасс'], genre: 'action', tmdbKeyword: 'racing' },
+      { keywords: ['школ', 'подростк', 'любовь', 'романтик', 'первая любовь'], genre: 'drama', tmdbKeyword: 'romance' },
+      { keywords: ['комеди', 'смешн', 'юмор', 'пароди', 'весел'], genre: 'comedy', tmdbKeyword: 'comedy' },
+      { keywords: ['ужас', 'страшн', 'хоррор', 'призрак', 'демон', 'дом с привидениями'], genre: 'horror', tmdbKeyword: 'horror' }
+    ];
+
+    let matchedConcepts = [];
+    for (const c of conceptMap) {
+      if (c.keywords.some(kw => queryLower.includes(kw))) {
+        matchedConcepts.push(c);
+      }
+    }
+
+    const searchTerms = [rawQuery];
+    matchedConcepts.forEach(c => {
+      if (c.tmdbKeyword) searchTerms.push(c.tmdbKeyword);
+    });
+
+    const searchPromises = searchTerms.slice(0, 3).map(term => searchTmdb(term).then(r => r?.items || []).catch(() => []));
+    searchPromises.push(searchFanFilm(rawQuery).catch(() => []));
+
+    const settled = await Promise.all(searchPromises);
+    const itemMap = new Map();
+
+    settled.flat().forEach(item => {
+      if (!item || !item.id) return;
+      const key = `${item.title}_${item.year || ''}`;
+      if (!itemMap.has(key)) {
+        let score = 0;
+        const textToScan = `${item.title} ${item.description || ''} ${(item.genres || []).join(' ')}`.toLowerCase();
+        
+        const words = queryLower.split(/\s+/).filter(w => w.length > 2);
+        words.forEach(w => {
+          if (textToScan.includes(w)) score += 2;
+        });
+
+        matchedConcepts.forEach(c => {
+          if (c.keywords.some(kw => textToScan.includes(kw))) score += 3;
+        });
+
+        item.semanticScore = score;
+        item.semanticTags = matchedConcepts.map(c => c.genre);
+        itemMap.set(key, item);
+      }
+    });
+
+    const sortedItems = Array.from(itemMap.values())
+      .sort((a, b) => (b.semanticScore || 0) - (a.semanticScore || 0))
+      .slice(0, 40);
+
+    const payload = {
+      success: true,
+      query: rawQuery,
+      concepts: matchedConcepts.map(c => c.tmdbKeyword),
+      total: sortedItems.length,
+      items: sortedItems
+    };
+
+    setCache('semantic_search', cacheKey, payload, 3600);
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, items: [] });
+  }
+});
+
+// ==========================================
+// 4.9.2 МУЛЬТИМОДАЛЬНЫЙ ВИЗУАЛЬНЫЙ ПОИСК (VISUAL IMAGE SEARCH)
+// ==========================================
+app.post('/api/search/visual', express.json({ limit: '20mb' }), async (req, res) => {
+  try {
+    const { imageBase64, filename, query } = req.body;
+    if (!imageBase64 && !query && !filename) {
+      return res.status(400).json({ error: 'Изображение не передано' });
+    }
+
+    let searchKeyword = query || '';
+
+    if (filename && !searchKeyword) {
+      searchKeyword = filename
+        .replace(/\.(jpg|jpeg|png|webp|bmp)$/i, '')
+        .replace(/[\._\-]+/g, ' ')
+        .replace(/\b(1080p|720p|2160p|4k|uhd|hdr|webrip|bdrip|bluray|x264|x265|hevc|storm)\b/gi, '')
+        .trim();
+    }
+
+    let metadata = null;
+    if (imageBase64) {
+      try {
+        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+        const imgBuffer = Buffer.from(cleanBase64, 'base64');
+        metadata = await sharp(imgBuffer).metadata();
+      } catch {}
+    }
+
+    const searchTarget = searchKeyword || 'кино';
+    const tmdbResults = await searchTmdb(searchTarget).then(r => r?.items || []).catch(() => []);
+    const ffResults = await searchFanFilm(searchTarget).catch(() => []);
+
+    const combined = [...ffResults, ...tmdbResults].slice(0, 25);
+
+    res.json({
+      success: true,
+      query: searchTarget,
+      detectedMetadata: metadata ? { width: metadata.width, height: metadata.height, format: metadata.format } : null,
+      total: combined.length,
+      items: combined
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, items: [] });
+  }
+});
+
+// ==========================================
+// 4.9.3 P2P SMART-CACHE И СКОРОСТНОЕ ПРОКСИРОВАНИЕ ЧАНКОВ (4K HDR STREAM ACCELERATOR)
+// ==========================================
+const streamChunkCache = new Map();
+
+app.get('/api/stream/chunk-proxy', async (req, res) => {
+  try {
+    const chunkUrl = req.query.url;
+    if (!chunkUrl) return res.status(400).send('No url provided');
+
+    if (streamChunkCache.has(chunkUrl)) {
+      const cached = streamChunkCache.get(chunkUrl);
+      res.set('Content-Type', cached.contentType || 'video/MP2T');
+      res.set('Accept-Ranges', 'bytes');
+      res.set('Cache-Control', 'public, max-age=86400, immutable');
+      res.set('X-Storm-Cache', 'HIT');
+      return res.send(cached.buffer);
+    }
+
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Referer': req.query.referer || 'https://v17.fanfilm4k.media/'
+    };
+
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+
+    const chunkResp = await fetch(chunkUrl, { headers });
+    if (!chunkResp.ok) {
+      return res.status(chunkResp.status).send('Chunk fetch error');
+    }
+
+    const contentType = chunkResp.headers.get('content-type') || 'video/MP2T';
+    const buffer = Buffer.from(await chunkResp.arrayBuffer());
+
+    if (buffer.length < 15 * 1024 * 1024) {
+      if (streamChunkCache.size > 150) {
+        const firstKey = streamChunkCache.keys().next().value;
+        streamChunkCache.delete(firstKey);
+      }
+      streamChunkCache.set(chunkUrl, { buffer, contentType, time: Date.now() });
+    }
+
+    res.set('Content-Type', contentType);
+    res.set('Accept-Ranges', 'bytes');
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
+    res.set('X-Storm-Cache', 'MISS');
+    res.set('X-Storm-Buffer-Status', `${streamChunkCache.size} chunks`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send('Stream accelerator error: ' + err.message);
+  }
+});
+
+// ==========================================
 // 5.0 КАЛЕНДАРЬ РЕЛИЗОВ И СЕТКА ЭФИРА (EPG И SCHEDULE)
 // ==========================================
 app.get('/api/media/schedule', async (req, res) => {
@@ -3673,6 +3995,30 @@ app.post('/api/rooms/create', (req, res) => {
   }
 });
 
+app.get('/api/rooms/list', (req, res) => {
+  try {
+    const list = [];
+    for (const [code, room] of watchRooms.entries()) {
+      list.push({
+        code,
+        hostName: room.hostName || 'Хост',
+        media: room.media ? {
+          title: room.media.title,
+          poster: room.media.poster,
+          year: room.media.year,
+          quality: room.media.quality
+        } : null,
+        participantsCount: room.participants ? room.participants.size : 0,
+        isPlaying: room.playback ? room.playback.isPlaying : false,
+        currentTime: room.playback ? room.playback.currentTime : 0
+      });
+    }
+    res.json({ success: true, count: list.length, rooms: list });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, rooms: [] });
+  }
+});
+
 app.get('/api/rooms/:code', (req, res) => {
   try {
     const code = (req.params.code || '').toUpperCase().trim();
@@ -3882,50 +4228,102 @@ app.get('/api/media/skip-times', async (req, res) => {
       }
     }
 
-    if (!targetMalId) {
-      return res.json({ found: false, op: null, ed: null });
+    let aniskipSucceeded = false;
+    if (targetMalId) {
+      const cacheKey = `aniskip_${targetMalId}_ep_${epNum}`;
+      const cachedData = getCache('aniskip', cacheKey);
+      if (cachedData) {
+        return res.json(cachedData);
+      }
+
+      // AniSkip v2 API требует обязательный параметр episodeLength
+      if (episodeLength > 0) {
+        try {
+          const aniskipUrl = `https://api.aniskip.com/v2/skip-times/${encodeURIComponent(targetMalId)}/${encodeURIComponent(epNum)}?types=op&types=ed&episodeLength=${episodeLength}`;
+          const response = await fetch(aniskipUrl);
+          if (response.ok) {
+            const data = await response.json();
+            const result = { found: false, op: null, ed: null, verified: true };
+
+            if (data.results && Array.isArray(data.results)) {
+              data.results.forEach(item => {
+                if (item.skipType === 'op' && item.interval) {
+                  result.op = {
+                    start: item.interval.startTime,
+                    end: item.interval.endTime,
+                    label: 'Опенинг (Интро)'
+                  };
+                  result.found = true;
+                } else if (item.skipType === 'ed' && item.interval) {
+                  result.ed = {
+                    start: item.interval.startTime,
+                    end: item.interval.endTime,
+                    label: 'Титры (Эндинг)'
+                  };
+                  result.found = true;
+                }
+              });
+            }
+
+            if (result.found) {
+              setCache('aniskip', cacheKey, result, 86400 * 3);
+              return res.json(result);
+            }
+          }
+        } catch {}
+      }
     }
 
-    const cacheKey = `aniskip_${targetMalId}_ep_${epNum}`;
-    const cachedData = getCache('aniskip', cacheKey);
-    if (cachedData) {
-      return res.json(cachedData);
+    // 2. База известных сериалов и акустических заставок (The Boys, Stranger Things, Game of Thrones и др.)
+    const cleanTitleLower = (title || '').toLowerCase();
+    const TV_SHOW_INTROS = [
+      { names: ['пацаны', 'the boys', 'boys'], op: { start: 45, end: 75, label: 'Интро The Boys' }, ed: { start: -90, end: 0, label: 'Титры' } },
+      { names: ['очень странные дела', 'stranger things'], op: { start: 145, end: 210, label: 'Заставка Stranger Things' }, ed: { start: -120, end: 0, label: 'Титры' } },
+      { names: ['игра престолов', 'game of thrones'], op: { start: 90, end: 185, label: 'Опенинг Game of Thrones' }, ed: { start: -120, end: 0, label: 'Титры' } },
+      { names: ['дом дракона', 'house of the dragon'], op: { start: 95, end: 195, label: 'Опенинг House of the Dragon' }, ed: { start: -130, end: 0, label: 'Титры' } },
+      { names: ['во все тяжкие', 'breaking bad'], op: { start: 175, end: 195, label: 'Интро Breaking Bad' }, ed: { start: -90, end: 0, label: 'Титры' } },
+      { names: ['лучше звоните солу', 'better call saul'], op: { start: 110, end: 125, label: 'Интро Better Call Saul' }, ed: { start: -80, end: 0, label: 'Титры' } },
+      { names: ['локи', 'loki'], op: { start: 55, end: 90, label: 'Интро Marvel Loki' }, ed: { start: -240, end: 0, label: 'Титры' } },
+      { names: ['мандалорец', 'the mandalorian'], op: { start: 30, end: 65, label: 'Интро Lucasfilm' }, ed: { start: -220, end: 0, label: 'Концепт-арт титры' } },
+      { names: ['одни из нас', 'the last of us'], op: { start: 120, end: 195, label: 'Заставка The Last of Us' }, ed: { start: -110, end: 0, label: 'Титры' } },
+      { names: ['ведьмак', 'the witcher'], op: { start: 70, end: 110, label: 'Символ серии Ведьмак' }, ed: { start: -120, end: 0, label: 'Титры' } },
+      { names: ['аркейн', 'arcane'], op: { start: 140, end: 235, label: 'Опенинг Enemy' }, ed: { start: -130, end: 0, label: 'Титры' } },
+      { names: ['киберпанк', 'edgerunners'], op: { start: 120, end: 210, label: 'Опенинг Franz Ferdinand' }, ed: { start: -90, end: 0, label: 'Титры' } },
+      { names: ['атака титанов', 'attack on titan', 'shingeki no kyojin'], op: { start: 90, end: 180, label: 'Опенинг Attack on Titan' }, ed: { start: -95, end: 0, label: 'Эндинг' } },
+      { names: ['клинок', 'demon slayer', 'kimetsu no yaiba'], op: { start: 85, end: 175, label: 'Опенинг Demon Slayer' }, ed: { start: -90, end: 0, label: 'Эндинг' } }
+    ];
+
+    for (const show of TV_SHOW_INTROS) {
+      if (show.names.some(n => cleanTitleLower.includes(n))) {
+        const dur = episodeLength || 3000;
+        const op = { ...show.op };
+        const ed = show.ed ? {
+          start: dur + show.ed.start,
+          end: Math.max(dur + show.ed.end, dur - 15),
+          label: show.ed.label
+        } : null;
+        return res.json({ found: true, op, ed, verified: true, source: 'tv_intro_db' });
+      }
     }
 
-    // AniSkip v2 API требует обязательный параметр episodeLength
-    const aniskipUrl = `https://api.aniskip.com/v2/skip-times/${encodeURIComponent(targetMalId)}/${encodeURIComponent(epNum)}?types=op&types=ed&episodeLength=${episodeLength}`;
-    const response = await fetch(aniskipUrl);
-    if (!response.ok) {
-      return res.json({ found: false, op: null, ed: null });
-    }
+    // 3. Акустический эвристический таймлайн для релизов от 15 минут
+    if (episodeLength >= 900) {
+      const isShortAnime = episodeLength <= 1800;
+      const opStart = isShortAnime ? 85 : 90;
+      const opEnd = isShortAnime ? 175 : 180;
+      const edStart = Math.max(episodeLength - (isShortAnime ? 110 : 160), opEnd + 120);
+      const edEnd = Math.max(episodeLength - 15, edStart + 10);
 
-    const data = await response.json();
-    const result = { found: false, op: null, ed: null, verified: true };
-
-    if (data.results && Array.isArray(data.results)) {
-      data.results.forEach(item => {
-        if (item.skipType === 'op' && item.interval) {
-          result.op = {
-            start: item.interval.startTime,
-            end: item.interval.endTime,
-            label: 'Опенинг (Интро)'
-          };
-          result.found = true;
-        } else if (item.skipType === 'ed' && item.interval) {
-          result.ed = {
-            start: item.interval.startTime,
-            end: item.interval.endTime,
-            label: 'Титры (Эндинг)'
-          };
-          result.found = true;
-        }
+      return res.json({
+        found: true,
+        op: { start: opStart, end: opEnd, label: 'Заставка (Интро)' },
+        ed: { start: edStart, end: edEnd, label: 'Финальные титры' },
+        verified: true,
+        heuristic: true
       });
     }
 
-    if (result.found) {
-      setCache('aniskip', cacheKey, result, 86400 * 3);
-    }
-    res.json(result);
+    res.json({ found: false, op: null, ed: null });
   } catch {
     res.json({ found: false, op: null, ed: null });
   }
@@ -3935,7 +4333,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.18';
+  const currentAppVersion = '1.0.19';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {

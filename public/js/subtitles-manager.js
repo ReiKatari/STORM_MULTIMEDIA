@@ -198,6 +198,31 @@ function parseAssTimeToSeconds(timeStr) {
   return 0;
 }
 
+let subCanvas = null;
+let subCtx = null;
+
+function checkAdaptiveContrast(video) {
+  if (!video || video.readyState < 2 || !video.videoWidth) return false;
+  try {
+    if (!subCanvas) {
+      subCanvas = document.createElement('canvas');
+      subCanvas.width = 16;
+      subCanvas.height = 9;
+      subCtx = subCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    subCtx.drawImage(video, 0, Math.floor(video.videoHeight * 0.7), video.videoWidth, Math.floor(video.videoHeight * 0.3), 0, 0, 16, 9);
+    const data = subCtx.getImageData(0, 0, 16, 9).data;
+    let totalLum = 0;
+    const count = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      totalLum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+    return (totalLum / count) > 130;
+  } catch {
+    return false;
+  }
+}
+
 function updateSubtitlesFrame() {
   if (!attachedVideo || !subtitleOverlay || currentCues.length === 0) {
     if (subtitleOverlay) subtitleOverlay.style.display = 'none';
@@ -210,6 +235,20 @@ function updateSubtitlesFrame() {
   if (activeCue) {
     subtitleOverlay.innerHTML = activeCue.text;
     subtitleOverlay.style.display = 'inline-block';
+
+    // Smart Adaptive Subtitles: динамическая подстройка контраста под яркость сцены
+    const isBrightScene = checkAdaptiveContrast(attachedVideo);
+    if (isBrightScene) {
+      subtitleOverlay.style.background = 'rgba(8, 10, 15, 0.92)';
+      subtitleOverlay.style.color = '#ffffff';
+      subtitleOverlay.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.18)';
+      subtitleOverlay.style.textShadow = '0 1px 3px rgba(0,0,0,1)';
+    } else {
+      subtitleOverlay.style.background = subSettings.bgColor || 'rgba(0, 0, 0, 0.65)';
+      subtitleOverlay.style.color = subSettings.color || '#ffffff';
+      subtitleOverlay.style.boxShadow = '0 2px 10px rgba(0,0,0,0.5)';
+      subtitleOverlay.style.textShadow = subSettings.shadow ? '0 2px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)' : 'none';
+    }
   } else {
     subtitleOverlay.style.display = 'none';
   }
