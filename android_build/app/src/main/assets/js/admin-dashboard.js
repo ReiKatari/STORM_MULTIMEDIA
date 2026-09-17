@@ -247,7 +247,7 @@ function renderLiveSessions() {
             <div class="admin-session-title">${escapeHtml(wn.title)}</div>
             ${epInfo ? `<div class="admin-session-ep">${epInfo}</div>` : ''}
             <div class="admin-session-badges">
-              <span class="storm-badge storm-badge-4k" style="font-size: 9px; padding: 1px 5px;">Direct Stream</span>
+              <span class="storm-badge storm-badge-4k" style="font-size: 9px; padding: 1px 5px;">Прямой поток</span>
               <span class="storm-badge" style="font-size: 9px; padding: 1px 5px; border-color: var(--accent); color: var(--accent);">WebAudio 3D</span>
             </div>
             <div class="admin-session-progress-wrap">

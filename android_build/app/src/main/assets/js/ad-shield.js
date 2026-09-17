@@ -1,5 +1,5 @@
 /**
- * STORM CleanView™ & AdShield Engine
+ * STORM CleanView & AdShield Engine
  * Интеллектуальный модуль защиты от рекламы, авто-пропуска видеовставок
  * и маскирования/вырезания рекламных логотипов (1XBET, Winline, Мелбет и др.)
  */
@@ -573,103 +573,133 @@ function renderCleanViewPanelContent(panel) {
     <div class="cleanview-card">
       <div class="cleanview-header">
         <div class="cleanview-title-group">
-          <div class="cleanview-title">🛡️ STORM CleanView™ и AdShield</div>
+          <div class="cleanview-title">🛡️ STORM CleanView и AdShield</div>
           <div class="cleanview-subtitle">Интеллектуальная фильтрация рекламы и бесшовное маскирование логотипов</div>
         </div>
-        <button type="button" class="cleanview-close-btn" id="cleanview-close-btn">✕</button>
+        <button type="button" class="cleanview-close-btn" id="cleanview-close-btn" title="Закрыть">✕</button>
       </div>
 
       <div class="cleanview-body">
-        <!-- Блок 1: Авто-пропуск рекламы -->
-        <div class="cleanview-feature-row" id="cleanview-skipper-row" style="cursor: pointer;">
-          <div class="feature-info">
-            <div class="feature-title">⚡ Авто-пропуск видеорекламы</div>
-            <div class="feature-desc">Ускорение в 16 раз, авто-клик «Пропустить рекламу», глушение звука и блокировка всплывающих окон</div>
+        <!-- Группа 1: Автоматическая защита и фильтрация -->
+        <div class="cleanview-group-card">
+          <div class="cleanview-group-header">
+            <span class="cleanview-group-icon">⚡</span>
+            <div class="cleanview-group-title">Автоматическая защита и блокировка</div>
           </div>
-          <label class="storm-toggle-switch">
-            <input type="checkbox" id="cleanview-ad-skipper-toggle" ${currentSettings.adSkipperEnabled ? 'checked' : ''}>
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <!-- Блок 2: Вырезание водяных знаков -->
-        <div class="cleanview-feature-row" id="cleanview-mask-row" style="cursor: pointer;">
-          <div class="feature-info">
-            <div class="feature-title">✂️ Скрыть рекламные надписи и логотипы</div>
-            <div class="feature-desc">Бесшовное оптическое маскирование без тёмных рамок и искажения цветов видеоряда</div>
-          </div>
-          <label class="storm-toggle-switch">
-            <input type="checkbox" id="cleanview-mask-toggle" ${currentSettings.watermarkMaskEnabled ? 'checked' : ''}>
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <!-- Блок 3: Инструмент точного наведения кликом -->
-        <div class="cleanview-aim-toolbar">
-          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="cleanview-aim-btn" style="width: 100%; justify-content: center; gap: 8px; font-weight: 700;">
-            <span>🎯 Указать надпись на видео кликом</span>
-          </button>
-          <div class="aim-quick-desc">Если логотип сместился, нажмите кнопку и кликните прямо по нему на экране видео</div>
-        </div>
-
-        <!-- Блок 4: Выбор пресета размещения -->
-        <div class="cleanview-section" id="cleanview-presets-section">
-          <div class="cleanview-section-label">Готовые зоны для 1XBET и букмекеров:</div>
-          <div class="cleanview-presets-grid">
-            ${Object.values(WATERMARK_PRESETS).map(p => `
-              <button type="button" class="cleanview-preset-btn ${currentSettings.watermarkMaskEnabled && currentSettings.activePreset === p.id ? 'active' : ''}" data-preset="${p.id}">
-                <div class="preset-name">${p.name}</div>
-                <div class="preset-desc">${p.desc}</div>
-              </button>
-            `).join('')}
-          </div>
-        </div>
-
-        <!-- Блок 5: Микро-подгонка джойстиком -->
-        <div class="cleanview-nudge-box">
-          <div class="cleanview-section-label">Микро-подгонка положения маски:</div>
-          <div class="nudge-controls">
-            <button type="button" class="nudge-btn" id="nudge-up-btn" title="Сдвинуть выше">▲ Вверх</button>
-            <div class="nudge-row">
-              <button type="button" class="nudge-btn" id="nudge-left-btn" title="Сдвинуть влево">◀ Влево</button>
-              <button type="button" class="nudge-btn" id="nudge-right-btn" title="Сдвинуть вправо">Вправо ▶</button>
+          <div class="cleanview-group-content">
+            <!-- Блок 1: Авто-пропуск рекламы -->
+            <div class="cleanview-feature-row" id="cleanview-skipper-row" style="cursor: pointer;">
+              <div class="feature-info">
+                <div class="feature-title">⚡ Авто-пропуск видеорекламы</div>
+                <div class="feature-desc">Ускорение в 16 раз, авто-клик «Пропустить рекламу», глушение звука и блокировка всплывающих окон</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="cleanview-ad-skipper-toggle" ${currentSettings.adSkipperEnabled ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
             </div>
-            <button type="button" class="nudge-btn" id="nudge-down-btn" title="Сдвинуть ниже">▼ Вниз</button>
+
+            <!-- Блок 2: Вырезание водяных знаков -->
+            <div class="cleanview-feature-row" id="cleanview-mask-row" style="cursor: pointer;">
+              <div class="feature-info">
+                <div class="feature-title">✂️ Скрыть рекламные надписи и логотипы</div>
+                <div class="feature-desc">Бесшовное оптическое маскирование без тёмных рамок и искажения цветов видеоряда</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="cleanview-mask-toggle" ${currentSettings.watermarkMaskEnabled ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
         </div>
 
-        <!-- Блок 6: Стиль маски (Размытие / Затемнение) -->
-        <div class="cleanview-section" id="cleanview-style-section">
-          <div class="cleanview-section-label">Стиль маскирования:</div>
-          <div class="cleanview-styles-row">
-            <button type="button" class="cleanview-style-chip ${currentSettings.maskStyle === 'blur' ? 'active' : ''}" id="style-blur-btn">
-              <span>💧 Бесшовное размытие (Без пятен)</span>
-            </button>
-            <button type="button" class="cleanview-style-chip ${currentSettings.maskStyle === 'blackout' ? 'active' : ''}" id="style-blackout-btn">
-              <span>⬛ Чёрная плашка (Для черных полос)</span>
-            </button>
+        <!-- Группа 2: Область маскирования логотипов -->
+        <div class="cleanview-group-card">
+          <div class="cleanview-group-header">
+            <span class="cleanview-group-icon">🎯</span>
+            <div class="cleanview-group-title">Область маскирования логотипов</div>
+          </div>
+          <div class="cleanview-group-content">
+            <!-- Блок 3: Инструмент точного наведения кликом -->
+            <div class="cleanview-aim-toolbar">
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="cleanview-aim-btn" style="width: 100%; justify-content: center; gap: 8px; font-weight: 700;">
+                <span>🎯 Указать надпись на видео кликом</span>
+              </button>
+              <div class="aim-quick-desc">Если логотип сместился, нажмите кнопку и кликните прямо по нему на экране видео</div>
+            </div>
+
+            <!-- Блок 4: Выбор пресета размещения -->
+            <div class="cleanview-section" id="cleanview-presets-section">
+              <div class="cleanview-section-label">Готовые зоны для 1XBET и букмекеров:</div>
+              <div class="cleanview-presets-grid">
+                ${Object.values(WATERMARK_PRESETS).map(p => `
+                  <button type="button" class="cleanview-preset-btn ${currentSettings.watermarkMaskEnabled && currentSettings.activePreset === p.id ? 'active' : ''}" data-preset="${p.id}">
+                    <div class="preset-name">${p.name}</div>
+                    <div class="preset-desc">${p.desc}</div>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Блок 7: Прозрачность размытия -->
-        <div class="cleanview-section" id="cleanview-opacity-section" style="${currentSettings.maskStyle === 'blackout' ? 'display: none;' : ''}">
-          <div class="cleanview-section-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div class="cleanview-section-label" style="margin-bottom: 0;">Прозрачность размытия:</div>
-            <span class="cleanview-opacity-badge" id="cleanview-opacity-val">${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.55) * 100)}%</span>
+        <!-- Группа 3: Оптика и точная подгонка маски -->
+        <div class="cleanview-group-card">
+          <div class="cleanview-group-header">
+            <span class="cleanview-group-icon">⚙️</span>
+            <div class="cleanview-group-title">Оптика и точная подгонка маски</div>
           </div>
-          <div class="cleanview-slider-row" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-            <input type="range" class="storm-slider" id="cleanview-opacity-slider" min="15" max="85" step="5" value="${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.55) * 100)}">
-          </div>
-          <div class="cleanview-quick-opacity-row" style="display: flex; gap: 8px;">
-            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) <= 40 ? 'active' : ''}" data-opacity="0.35">
-              <span>Деликатная (35%)</span>
-            </button>
-            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) > 40 && Math.round((currentSettings.maskOpacity || 0.55) * 100) <= 68 ? 'active' : ''}" data-opacity="0.55">
-              <span>Оптимальная (55%)</span>
-            </button>
-            <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) > 68 ? 'active' : ''}" data-opacity="0.80">
-              <span>Плотная (80%)</span>
-            </button>
+          <div class="cleanview-group-content cleanview-tuning-grid">
+            <!-- Левая колонка: Микро-подгонка джойстиком -->
+            <div class="cleanview-nudge-box">
+              <div class="cleanview-section-label">Микро-подгонка положения:</div>
+              <div class="nudge-controls">
+                <button type="button" class="nudge-btn" id="nudge-up-btn" title="Сдвинуть выше">▲ Вверх</button>
+                <div class="nudge-row">
+                  <button type="button" class="nudge-btn" id="nudge-left-btn" title="Сдвинуть влево">◀ Влево</button>
+                  <button type="button" class="nudge-btn" id="nudge-right-btn" title="Сдвинуть вправо">Вправо ▶</button>
+                </div>
+                <button type="button" class="nudge-btn" id="nudge-down-btn" title="Сдвинуть ниже">▼ Вниз</button>
+              </div>
+            </div>
+
+            <!-- Правая колонка: Стиль маски и прозрачность -->
+            <div class="cleanview-style-and-opacity-box">
+              <!-- Стиль маски -->
+              <div class="cleanview-section" id="cleanview-style-section">
+                <div class="cleanview-section-label">Стиль маскирования:</div>
+                <div class="cleanview-styles-row">
+                  <button type="button" class="cleanview-style-chip ${currentSettings.maskStyle === 'blur' ? 'active' : ''}" id="style-blur-btn">
+                    <span>💧 Бесшовное размытие</span>
+                  </button>
+                  <button type="button" class="cleanview-style-chip ${currentSettings.maskStyle === 'blackout' ? 'active' : ''}" id="style-blackout-btn">
+                    <span>⬛ Чёрная плашка</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Прозрачность размытия -->
+              <div class="cleanview-section" id="cleanview-opacity-section" style="${currentSettings.maskStyle === 'blackout' ? 'display: none;' : ''}">
+                <div class="cleanview-section-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <div class="cleanview-section-label" style="margin-bottom: 0;">Прозрачность размытия:</div>
+                  <span class="cleanview-opacity-badge" id="cleanview-opacity-val">${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.55) * 100)}%</span>
+                </div>
+                <div class="cleanview-slider-row" style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                  <input type="range" class="storm-slider" id="cleanview-opacity-slider" min="15" max="85" step="5" value="${Math.round((currentSettings.maskOpacity !== undefined ? currentSettings.maskOpacity : 0.55) * 100)}">
+                </div>
+                <div class="cleanview-quick-opacity-row" style="display: flex; gap: 8px;">
+                  <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) <= 40 ? 'active' : ''}" data-opacity="0.35">
+                    <span>35%</span>
+                  </button>
+                  <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) > 40 && Math.round((currentSettings.maskOpacity || 0.55) * 100) <= 68 ? 'active' : ''}" data-opacity="0.55">
+                    <span>55%</span>
+                  </button>
+                  <button type="button" class="cleanview-opacity-chip ${Math.round((currentSettings.maskOpacity || 0.55) * 100) > 68 ? 'active' : ''}" data-opacity="0.80">
+                    <span>80%</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
