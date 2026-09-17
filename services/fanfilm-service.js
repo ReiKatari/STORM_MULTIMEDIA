@@ -802,19 +802,7 @@ export async function getFanFilmDetails(idOrUrl) {
                        $('[data-tab="4kplayer"]').hasClass('is-active') ||
                        (html && (html.includes('class="tab-btn is-active" data-tab="4kplayer"') || html.includes('data-tab="4kplayer" class="tab-btn is-active"')));
 
-    // 3. HD Плеер (Kinescope CDN / Встроенный балансер)
-    let hdIframe = $('[data-tab-content="hdplayer"] iframe').attr('src') || '';
-    if (!hdIframe) {
-      const insPublisher = $('[data-tab-content="hdplayer"] ins').attr('data-publisher-id') || '675571372';
-      const insDesign = $('[data-tab-content="hdplayer"] ins').attr('data-design') || '2';
-      if (kpId) {
-        hdIframe = `https://river-3-329.kinescopecdn.net/${insPublisher}/embed-kp/${kpId}?design=${insDesign}&lang=ru`;
-      }
-    } else if (hdIframe.startsWith('//')) {
-      hdIframe = 'https:' + hdIframe;
-    }
-
-    // 4. Плеер 4K (transfusion-as / stravers / fanfilm direct iframe)
+    // 3. Плеер 4K Ultra HD (transfusion-as / stravers / fanfilm direct iframe)
     const player4kIframe = $('[data-tab-content="4kplayer"] iframe').attr('src') || '';
     let is4kStreamHealthy = true;
     let final4kUrl = '';
@@ -827,69 +815,50 @@ export async function getFanFilmDetails(idOrUrl) {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
               'Referer': url
             },
-            signal: AbortSignal.timeout(2500)
+            signal: AbortSignal.timeout(3000)
           });
           if (chkRes.ok) {
             const chkText = await chkRes.text();
-            const lower = chkText.toLowerCase();
-            if (lower.includes('не найден') || lower.includes('неудобства') || lower.includes('404') || lower.includes('недоступен')) {
+            const hasFileList = chkText.includes('const fileList =') || chkText.includes('fileList');
+            const hasConfig = chkText.includes('const config =') || chkText.includes('mediaMetadata');
+            if (hasFileList || hasConfig) {
+              is4kStreamHealthy = true;
+            } else if (chkText.toLowerCase().includes('404 not found') || chkText.toLowerCase().includes('видео удалено')) {
               is4kStreamHealthy = false;
             }
-          } else {
+          } else if (chkRes.status === 404) {
             is4kStreamHealthy = false;
           }
         } catch {
-          if (isHdActive && !is4kActive) {
-            is4kStreamHealthy = false;
-          }
+          is4kStreamHealthy = true;
         }
       }
     }
 
     // Плееры
     const players = [];
-    const isHdRecommended = Boolean(hdIframe && (isHdActive || !is4kStreamHealthy || !player4kIframe));
 
-    // 1. HD Плеер FanFilm (Kinescope CDN)
-    if (hdIframe) {
-      players.push({
-        id: 'fanfilm_hd',
-        name: 'FanFilm HD Плеер (Full HD / Kinescope)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'FANFILM HD',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Многоголосый дубляж и выбор озвучек',
-        speed: '⚡ Скоростной CDN Kinescope',
-        url: hdIframe,
-        is_recommended: isHdRecommended,
-        recommended_badge: isHdRecommended ? '🔥 Рекомендуемый' : ''
-      });
-    }
-
-    // 2. 4K Ultra HD Плеер FanFilm (гарантированное присутствие)
+    // 1. 4K Ultra HD Плеер FanFilm (основной рекомендованный источник FanFilm4K)
     if (player4kIframe) {
-      const is4kRecommended = Boolean(is4kStreamHealthy && is4kActive && !isHdRecommended);
       players.push({
         id: 'fanfilm4k_uhd',
         name: '4K Ultra HD Плеер (FanFilm4K)',
         type: 'iframe',
-        quality: is4kStreamHealthy ? '4K UHD' : '1080p FHD',
+        quality: '4K UHD',
         badge: 'FANFILM 4K',
         status: 'working',
-        status_label: is4kStreamHealthy ? '🟢 Онлайн' : '⚡ 4K / Авто-HD',
-        audio_info: is4kStreamHealthy ? 'Многоканальный звук Dolby Digital' : 'Автоматический переход на Full HD поток',
-        speed: is4kStreamHealthy ? '💎 Премиум 4K CDN' : '⚡ Скоростной поток',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
+        speed: '💎 Премиум 4K CDN',
         url: final4kUrl,
-        is_recommended: is4kRecommended,
-        recommended_badge: is4kRecommended ? '🔥 Рекомендуемый' : ''
+        is_recommended: true,
+        recommended_badge: '🔥 4K Рекомендуемый'
       });
     }
 
-    // 3. Гарантированный проверенный Kodik при наличии Kinopoisk ID
+    // 2. Дополнительные проверенные студии при наличии Kinopoisk ID
     if (kpId) {
-      const isKodikRecommended = !hdIframe && !is4kStreamHealthy;
+      // Kodik Multi-balancer
       players.push({
         id: 'kodik_direct',
         name: 'Kodik Плеер (сериалы и озвучки)',
@@ -901,11 +870,11 @@ export async function getFanFilmDetails(idOrUrl) {
         audio_info: 'Большой выбор студийных озвучек',
         speed: '⚡ Быстрый поток',
         url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}`,
-        is_recommended: isKodikRecommended,
-        recommended_badge: isKodikRecommended ? '🔥 Рекомендуемый' : ''
+        is_recommended: !player4kIframe,
+        recommended_badge: !player4kIframe ? '🔥 Рекомендуемый' : ''
       });
 
-      // 4. HDRezka Cinema
+      // HDRezka Studio
       players.push({
         id: 'rezka_cinema',
         name: 'HDRezka Cinema (FHD и 4K)',
@@ -916,22 +885,37 @@ export async function getFanFilmDetails(idOrUrl) {
         status_label: '🟢 Онлайн',
         audio_info: 'Студийный перевод HDRezka Studio',
         speed: '⚡ Высокая скорость',
-        url: `https://stream.voidboost.cc/embed/${kpId}`,
+        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka`,
         is_recommended: false
       });
 
-      // 5. Collaps Плеер
+      // LostFilm Series
       players.push({
-        id: 'collaps_player',
-        name: 'Collaps Плеер (мировые премьеры)',
+        id: 'lostfilm_player',
+        name: 'LostFilm Series (дубляж)',
         type: 'iframe',
         quality: '1080p FHD',
-        badge: 'COLLAPS',
+        badge: 'LOSTFILM',
         status: 'working',
         status_label: '🟢 Онлайн',
-        audio_info: 'Чистый Full HD поток без рекламы',
-        speed: '⚡ Стабильный CDN',
-        url: `https://api.strvid.ws/embed/movie?kinopoisk=${kpId}`,
+        audio_info: 'Официальный дубляж LostFilm',
+        speed: '⚡ Студийный поток',
+        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm`,
+        is_recommended: false
+      });
+
+      // Red Head Sound
+      players.push({
+        id: 'rhs_player',
+        name: 'Red Head Sound (RHS дубляж)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'RHS',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Профессиональный дубляж Red Head Sound',
+        speed: '⚡ Студийный поток',
+        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs`,
         is_recommended: false
       });
     }
@@ -972,7 +956,7 @@ export async function getFanFilmDetails(idOrUrl) {
       is4K: Boolean(player4kIframe),
       quality: player4kIframe ? '4K Ultra HD' : '1080p Full HD',
       kp_id: kpId,
-      fanfilm_hd_url: hdIframe || '',
+      fanfilm_hd_url: '',
       likes,
       dislikes,
       vote_count: voteCount,
