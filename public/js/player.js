@@ -1223,7 +1223,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
 export function closePlayerModal() {
   const modal = document.getElementById('cinema-modal');
   if (modal) {
-    modal.classList.remove('is-open', 'is-mini-pip');
+    modal.classList.remove('is-open', 'is-mini-pip', 'is-focus-mode');
+    const fBtn = document.getElementById('inplayer-focus-btn');
+    if (fBtn) fBtn.classList.remove('active');
     document.body.classList.remove('cinema-open');
     stopAmbilight();
     clearPlayerUrl();
@@ -4710,7 +4712,21 @@ export function mountInPlayerOverlay(videoBox) {
       if (modal) {
         const isFocus = modal.classList.toggle('is-focus-mode');
         focusBtn.classList.toggle('active', isFocus);
-        showToast(isFocus ? '👁️ Кинотеатральный режим (Фокус) включен' : 'Кинотеатральный режим выключен', 'info');
+        showToast(isFocus ? '👁️ Режим фокуса включен' : 'Режим фокуса выключен', 'info');
+      }
+    };
+  }
+
+  const focusExitBadge = document.getElementById('cinema-focus-exit-badge');
+  if (focusExitBadge) {
+    focusExitBadge.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const modal = document.getElementById('cinema-modal');
+      if (modal) {
+        modal.classList.remove('is-focus-mode');
+        if (focusBtn) focusBtn.classList.remove('active');
+        showToast('Режим фокуса выключен', 'info');
       }
     };
   }
