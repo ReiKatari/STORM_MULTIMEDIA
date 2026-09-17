@@ -1277,7 +1277,7 @@ body {
   aspect-ratio: 16 / 9;
   background: #000000;
   position: relative;
-  z-index: 1;
+  z-index: auto;
   border-radius: 12px;
   overflow: visible;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
@@ -3056,10 +3056,12 @@ body.drawer-open {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: linear-gradient(180deg, rgba(5, 8, 15, 0.85) 0%, rgba(5, 8, 15, 0.3) 70%, transparent 100%);
+  background: linear-gradient(180deg, rgba(5, 8, 15, 0.88) 0%, rgba(5, 8, 15, 0.35) 70%, transparent 100%);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  pointer-events: auto;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 70;
   gap: 8px;
 }
 
@@ -3069,6 +3071,7 @@ body.drawer-open {
   gap: 8px;
   min-width: 0;
   flex: 1;
+  pointer-events: auto;
 }
 
 .inplayer-badge {
@@ -3102,6 +3105,8 @@ body.drawer-open {
   gap: 6px;
   flex-shrink: 0;
   position: relative;
+  z-index: 75;
+  pointer-events: auto !important;
 }
 
 .inplayer-ctrl-btn {
@@ -3112,7 +3117,7 @@ body.drawer-open {
   height: 32px;
   padding: 0 10px;
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.82);
+  background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: #ffffff;
@@ -3122,18 +3127,27 @@ body.drawer-open {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
-  pointer-events: auto;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 80;
 }
 
 .inplayer-ctrl-btn:hover {
-  border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.22);
+  border-color: var(--accent, #00f0ff);
+  background: rgba(0, 210, 255, 0.25);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px var(--accent-glow);
+  box-shadow: 0 4px 14px var(--accent-glow, rgba(0, 240, 255, 0.35));
 }
 
 .inplayer-ctrl-btn:active {
   transform: translateY(1px) scale(0.97);
+}
+
+.inplayer-ctrl-btn.active {
+  background: rgba(0, 210, 255, 0.35) !important;
+  border-color: var(--accent, #00f0ff) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 14px var(--accent-glow, rgba(0, 240, 255, 0.45)) !important;
 }
 
 .inplayer-icon-btn {
@@ -3273,7 +3287,7 @@ body.drawer-open {
   -webkit-backdrop-filter: blur(24px);
   border-left: 1px solid rgba(0, 210, 255, 0.35);
   box-shadow: -12px 0 35px rgba(0, 0, 0, 0.88);
-  z-index: 55;
+  z-index: 95;
   display: none;
   flex-direction: column;
   transform: translateX(100%);
@@ -5569,10 +5583,10 @@ body.tv-mode .storm-bottom-nav {
 /* Сенсорные зоны двойного тапа для перемотки (±10 сек) */
 .player-tap-zone {
   position: absolute;
-  top: 0;
-  bottom: 72px; /* Оставляем нижнюю панель управления плеера полностью доступной для кликов */
-  width: 38%;
-  z-index: 20;
+  top: 56px; /* Оставляем верхнюю панель оверлея плеера полностью свободной и доступной для кликов */
+  bottom: 74px; /* Оставляем нижнюю панель управления плеера полностью доступной для кликов */
+  width: 25%; /* Оставляем центральную часть экрана свободной для кликов и жестов */
+  z-index: 15;
   pointer-events: auto;
   display: flex;
   align-items: center;

@@ -11,8 +11,8 @@ android {
         applicationId = "com.reikatari.stormmultimedia"
         minSdk = 24
         targetSdk = 36
-        versionCode = 31
-        versionName = "1.0.21"
+        versionCode = 32
+        versionName = "1.0.22"
     }
 
     signingConfigs {

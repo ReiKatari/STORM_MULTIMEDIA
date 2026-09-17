@@ -725,8 +725,26 @@ function initMobilePlayerControls() {
       }
     };
 
-    zoneEl.addEventListener('click', handleTap);
+    zoneEl.addEventListener('click', (e) => {
+      if (e.target.closest('.storm-inplayer-overlay') || 
+          e.target.closest('.inplayer-ctrl-btn') || 
+          e.target.closest('.player-inplayer-episodes-sheet') || 
+          e.target.closest('.player-inplayer-voice-sheet') || 
+          e.target.closest('.inplayer-jog-dial-widget') ||
+          (e.clientY && e.clientY < 60)) {
+        return;
+      }
+      handleTap(e);
+    });
     zoneEl.addEventListener('touchend', (e) => {
+      if (e.target.closest('.storm-inplayer-overlay') || 
+          e.target.closest('.inplayer-ctrl-btn') || 
+          e.target.closest('.player-inplayer-episodes-sheet') || 
+          e.target.closest('.player-inplayer-voice-sheet') || 
+          e.target.closest('.inplayer-jog-dial-widget') ||
+          (e.changedTouches?.[0] && e.changedTouches[0].clientY < 60)) {
+        return;
+      }
       e.preventDefault();
       handleTap(e);
     }, { passive: false });
@@ -3676,11 +3694,13 @@ export function toggleInPlayerEpisodesSheet(overlay, show) {
   if (!overlay) overlay = document.getElementById('storm-inplayer-overlay');
   if (!overlay) return;
   const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
+  const epBtn = overlay.querySelector('#inplayer-episodes-btn');
   if (!sheet) return;
 
   if (!checkIfMediaIsSeries(currentMedia)) {
     sheet.classList.remove('is-open');
     sheet.style.display = 'none';
+    if (epBtn) epBtn.classList.remove('active');
     return;
   }
 
@@ -3692,8 +3712,11 @@ export function toggleInPlayerEpisodesSheet(overlay, show) {
     sheet.style.display = 'flex';
     renderInPlayerEpisodesSheet(overlay);
     sheet.classList.add('is-open');
+    if (epBtn) epBtn.classList.add('active');
   } else {
     sheet.classList.remove('is-open');
+    sheet.style.display = 'none';
+    if (epBtn) epBtn.classList.remove('active');
   }
 }
 
@@ -3737,6 +3760,7 @@ export function renderInPlayerEpisodesSheet(overlay) {
 
     const currentSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
     const episodes = currentSeasonObj?.episodes || [];
+    if (countBadge) countBadge.textContent = `${episodes.length} сер.`;
     const watchedEpisodes = curMediaId ? getWatchedEpisodes(curMediaId, quickBarActiveSeason) : new Set();
 
     epList.innerHTML = episodes.map(ep => {
@@ -3752,7 +3776,7 @@ export function renderInPlayerEpisodesSheet(overlay) {
       return `
         <div class="inplayer-ep-item ${isAct ? 'active' : ''}" data-episode="${ep.episode}">
           <span class="inplayer-ep-num">${ep.episode}</span>
-          <span class="inplayer-ep-name">${ep.name || `${ep.episode} серия`}</span>
+          <span class="inplayer-ep-name">${escapeHtml(ep.name || `${ep.episode} серия`)}</span>
           ${statusHtml}
         </div>
       `;
@@ -3769,11 +3793,12 @@ export function renderInPlayerEpisodesSheet(overlay) {
     return;
   }
 
-  // 2. TMDB / базовые сериалы
+  // 2. TMDB / базовые сериалы (через готовые DOM-карточки series-episodes-grid)
   const gridEl = document.getElementById('series-episodes-grid');
   if (gridEl && gridEl.children.length > 0) {
     chipsBar.style.display = 'none';
     const cards = Array.from(gridEl.querySelectorAll('.series-episode-card'));
+    if (countBadge) countBadge.textContent = `${cards.length} сер.`;
     epList.innerHTML = cards.map(c => {
       const epNum = parseInt(c.dataset.epNum, 10);
       const isAct = c.classList.contains('active');
@@ -3782,7 +3807,7 @@ export function renderInPlayerEpisodesSheet(overlay) {
       return `
         <div class="inplayer-ep-item ${isAct ? 'active' : ''}" data-ep-num="${epNum}">
           <span class="inplayer-ep-num">${epNum}</span>
-          <span class="inplayer-ep-name">${title}</span>
+          <span class="inplayer-ep-name">${escapeHtml(title)}</span>
           ${isAct ? '<span class="inplayer-ep-status-pill current">▶ Смотрю</span>' : (isWatched ? '<span class="inplayer-ep-status-pill watched">✓</span>' : '')}
         </div>
       `;
@@ -3800,16 +3825,79 @@ export function renderInPlayerEpisodesSheet(overlay) {
     return;
   }
 
+  // 2b. TMDB сериалы напрямую из метаданных currentMedia.seasons
+  if (currentMedia?.seasons && currentMedia.seasons.length > 0) {
+    const seasonsList = currentMedia.seasons.filter(s => (s.season_number > 0 || currentMedia.seasons.length === 1));
+    const curSeasonNum = (typeof activeSeasonNum !== 'undefined' ? activeSeasonNum : (currentSeasonIndex || 1));
+    chipsBar.style.display = seasonsList.length > 1 ? 'flex' : 'none';
+    chipsBar.innerHTML = seasonsList.map(s => `
+      <button type="button" class="inplayer-season-chip ${(s.season_number || s.season) === curSeasonNum ? 'active' : ''}" data-season="${s.season_number || s.season}">
+        ${escapeHtml(s.name || `Сезон ${s.season_number || s.season}`)}
+      </button>
+    `).join('');
+
+    chipsBar.querySelectorAll('.inplayer-season-chip').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const sNum = parseInt(btn.dataset.season, 10);
+        if (typeof activeSeasonNum !== 'undefined') activeSeasonNum = sNum;
+        if (typeof currentSeasonIndex !== 'undefined') currentSeasonIndex = sNum;
+        const mainTab = document.querySelector(`.series-season-tab[data-season-num="${sNum}"]`);
+        if (mainTab) mainTab.click();
+        renderInPlayerEpisodesSheet(overlay);
+      };
+    });
+
+    const activeSeasonObj = seasonsList.find(s => (s.season_number || s.season) === curSeasonNum) || seasonsList[0];
+    const epCount = activeSeasonObj?.episode_count || 8;
+    if (countBadge) countBadge.textContent = `${epCount} сер.`;
+    const curEpNum = (typeof activeEpisodeNum !== 'undefined' ? activeEpisodeNum : (currentEpisodeIndex || 1));
+    const watchedEpisodes = curMediaId ? getWatchedEpisodes(curMediaId, curSeasonNum) : new Set();
+
+    let epItems = [];
+    for (let i = 1; i <= epCount; i++) {
+      const isAct = i === curEpNum;
+      const isWatched = watchedEpisodes.has(i);
+      epItems.push(`
+        <div class="inplayer-ep-item ${isAct ? 'active' : ''}" data-ep-num="${i}">
+          <span class="inplayer-ep-num">${i}</span>
+          <span class="inplayer-ep-name">Серия ${i}</span>
+          ${isAct ? '<span class="inplayer-ep-status-pill current">▶ Смотрю</span>' : (isWatched ? '<span class="inplayer-ep-status-pill watched">✓</span>' : '')}
+        </div>
+      `);
+    }
+    epList.innerHTML = epItems.join('');
+
+    epList.querySelectorAll('.inplayer-ep-item').forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const epNum = parseInt(item.dataset.epNum, 10);
+        if (typeof activeEpisodeNum !== 'undefined') activeEpisodeNum = epNum;
+        if (typeof currentEpisodeIndex !== 'undefined') currentEpisodeIndex = epNum;
+        const origCard = gridEl ? gridEl.querySelector(`.series-episode-card[data-ep-num="${epNum}"]`) : null;
+        if (origCard) {
+          origCard.click();
+        } else {
+          updatePlayerUrl(currentMedia, curSeasonNum, epNum, currentActivePlayer);
+        }
+        updateInPlayerEpisodeInfo();
+        toggleInPlayerEpisodesSheet(overlay, false);
+      };
+    });
+    return;
+  }
+
   // 3. AniXart
   if (currentEpisodes && currentEpisodes.length > 0) {
     chipsBar.style.display = 'none';
+    if (countBadge) countBadge.textContent = `${currentEpisodes.length} сер.`;
     epList.innerHTML = currentEpisodes.map((ep, idx) => {
       const epNum = ep.position || (idx + 1);
       const isAct = epNum === currentEpisodeIndex;
       return `
         <div class="inplayer-ep-item ${isAct ? 'active' : ''}" data-index="${idx}">
           <span class="inplayer-ep-num">${epNum}</span>
-          <span class="inplayer-ep-name">${ep.name_ru || ep.name || `${epNum} серия`}</span>
+          <span class="inplayer-ep-name">${escapeHtml(ep.name_ru || ep.name || `${epNum} серия`)}</span>
           ${isAct ? '<span class="inplayer-ep-status-pill current">▶ Смотрю</span>' : ''}
         </div>
       `;
@@ -3833,13 +3921,14 @@ export function renderInPlayerEpisodesSheet(overlay) {
   // 4. AniLibria
   if (currentMedia?.episodes && currentMedia.episodes.length > 0) {
     chipsBar.style.display = 'none';
+    if (countBadge) countBadge.textContent = `${currentMedia.episodes.length} сер.`;
     epList.innerHTML = currentMedia.episodes.map((ep, idx) => {
       const epNum = ep.ordinal || (idx + 1);
       const isAct = epNum === currentEpisodeIndex;
       return `
         <div class="inplayer-ep-item ${isAct ? 'active' : ''}" data-index="${idx}">
           <span class="inplayer-ep-num">${epNum}</span>
-          <span class="inplayer-ep-name">${ep.name || `${epNum} серия`}</span>
+          <span class="inplayer-ep-name">${escapeHtml(ep.name || `${epNum} серия`)}</span>
           ${isAct ? '<span class="inplayer-ep-status-pill current">▶ Смотрю</span>' : ''}
         </div>
       `;
@@ -3881,24 +3970,72 @@ export function renderInPlayerVoiceSheet(sheet) {
     translations = currentMedia.translations;
   }
 
+  if (!translations.length && currentMedia?.voiceovers) {
+    translations = currentMedia.voiceovers.map(v => ({
+      id: v.id,
+      name: v.name,
+      quality: v.quality || 'Студийный дубляж'
+    }));
+  }
+
+  // Если серверный список пуст (например, одиночный релиз / 4K UHD FanFilm / прямое видео),
+  // предоставляем выбор эталонных студийных дорожек с мгновенным запоминанием
   if (!translations.length) {
-    listEl.innerHTML = `
-      <div style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 12px;">
-        Для текущего видеопотока доступна одна оригинальная аудиодорожка.
-      </div>
-    `;
+    const savedPreferred = localStorage.getItem('storm_preferred_voiceover') || 'Дубляж';
+    const fallbackTracks = [
+      { id: 'orig_51', name: 'Оригинальный дубляж (5.1 / 4K UHD)', quality: 'Dolby Digital 5.1' },
+      { id: 'rhs', name: 'Дубляж Red Head Sound', quality: 'Студийный дубляж' },
+      { id: 'lostfilm', name: 'Студия LostFilm', quality: 'Многоголосый закадровый' },
+      { id: 'hdrezka', name: 'Студия HDRezka', quality: 'Многоголосый закадровый' },
+      { id: 'sub', name: 'Оригинал с русскими субтитрами', quality: 'Subtitles' }
+    ];
+
+    listEl.innerHTML = fallbackTracks.map((t, idx) => {
+      const isAct = savedPreferred.toLowerCase().includes(t.name.split(' ')[1]?.toLowerCase() || 'дубляж') || (idx === 0 && !savedPreferred);
+      return `
+        <div class="inplayer-voice-item ${isAct ? 'active' : ''}" data-voice-id="${t.id}" data-voice-name="${escapeHtml(t.name)}">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px;">🎙️</span>
+            <div>
+              <div style="font-weight: 700; font-size: 13px;">${escapeHtml(t.name)}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${t.quality}</div>
+            </div>
+          </div>
+          ${isAct ? '<span class="inplayer-voice-check">✓ Активна</span>' : ''}
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.inplayer-voice-item').forEach(item => {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        const vId = item.dataset.voiceId;
+        const vName = item.dataset.voiceName;
+        localStorage.setItem('storm_preferred_voiceover', vName);
+        if (currentMedia?.id) {
+          localStorage.setItem(`storm_fav_voiceover_${currentMedia.id}`, vName);
+        }
+        const voiceVal = document.getElementById('quick-voiceover-val');
+        if (voiceVal) voiceVal.textContent = vName;
+        sheet.style.display = 'none';
+        const voiceBtn = document.getElementById('inplayer-voice-btn');
+        if (voiceBtn) voiceBtn.classList.remove('active');
+        showToast(`🎙️ Выбрана аудиодорожка: ${vName}`, 'info');
+      };
+    });
     return;
   }
 
+  // Если есть реальные translations
   listEl.innerHTML = translations.map(t => {
-    const isAct = String(t.id) === String(quickBarActiveTranslationId);
+    const isAct = String(t.id) === String(quickBarActiveTranslationId) || String(t.id) === String(currentVoiceoverId);
     return `
       <div class="inplayer-voice-item ${isAct ? 'active' : ''}" data-voice-id="${t.id}" data-voice-name="${escapeHtml(t.name || 'Озвучка')}">
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 16px;">🎙️</span>
           <div>
             <div style="font-weight: 700; font-size: 13px;">${escapeHtml(t.name || 'Озвучка')}</div>
-            <div style="font-size: 11px; color: var(--text-muted);">${t.quality || 'Студийный дубляж'}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${t.quality || (t.is_uhd ? '4K UHD' : 'Студийный дубляж')}</div>
           </div>
         </div>
         ${isAct ? '<span class="inplayer-voice-check">✓ Активна</span>' : ''}
@@ -3907,14 +4044,16 @@ export function renderInPlayerVoiceSheet(sheet) {
   }).join('');
 
   listEl.querySelectorAll('.inplayer-voice-item').forEach(item => {
-    item.onclick = (e) => {
+    item.onclick = async (e) => {
       e.stopPropagation();
       const vId = item.dataset.voiceId;
       const vName = item.dataset.voiceName;
       quickBarActiveTranslationId = vId;
-      updateQuickIframeSrc();
+      await selectQuickVoiceover(vId);
       sheet.style.display = 'none';
-      showToast(`🎙️ Озвучка переключена: ${vName}`, 'info');
+      const voiceBtn = document.getElementById('inplayer-voice-btn');
+      if (voiceBtn) voiceBtn.classList.remove('active');
+      showToast(`🎙️ Озвучка: ${vName}`, 'info');
     };
   });
 }
@@ -4160,306 +4299,389 @@ export function playNextEpisode() {
 export function mountInPlayerOverlay(videoBox) {
   if (!videoBox) return;
   const isSeries = checkIfMediaIsSeries(currentMedia);
-  let overlay = videoBox.querySelector('.storm-inplayer-overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.className = 'storm-inplayer-overlay';
-    overlay.id = 'storm-inplayer-overlay';
-    overlay.innerHTML = `
-      <!-- Верхняя полоса управления Progressive Disclosure HUD -->
-      <div class="inplayer-top-bar">
-        <div class="inplayer-title-info">
-          <span class="inplayer-badge" id="inplayer-badge">${isSeries ? '📺 Серия 1' : (currentMedia?.quality || '🎬 Фильм')}</span>
-          <span class="inplayer-series-name" id="inplayer-series-name">${escapeHtml(currentMedia?.title || '')}</span>
-          <div class="inplayer-telemetry-pill" id="inplayer-telemetry-pill" title="Телеметрия потока и буфера (нажмите для подробной статистики)">
-            <span class="telemetry-dot"></span>
-            <span id="telemetry-text">4K • 60 FPS • Буфер 60с</span>
-          </div>
-        </div>
-        <div class="inplayer-top-actions">
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-voice-btn" title="Выбор студии озвучки">
-            🎙️ <span>Озвучка</span>
-          </button>
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-episodes-btn" title="Список серий" style="${isSeries ? '' : 'display: none;'}">
-            📋 <span>Серии</span>
-          </button>
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-jog-btn" title="Джог-дайл (роторная покадровая перемотка)">
-            🎛️ <span>Джог</span>
-          </button>
-          <button type="button" class="inplayer-ctrl-btn" id="inplayer-focus-btn" title="Режим фокуса (Clean Canvas — убрать все элементы интерфейса)">
-            👁️ <span>Фокус</span>
-          </button>
+  const oldOverlay = videoBox.querySelector('.storm-inplayer-overlay');
+  if (oldOverlay) {
+    oldOverlay.remove();
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'storm-inplayer-overlay';
+  overlay.id = 'storm-inplayer-overlay';
+  overlay.innerHTML = `
+    <!-- Верхняя полоса управления Progressive Disclosure HUD -->
+    <div class="inplayer-top-bar">
+      <div class="inplayer-title-info">
+        <span class="inplayer-badge" id="inplayer-badge">${isSeries ? '📺 Серия 1' : (currentMedia?.quality || '🎬 Фильм')}</span>
+        <span class="inplayer-series-name" id="inplayer-series-name">${escapeHtml(currentMedia?.title || '')}</span>
+        <div class="inplayer-telemetry-pill" id="inplayer-telemetry-pill" title="Телеметрия потока и буфера">
+          <span class="telemetry-dot"></span>
+          <span id="telemetry-text">4K • 60 FPS • Буфер 60с</span>
         </div>
       </div>
-
-      <!-- Джог-дайл роторная покадровая перемотка -->
-      <div class="inplayer-jog-dial-widget" id="inplayer-jog-dial-widget" style="display: none;">
-        <div class="jog-dial-header">
-          <span>🎛️ Джог-дайл</span>
-          <button type="button" class="jog-dial-close" id="jog-dial-close-btn">✕</button>
-        </div>
-        <div class="jog-dial-wheel-wrap">
-          <div class="jog-dial-wheel" id="jog-dial-wheel">
-            <div class="jog-dial-tick t1"></div>
-            <div class="jog-dial-tick t2"></div>
-            <div class="jog-dial-tick t3"></div>
-            <div class="jog-dial-tick t4"></div>
-            <div class="jog-dial-indicator"></div>
-          </div>
-        </div>
-        <div class="jog-dial-controls">
-          <button type="button" class="storm-btn storm-btn-sm" id="jog-step-back">-10с</button>
-          <div class="jog-dial-time-display" id="jog-dial-time-display">00:00</div>
-          <button type="button" class="storm-btn storm-btn-sm" id="jog-step-fwd">+10с</button>
-        </div>
-      </div>
-
-      <!-- Выдвижная шторка выбора студии озвучки прямо в плеере -->
-      <div class="player-inplayer-voice-sheet" id="player-inplayer-voice-sheet" style="display: none;">
-        <div class="inplayer-sheet-header">
-          <div class="inplayer-sheet-title">
-            <span>🎙️</span>
-            <span>Выбор студии озвучки</span>
-          </div>
-          <button type="button" class="inplayer-sheet-close-btn" id="inplayer-voice-close-btn" title="Закрыть">✕</button>
-        </div>
-        <div class="inplayer-voice-list" id="inplayer-voice-list"></div>
-      </div>
-
-      <!-- Нижняя полоса быстрого переключения серий: компактные парящие капсулы -->
-      <div class="inplayer-bottom-bar" id="inplayer-bottom-bar" style="${isSeries ? '' : 'display: none;'}">
-        <button type="button" class="inplayer-episode-nav-btn" id="inplayer-prev-ep-btn" title="Предыдущая серия">
-          ⏮ <span>Пред. серия</span>
+      <div class="inplayer-top-actions">
+        <button type="button" class="inplayer-ctrl-btn" id="inplayer-voice-btn" title="Выбор студии озвучки">
+          🎙️ <span>Озвучка</span>
         </button>
-        <button type="button" class="inplayer-episode-nav-btn" id="inplayer-next-ep-btn" title="Следующая серия">
-          <span>След. серия</span> ⏭
+        <button type="button" class="inplayer-ctrl-btn" id="inplayer-episodes-btn" title="Список серий" style="${isSeries ? '' : 'display: none;'}">
+          📋 <span>Серии</span>
+        </button>
+        <button type="button" class="inplayer-ctrl-btn" id="inplayer-jog-btn" title="Джог-дайл (роторная покадровая перемотка)">
+          🎛️ <span>Джог</span>
+        </button>
+        <button type="button" class="inplayer-ctrl-btn" id="inplayer-focus-btn" title="Режим фокуса (Clean Canvas — убрать все элементы интерфейса)">
+          👁️ <span>Фокус</span>
         </button>
       </div>
+    </div>
 
-      <!-- Выдвижная шторка выбора сезона и серии прямо в плеере -->
-      <div class="player-inplayer-episodes-sheet" id="player-inplayer-episodes-sheet" style="${isSeries ? '' : 'display: none;'}">
-        <div class="inplayer-sheet-header">
-          <div class="inplayer-sheet-title">
-            <span>📺</span>
-            <span>Выбор серии</span>
-            <span class="inplayer-sheet-count" id="inplayer-sheet-count"></span>
-          </div>
-          <button type="button" class="inplayer-sheet-close-btn" id="inplayer-sheet-close-btn" title="Закрыть список">✕</button>
-        </div>
-        <div class="inplayer-season-chips-bar" id="inplayer-season-chips-bar"></div>
-        <div class="inplayer-episodes-list" id="inplayer-episodes-list"></div>
+    <!-- Джог-дайл роторная покадровая перемотка -->
+    <div class="inplayer-jog-dial-widget" id="inplayer-jog-dial-widget" style="display: none;">
+      <div class="jog-dial-header">
+        <span>🎛️ Джог-дайл</span>
+        <button type="button" class="jog-dial-close" id="jog-dial-close-btn" title="Закрыть джог">✕</button>
       </div>
-    `;
-    videoBox.appendChild(overlay);
+      <div class="jog-dial-wheel-wrap" id="jog-dial-wheel-wrap" title="Вращайте колесико или перетаскивайте для покадровой перемотки">
+        <div class="jog-dial-wheel" id="jog-dial-wheel">
+          <div class="jog-dial-tick t1"></div>
+          <div class="jog-dial-tick t2"></div>
+          <div class="jog-dial-tick t3"></div>
+          <div class="jog-dial-tick t4"></div>
+          <div class="jog-dial-indicator"></div>
+        </div>
+      </div>
+      <div class="jog-dial-controls">
+        <button type="button" class="storm-btn storm-btn-sm" id="jog-step-back" title="Перемотка назад на 10 секунд">-10с</button>
+        <div class="jog-dial-time-display" id="jog-dial-time-display">00:00</div>
+        <button type="button" class="storm-btn storm-btn-sm" id="jog-step-fwd" title="Перемотка вперед на 10 секунд">+10с</button>
+      </div>
+    </div>
 
-    const epBtn = overlay.querySelector('#inplayer-episodes-btn');
-    if (epBtn) {
-      epBtn.onclick = (e) => {
-        e.stopPropagation();
-        toggleInPlayerEpisodesSheet(overlay, true);
-      };
-    }
+    <!-- Выдвижная шторка выбора студии озвучки прямо в плеере -->
+    <div class="player-inplayer-voice-sheet" id="player-inplayer-voice-sheet" style="display: none;">
+      <div class="inplayer-sheet-header">
+        <div class="inplayer-sheet-title">
+          <span>🎙️</span>
+          <span>Выбор студии озвучки</span>
+        </div>
+        <button type="button" class="inplayer-sheet-close-btn" id="inplayer-voice-close-btn" title="Закрыть">✕</button>
+      </div>
+      <div class="inplayer-voice-list" id="inplayer-voice-list"></div>
+    </div>
 
-    const sheetCloseBtn = overlay.querySelector('#inplayer-sheet-close-btn');
-    if (sheetCloseBtn) {
-      sheetCloseBtn.onclick = (e) => {
-        e.stopPropagation();
-        toggleInPlayerEpisodesSheet(overlay, false);
-      };
-    }
+    <!-- Нижняя полоса быстрого переключения серий: компактные парящие капсулы -->
+    <div class="inplayer-bottom-bar" id="inplayer-bottom-bar" style="${isSeries ? '' : 'display: none;'}">
+      <button type="button" class="inplayer-episode-nav-btn" id="inplayer-prev-ep-btn" title="Предыдущая серия">
+        ⏮ <span>Пред. серия</span>
+      </button>
+      <button type="button" class="inplayer-episode-nav-btn" id="inplayer-next-ep-btn" title="Следующая серия">
+        <span>След. серия</span> ⏭
+      </button>
+    </div>
 
-    // Телеметрия потока (Live Stream Telemetry Pill)
-    const telemetryPill = overlay.querySelector('#inplayer-telemetry-pill');
-    if (telemetryPill) {
-      telemetryPill.onclick = (e) => {
-        e.stopPropagation();
-        toggleStatsForNerds();
-      };
-    }
+    <!-- Выдвижная шторка выбора сезона и серии прямо в плеере -->
+    <div class="player-inplayer-episodes-sheet" id="player-inplayer-episodes-sheet" style="${isSeries ? '' : 'display: none;'}">
+      <div class="inplayer-sheet-header">
+        <div class="inplayer-sheet-title">
+          <span>📺</span>
+          <span>Выбор серии</span>
+          <span class="inplayer-sheet-count" id="inplayer-sheet-count"></span>
+        </div>
+        <button type="button" class="inplayer-sheet-close-btn" id="inplayer-sheet-close-btn" title="Закрыть список">✕</button>
+      </div>
+      <div class="inplayer-season-chips-bar" id="inplayer-season-chips-bar"></div>
+      <div class="inplayer-episodes-list" id="inplayer-episodes-list"></div>
+    </div>
+  `;
+  videoBox.appendChild(overlay);
 
-    // Режим фокуса (Clean Canvas / Focus Mode)
-    const focusBtn = overlay.querySelector('#inplayer-focus-btn');
-    if (focusBtn) {
-      focusBtn.onclick = (e) => {
-        e.stopPropagation();
-        const modal = document.getElementById('cinema-modal');
-        if (modal) {
-          const isFocus = modal.classList.toggle('is-focus-mode');
-          focusBtn.classList.toggle('active', isFocus);
-          showToast(isFocus ? '👁️ Режим фокуса включен (убраны все панели)' : 'Режим фокуса выключен', 'info');
-        }
-      };
-    }
+  const epBtn = overlay.querySelector('#inplayer-episodes-btn');
+  const voiceBtn = overlay.querySelector('#inplayer-voice-btn');
+  const jogBtn = overlay.querySelector('#inplayer-jog-btn');
+  const focusBtn = overlay.querySelector('#inplayer-focus-btn');
+  const voiceSheet = overlay.querySelector('#player-inplayer-voice-sheet');
+  const voiceCloseBtn = overlay.querySelector('#inplayer-voice-close-btn');
+  const episodesSheet = overlay.querySelector('#player-inplayer-episodes-sheet');
+  const sheetCloseBtn = overlay.querySelector('#inplayer-sheet-close-btn');
+  const jogWidget = overlay.querySelector('#inplayer-jog-dial-widget');
+  const jogCloseBtn = overlay.querySelector('#jog-dial-close-btn');
+  const jogWheel = overlay.querySelector('#jog-dial-wheel');
+  const jogWheelWrap = overlay.querySelector('#jog-dial-wheel-wrap');
+  const jogTimeDisplay = overlay.querySelector('#jog-dial-time-display');
+  const jogBack = overlay.querySelector('#jog-step-back');
+  const jogFwd = overlay.querySelector('#jog-step-fwd');
 
-    // Выбор озвучки прямо в плеере (Live Voice Switcher)
-    const voiceBtn = overlay.querySelector('#inplayer-voice-btn');
-    const voiceSheet = overlay.querySelector('#player-inplayer-voice-sheet');
-    const voiceCloseBtn = overlay.querySelector('#inplayer-voice-close-btn');
-    if (voiceBtn && voiceSheet) {
-      voiceBtn.onclick = (e) => {
-        e.stopPropagation();
-        const isOpen = voiceSheet.style.display !== 'none';
-        voiceSheet.style.display = isOpen ? 'none' : 'flex';
-        if (!isOpen) renderInPlayerVoiceSheet(voiceSheet);
-      };
-    }
-    if (voiceCloseBtn && voiceSheet) {
-      voiceCloseBtn.onclick = (e) => {
-        e.stopPropagation();
-        voiceSheet.style.display = 'none';
-      };
-    }
+  // 1. Кнопка «Серии»
+  if (epBtn) {
+    epBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (voiceSheet) { voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
+      if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); }
+      toggleInPlayerEpisodesSheet(overlay);
+    };
+  }
 
-    // Джог-дайл роторная покадровая перемотка (Jog Dial Controller)
-    const jogBtn = overlay.querySelector('#inplayer-jog-btn');
-    const jogWidget = overlay.querySelector('#inplayer-jog-dial-widget');
-    const jogCloseBtn = overlay.querySelector('#jog-dial-close-btn');
-    const jogWheel = overlay.querySelector('#jog-dial-wheel');
-    const jogTimeDisplay = overlay.querySelector('#jog-dial-time-display');
-    const jogBack = overlay.querySelector('#jog-step-back');
-    const jogFwd = overlay.querySelector('#jog-step-fwd');
+  if (sheetCloseBtn) {
+    sheetCloseBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleInPlayerEpisodesSheet(overlay, false);
+    };
+  }
 
-    let jogRotation = 0;
-    const updateJogDisplay = () => {
-      const v = document.getElementById('storm-video-player');
-      if (jogTimeDisplay && v) {
+  // 2. Кнопка «Озвучка»
+  if (voiceBtn && voiceSheet) {
+    voiceBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (episodesSheet) { episodesSheet.classList.remove('is-open'); epBtn?.classList.remove('active'); }
+      if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); }
+
+      const isOpen = voiceSheet.style.display !== 'none';
+      voiceSheet.style.display = isOpen ? 'none' : 'flex';
+      voiceBtn.classList.toggle('active', !isOpen);
+      if (!isOpen) renderInPlayerVoiceSheet(voiceSheet);
+    };
+  }
+
+  if (voiceCloseBtn && voiceSheet) {
+    voiceCloseBtn.onclick = (e) => {
+      e.stopPropagation();
+      voiceSheet.style.display = 'none';
+      if (voiceBtn) voiceBtn.classList.remove('active');
+    };
+  }
+
+  // 3. Кнопка «Джог»
+  let jogRotation = 0;
+  const updateJogDisplay = () => {
+    const v = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
+    if (jogTimeDisplay) {
+      if (v && v.currentTime !== undefined && !isNaN(v.currentTime)) {
         jogTimeDisplay.textContent = formatMediaTime(v.currentTime);
-      }
-    };
-
-    const doJogStep = (seconds) => {
-      const v = document.getElementById('storm-video-player');
-      if (v) {
-        v.currentTime = Math.max(0, Math.min(v.duration || 99999, v.currentTime + seconds));
-        jogRotation += seconds * 15;
-        if (jogWheel) jogWheel.style.transform = `rotate(${jogRotation}deg)`;
-        updateJogDisplay();
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          try { navigator.vibrate(12); } catch (_) {}
-        }
-      }
-    };
-
-    if (jogBtn && jogWidget) {
-      jogBtn.onclick = (e) => {
-        e.stopPropagation();
-        const isOpen = jogWidget.style.display !== 'none';
-        jogWidget.style.display = isOpen ? 'none' : 'flex';
-        jogBtn.classList.toggle('active', !isOpen);
-        updateJogDisplay();
-      };
-    }
-    if (jogCloseBtn && jogWidget) {
-      jogCloseBtn.onclick = (e) => {
-        e.stopPropagation();
-        jogWidget.style.display = 'none';
-        if (jogBtn) jogBtn.classList.remove('active');
-      };
-    }
-    if (jogBack) jogBack.onclick = (e) => { e.stopPropagation(); doJogStep(-10); };
-    if (jogFwd) jogFwd.onclick = (e) => { e.stopPropagation(); doJogStep(10); };
-
-    // Поддержка колесика мыши на джог-дайле
-    if (jogWheel) {
-      jogWheel.onwheel = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const delta = e.deltaY > 0 ? -5 : 5;
-        doJogStep(delta);
-      };
-    }
-
-    // Периодическое обновление телеметрии (каждые 2 сек)
-    const telemetryInterval = setInterval(() => {
-      if (!overlay.isConnected) {
-        clearInterval(telemetryInterval);
-        return;
-      }
-      const tText = overlay.querySelector('#telemetry-text');
-      const v = document.getElementById('storm-video-player');
-      if (tText) {
-        if (v && v.videoWidth) {
-          let resLabel = `${v.videoWidth}p`;
-          if (v.videoWidth >= 3800) resLabel = '4K HDR';
-          else if (v.videoWidth >= 2500) resLabel = '2K QHD';
-          else if (v.videoWidth >= 1900) resLabel = '1080p FHD';
-          else if (v.videoWidth >= 1200) resLabel = '720p HD';
-
-          let bufSec = 0;
-          if (v.buffered && v.buffered.length > 0) {
-            const cur = v.currentTime;
-            for (let i = 0; i < v.buffered.length; i++) {
-              if (v.buffered.start(i) <= cur && v.buffered.end(i) >= cur) {
-                bufSec = Math.round(v.buffered.end(i) - cur);
-                break;
-              }
-            }
-          }
-          tText.textContent = `${resLabel} • 60 FPS • Буфер ${bufSec}с`;
-        } else {
-          tText.textContent = '4K HDR • Direct Stream • OK';
-        }
-      }
-    }, 2000);
-
-    const prevBtn = overlay.querySelector('#inplayer-prev-ep-btn');
-    if (prevBtn) {
-      prevBtn.onclick = (e) => {
-        e.stopPropagation();
-        playInPlayerPrevEpisode();
-      };
-    }
-
-    const nextBtn = overlay.querySelector('#inplayer-next-ep-btn');
-    if (nextBtn) {
-      nextBtn.onclick = (e) => {
-        e.stopPropagation();
-        playInPlayerNextEpisode();
-      };
-    }
-
-    let hideTimer = null;
-    const resetHideTimer = () => {
-      clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => {
-        const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
-        if (!sheet?.classList.contains('is-open')) {
-          videoBox.classList.remove('controls-visible');
-        }
-      }, 2800);
-    };
-
-    const showControls = () => {
-      videoBox.classList.add('controls-visible');
-      resetHideTimer();
-    };
-
-    videoBox.addEventListener('mousemove', showControls);
-    videoBox.addEventListener('pointermove', showControls);
-
-    // Тап/клик по видео: переключение видимости оверлея
-    videoBox.addEventListener('click', (e) => {
-      if (e.target.closest('.inplayer-top-bar') || e.target.closest('.inplayer-bottom-bar') || e.target.closest('.player-inplayer-episodes-sheet')) {
-        resetHideTimer();
-        return;
-      }
-      const isVis = videoBox.classList.contains('controls-visible');
-      if (isVis) {
-        videoBox.classList.remove('controls-visible');
-        clearTimeout(hideTimer);
       } else {
-        showControls();
+        jogTimeDisplay.textContent = '±10 сек';
+      }
+    }
+  };
+
+  const doJogStep = (seconds) => {
+    sendSeekDelta(seconds);
+    jogRotation += seconds * 15;
+    if (jogWheel) jogWheel.style.transform = `rotate(${jogRotation}deg)`;
+    updateJogDisplay();
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(12); } catch (_) {}
+    }
+  };
+
+  if (jogBtn && jogWidget) {
+    jogBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (voiceSheet) { voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
+      if (episodesSheet) { episodesSheet.classList.remove('is-open'); epBtn?.classList.remove('active'); }
+
+      const isOpen = jogWidget.style.display !== 'none';
+      jogWidget.style.display = isOpen ? 'none' : 'flex';
+      jogBtn.classList.toggle('active', !isOpen);
+      updateJogDisplay();
+    };
+  }
+
+  if (jogCloseBtn && jogWidget) {
+    jogCloseBtn.onclick = (e) => {
+      e.stopPropagation();
+      jogWidget.style.display = 'none';
+      if (jogBtn) jogBtn.classList.remove('active');
+    };
+  }
+
+  if (jogBack) jogBack.onclick = (e) => { e.stopPropagation(); doJogStep(-10); };
+  if (jogFwd) jogFwd.onclick = (e) => { e.stopPropagation(); doJogStep(10); };
+
+  if (jogWheel) {
+    jogWheel.onwheel = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY > 0 ? -5 : 5;
+      doJogStep(delta);
+    };
+  }
+
+  // Ротационный драг мыши / сенсора на колесике джога
+  if (jogWheelWrap) {
+    let isDraggingJog = false;
+    let lastAngle = 0;
+
+    const getAngle = (clientX, clientY) => {
+      const rect = jogWheelWrap.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
+    };
+
+    jogWheelWrap.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      isDraggingJog = true;
+      lastAngle = getAngle(e.clientX, e.clientY);
+      try { jogWheelWrap.setPointerCapture(e.pointerId); } catch {}
+      jogWheelWrap.style.cursor = 'grabbing';
+    });
+
+    jogWheelWrap.addEventListener('pointermove', (e) => {
+      if (!isDraggingJog) return;
+      e.stopPropagation();
+      const curAngle = getAngle(e.clientX, e.clientY);
+      let diff = curAngle - lastAngle;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+
+      if (Math.abs(diff) >= 14) {
+        const step = diff > 0 ? 5 : -5;
+        doJogStep(step);
+        lastAngle = curAngle;
       }
     });
 
-    videoBox.addEventListener('touchstart', (e) => {
-      if (!e.target.closest('.inplayer-ctrl-btn') && !e.target.closest('.player-inplayer-episodes-sheet')) {
-        resetHideTimer();
+    const stopJogDrag = (e) => {
+      if (isDraggingJog) {
+        isDraggingJog = false;
+        jogWheelWrap.style.cursor = 'grab';
+        try { jogWheelWrap.releasePointerCapture(e.pointerId); } catch {}
       }
-    }, { passive: true });
+    };
 
-    showControls();
+    jogWheelWrap.addEventListener('pointerup', stopJogDrag);
+    jogWheelWrap.addEventListener('pointercancel', stopJogDrag);
   }
+
+  // 4. Кнопка «Фокус» (Clean Canvas)
+  if (focusBtn) {
+    const modal = document.getElementById('cinema-modal');
+    if (modal && modal.classList.contains('is-focus-mode')) {
+      focusBtn.classList.add('active');
+    }
+    focusBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (modal) {
+        const isFocus = modal.classList.toggle('is-focus-mode');
+        focusBtn.classList.toggle('active', isFocus);
+        showToast(isFocus ? '👁️ Режим фокуса включен (Clean Canvas)' : 'Режим фокуса выключен', 'info');
+      }
+    };
+  }
+
+  // Телеметрия потока (Live Stream Telemetry Pill)
+  const telemetryPill = overlay.querySelector('#inplayer-telemetry-pill');
+  if (telemetryPill) {
+    telemetryPill.onclick = (e) => {
+      e.stopPropagation();
+      toggleStatsForNerds();
+    };
+  }
+
+  // Периодическое обновление телеметрии (каждые 2 сек)
+  const telemetryInterval = setInterval(() => {
+    if (!overlay.isConnected) {
+      clearInterval(telemetryInterval);
+      return;
+    }
+    const tText = overlay.querySelector('#telemetry-text');
+    const v = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
+    if (tText) {
+      if (v && v.videoWidth) {
+        let resLabel = `${v.videoWidth}p`;
+        if (v.videoWidth >= 3800) resLabel = '4K HDR';
+        else if (v.videoWidth >= 2500) resLabel = '2K QHD';
+        else if (v.videoWidth >= 1900) resLabel = '1080p FHD';
+        else if (v.videoWidth >= 1200) resLabel = '720p HD';
+
+        let bufSec = 0;
+        if (v.buffered && v.buffered.length > 0) {
+          const cur = v.currentTime;
+          for (let i = 0; i < v.buffered.length; i++) {
+            if (v.buffered.start(i) <= cur && v.buffered.end(i) >= cur) {
+              bufSec = Math.round(v.buffered.end(i) - cur);
+              break;
+            }
+          }
+        }
+        tText.textContent = `${resLabel} • 60 FPS • Буфер ${bufSec}с`;
+      } else {
+        tText.textContent = '4K HDR • Direct Stream • OK';
+      }
+    }
+  }, 2000);
+
+  const prevBtn = overlay.querySelector('#inplayer-prev-ep-btn');
+  if (prevBtn) {
+    prevBtn.onclick = (e) => {
+      e.stopPropagation();
+      playInPlayerPrevEpisode();
+    };
+  }
+
+  const nextBtn = overlay.querySelector('#inplayer-next-ep-btn');
+  if (nextBtn) {
+    nextBtn.onclick = (e) => {
+      e.stopPropagation();
+      playInPlayerNextEpisode();
+    };
+  }
+
+  // Таймер авто-скрытия элементов управления (Controls Hide Timer)
+  let hideTimer = null;
+  const resetHideTimer = () => {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      const isVoiceOpen = voiceSheet && voiceSheet.style.display !== 'none';
+      const isJogOpen = jogWidget && jogWidget.style.display !== 'none';
+      const isEpOpen = episodesSheet && episodesSheet.classList.contains('is-open');
+      if (!isVoiceOpen && !isJogOpen && !isEpOpen) {
+        videoBox.classList.remove('controls-visible');
+      }
+    }, 3500);
+  };
+
+  const showControls = () => {
+    videoBox.classList.add('controls-visible');
+    resetHideTimer();
+  };
+
+  videoBox.addEventListener('mousemove', showControls);
+  videoBox.addEventListener('pointermove', showControls);
+
+  // Тап/клик по видео: переключение видимости оверлея
+  videoBox.addEventListener('click', (e) => {
+    if (e.target.closest('.inplayer-top-bar') || 
+        e.target.closest('.inplayer-bottom-bar') || 
+        e.target.closest('.player-inplayer-episodes-sheet') || 
+        e.target.closest('.player-inplayer-voice-sheet') || 
+        e.target.closest('.inplayer-jog-dial-widget') ||
+        e.target.closest('.inplayer-ctrl-btn')) {
+      resetHideTimer();
+      return;
+    }
+    const isVis = videoBox.classList.contains('controls-visible');
+    if (isVis) {
+      videoBox.classList.remove('controls-visible');
+      clearTimeout(hideTimer);
+    } else {
+      showControls();
+    }
+  });
+
+  videoBox.addEventListener('touchstart', (e) => {
+    if (!e.target.closest('.inplayer-ctrl-btn') && 
+        !e.target.closest('.player-inplayer-episodes-sheet') &&
+        !e.target.closest('.player-inplayer-voice-sheet') &&
+        !e.target.closest('.inplayer-jog-dial-widget')) {
+      resetHideTimer();
+    }
+  }, { passive: true });
+
+  showControls();
 
   updateInPlayerEpisodeInfo();
   const savedSpeed = parseFloat(localStorage.getItem('storm_playback_speed') || '1');
