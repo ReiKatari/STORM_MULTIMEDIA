@@ -1966,7 +1966,11 @@ app.get('/api/media/item', async (req, res) => {
         const tmdbSearch = await searchTmdb(cleanSearchTitle || mediaDetails.title, 1);
         if (tmdbSearch.items?.length > 0) {
           const matchByYear = mediaDetails.year ? tmdbSearch.items.find(it => String(it.year) === String(mediaDetails.year)) : null;
-          const matchByType = isSeries ? tmdbSearch.items.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
+          let matchByType = isSeries ? tmdbSearch.items.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
+          if (isSeries && !matchByType && cleanSearchTitle.toLowerCase().includes('ричер')) {
+            const reacherTv = await searchTmdb('Ричер', 1);
+            matchByType = (reacherTv?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv') || { id: '108978', media_type: 'series' };
+          }
           const first = (isSeries && matchByType) || matchByYear || tmdbSearch.items[0];
           const enriched = await getTmdbItemDetails(first.id, isSeries ? 'series' : (mediaDetails.media_type || first.media_type), cleanSearchTitle || mediaDetails.title);
           if (enriched) {
@@ -2214,6 +2218,14 @@ app.get('/api/media/series-episodes', async (req, res) => {
     const sNum = (season !== undefined && !isNaN(parseInt(season, 10))) ? parseInt(season, 10) : 1;
     let data = { episodes: [], overview: '' };
 
+    const titleLower = String(title || '').toLowerCase();
+    if (titleLower.includes('ричер') || titleLower.includes('reacher')) {
+      resolvedTvId = '108978';
+    } else if (resolvedTvId && String(resolvedTvId).length <= 4 && !String(resolvedTvId).startsWith('tmdb_')) {
+      // Исключаем короткие ID сторонних плееров/FanFilm (4026 и т.д.), которые не являются TMDB TV ID
+      resolvedTvId = null;
+    }
+
     if (resolvedTvId && !isNaN(Number(String(resolvedTvId).replace('tmdb_', '')))) {
       try {
         const cleanId = String(resolvedTvId).replace('tmdb_', '');
@@ -2227,19 +2239,22 @@ app.get('/api/media/series-episodes', async (req, res) => {
     if ((!data.episodes || data.episodes.length === 0) && title) {
       try {
         const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
-        let searchRes = await searchTmdb(cleanTitle, 1);
-        let tvMatch = (searchRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv');
-
-        // Специальная поддержка алиасов ("Джек Ричер" -> "Ричер" TV в TMDB)
-        if (!tvMatch && cleanTitle.toLowerCase().includes('ричер')) {
-          const reacherRes = await searchTmdb('Ричер', 1);
-          tvMatch = (reacherRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv');
+        let fallbackTvId = null;
+        if (cleanTitle.toLowerCase().includes('ричер') || cleanTitle.toLowerCase().includes('reacher')) {
+          fallbackTvId = '108978';
+        } else {
+          fallbackTvId = await findTmdbTvId(cleanTitle);
         }
 
-        if (!tvMatch) tvMatch = searchRes?.items?.[0];
+        if (!fallbackTvId) {
+          let searchRes = await searchTmdb(cleanTitle, 1);
+          let tvMatch = (searchRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv');
+          if (tvMatch && tvMatch.id) {
+            fallbackTvId = String(tvMatch.id).replace('tmdb_', '');
+          }
+        }
 
-        if (tvMatch && tvMatch.id) {
-          const fallbackTvId = String(tvMatch.id).replace('tmdb_', '');
+        if (fallbackTvId) {
           data = await getTmdbSeasonEpisodes(fallbackTvId, sNum);
         }
       } catch (e) {}
@@ -4423,7 +4438,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.23';
+  const currentAppVersion = '1.0.24';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
