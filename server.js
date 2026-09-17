@@ -1934,10 +1934,26 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.year = resolvedKnownYr;
     }
 
-    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров, актеров, жанров или описания
+    // Дополнительное обогащение для FanFilm и других источников при отсутствии режиссеров, актеров, жанров, описания или сезонов у сериалов
     const hasGenres = mediaDetails.genres && (Array.isArray(mediaDetails.genres) ? mediaDetails.genres.length > 0 : String(mediaDetails.genres).trim().length > 0);
-    const hasValidDesc = mediaDetails.description && mediaDetails.description.trim().length >= 60 && !mediaDetails.description.includes('онлайн в высоком качестве');
-    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasGenres || !hasValidDesc) && mediaDetails.title) {
+    const rawDesc = String(mediaDetails.description || '').trim();
+    const isDescStub = !rawDesc ||
+      rawDesc.length < 90 ||
+      rawDesc.includes('онлайн в высоком качестве') ||
+      rawDesc.includes('только на сайте FanFilm') ||
+      rawDesc.toLowerCase().includes('выходящего под названием') ||
+      /под названием\s*$/i.test(rawDesc) ||
+      /события телевизионного сериала/i.test(rawDesc) ||
+      (!/[.!?…»")]$/.test(rawDesc) && rawDesc.length < 250);
+    const hasValidDesc = !isDescStub;
+
+    const isSeries = mediaDetails.media_type === 'series' || 
+                     mediaDetails.category === 'Сериал' || 
+                     mediaDetails.media_type === 'cartoon-series' || 
+                     mediaDetails.media_type === 'anime-series';
+    const needsSeasons = isSeries && (!mediaDetails.seasons || mediaDetails.seasons.length === 0);
+
+    if ((!mediaDetails.directors?.length || !mediaDetails.cast?.length || !hasGenres || !hasValidDesc || needsSeasons) && mediaDetails.title) {
       try {
         if (!mediaDetails.year) {
           mediaDetails.year = resolveMediaYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || '', mediaDetails.poster || '');
@@ -1949,10 +1965,11 @@ app.get('/api/media/item', async (req, res) => {
         const tmdbSearch = await searchTmdb(cleanSearchTitle || mediaDetails.title, 1);
         if (tmdbSearch.items?.length > 0) {
           const matchByYear = mediaDetails.year ? tmdbSearch.items.find(it => String(it.year) === String(mediaDetails.year)) : null;
-          const first = matchByYear || tmdbSearch.items[0];
-          const enriched = await getTmdbItemDetails(first.id, mediaDetails.media_type, cleanSearchTitle || mediaDetails.title);
+          const matchByType = isSeries ? tmdbSearch.items.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
+          const first = (isSeries && matchByType) || matchByYear || tmdbSearch.items[0];
+          const enriched = await getTmdbItemDetails(first.id, isSeries ? 'series' : (mediaDetails.media_type || first.media_type), cleanSearchTitle || mediaDetails.title);
           if (enriched) {
-            if (!hasValidDesc && enriched.description && enriched.description.length >= 60) {
+            if ((!hasValidDesc || (enriched.description && enriched.description.length > (mediaDetails.description || '').length)) && enriched.description && enriched.description.length >= 60) {
               mediaDetails.description = enriched.description;
             }
             mediaDetails.release_date = enriched.release_date || mediaDetails.release_date;
@@ -1973,8 +1990,15 @@ app.get('/api/media/item', async (req, res) => {
             mediaDetails.revenue = enriched.revenue || mediaDetails.revenue;
             mediaDetails.cast = enriched.cast?.length ? enriched.cast : mediaDetails.cast;
             mediaDetails.trailer_url = mediaDetails.trailer_url || enriched.trailer_url;
-            if (enriched.seasons?.length && !mediaDetails.seasons?.length) {
+            if (enriched.seasons?.length) {
               mediaDetails.seasons = enriched.seasons;
+            }
+            if (enriched.tmdb_id || enriched.id) {
+              mediaDetails.tmdb_id = String(enriched.tmdb_id || enriched.id).replace('tmdb_', '');
+            }
+            if (isSeries) {
+              mediaDetails.media_type = 'series';
+              mediaDetails.category = 'Сериал';
             }
           }
         }
@@ -2149,21 +2173,31 @@ app.get('/api/media/series-episodes', async (req, res) => {
   try {
     let { tvId, season, title } = req.query;
     let resolvedTvId = tvId;
-    if ((!resolvedTvId || isNaN(Number(String(resolvedTvId).replace('tmdb_', '')))) && title) {
+    const sNum = (season !== undefined && !isNaN(parseInt(season, 10))) ? parseInt(season, 10) : 1;
+    let data = { episodes: [], overview: '' };
+
+    if (resolvedTvId && !isNaN(Number(String(resolvedTvId).replace('tmdb_', '')))) {
       try {
-        const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+        const cleanId = String(resolvedTvId).replace('tmdb_', '');
+        data = await getTmdbSeasonEpisodes(cleanId, sNum);
+      } catch (e) {
+        data = { episodes: [], overview: '' };
+      }
+    }
+
+    // Если по tvId ничего не найдено или tvId не был указан, выполняем умный поиск сериала по названию
+    if ((!data.episodes || data.episodes.length === 0) && title) {
+      try {
+        const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
         const searchRes = await searchTmdb(cleanTitle, 1);
         const tvMatch = (searchRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv') || searchRes?.items?.[0];
         if (tvMatch && tvMatch.id) {
-          resolvedTvId = String(tvMatch.id).replace('tmdb_', '');
+          const fallbackTvId = String(tvMatch.id).replace('tmdb_', '');
+          data = await getTmdbSeasonEpisodes(fallbackTvId, sNum);
         }
-      } catch {}
+      } catch (e) {}
     }
-    if (!resolvedTvId) {
-      return res.json({ episodes: [], overview: '' });
-    }
-    const sNum = (season !== undefined && !isNaN(parseInt(season, 10))) ? parseInt(season, 10) : 1;
-    const data = await getTmdbSeasonEpisodes(resolvedTvId, sNum);
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message, episodes: [] });
@@ -3580,7 +3614,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.8';
+  const currentAppVersion = '1.0.9';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
