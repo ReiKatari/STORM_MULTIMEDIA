@@ -1248,6 +1248,11 @@ export function closePlayerModal() {
     const playerContainer = document.getElementById('cinema-player-container');
     if (playerContainer) playerContainer.classList.remove('aspect-fill', 'aspect-original');
     currentAspectRatioMode = 'default';
+
+    const jogWidget = document.getElementById('inplayer-jog-dial-widget');
+    if (jogWidget) jogWidget.style.display = 'none';
+    const jogBtn = document.getElementById('inplayer-jog-btn');
+    if (jogBtn) jogBtn.classList.remove('active');
     isPlayerScreenLocked = false;
 
     if (iframeWatchInterval) {
@@ -4350,26 +4355,66 @@ export function mountInPlayerOverlay(videoBox) {
       </div>
     </div>
 
-    <!-- Джог-дайл роторная покадровая перемотка -->
+    <!-- Джог-дайл роторная покадровая перемотка (Студийный прецизионный контроллер) -->
     <div class="inplayer-jog-dial-widget" id="inplayer-jog-dial-widget" style="display: none;">
       <div class="jog-dial-header">
-        <span>🎛️ Джог-дайл</span>
+        <div class="jog-dial-header-title">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="3"></circle>
+            <line x1="12" y1="2" x2="12" y2="5"></line>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="5" y2="12"></line>
+            <line x1="19" y1="12" x2="22" y2="12"></line>
+          </svg>
+          <span>Джог-дайл</span>
+        </div>
         <button type="button" class="jog-dial-close" id="jog-dial-close-btn" title="Закрыть джог">✕</button>
       </div>
-      <div class="jog-dial-wheel-wrap" id="jog-dial-wheel-wrap" title="Вращайте колесико или перетаскивайте для покадровой перемотки">
+
+      <!-- Прецизионный ротор со шкалой градаций -->
+      <div class="jog-dial-wheel-wrap" id="jog-dial-wheel-wrap" title="Вращайте по кругу, перетаскивайте или крутите колесико мыши">
+        <div class="jog-dial-bezel">
+          <svg class="jog-dial-bezel-svg" viewBox="0 0 126 126">
+            <circle cx="63" cy="63" r="58" fill="none" stroke="rgba(0, 210, 255, 0.15)" stroke-width="1.5" stroke-dasharray="2 6.5"/>
+            <!-- Основные деления 0, 90, 180, 270 град -->
+            <line x1="63" y1="5" x2="63" y2="11" stroke="#00f0ff" stroke-width="2" stroke-linecap="round"/>
+            <line x1="121" y1="63" x2="115" y2="63" stroke="#00f0ff" stroke-width="2" stroke-linecap="round"/>
+            <line x1="63" y1="121" x2="63" y2="115" stroke="#00f0ff" stroke-width="2" stroke-linecap="round"/>
+            <line x1="5" y1="63" x2="11" y2="63" stroke="#00f0ff" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
         <div class="jog-dial-wheel" id="jog-dial-wheel">
-          <div class="jog-dial-tick t1"></div>
-          <div class="jog-dial-tick t2"></div>
-          <div class="jog-dial-tick t3"></div>
-          <div class="jog-dial-tick t4"></div>
-          <div class="jog-dial-indicator"></div>
+          <div class="jog-dial-rotor-grooves"></div>
+          <div class="jog-dial-dimple">
+            <div class="jog-dial-indicator"></div>
+          </div>
+          <div class="jog-dial-hub">
+            <div class="jog-dial-hub-dot"></div>
+          </div>
         </div>
       </div>
-      <div class="jog-dial-controls">
-        <button type="button" class="storm-btn storm-btn-sm" id="jog-step-back" title="Перемотка назад на 10 секунд">-10с</button>
-        <div class="jog-dial-time-display" id="jog-dial-time-display">00:00</div>
-        <button type="button" class="storm-btn storm-btn-sm" id="jog-step-fwd" title="Перемотка вперед на 10 секунд">+10с</button>
+
+      <!-- Цифровой HUD дисплей информации -->
+      <div class="jog-dial-hud">
+        <div class="jog-hud-time-row">
+          <span class="jog-hud-label">Позиция</span>
+          <span class="jog-hud-time" id="jog-dial-time-display">00:00</span>
+        </div>
+        <div class="jog-hud-delta-badge" id="jog-dial-delta-badge" style="opacity: 0;">
+          <span id="jog-dial-delta-text">±0с</span>
+        </div>
       </div>
+
+      <!-- Быстрые тактильные 3D кнопки: -10с, -1с, +1с, +10с -->
+      <div class="jog-dial-controls">
+        <button type="button" class="jog-btn" id="jog-step-back10" title="Перемотка назад на 10 секунд">-10с</button>
+        <button type="button" class="jog-btn jog-btn-micro" id="jog-step-back1" title="Назад на 1 секунду / покадрово">-1с</button>
+        <button type="button" class="jog-btn jog-btn-micro" id="jog-step-fwd1" title="Вперед на 1 секунду / покадрово">+1с</button>
+        <button type="button" class="jog-btn" id="jog-step-fwd10" title="Перемотка вперед на 10 секунд">+10с</button>
+      </div>
+
+      <div class="jog-dial-footer">Вращайте ротор или колесико мыши</div>
     </div>
 
     <!-- Выдвижная шторка выбора студии озвучки прямо в плеере -->
@@ -4423,8 +4468,12 @@ export function mountInPlayerOverlay(videoBox) {
   const jogWheel = overlay.querySelector('#jog-dial-wheel');
   const jogWheelWrap = overlay.querySelector('#jog-dial-wheel-wrap');
   const jogTimeDisplay = overlay.querySelector('#jog-dial-time-display');
-  const jogBack = overlay.querySelector('#jog-step-back');
-  const jogFwd = overlay.querySelector('#jog-step-fwd');
+  const jogDeltaBadge = overlay.querySelector('#jog-dial-delta-badge');
+  const jogDeltaText = overlay.querySelector('#jog-dial-delta-text');
+  const jogBack10 = overlay.querySelector('#jog-step-back10');
+  const jogBack1 = overlay.querySelector('#jog-step-back1');
+  const jogFwd1 = overlay.querySelector('#jog-step-fwd1');
+  const jogFwd10 = overlay.querySelector('#jog-step-fwd10');
 
   // 1. Кнопка «Серии»
   if (epBtn) {
@@ -4432,7 +4481,7 @@ export function mountInPlayerOverlay(videoBox) {
       e.stopPropagation();
       e.preventDefault();
       if (voiceSheet) { voiceSheet.classList.remove('is-open'); voiceSheet.style.display = 'none'; voiceBtn?.classList.remove('active'); }
-      if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); }
+      if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); stopJogTracking(); }
       toggleInPlayerEpisodesSheet(overlay);
     };
   }
@@ -4450,7 +4499,7 @@ export function mountInPlayerOverlay(videoBox) {
       e.stopPropagation();
       e.preventDefault();
       if (episodesSheet) { episodesSheet.classList.remove('is-open'); episodesSheet.style.display = 'none'; epBtn?.classList.remove('active'); }
-      if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); }
+      if (jogWidget) { jogWidget.style.display = 'none'; jogBtn?.classList.remove('active'); stopJogTracking(); }
 
       const isOpen = voiceSheet.classList.contains('is-open');
       if (isOpen) {
@@ -4475,26 +4524,78 @@ export function mountInPlayerOverlay(videoBox) {
     };
   }
 
-  // 3. Кнопка «Джог»
+  // 3. Кнопка «Джог» (Премиальный роторный контроллер покадровой перемотки)
   let jogRotation = 0;
+  let jogSessionDelta = 0;
+  let jogBadgeTimeout = null;
+  let jogTimeTrackerTimer = null;
+
   const updateJogDisplay = () => {
     const v = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
     if (jogTimeDisplay) {
       if (v && v.currentTime !== undefined && !isNaN(v.currentTime)) {
         jogTimeDisplay.textContent = formatMediaTime(v.currentTime);
+      } else if (jogSessionDelta !== 0) {
+        jogTimeDisplay.textContent = `${jogSessionDelta > 0 ? '+' : ''}${jogSessionDelta}с`;
       } else {
-        jogTimeDisplay.textContent = '±10 сек';
+        jogTimeDisplay.textContent = '00:00';
       }
     }
   };
 
-  const doJogStep = (seconds) => {
+  const flashDeltaBadge = (seconds) => {
+    if (!jogDeltaBadge || !jogDeltaText) return;
+    jogSessionDelta += seconds;
+    if (jogSessionDelta > 0) {
+      jogDeltaText.textContent = `▶ +${jogSessionDelta}с`;
+      jogDeltaBadge.style.color = '#00f0ff';
+      jogDeltaBadge.style.borderColor = 'rgba(0, 240, 255, 0.45)';
+      jogDeltaBadge.style.background = 'rgba(0, 210, 255, 0.18)';
+    } else if (jogSessionDelta < 0) {
+      jogDeltaText.textContent = `◀ ${jogSessionDelta}с`;
+      jogDeltaBadge.style.color = '#f59e0b';
+      jogDeltaBadge.style.borderColor = 'rgba(245, 158, 11, 0.45)';
+      jogDeltaBadge.style.background = 'rgba(245, 158, 11, 0.18)';
+    } else {
+      jogDeltaText.textContent = '±0с';
+    }
+    jogDeltaBadge.style.opacity = '1';
+    jogDeltaBadge.style.transform = 'scale(1)';
+
+    clearTimeout(jogBadgeTimeout);
+    jogBadgeTimeout = setTimeout(() => {
+      if (jogDeltaBadge) {
+        jogDeltaBadge.style.opacity = '0';
+        jogDeltaBadge.style.transform = 'scale(0.9)';
+      }
+      jogSessionDelta = 0;
+    }, 1400);
+  };
+
+  const doJogStep = (seconds, animated = true) => {
     sendSeekDelta(seconds);
-    jogRotation += seconds * 15;
-    if (jogWheel) jogWheel.style.transform = `rotate(${jogRotation}deg)`;
+    if (animated && jogWheel) {
+      jogWheel.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+      jogRotation += seconds > 0 ? 36 * Math.min(seconds, 3) : 36 * Math.max(seconds, -3);
+      jogWheel.style.transform = `rotate(${jogRotation}deg)`;
+    }
+    flashDeltaBadge(seconds);
     updateJogDisplay();
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try { navigator.vibrate(12); } catch (_) {}
+      try { navigator.vibrate(8); } catch (_) {}
+    }
+  };
+
+  const startJogTracking = () => {
+    stopJogTracking();
+    updateJogDisplay();
+    jogTimeTrackerTimer = setInterval(updateJogDisplay, 350);
+  };
+
+  const stopJogTracking = () => {
+    if (jogTimeTrackerTimer) {
+      clearInterval(jogTimeTrackerTimer);
+      jogTimeTrackerTimer = null;
     }
   };
 
@@ -4508,7 +4609,11 @@ export function mountInPlayerOverlay(videoBox) {
       const isOpen = jogWidget.style.display !== 'none';
       jogWidget.style.display = isOpen ? 'none' : 'flex';
       jogBtn.classList.toggle('active', !isOpen);
-      updateJogDisplay();
+      if (!isOpen) {
+        startJogTracking();
+      } else {
+        stopJogTracking();
+      }
     };
   }
 
@@ -4517,31 +4622,56 @@ export function mountInPlayerOverlay(videoBox) {
       e.stopPropagation();
       jogWidget.style.display = 'none';
       if (jogBtn) jogBtn.classList.remove('active');
+      stopJogTracking();
     };
   }
 
-  if (jogBack) jogBack.onclick = (e) => { e.stopPropagation(); doJogStep(-10); };
-  if (jogFwd) jogFwd.onclick = (e) => { e.stopPropagation(); doJogStep(10); };
+  if (jogBack10) jogBack10.onclick = (e) => { e.stopPropagation(); doJogStep(-10, true); };
+  if (jogBack1) jogBack1.onclick = (e) => { e.stopPropagation(); doJogStep(-1, true); };
+  if (jogFwd1) jogFwd1.onclick = (e) => { e.stopPropagation(); doJogStep(1, true); };
+  if (jogFwd10) jogFwd10.onclick = (e) => { e.stopPropagation(); doJogStep(10, true); };
 
   if (jogWheelWrap) {
     let isJogDragging = false;
-    let jogStartY = 0;
+    let wrapCenter = { x: 0, y: 0 };
+    let lastPointerAngle = 0;
+    let accumulatedAngle = 0;
 
     jogWheelWrap.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       isJogDragging = true;
-      jogStartY = e.clientY;
+      const rect = jogWheelWrap.getBoundingClientRect();
+      wrapCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      lastPointerAngle = Math.atan2(e.clientY - wrapCenter.y, e.clientX - wrapCenter.x) * (180 / Math.PI);
+      accumulatedAngle = 0;
+      if (jogWheel) jogWheel.style.transition = 'none';
       try { jogWheelWrap.setPointerCapture(e.pointerId); } catch {}
     });
 
     jogWheelWrap.addEventListener('pointermove', (e) => {
       if (!isJogDragging) return;
       e.stopPropagation();
-      const deltaY = jogStartY - e.clientY;
-      if (Math.abs(deltaY) > 8) {
-        const step = deltaY > 0 ? 1 : -1;
-        doJogStep(step * 5);
-        jogStartY = e.clientY;
+      const currentAngle = Math.atan2(e.clientY - wrapCenter.y, e.clientX - wrapCenter.x) * (180 / Math.PI);
+      let angleDiff = currentAngle - lastPointerAngle;
+      if (angleDiff > 180) angleDiff -= 360;
+      if (angleDiff < -180) angleDiff += 360;
+      lastPointerAngle = currentAngle;
+
+      jogRotation += angleDiff;
+      if (jogWheel) jogWheel.style.transform = `rotate(${jogRotation}deg)`;
+
+      accumulatedAngle += angleDiff;
+      const STEP_THRESHOLD = 14; // ~14 градусов на 1 секунду прецизионного скраббинга
+      if (Math.abs(accumulatedAngle) >= STEP_THRESHOLD) {
+        const steps = Math.trunc(accumulatedAngle / STEP_THRESHOLD);
+        accumulatedAngle -= steps * STEP_THRESHOLD;
+        const seconds = steps * 1;
+        sendSeekDelta(seconds);
+        flashDeltaBadge(seconds);
+        updateJogDisplay();
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate(6); } catch (_) {}
+        }
       }
     });
 
@@ -4549,12 +4679,23 @@ export function mountInPlayerOverlay(videoBox) {
       if (isJogDragging) {
         e.stopPropagation();
         isJogDragging = false;
+        accumulatedAngle = 0;
+        if (jogWheel) jogWheel.style.transition = 'transform 0.2s ease-out';
         try { jogWheelWrap.releasePointerCapture(e.pointerId); } catch {}
       }
     };
 
     jogWheelWrap.addEventListener('pointerup', stopJogDrag);
     jogWheelWrap.addEventListener('pointercancel', stopJogDrag);
+
+    // Поддержка колесика мыши для плавной роторной перемотки
+    jogWheelWrap.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const direction = e.deltaY < 0 ? 1 : -1;
+      const step = e.shiftKey ? 5 : 1;
+      doJogStep(direction * step, true);
+    }, { passive: false });
   }
 
   // 4. Кнопка «Фокус» (Кинотеатральный режим)
