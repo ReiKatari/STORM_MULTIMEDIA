@@ -2478,18 +2478,21 @@ app.get('/api/player/check-stream', async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Referer': 'https://v17.fanfilm4k.media/'
       },
-      signal: AbortSignal.timeout(2500)
+      signal: AbortSignal.timeout(3000)
     });
 
-    if (!chk.ok) return res.json({ alive: false, fallback_url: fallbackHdUrl });
+    if (!chk.ok) return res.json({ alive: false });
     const text = await chk.text();
+    const hasFileList = text.includes('const fileList =') || text.includes('fileList');
+    const hasConfig = text.includes('const config =') || text.includes('mediaMetadata');
+    if (hasFileList || hasConfig) {
+      return res.json({ alive: true });
+    }
     const lower = text.toLowerCase();
-    const isDead = lower.includes('не найден') ||
-                   lower.includes('приносим свои извинения') ||
-                   lower.includes('видео удалено') ||
+    const isDead = lower.includes('видео удалено') ||
                    lower.includes('файл не найден') ||
                    lower.includes('404 not found');
-    return res.json({ alive: !isDead, fallback_url: fallbackHdUrl });
+    return res.json({ alive: !isDead });
   } catch {
     return res.json({ alive: true });
   }
@@ -2498,67 +2501,33 @@ app.get('/api/player/check-stream', async (req, res) => {
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
-    let { url: targetUrl, season, episode, translation, hidden, prefer } = req.query;
+    let { url: targetUrl, season, episode, translation, hidden } = req.query;
     if (!targetUrl) {
       return res.status(400).send('URL плеера не указан');
     }
 
     if (!targetUrl.includes('stravers.live') && !targetUrl.includes('fanfilm4k')) {
-      // Для сторонних плееров (Kinescope, Kodik, HDRezka и др.) делаем прямой безопасный редирект
+      // Для сторонних плееров делаем прямой безопасный редирект
       return res.redirect(targetUrl);
     }
 
     let directIframe = targetUrl;
-    let fallbackHdIframe = null;
 
     if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
       const pageRes = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
-        signal: AbortSignal.timeout(3500)
+        signal: AbortSignal.timeout(4000)
       });
       const pageHtml = await pageRes.text();
 
-      // 1. Извлечение HD плеера (Kinescope CDN)
-      const hdMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
-      const insMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-id=["']([^"']+)["']/i);
-      const pubMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-publisher-id=["']([^"']+)["']/i);
-      const designMatch = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<ins[^>]*data-design=["']([^"']+)["']/i);
-      if (hdMatch) {
-        fallbackHdIframe = hdMatch[1].startsWith('//') ? 'https:' + hdMatch[1] : hdMatch[1];
-      } else if (insMatch) {
-        const pubId = pubMatch ? pubMatch[1] : '675571372';
-        const design = designMatch ? designMatch[1] : '2';
-        fallbackHdIframe = `https://river-3-329.kinescopecdn.net/${pubId}/embed-kp/${insMatch[1]}?design=${design}&lang=ru`;
-      }
-
-      // 2. Определение активной вкладки
-      const isHdActive = pageHtml.includes('class="tab-btn is-active" data-tab="hdplayer"') || pageHtml.includes('data-tab="hdplayer" class="tab-btn is-active"');
-      const is4kActive = pageHtml.includes('class="tab-btn is-active" data-tab="4kplayer"') || pageHtml.includes('data-tab="4kplayer" class="tab-btn is-active"');
-
-      // 3. Извлечение 4K плеера
+      // Извлечение 4K плеера
       const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
       const fourKIframe = m ? (m[1].startsWith('//') ? 'https:' + m[1] : m[1]) : '';
-
-      const userPref = (prefer || '').toLowerCase();
-      if (userPref === '4k' && fourKIframe) {
+      if (fourKIframe) {
         directIframe = fourKIframe;
-      } else if (userPref === 'hd' && fallbackHdIframe) {
-        directIframe = fallbackHdIframe;
-      } else if (isHdActive && fallbackHdIframe) {
-        // Сайт сам выставил HD плеер как активный — используем рабочий Kinescope поток
-        directIframe = fallbackHdIframe;
-      } else if (fourKIframe) {
-        directIframe = fourKIframe;
-      } else if (fallbackHdIframe) {
-        directIframe = fallbackHdIframe;
       }
-    }
-
-    // Если итоговый плеер — Kinescope CDN, перенаправляем сразу без промежуточных оберток
-    if (directIframe.includes('kinescopecdn.net')) {
-      return res.redirect(directIframe);
     }
 
     const urlObj = new URL(directIframe);
@@ -2586,20 +2555,16 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 
       if (embedRes.ok) {
         let html = await embedRes.text();
-        const lowerHtml = html.toLowerCase();
-        const isNotFound = lowerHtml.includes('контент не найден') ||
-                           lowerHtml.includes('приносим свои извинения') ||
-                           lowerHtml.includes('видео удалено') ||
-                           lowerHtml.includes('файл не найден') ||
-                           lowerHtml.includes('видеофайл не найден') ||
-                           lowerHtml.includes('404 not found');
+        const hasFileList = html.includes('const fileList =') || html.includes('fileList');
+        const hasConfig = html.includes('const config =') || html.includes('mediaMetadata');
+        const isDead = (!hasFileList || !hasConfig) && (
+          html.toLowerCase().includes('видео удалено') ||
+          html.toLowerCase().includes('файл не найден') ||
+          html.toLowerCase().includes('404 not found')
+        );
 
-        if (isNotFound) {
-          if (fallbackHdIframe) {
-            console.warn('FanFilm embed: 4K поток недоступен, выполняем мгновенный авто-переход на HD Kinescope CDN');
-            return res.redirect(fallbackHdIframe);
-          }
-          console.warn('FanFilm embed: обнаружен экран "контент не найден", переключаем на следующий источник');
+        if (isDead) {
+          console.warn('FanFilm embed: обнаружен неработающий поток, переключаем на следующий источник');
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           return res.send(`
             <!DOCTYPE html>
@@ -2654,9 +2619,16 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           `);
         }
 
+        // Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
+        html = html.replace(/if\s*\(\s*!isFramed\s*\)\s*\{/g, 'if (false && !isFramed) {');
+
         const baseOrigin = new URL(finalUrl).origin;
         const proAudioInjection = `
           <base href="${baseOrigin}/">
+          <script>
+            window.isFramed = true;
+            try { window.top = window.self; } catch(e) {}
+          </script>
           <script>
           (function() {
             let audioCtx = null;
@@ -3963,7 +3935,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.17';
+  const currentAppVersion = '1.0.18';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {

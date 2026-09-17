@@ -61,26 +61,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const yearParam = releaseYear ? `&year=${releaseYear}&strict=1` : '&strict=1';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
-  // 1. FanFilm HD Плеер (Kinescope CDN)
-  const effectiveHdUrl = fanfilm_hd_url || (kp_id ? `https://river-3-329.kinescopecdn.net/675571372/embed-kp/${kp_id}?design=2&lang=ru` : '');
-  if (effectiveHdUrl) {
-    players.push({
-      id: 'fanfilm_hd',
-      name: 'FanFilm HD Плеер (Full HD / Kinescope)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'FANFILM HD',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Многоголосый дубляж и выбор озвучек',
-      speed: '⚡ Скоростной CDN Kinescope',
-      url: effectiveHdUrl,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
-    });
-  }
-
-  // 2. FanFilm 4K Ultra HD (если доступен)
+  // 1. FanFilm 4K Ultra HD (если доступен)
   if (fanfilm_4k_url) {
     players.push({
       id: 'fanfilm_4k',
@@ -89,12 +70,12 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       quality: '4K UHD',
       badge: 'FANFILM 4K',
       status: 'working',
-      status_label: '🟢 4K поток',
-      audio_info: 'Многоголосый дубляж 5.1 / HDR',
-      speed: '💎 Премиум CDN',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
+      speed: '💎 Премиум 4K CDN',
       url: fanfilm_4k_url,
-      is_recommended: !effectiveHdUrl,
-      recommended_badge: !effectiveHdUrl ? '🔥 Рекомендуемый' : undefined
+      is_recommended: true,
+      recommended_badge: '🔥 4K Рекомендуемый'
     });
   }
 
