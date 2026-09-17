@@ -291,6 +291,167 @@ export function closeAllActiveModals() {
   }
 }
 
+const EXIT_MODAL_I18N = {
+  ru: {
+    title: 'Выход из STORM MULTIMEDIA',
+    text: 'Вы действительно хотите выйти из приложения?',
+    cancel: 'Отмена',
+    confirm: 'Выйти'
+  },
+  en: {
+    title: 'Exit STORM MULTIMEDIA',
+    text: 'Are you sure you want to exit the application?',
+    cancel: 'Cancel',
+    confirm: 'Exit'
+  },
+  de: {
+    title: 'STORM MULTIMEDIA beenden',
+    text: 'Möchten Sie die Anwendung wirklich beenden?',
+    cancel: 'Abbrechen',
+    confirm: 'Beenden'
+  },
+  fr: {
+    title: 'Quitter STORM MULTIMEDIA',
+    text: 'Voulez-vous vraiment quitter l\'application ?',
+    cancel: 'Annuler',
+    confirm: 'Quitter'
+  },
+  zh: {
+    title: '退出 STORM MULTIMEDIA',
+    text: '您确定要退出应用程序吗？',
+    cancel: '取消',
+    confirm: '退出'
+  },
+  ja: {
+    title: 'STORM MULTIMEDIA を終了',
+    text: 'アプリケーションを終了してもよろしいですか？',
+    cancel: 'キャンセル',
+    confirm: '終了'
+  }
+};
+
+export function showExitConfirmModal() {
+  let modal = document.getElementById('storm-exit-confirm-modal');
+  const lang = (localStorage.getItem('storm_selected_language') || 'ru').toLowerCase();
+  const t = EXIT_MODAL_I18N[lang] || EXIT_MODAL_I18N.ru;
+
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'storm-exit-confirm-modal';
+    modal.className = 'storm-exit-modal-backdrop';
+    modal.innerHTML = `
+      <div class="storm-exit-modal-card" role="dialog" aria-modal="true">
+        <div class="storm-exit-modal-icon">⚡</div>
+        <div class="storm-exit-modal-title" id="storm-exit-modal-title">${t.title}</div>
+        <div class="storm-exit-modal-text" id="storm-exit-modal-text">${t.text}</div>
+        <div class="storm-exit-modal-actions">
+          <button type="button" class="storm-exit-btn-cancel" id="storm-exit-btn-cancel">${t.cancel}</button>
+          <button type="button" class="storm-exit-btn-confirm" id="storm-exit-btn-confirm">${t.confirm}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeExitConfirmModal();
+    });
+
+    const cancelBtn = modal.querySelector('#storm-exit-btn-cancel');
+    if (cancelBtn) {
+      cancelBtn.onclick = () => closeExitConfirmModal();
+    }
+
+    const confirmBtn = modal.querySelector('#storm-exit-btn-confirm');
+    if (confirmBtn) {
+      confirmBtn.onclick = () => {
+        closeExitConfirmModal();
+        if (window.StormAndroidBridge && typeof window.StormAndroidBridge.exitApp === 'function') {
+          window.StormAndroidBridge.exitApp();
+        } else {
+          window.close();
+        }
+      };
+    }
+  } else {
+    const titleEl = modal.querySelector('#storm-exit-modal-title');
+    const textEl = modal.querySelector('#storm-exit-modal-text');
+    const cancelEl = modal.querySelector('#storm-exit-btn-cancel');
+    const confirmEl = modal.querySelector('#storm-exit-btn-confirm');
+    if (titleEl) titleEl.textContent = t.title;
+    if (textEl) textEl.textContent = t.text;
+    if (cancelEl) cancelEl.textContent = t.cancel;
+    if (confirmEl) confirmEl.textContent = t.confirm;
+  }
+
+  modal.classList.add('is-open');
+}
+
+export function closeExitConfirmModal() {
+  const modal = document.getElementById('storm-exit-confirm-modal');
+  if (modal) {
+    modal.classList.remove('is-open');
+  }
+}
+
+export function handleStormBackNavigation() {
+  // 1. Если открыто окно видеоплеера — закрываем его и остаемся в приложении
+  const cinemaModal = document.getElementById('cinema-modal');
+  if (cinemaModal && (cinemaModal.classList.contains('is-open') || document.body.classList.contains('cinema-open'))) {
+    if (typeof closePlayerModal === 'function') {
+      closePlayerModal();
+    }
+    return true;
+  }
+
+  // 2. Если открыт выпадающий список выбора источников в плеере
+  const playerMenu = document.getElementById('player-source-menu');
+  if (playerMenu && playerMenu.style.display === 'block') {
+    playerMenu.style.display = 'none';
+    const playerDropdown = document.getElementById('player-source-dropdown');
+    if (playerDropdown) playerDropdown.classList.remove('is-open');
+    document.body.classList.remove('player-dropdown-active');
+    return true;
+  }
+
+  // 3. Если уже открыто окно подтверждения выхода — закрываем его
+  const exitModal = document.getElementById('storm-exit-confirm-modal');
+  if (exitModal && exitModal.classList.contains('is-open')) {
+    closeExitConfirmModal();
+    return true;
+  }
+
+  // 4. Закрываем активную мобильную шторку
+  const drawer = document.getElementById('mobile-drawer-backdrop');
+  if (drawer && drawer.classList.contains('is-open')) {
+    closeMobileDrawer();
+    return true;
+  }
+
+  // 5. Закрываем любые другие открытые модальные окна
+  const openModals = document.querySelectorAll('.storm-modal-backdrop.is-open:not(#storm-exit-confirm-modal), .modal-backdrop.is-open, .storm-custom-dropdown.is-open');
+  if (openModals.length > 0) {
+    openModals.forEach(m => m.classList.remove('is-open'));
+    document.body.classList.remove('modal-open');
+    return true;
+  }
+
+  // 6. Если находимся не на главной вкладке — возвращаемся на главную
+  if (currentTab && currentTab !== 'home') {
+    switchTab('home');
+    return true;
+  }
+
+  // 7. Главный экран: отображаем стилизованное окно с подтверждением выхода
+  showExitConfirmModal();
+  return true;
+}
+
+if (typeof window !== 'undefined') {
+  window.handleStormBackNavigation = handleStormBackNavigation;
+  window.showExitConfirmModal = showExitConfirmModal;
+  window.closeExitConfirmModal = closeExitConfirmModal;
+}
+
 export function switchTab(tab) {
   closePlayerModal();
   closeAllActiveModals();

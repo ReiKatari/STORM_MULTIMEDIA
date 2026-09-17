@@ -124,12 +124,7 @@ class MainActivity : ComponentActivity() {
         webView.isFocusableInTouchMode = true
         webView.requestFocusFromTouch()
 
-        webView.setDownloadListener { url, _, _, _, _ ->
-            try {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                startActivity(intent)
-            } catch (_: Exception) {}
-        }
+        webView.addJavascriptInterface(StormAndroidBridge(), "StormAndroidBridge")
     }
 
     private fun createAssetResponse(mimeType: String, assetPath: String): WebResourceResponse? {
@@ -272,13 +267,31 @@ class MainActivity : ComponentActivity() {
             override fun handleOnBackPressed() {
                 if (customView != null) {
                     webView.webChromeClient?.onHideCustomView()
-                } else if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    finish()
+                    return
+                }
+
+                // Передаем нажатие системной кнопки "Назад" в JavaScript SPA
+                webView.evaluateJavascript("(function(){ return window.handleStormBackNavigation ? window.handleStormBackNavigation() : false; })();") { result ->
+                    val handled = result?.equals("true", ignoreCase = true) == true
+                    if (!handled) {
+                        if (webView.canGoBack()) {
+                            webView.goBack()
+                        } else {
+                            finish()
+                        }
+                    }
                 }
             }
         })
+    }
+
+    inner class StormAndroidBridge {
+        @android.webkit.JavascriptInterface
+        fun exitApp() {
+            runOnUiThread {
+                finish()
+            }
+        }
     }
 
     private fun hideSystemUI() {

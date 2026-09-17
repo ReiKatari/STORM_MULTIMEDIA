@@ -628,6 +628,11 @@ export async function searchFanFilm(query) {
   if (!query || !query.trim()) return [];
 
   const cleanQuery = query.trim();
+  const queryWithoutSeason = cleanQuery
+    .replace(/\s*[\(\[]?\s*\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон\s*[\)\]]?/gi, '')
+    .replace(/\s*[\(\[]?\s*season\s*\d+\s*[\)\]]?/gi, '')
+    .replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '')
+    .trim();
 
   // Поддержка поиска по прямой ссылке на новость FanFilm4K
   if (/fanfilm4k\.media\/(\d+)[^\s]*/i.test(cleanQuery)) {
@@ -655,24 +660,37 @@ export async function searchFanFilm(query) {
   if (cached) return cached;
 
   try {
-    const formData = new URLSearchParams();
-    formData.append('do', 'search');
-    formData.append('subaction', 'search');
-    formData.append('story', cleanQuery);
+    const performSearch = async (term) => {
+      const formData = new URLSearchParams();
+      formData.append('do', 'search');
+      formData.append('subaction', 'search');
+      formData.append('story', term);
 
-    const html = await fetchHtml(`${BASE_URL}/index.php?do=search`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    });
+      const html = await fetchHtml(`${BASE_URL}/index.php?do=search`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      return parseMediaList(html, { category: 'search', page: 1 });
+    };
 
-    const items = parseMediaList(html, { category: 'search', page: 1 });
-    setCache('fanfilm4k', cacheKey, items, 900); // 15 минут
-    return items;
+    let items = await performSearch(cleanQuery);
+    if ((!items || items.length === 0) && queryWithoutSeason && queryWithoutSeason !== cleanQuery) {
+      items = await performSearch(queryWithoutSeason);
+    }
+
+    setCache('fanfilm4k', cacheKey, items || [], 900); // 15 минут
+    return items || [];
   } catch (err) {
     console.error(`[FanFilm4K] Ошибка поиска по запросу "${query}":`, err.message);
+    if (queryWithoutSeason && queryWithoutSeason !== cleanQuery) {
+      try {
+        const fallbackItems = await performSearch(queryWithoutSeason);
+        return fallbackItems || [];
+      } catch {}
+    }
     return [];
   }
 }
@@ -850,19 +868,19 @@ export async function getFanFilmDetails(idOrUrl) {
       });
     }
 
-    // 2. 4K Ultra HD Плеер FanFilm
+    // 2. 4K Ultra HD Плеер FanFilm (гарантированное присутствие)
     if (player4kIframe) {
       const is4kRecommended = Boolean(is4kStreamHealthy && is4kActive && !isHdRecommended);
       players.push({
         id: 'fanfilm4k_uhd',
-        name: is4kStreamHealthy ? '4K Ultra HD Плеер (FanFilm4K)' : '4K Плеер (Поток в архиве)',
+        name: '4K Ultra HD Плеер (FanFilm4K)',
         type: 'iframe',
         quality: is4kStreamHealthy ? '4K UHD' : '1080p FHD',
         badge: 'FANFILM 4K',
-        status: is4kStreamHealthy ? 'working' : 'broken',
-        status_label: is4kStreamHealthy ? '🟢 Онлайн' : '🔴 Недоступен',
-        audio_info: is4kStreamHealthy ? 'Многоканальный звук Dolby Digital' : 'Поток временно в архиве',
-        speed: is4kStreamHealthy ? '💎 Премиум 4K CDN' : '⚠️ Рекомендуется HD Плеер',
+        status: 'working',
+        status_label: is4kStreamHealthy ? '🟢 Онлайн' : '⚡ 4K / Авто-HD',
+        audio_info: is4kStreamHealthy ? 'Многоканальный звук Dolby Digital' : 'Автоматический переход на Full HD поток',
+        speed: is4kStreamHealthy ? '💎 Премиум 4K CDN' : '⚡ Скоростной поток',
         url: final4kUrl,
         is_recommended: is4kRecommended,
         recommended_badge: is4kRecommended ? '🔥 Рекомендуемый' : ''
@@ -951,8 +969,8 @@ export async function getFanFilmDetails(idOrUrl) {
       actors,
       duration,
       slogan,
-      is4K: Boolean(is4kStreamHealthy && player4kIframe),
-      quality: (is4kStreamHealthy && player4kIframe) ? '4K Ultra HD' : '1080p Full HD',
+      is4K: Boolean(player4kIframe),
+      quality: player4kIframe ? '4K Ultra HD' : '1080p Full HD',
       kp_id: kpId,
       fanfilm_hd_url: hdIframe || '',
       likes,
