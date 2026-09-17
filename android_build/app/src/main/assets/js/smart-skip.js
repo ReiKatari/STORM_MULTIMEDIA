@@ -80,30 +80,22 @@ function checkSkipIntervals() {
 
   // 1. Проверка интро (опенинга / заставки)
   if (currentSkipIntervals.intro && t >= currentSkipIntervals.intro.start && t < currentSkipIntervals.intro.end) {
-    // Автоматическая перемотка разрешена ТОЛЬКО для проверенных интервалов (AniSkip / главы)
-    if (isAutoSkip && currentSkipIntervals.verified && !autoSkippedIntro) {
-      autoSkippedIntro = true;
-      activeVideo.currentTime = currentSkipIntervals.intro.end;
-      showToast('⏩ Заставка автоматически пропущена', 'info');
-      removeSkipBanner();
+    if (isAutoSkip && !autoSkippedIntro) {
+      showAutoSkipCountdownBanner(currentSkipIntervals.intro.label, currentSkipIntervals.intro.end, () => {
+        autoSkippedIntro = true;
+      });
       return;
     }
-    // Если интервал приблизительный или автопропуск выключен — отображаем ненавязчивую плашку с кнопкой
     showSkipBanner(currentSkipIntervals.intro.label, currentSkipIntervals.intro.end);
     return;
   }
 
   // 2. Проверка аутро (титров / эндинга)
   if (currentSkipIntervals.outro && t >= currentSkipIntervals.outro.start && t < currentSkipIntervals.outro.end) {
-    if (isAutoSkip && currentSkipIntervals.verified && !autoSkippedOutro) {
-      autoSkippedOutro = true;
-      activeVideo.currentTime = currentSkipIntervals.outro.end;
-      if (activeVideo.duration && currentSkipIntervals.outro.end < activeVideo.duration - 15) {
-        showToast('⏩ Титры пропущены (сцена после титров)', 'info');
-      } else {
-        showToast('⏩ Финальные титры автоматически пропущены', 'info');
-      }
-      removeSkipBanner();
+    if (isAutoSkip && !autoSkippedOutro) {
+      showAutoSkipCountdownBanner(currentSkipIntervals.outro.label, currentSkipIntervals.outro.end, () => {
+        autoSkippedOutro = true;
+      });
       return;
     }
     showSkipBanner(currentSkipIntervals.outro.label, currentSkipIntervals.outro.end);
@@ -111,6 +103,67 @@ function checkSkipIntervals() {
   }
 
   removeSkipBanner();
+}
+
+let autoSkipTimer = null;
+
+function showAutoSkipCountdownBanner(label, targetTime, onSkipCb) {
+  if (activeSkipBanner) return;
+
+  const wrapper = activeVideo?.closest('.player-video-box') || document.getElementById('cinema-player-wrapper');
+  if (!wrapper) return;
+
+  let secondsLeft = 3;
+  const banner = document.createElement('div');
+  banner.className = 'smart-skip-floating-banner auto-skip-countdown';
+  banner.id = 'smart-skip-floating-banner';
+  banner.innerHTML = `
+    <div class="smart-skip-content" style="flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 14px; min-width: 240px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <span class="smart-skip-text" style="font-size: 12px;">⏩ Автопропуск: <b>${label}</b> (<span id="auto-skip-count">3</span>с)</span>
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm smart-skip-cancel-btn" style="padding: 2px 8px; font-size: 11px;">Отмена</button>
+      </div>
+      <div style="height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden;">
+        <div id="auto-skip-bar" style="height: 100%; width: 100%; background: var(--accent, #00f0ff); transition: width 3s linear;"></div>
+      </div>
+    </div>
+  `;
+
+  wrapper.appendChild(banner);
+  activeSkipBanner = banner;
+
+  const bar = banner.querySelector('#auto-skip-bar');
+  const countEl = banner.querySelector('#auto-skip-count');
+  requestAnimationFrame(() => {
+    if (bar) bar.style.width = '0%';
+  });
+
+  const cancelBtn = banner.querySelector('.smart-skip-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.onclick = (e) => {
+      e.stopPropagation();
+      clearTimeout(autoSkipTimer);
+      if (onSkipCb) onSkipCb();
+      removeSkipBanner();
+      showToast('Автопропуск отменен', 'info');
+    };
+  }
+
+  const intervalId = setInterval(() => {
+    secondsLeft--;
+    if (countEl) countEl.textContent = `${Math.max(0, secondsLeft)}`;
+    if (secondsLeft <= 0) clearInterval(intervalId);
+  }, 1000);
+
+  autoSkipTimer = setTimeout(() => {
+    clearInterval(intervalId);
+    if (activeVideo && activeSkipBanner === banner) {
+      activeVideo.currentTime = targetTime;
+      if (onSkipCb) onSkipCb();
+      showToast(`⏩ ${label} пропущено`, 'info');
+    }
+    removeSkipBanner();
+  }, 3000);
 }
 
 function showSkipBanner(label, targetTime) {
@@ -156,6 +209,10 @@ function showSkipBanner(label, targetTime) {
 }
 
 function removeSkipBanner() {
+  if (autoSkipTimer) {
+    clearTimeout(autoSkipTimer);
+    autoSkipTimer = null;
+  }
   if (activeSkipBanner) {
     activeSkipBanner.remove();
     activeSkipBanner = null;
