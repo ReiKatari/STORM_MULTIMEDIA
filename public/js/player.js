@@ -1224,9 +1224,10 @@ export function closePlayerModal() {
   const modal = document.getElementById('cinema-modal');
   if (modal) {
     modal.classList.remove('is-open', 'is-mini-pip', 'is-focus-mode');
+    document.documentElement.classList.remove('cinema-focus-active');
+    document.body.classList.remove('cinema-focus-active', 'cinema-open');
     const fBtn = document.getElementById('inplayer-focus-btn');
     if (fBtn) fBtn.classList.remove('active');
-    document.body.classList.remove('cinema-open');
     stopAmbilight();
     clearPlayerUrl();
     dismissUpNextCountdownCard(false);
@@ -4711,6 +4712,8 @@ export function mountInPlayerOverlay(videoBox) {
       e.preventDefault();
       if (modal) {
         const isFocus = modal.classList.toggle('is-focus-mode');
+        document.documentElement.classList.toggle('cinema-focus-active', isFocus);
+        document.body.classList.toggle('cinema-focus-active', isFocus);
         focusBtn.classList.toggle('active', isFocus);
         showToast(isFocus ? '👁️ Режим фокуса включен' : 'Режим фокуса выключен', 'info');
       }
@@ -4725,6 +4728,8 @@ export function mountInPlayerOverlay(videoBox) {
       const modal = document.getElementById('cinema-modal');
       if (modal) {
         modal.classList.remove('is-focus-mode');
+        document.documentElement.classList.remove('cinema-focus-active');
+        document.body.classList.remove('cinema-focus-active');
         if (focusBtn) focusBtn.classList.remove('active');
         showToast('Режим фокуса выключен', 'info');
       }
