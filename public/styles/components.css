@@ -841,18 +841,37 @@ button:active .storm-status-svg {
 }
 
 .storm-modal-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  color: #ff4d4d;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
   padding: 0;
   line-height: 1;
-  transition: color 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  user-select: none;
+  outline: none;
 }
 
 .storm-modal-close:hover {
-  color: var(--text-primary);
+  background: rgba(239, 68, 68, 0.3);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: scale(1.06);
+}
+
+.storm-modal-close:active {
+  transform: scale(0.94);
+  background: rgba(239, 68, 68, 0.45);
 }
 
 .storm-modal-fullscreen-btn {
@@ -2066,7 +2085,7 @@ button:active .storm-status-svg {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   scrollbar-width: thin;
 }
 
@@ -2074,24 +2093,30 @@ button:active .storm-status-svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border-radius: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
+.storm-dropdown-item:last-child {
+  border-bottom: none;
+}
+
 .storm-dropdown-item:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  transform: translateX(3px);
+  padding-left: 15px;
 }
 
 .storm-dropdown-item.is-active {
   background: rgba(0, 210, 255, 0.12);
   color: var(--accent);
   font-weight: 700;
+  border-left: 3px solid var(--accent);
 }
 
 .storm-dropdown-create-wrap {
@@ -4539,20 +4564,28 @@ button:active .storm-status-svg {
   transform: rotate(180deg);
 }
 
-.quick-dropdown-menu {
+.quick-dropdown-menu,
+#quick-season-menu,
+#quick-episode-menu,
+#quick-voiceover-menu,
+.quick-dropdown-menu-wide {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
-  min-width: 100%;
-  max-height: 320px;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  max-height: 340px;
   overflow-y: auto;
+  overflow-x: hidden;
   z-index: 2500 !important;
-  background: rgba(15, 18, 26, 0.98);
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%) !important;
   backdrop-filter: blur(16px);
-  border: 1px solid var(--accent);
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 20px var(--accent-glow);
-  padding: 6px;
+  border: 1px solid var(--accent) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 18px var(--accent-glow) !important;
+  padding: 0 !important;
   scrollbar-width: thin;
   scrollbar-color: var(--accent) transparent;
   box-sizing: border-box !important;
@@ -4567,43 +4600,18 @@ button:active .storm-status-svg {
   border-radius: 4px;
 }
 
-.quick-dropdown-menu-wide {
-  min-width: 280px;
-  max-width: 420px;
-  right: 0;
-  left: auto;
-}
-
-#quick-season-menu {
-  min-width: 420px;
-  max-width: 580px;
-  width: max-content;
-}
-
-#quick-episode-menu {
-  min-width: 400px;
-  max-width: 540px;
-  width: max-content;
-}
-
 @media (max-width: 768px) {
-  .quick-dropdown-menu {
-    max-height: 280px !important;
-  }
-
+  .quick-dropdown-menu,
   .quick-dropdown-menu-wide,
-  #quick-voiceover-menu {
-    min-width: min(280px, calc(100vw - 24px)) !important;
-    max-width: calc(100vw - 24px) !important;
-    right: 0 !important;
-    left: auto !important;
-  }
-
+  #quick-voiceover-menu,
   #quick-season-menu,
   #quick-episode-menu {
-    min-width: min(280px, calc(100vw - 24px)) !important;
-    max-width: calc(100vw - 24px) !important;
-    width: auto !important;
+    max-height: 280px !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
   }
 }
 
@@ -4615,7 +4623,9 @@ body.player-dropdown-active .cinema-player-iframe {
 .quick-dropdown-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0 !important;
+  padding: 0 !important;
+  width: 100%;
 }
 
 .quick-dropdown-item {
@@ -4623,26 +4633,36 @@ body.player-dropdown-active .cinema-player-iframe {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  border-radius: 8px;
+  padding: 11px 14px;
+  border-radius: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  background: transparent;
+}
+
+.quick-dropdown-item:last-child {
+  border-bottom: none !important;
 }
 
 .quick-dropdown-item:hover {
-  background: rgba(0, 210, 255, 0.12);
-  color: var(--text-primary);
-  transform: translateX(3px);
+  background: rgba(0, 210, 255, 0.12) !important;
+  color: #ffffff !important;
+  border-left: 3px solid var(--accent) !important;
+  padding-left: 17px !important;
 }
 
 .quick-dropdown-item.active {
-  background: var(--accent);
-  color: #000;
-  font-weight: 800;
-  box-shadow: 0 0 14px var(--accent-glow);
+  background: linear-gradient(90deg, rgba(0, 210, 255, 0.22) 0%, rgba(0, 210, 255, 0.06) 100%) !important;
+  border-left: 3px solid var(--accent) !important;
+  color: var(--accent) !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
 }
 
 .quick-season-title {
@@ -4679,8 +4699,8 @@ body.player-dropdown-active .cinema-player-iframe {
 .quick-dropdown-item.active .quick-voice-title,
 .quick-dropdown-item.active .quick-season-title,
 .quick-dropdown-item.active .quick-episode-title {
-  color: #000000 !important;
-  font-weight: 800 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
 }
 
 .quick-dropdown-item.active .quick-status-pill {
@@ -6163,7 +6183,7 @@ body.player-dropdown-active .cinema-player-iframe {
 }
 
 /* ==========================================================================
-   STORM CleanView™ and AdShield Styles
+   STORM CleanView and AdShield Styles
    ========================================================================== */
 
 .storm-cleanview-overlay {
@@ -6298,18 +6318,18 @@ body.player-dropdown-active .cinema-player-iframe {
 
 .storm-cleanview-panel .cleanview-card {
   width: 100%;
-  max-width: 540px;
-  background: linear-gradient(180deg, rgba(20, 27, 45, 0.96) 0%, rgba(10, 15, 26, 0.98) 100%);
+  max-width: 820px !important;
+  background: linear-gradient(180deg, rgba(20, 27, 45, 0.98) 0%, rgba(10, 15, 26, 0.99) 100%);
   border: 1px solid rgba(0, 210, 255, 0.35);
   border-radius: 16px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 210, 255, 0.15);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 210, 255, 0.15);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 .storm-cleanview-panel .cleanview-header {
-  padding: 18px 22px;
+  padding: 18px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
@@ -6330,33 +6350,104 @@ body.player-dropdown-active .cinema-player-iframe {
 }
 
 .storm-cleanview-panel .cleanview-close-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  font-size: 14px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  color: #ff4d4d;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  user-select: none;
+  outline: none;
 }
 
 .storm-cleanview-panel .cleanview-close-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.3);
   border-color: #ef4444;
-  color: #fff;
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: scale(1.06);
+}
+
+.storm-cleanview-panel .cleanview-close-btn:active {
+  transform: scale(0.94);
+  background: rgba(239, 68, 68, 0.45);
 }
 
 .storm-cleanview-panel .cleanview-body {
-  padding: 20px 22px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: 70vh;
+  max-height: 75vh;
   overflow-y: auto;
+}
+
+/* Группировочные карточки CleanView */
+.cleanview-group-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.cleanview-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cleanview-group-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.cleanview-group-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #e2e8f0;
+  letter-spacing: 0.2px;
+}
+
+.cleanview-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cleanview-tuning-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 680px) {
+  .cleanview-tuning-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cleanview-style-and-opacity-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
 }
 
 .storm-cleanview-panel .cleanview-feature-row {
@@ -6392,7 +6483,7 @@ body.player-dropdown-active .cinema-player-iframe {
 
 .storm-cleanview-panel .cleanview-presets-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
 }
 

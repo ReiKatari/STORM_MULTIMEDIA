@@ -5036,7 +5036,7 @@ function renderPlayerUtilityButtons() {
           <label class="studio-autoskip-toggle" title="Прямой поток без транскодирования через промежуточный прокси">
             <input type="checkbox" id="toggle-direct-stream" ${forceDirectStream ? 'checked' : ''}>
             <span class="studio-autoskip-box"></span>
-            <span class="studio-autoskip-label">Прямой поток (Direct Stream)</span>
+            <span class="studio-autoskip-label">Прямой поток</span>
           </label>
         </div>
       </div>
