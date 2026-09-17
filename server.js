@@ -2160,7 +2160,7 @@ app.get('/api/media/series-episodes', async (req, res) => {
       } catch {}
     }
     if (!resolvedTvId) {
-      return res.status(400).json({ error: 'Укажите tvId или название сериала' });
+      return res.json({ episodes: [], overview: '' });
     }
     const sNum = (season !== undefined && !isNaN(parseInt(season, 10))) ? parseInt(season, 10) : 1;
     const data = await getTmdbSeasonEpisodes(resolvedTvId, sNum);
@@ -2899,11 +2899,11 @@ app.post(['/stats', '/api/player/kodik-stats'], (req, res) => {
 // Автоматическое перенаправление внутренних переходов Kodik (/seria/*, /video/*, /uv/*, /episode/*)
 app.get(['/seria/*', '/video/*', '/uv/*', '/episode/*', '/serial/*', '/season/*'], (req, res) => {
   const target = `https://kodikplayer.com${req.originalUrl}`;
-  return res.redirect(`/api/player/kodik-embed?url=${encodeURIComponent(target)}`);
+  return res.redirect(target);
 });
 
-// Проксирующий плеер Kodik / AniXart с авторизованным Referer (устраняет ошибку «Плеер не найден»)
-app.get('/api/player/kodik-embed', async (req, res) => {
+// Прямое безопасное перенаправление на поток Kodik / AniXart
+app.get('/api/player/kodik-embed', (req, res) => {
   try {
     const { url: targetUrl } = req.query;
     if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.trim() || targetUrl === 'undefined') {
@@ -2914,122 +2914,10 @@ app.get('/api/player/kodik-embed', async (req, res) => {
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       return res.status(400).type('text/plain; charset=utf-8').send('Некорректный URL');
     }
-    const embedRes = await fetch(cleanUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Referer': 'https://anixart.tv/'
-      },
-      signal: AbortSignal.timeout(8000)
-    });
 
-    if (!embedRes.ok) {
-      return res.redirect(cleanUrl);
-    }
-
-    let html = await embedRes.text();
-    const baseOrigin = new URL(cleanUrl).origin;
-    const kodikCleanViewInjection = `
-      <base href="${baseOrigin}/">
-      <meta name="referrer" content="no-referrer">
-      <script>
-      (function() {
-        try {
-          window.open = function() { return null; };
-          window.alert = function() {};
-        } catch(e) {}
-
-        // Перехват внутренних замен URL Kodik
-        try {
-          var origReplace = window.location.replace;
-          if (origReplace) {
-            window.location.replace = function(url) {
-              if (typeof url === 'string' && (url.startsWith('/seria/') || url.startsWith('/video/') || url.startsWith('/uv/') || url.startsWith('/episode/') || url.startsWith('/serial/') || url.startsWith('/season/'))) {
-                url = '/api/player/kodik-embed?url=' + encodeURIComponent('${baseOrigin}' + url);
-              }
-              return origReplace.call(window.location, url);
-            };
-          }
-          var origAssign = window.location.assign;
-          if (origAssign) {
-            window.location.assign = function(url) {
-              if (typeof url === 'string' && (url.startsWith('/seria/') || url.startsWith('/video/') || url.startsWith('/uv/') || url.startsWith('/episode/') || url.startsWith('/serial/') || url.startsWith('/season/'))) {
-                url = '/api/player/kodik-embed?url=' + encodeURIComponent('${baseOrigin}' + url);
-              }
-              return origAssign.call(window.location, url);
-            };
-          }
-        } catch(e) {}
-
-        // Автостарт воспроизведения при готовности
-        window.addEventListener('DOMContentLoaded', function() {
-          setTimeout(function() {
-            var pb = document.querySelector('.play_button, .play_background');
-            if (pb) pb.click();
-          }, 400);
-        });
-
-        setInterval(function() {
-          try {
-            var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"], .kodik-ad-skip, [id*="skip"], .close-ad, .ad-close, [class*="ad-btn"]');
-            for (var i = 0; i < skipBtns.length; i++) {
-              if (skipBtns[i].offsetParent !== null) skipBtns[i].click();
-            }
-            var vids = document.querySelectorAll('video');
-            for (var j = 0; j < vids.length; j++) {
-              var v = vids[j];
-              if (v.duration && v.duration < 65 && v.duration > 2) {
-                v.muted = true;
-                v.playbackRate = 16;
-                if (v.currentTime < v.duration - 0.4) v.currentTime = v.duration - 0.2;
-              }
-            }
-            var banners = document.querySelectorAll('[class*="banner"], [id*="banner"], [class*="advert"], [id*="advert"], [class*="preroll"]:not(video), .b-player__brand');
-            for (var k = 0; k < banners.length; k++) {
-              if (!banners[k].querySelector('video')) {
-                banners[k].style.display = 'none';
-                banners[k].style.pointerEvents = 'none';
-              }
-            }
-          } catch(e) {}
-        }, 350);
-
-        window.addEventListener('message', function(e) {
-          var data = e.data;
-          if (typeof data === 'string') {
-            try { data = JSON.parse(data); } catch(err) {}
-          }
-          if (!data) return;
-          var v = document.querySelector('video');
-          var isSeek = data.type === 'SEEK' || data.event === 'seek' || data.action === 'seek' || data.method === 'seek' || data.api === 'seek';
-          if (isSeek && v) {
-            var delta = parseFloat(data.val !== undefined ? data.val : (data.delta !== undefined ? data.delta : (data.value !== undefined ? data.value : 0)));
-            if (!isNaN(delta) && delta !== 0) {
-              v.currentTime = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + delta));
-            }
-          }
-          var isToggle = data.type === 'TOGGLE' || data.event === 'toggle' || data.action === 'toggle';
-          if (isToggle && v) {
-            if (v.paused) v.play().catch(function() {});
-            else v.pause();
-          }
-        });
-      })();
-      </script>
-    `;
-    if (!html.includes('<base ')) {
-      html = html.replace(/<head[^>]*>/i, `$&${kodikCleanViewInjection}`);
-    }
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Permissions-Policy', 'fullscreen=*');
-    return res.send(html);
+    return res.redirect(cleanUrl);
   } catch (err) {
-    console.warn('[Kodik Embed Proxy Error]:', err.message);
-    const fallbackUrl = String(req.query.url || '');
-    if (fallbackUrl.startsWith('http://') || fallbackUrl.startsWith('https://')) {
-      return res.redirect(fallbackUrl);
-    }
-    return res.status(502).type('text/plain; charset=utf-8').send('Ошибка загрузки плеера');
+    return res.status(500).type('text/plain; charset=utf-8').send('Ошибка перенаправления');
   }
 });
 
@@ -3692,7 +3580,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.7';
+  const currentAppVersion = '1.0.8';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
