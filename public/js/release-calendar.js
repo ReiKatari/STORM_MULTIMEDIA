@@ -244,14 +244,11 @@ async function loadAndRenderWeek(container) {
 
   // 1. Быстрая загрузка из локального кэша, если есть
   try {
-    const localCached = localStorage.getItem(`storm_cal_v106_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v107_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        scheduleItems = parsed.filter(it => {
-          const yr = parseInt(it.year, 10);
-          return isNaN(yr) || yr >= 2025;
-        });
+        scheduleItems = parsed.filter(it => it && it.title);
       }
     }
   } catch {}
@@ -269,8 +266,7 @@ async function loadAndRenderWeek(container) {
         const seen = new Set();
         schedData.items.forEach(it => {
           const k = (it.title || '').toLowerCase().trim();
-          const yr = parseInt(it.year, 10);
-          if (k && !seen.has(k) && (isNaN(yr) || yr >= 2025)) { seen.add(k); combined.push(it); }
+          if (k && !seen.has(k)) { seen.add(k); combined.push(it); }
         });
         defaultItems.forEach(it => {
           const k = (it.title || '').toLowerCase().trim();
@@ -278,7 +274,7 @@ async function loadAndRenderWeek(container) {
         });
 
         try {
-          localStorage.setItem(`storm_cal_v106_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v107_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
         // Если полученные данные идентичны текущим, не производим перерисовку (устраняет моргание)
