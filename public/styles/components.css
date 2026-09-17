@@ -3524,6 +3524,214 @@ button:active .storm-status-svg {
   box-shadow: 0 0 10px var(--accent-glow) !important;
 }
 
+/* ==========================================================================
+   КРАСИВАЯ 3D ГРУППИРОВКА: ПАНЕЛЬ АВТОМАТИЗАЦИИ И РЕЖИМОВ ПОТОКА
+   ========================================================================== */
+.player-automation-card {
+  background: linear-gradient(135deg, rgba(16, 21, 33, 0.75) 0%, rgba(10, 13, 22, 0.85) 100%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.player-automation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 6px;
+}
+
+.player-automation-badge {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-automation-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.player-automation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.automation-toggle-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(22, 28, 44, 0.6);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.automation-toggle-chip:hover {
+  background: rgba(30, 38, 58, 0.85);
+  border-color: rgba(0, 210, 255, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 0 10px rgba(0, 210, 255, 0.15);
+}
+
+.automation-toggle-chip:active {
+  transform: translateY(1.5px) scale(0.98);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.automation-toggle-chip input {
+  display: none;
+}
+
+.automation-chip-box {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid var(--border-color);
+  display: inline-block;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-sizing: border-box;
+}
+
+.automation-toggle-chip input:checked + .automation-chip-box {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 12px var(--accent-glow) !important;
+}
+
+.automation-toggle-chip:has(input:checked) {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.1) 0%, rgba(20, 27, 42, 0.85) 100%);
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 210, 255, 0.15), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.automation-chip-icon {
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.automation-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.automation-chip-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.automation-chip-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   ТЕЛЕМЕТРИЯ СТРИМА И СТАТИСТИКА (STATS DRAWER)
+   ========================================================================== */
+.stats-drawer-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.stats-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.telemetry-metric-card {
+  background: rgba(18, 24, 38, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.telemetry-metric-card:hover {
+  border-color: rgba(0, 210, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.telemetry-metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.telemetry-metric-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.telemetry-metric-value.highlight {
+  color: var(--accent);
+  text-shadow: 0 0 12px var(--accent-glow);
+}
+
+.telemetry-metric-value.warn {
+  color: var(--color-red, #ff4757);
+}
+
+.telemetry-metric-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   ИНТЕРАКТИВНЫЙ X-RAY DRAWER ВНУТРИ СТУДИИ
+   ========================================================================== */
+.xray-drawer-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeIn 0.2s ease;
+}
+
+.xray-drawer-tab-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* Выдвижной блок студии */
 .player-studio-drawer {
   background: rgba(12, 17, 27, 0.96);

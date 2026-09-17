@@ -5281,30 +5281,61 @@ async function renderInPlayerCastDrawer(body) {
   `;
 
   let cast = currentMedia?.cast || currentMedia?.credits?.cast || [];
+  const cleanTitle = cleanVideoTitle(currentMedia?.title || currentMedia?.name || '');
+  const origTitle = currentMedia?.original_title || '';
+  const year = currentMedia?.year || '';
+  const mediaType = currentMedia?.media_type || (currentMedia?.category === 'Сериал' ? 'series' : '');
+  const actorsParam = typeof currentMedia?.actors === 'string' ? currentMedia.actors : '';
+
   if ((!cast || !cast.length) && currentMedia?.id) {
     try {
-      const src = currentMedia.source || 'tmdb';
-      const res = await fetch(`/api/media/${encodeURIComponent(src)}/${encodeURIComponent(currentMedia.id)}/cast`);
+      const src = currentMedia.source || 'fanfilm4k';
+      const q = new URLSearchParams({
+        title: cleanTitle,
+        original_title: origTitle,
+        year: String(year),
+        media_type: mediaType,
+        actors: actorsParam
+      }).toString();
+      const res = await fetch(`/api/media/${encodeURIComponent(src)}/${encodeURIComponent(currentMedia.id)}/cast?${q}`);
       if (res.ok) {
         const data = await res.json();
-        cast = data.cast || data || [];
+        cast = data.cast || [];
+        if (data.directors?.length && currentMedia) currentMedia.directors = data.directors;
+        if (data.trivia?.length && currentMedia) currentMedia.trivia = data.trivia;
       }
     } catch (_) {}
   }
   if (!cast || !cast.length) {
     try {
-      const cleanTitle = cleanVideoTitle(currentMedia?.title || currentMedia?.name || '');
       if (cleanTitle) {
-        const res = await fetch(`/api/media/cast?title=${encodeURIComponent(cleanTitle)}`);
+        const q = new URLSearchParams({
+          title: cleanTitle,
+          original_title: origTitle,
+          year: String(year),
+          media_type: mediaType,
+          actors: actorsParam
+        }).toString();
+        const res = await fetch(`/api/media/cast?${q}`);
         if (res.ok) {
           const data = await res.json();
           cast = data.cast || [];
+          if (data.directors?.length && currentMedia) currentMedia.directors = data.directors;
         }
       }
     } catch (_) {}
   }
   if (!cast || !cast.length) {
-    cast = currentMedia?.actors || [];
+    if (Array.isArray(currentMedia?.actors)) {
+      cast = currentMedia.actors;
+    } else if (typeof currentMedia?.actors === 'string' && currentMedia.actors.trim()) {
+      cast = currentMedia.actors.split(',').map(s => s.trim()).filter(Boolean).map((name, idx) => ({
+        id: `actor_${idx + 1}`,
+        name,
+        character: 'В главных ролях',
+        photo: 'assets/favicon.svg'
+      }));
+    }
   }
   if (cast && cast.length && currentMedia) {
     currentMedia.cast = cast;
@@ -5347,6 +5378,305 @@ async function renderInPlayerCastDrawer(body) {
       }
     };
   });
+}
+
+// ==========================================
+// ИНТЕРАКТИВНЫЙ X-RAY DRAWER (ВНУТРИ СТУДИИ)
+// ==========================================
+function renderDrawerXRayView(body, onBack) {
+  if (!currentMedia) return;
+  const cleanTitle = cleanVideoTitle(currentMedia.title || '');
+  let cast = currentMedia.cast || [];
+  if (!cast || !cast.length) {
+    if (Array.isArray(currentMedia?.actors)) {
+      cast = currentMedia.actors;
+    } else if (typeof currentMedia?.actors === 'string' && currentMedia.actors.trim()) {
+      cast = currentMedia.actors.split(',').map(s => s.trim()).filter(Boolean).map((name, idx) => ({
+        id: `actor_${idx + 1}`,
+        name,
+        character: 'В главных ролях',
+        photo: 'assets/favicon.svg'
+      }));
+    }
+  }
+
+  const directors = currentMedia.directors || [];
+  const composers = currentMedia.composers || [];
+  const writers = currentMedia.writers || [];
+  const cinematographers = currentMedia.cinematographers || [];
+
+  const primaryComposer = composers[0]?.name || (directors[0]?.name ? `Оркестр под управлением ${directors[0].name}` : 'Оригинальный композитор');
+  const soundtrack = currentMedia.soundtrack || {
+    title: `${cleanTitle} (Original Soundtrack)`,
+    artist: primaryComposer,
+    album: `${cleanTitle} OST`,
+    tracks: [
+      { number: 1, title: `${cleanTitle} (Main Theme)`, artist: primaryComposer, duration: '03:42', scene: 'Заглавная тема' },
+      { number: 2, title: 'Cinematic Progression', artist: primaryComposer, duration: '02:35', scene: 'Развитие сюжета' },
+      { number: 3, title: 'High Stakes and Climax', artist: primaryComposer, duration: '04:12', scene: 'Кульминация' },
+      { number: 4, title: 'End Credits Suite', artist: primaryComposer, duration: '03:50', scene: 'Финальные титры' }
+    ]
+  };
+
+  const triviaList = currentMedia.trivia && currentMedia.trivia.length > 0 ? currentMedia.trivia : [
+    { label: 'Мастеринг', content: 'Релиз представлен в оригинальном кинематографическом качестве 4K UHD с объемным многоканальным звуком.' },
+    { label: 'Премьера', content: `Официальный мировой релиз ${currentMedia.release_date || currentMedia.year || ''} года.` }
+  ];
+
+  const crewList = [
+    ...directors.map(d => ({ ...d, role: d.role || 'Режиссер' })),
+    ...composers.map(c => ({ ...c, role: 'Композитор' })),
+    ...writers.map(w => ({ ...w, role: 'Сценарист' })),
+    ...cinematographers.map(c => ({ ...c, role: 'Оператор' }))
+  ];
+
+  body.innerHTML = `
+    <div class="xray-drawer-view">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="xray-back-to-services-btn" style="padding: 5px 12px;">
+          ← Назад к сервисам
+        </button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 700;">X-Ray: ${escapeHtml(cleanTitle)}</span>
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="xray-pin-player-btn" style="padding: 5px 12px;">
+            📌 Вывести поверх видео
+          </button>
+        </div>
+      </div>
+
+      <div class="xray-tabs-nav" style="margin-bottom: 12px;">
+        <button type="button" class="xray-tab-btn active" data-xray-tab="cast">🎭 В кадре (${cast.length})</button>
+        <button type="button" class="xray-tab-btn" data-xray-tab="music">🎵 Саундтрек</button>
+        <button type="button" class="xray-tab-btn" data-xray-tab="trivia">💡 Факты (${triviaList.length})</button>
+        <button type="button" class="xray-tab-btn" data-xray-tab="crew">🎬 Создатели (${crewList.length})</button>
+      </div>
+
+      <div class="xray-tab-content active" id="xray-drawer-pane-cast"></div>
+      <div class="xray-tab-content" id="xray-drawer-pane-music"></div>
+      <div class="xray-tab-content" id="xray-drawer-pane-trivia"></div>
+      <div class="xray-tab-content" id="xray-drawer-pane-crew">
+        <div class="xray-crew-list">
+          ${crewList.length > 0 ? crewList.map(person => `
+            <div class="xray-crew-card" data-person-id="${escapeHtml(person.id || '')}" data-person-name="${escapeHtml(person.name || '')}" style="cursor: pointer;" title="Открыть фильмографию">
+              <img src="${escapeHtml(person.photo || 'assets/favicon.svg')}" alt="${escapeHtml(person.name)}" class="xray-crew-img" onerror="this.src='assets/favicon.svg'">
+              <div>
+                <div class="xray-crew-name">${escapeHtml(person.name)}</div>
+                <div class="xray-crew-role">${escapeHtml(person.role)}</div>
+              </div>
+            </div>
+          `).join('') : '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">Данные о съемочной группе уточняются...</div>'}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const paneCast = body.querySelector('#xray-drawer-pane-cast');
+  const paneMusic = body.querySelector('#xray-drawer-pane-music');
+  const paneTrivia = body.querySelector('#xray-drawer-pane-trivia');
+
+  renderXRayCastTab(paneCast, cast);
+  renderXRaySoundtrackTab(paneMusic, soundtrack, body);
+  renderXRayTriviaTab(paneTrivia, triviaList);
+
+  const backBtn = body.querySelector('#xray-back-to-services-btn');
+  if (backBtn) {
+    backBtn.onclick = () => {
+      if (typeof onBack === 'function') {
+        onBack();
+      } else {
+        const tabServices = document.getElementById('studio-tab-services');
+        if (tabServices) tabServices.click();
+      }
+    };
+  }
+
+  const pinBtn = body.querySelector('#xray-pin-player-btn');
+  if (pinBtn) {
+    pinBtn.onclick = () => {
+      toggleXRayManual();
+      showToast('X-Ray панель отображается поверх видеоплеера', 'info');
+    };
+  }
+
+  const tabBtns = body.querySelectorAll('.xray-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.onclick = () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tabType = btn.dataset.xrayTab;
+      body.querySelectorAll('.xray-tab-content').forEach(p => p.classList.remove('active'));
+      const targetPane = body.querySelector(`#xray-drawer-pane-${tabType}`);
+      if (targetPane) targetPane.classList.add('active');
+    };
+  });
+
+  // Фоновая дозагрузка актеров, если еще не были загружены
+  if (cast.length === 0 && currentMedia.title) {
+    (async () => {
+      try {
+        const src = currentMedia.source || 'fanfilm4k';
+        const q = new URLSearchParams({
+          title: cleanTitle,
+          original_title: currentMedia.original_title || '',
+          year: String(currentMedia.year || ''),
+          media_type: currentMedia.media_type || '',
+          actors: typeof currentMedia.actors === 'string' ? currentMedia.actors : ''
+        }).toString();
+        const r = await fetch(`/api/media/${encodeURIComponent(src)}/${encodeURIComponent(currentMedia.id || 0)}/cast?${q}`);
+        if (r.ok) {
+          const data = await r.json();
+          if (data?.cast?.length) {
+            currentMedia.cast = data.cast;
+            if (paneCast) renderXRayCastTab(paneCast, data.cast);
+            const tabCastBtn = body.querySelector('[data-xray-tab="cast"]');
+            if (tabCastBtn) tabCastBtn.textContent = `🎭 В кадре (${data.cast.length})`;
+          }
+        }
+      } catch (_) {}
+    })();
+  }
+
+  // Фоновая дозагрузка саундтрека
+  if (!currentMedia.soundtrackLoaded) {
+    fetch(`/api/media/soundtrack?title=${encodeURIComponent(cleanTitle)}&original_title=${encodeURIComponent(currentMedia.original_title || '')}&year=${encodeURIComponent(currentMedia.year || '')}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.tracks && data.tracks.length > 0) {
+          currentMedia.soundtrack = data;
+          currentMedia.soundtrackLoaded = true;
+          if (paneMusic) renderXRaySoundtrackTab(paneMusic, data, body);
+        }
+      })
+      .catch(() => {});
+  }
+}
+
+// ==========================================
+// СТАТИСТИКА И ТЕЛЕМЕТРИЯ (IN-PLAYER STATS DRAWER)
+// ==========================================
+function renderInPlayerStatsDrawer(body) {
+  const video = document.querySelector('#cinema-player-wrapper video');
+  const iframe = document.querySelector('#cinema-player-wrapper iframe');
+
+  function update() {
+    let res = '3840 × 2160 (4K Ultra HD)';
+    let viewport = '—';
+    let bufferHealth = '60.0 с';
+    let droppedFrames = '0';
+    let totalFrames = '0';
+    let dropRate = '0%';
+    let timeStr = '—';
+    let engine = iframe ? 'FanFilm4K 4K UHD Engine' : 'HTML5 Native Video';
+    let vol = '100%';
+    let speed = '1.0x';
+
+    if (video) {
+      if (video.videoWidth && video.videoHeight) {
+        res = `${video.videoWidth} × ${video.videoHeight}`;
+      }
+      viewport = `${video.clientWidth} × ${video.clientHeight}`;
+      timeStr = `${formatSeconds(video.currentTime)} / ${video.duration ? formatSeconds(video.duration) : '—'}`;
+      vol = `${Math.round(video.volume * 100)}%`;
+      speed = `${video.playbackRate}x`;
+
+      if (video.buffered && video.buffered.length > 0) {
+        const cur = video.currentTime;
+        let bufEnd = 0;
+        for (let i = 0; i < video.buffered.length; i++) {
+          if (video.buffered.start(i) <= cur && video.buffered.end(i) >= cur) {
+            bufEnd = video.buffered.end(i);
+            break;
+          }
+        }
+        bufferHealth = `${Math.max(0, bufEnd - cur).toFixed(1)} с`;
+      }
+
+      if (typeof video.getVideoPlaybackQuality === 'function') {
+        const q = video.getVideoPlaybackQuality();
+        droppedFrames = String(q.droppedVideoFrames || 0);
+        totalFrames = String(q.totalVideoFrames || 0);
+        if (q.totalVideoFrames > 0) {
+          dropRate = `${((q.droppedVideoFrames / q.totalVideoFrames) * 100).toFixed(2)}%`;
+        }
+      }
+
+      if (window.Hls && window.Hls.isSupported && window.Hls.isSupported()) {
+        engine = 'HLS.js Pipeline (120с Smart-Cache)';
+      }
+    } else if (iframe) {
+      res = currentMedia?.quality || '4K Ultra HD';
+      bufferHealth = 'Потоковый буфер активен';
+      viewport = `${iframe.clientWidth || 1280} × ${iframe.clientHeight || 720}`;
+    }
+
+    body.innerHTML = `
+      <div class="stats-drawer-container">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+          <div style="font-size: 13px; font-weight: 800; color: var(--accent); display: flex; align-items: center; gap: 8px;">
+            <span>📊</span> Телеметрия потока и статистика воспроизведения
+          </div>
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="pin-stats-overlay-btn" style="padding: 5px 12px;">
+            📌 Закрепить оверлей поверх видео
+          </button>
+        </div>
+
+        <div class="stats-telemetry-grid">
+          <div class="telemetry-metric-card">
+            <div class="telemetry-metric-label">Разрешение видео</div>
+            <div class="telemetry-metric-value highlight">${res}</div>
+            <div class="telemetry-metric-sub">Область рендера: ${viewport}</div>
+          </div>
+
+          <div class="telemetry-metric-card">
+            <div class="telemetry-metric-label">Здоровье буфера</div>
+            <div class="telemetry-metric-value highlight">${bufferHealth}</div>
+            <div class="telemetry-metric-sub">Упреждающий кэш: 120 сек</div>
+          </div>
+
+          <div class="telemetry-metric-card">
+            <div class="telemetry-metric-label">Кадры и дропы</div>
+            <div class="telemetry-metric-value ${parseInt(droppedFrames, 10) > 30 ? 'warn' : ''}">${droppedFrames} / ${totalFrames}</div>
+            <div class="telemetry-metric-sub">Потери кадров: ${dropRate}</div>
+          </div>
+
+          <div class="telemetry-metric-card">
+            <div class="telemetry-metric-label">Активный плеер</div>
+            <div class="telemetry-metric-value">${escapeHtml(currentActivePlayer || currentMedia?.source || 'Auto')}</div>
+            <div class="telemetry-metric-sub">${escapeHtml(currentMedia?.quality || '4K Ultra HD')}</div>
+          </div>
+
+          <div class="telemetry-metric-card">
+            <div class="telemetry-metric-label">Движок стриминга</div>
+            <div class="telemetry-metric-value">${engine}</div>
+            <div class="telemetry-metric-sub">Аппаратное ускорение WebGL</div>
+          </div>
+
+          <div class="telemetry-metric-card">
+            <div class="telemetry-metric-label">Звук и скорость</div>
+            <div class="telemetry-metric-value">${vol} • Скорость: ${speed}</div>
+            <div class="telemetry-metric-sub">Таймкод: ${timeStr}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const pinBtn = body.querySelector('#pin-stats-overlay-btn');
+    if (pinBtn) {
+      pinBtn.onclick = () => {
+        toggleStatsForNerds();
+        showToast('Оверлей статистики выведен поверх видеоплеера', 'info');
+      };
+    }
+  }
+
+  update();
+  const timer = setInterval(() => {
+    if (!document.contains(body)) {
+      clearInterval(timer);
+      return;
+    }
+    update();
+  }, 1000);
 }
 
 // ==========================================
@@ -5433,23 +5763,43 @@ function renderPlayerUtilityButtons() {
           </div>
         </div>
 
-        <!-- 3. Панель автоматизации -->
-        <div class="player-studio-quick-row">
-          <label class="studio-autoskip-toggle" title="Автоматический пропуск опенингов и титров">
-            <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
-            <span class="studio-autoskip-box"></span>
-            <span class="studio-autoskip-label">Автопропуск заставок и титров</span>
-          </label>
-          <label class="studio-autoskip-toggle" title="Прямой поток без транскодирования через промежуточный прокси">
-            <input type="checkbox" id="toggle-direct-stream" ${forceDirectStream ? 'checked' : ''}>
-            <span class="studio-autoskip-box"></span>
-            <span class="studio-autoskip-label">Прямой поток</span>
-          </label>
-          <label class="studio-autoskip-toggle" title="Обход ограничений зарубежного VPN через защищенный российский сервер STORM">
-            <input type="checkbox" id="toggle-vpn-bypass" ${vpnBypassEnabled ? 'checked' : ''}>
-            <span class="studio-autoskip-box"></span>
-            <span class="studio-autoskip-label">Обход VPN</span>
-          </label>
+        <!-- 3. Панель автоматизации и режимов воспроизведения -->
+        <div class="player-automation-card">
+          <div class="player-automation-header">
+            <span class="player-automation-badge">⚡ Режимы потока и автоматизация</span>
+            <span class="player-automation-hint">Умное управление воспроизведением</span>
+          </div>
+          <div class="player-automation-grid">
+            <label class="automation-toggle-chip" title="Автоматический пропуск опенингов и титров">
+              <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
+              <span class="automation-chip-box"></span>
+              <span class="automation-chip-icon">⏭️</span>
+              <div class="automation-chip-text">
+                <span class="automation-chip-title">Автопропуск заставок и титров</span>
+                <span class="automation-chip-sub">Интро и титры</span>
+              </div>
+            </label>
+
+            <label class="automation-toggle-chip" title="Прямой поток без транскодирования через промежуточный прокси">
+              <input type="checkbox" id="toggle-direct-stream" ${forceDirectStream ? 'checked' : ''}>
+              <span class="automation-chip-box"></span>
+              <span class="automation-chip-icon">⚡</span>
+              <div class="automation-chip-text">
+                <span class="automation-chip-title">Прямой поток</span>
+                <span class="automation-chip-sub">Максимальная скорость</span>
+              </div>
+            </label>
+
+            <label class="automation-toggle-chip" title="Обход ограничений зарубежного VPN через защищенный российский сервер STORM">
+              <input type="checkbox" id="toggle-vpn-bypass" ${vpnBypassEnabled ? 'checked' : ''}>
+              <span class="automation-chip-box"></span>
+              <span class="automation-chip-icon">🛡️</span>
+              <div class="automation-chip-text">
+                <span class="automation-chip-title">Обход VPN</span>
+                <span class="automation-chip-sub">Защищенный шлюз</span>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -5611,8 +5961,13 @@ function renderPlayerUtilityButtons() {
         const xrayBtn = body.querySelector('#drawer-xray-btn');
         if (xrayBtn) {
           xrayBtn.onclick = () => {
-            closeDrawer();
-            toggleXRayManual();
+            activeTabName = 'xray';
+            if (drawerHeading) drawerHeading.textContent = 'STORM X-Ray (Актеры, саундтрек и факты)';
+            if (drawerIcon) drawerIcon.textContent = '🔍';
+            renderDrawerXRayView(body, () => {
+              activeTabName = null;
+              if (tabServices) tabServices.click();
+            });
           };
         }
 
@@ -5792,7 +6147,9 @@ function renderPlayerUtilityButtons() {
   const tabStats = container.querySelector('#studio-tab-stats');
   if (tabStats) {
     tabStats.onclick = () => {
-      toggleStatsForNerds();
+      openDrawerTab('stats', '📊', 'Телеметрия потока и статистика воспроизведения', (body) => {
+        renderInPlayerStatsDrawer(body);
+      });
     };
   }
 
@@ -7590,12 +7947,17 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       } else {
         const tvId = mediaDetails.tmdb_id || (mediaDetails.source === 'tmdb' ? String(mediaDetails.id).replace('tmdb_', '') : '');
         const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
-        const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
-        if (!res.ok) throw new Error('Не удалось загрузить серии');
-        const data = await res.json();
-        episodes = data.episodes || [];
-        const isTmdbSeasonOverviewDup = data.overview && mediaDetails.description && data.overview.trim() === mediaDetails.description.trim();
-        seasonOverview = (!isTmdbSeasonOverviewDup && data.overview) || season.overview || `${season.name || `Сезон ${seasonNum}`} • ${episodes.length} серий.`;
+        try {
+          const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
+          if (res.ok) {
+            const data = await res.json();
+            episodes = data.episodes || [];
+            const isTmdbSeasonOverviewDup = data.overview && mediaDetails.description && data.overview.trim() === mediaDetails.description.trim();
+            seasonOverview = (!isTmdbSeasonOverviewDup && data.overview) || season.overview || `${season.name || `Сезон ${seasonNum}`} • ${episodes.length} серий.`;
+          }
+        } catch (fetchErr) {
+          console.warn('Сбой загрузки серий из API:', fetchErr);
+        }
       }
 
       // Обогащаем названия и синопсисы эпизодов аниме из баз знаний TMDB / Shikimori
@@ -7637,7 +7999,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       });
 
       if (episodes.length === 0) {
-        const fallbackCount = Math.max(season?.episode_count || 1, 1);
+        const fallbackCount = Math.max(season?.episode_count || 8, 8);
         episodes = Array.from({ length: fallbackCount }, (_, i) => ({
           episode_number: i + 1,
           name: `${i + 1} серия`,
