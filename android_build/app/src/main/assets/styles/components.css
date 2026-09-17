@@ -7933,23 +7933,35 @@ body.player-dropdown-active .cinema-player-iframe {
 #cinema-modal.is-focus-mode .cinema-modal-screenshots-container,
 #cinema-modal.is-focus-mode .cinema-reviews-container,
 #cinema-modal.is-focus-mode #player-series-quick-bar,
-#cinema-modal.is-focus-mode .player-studio-drawer {
+#cinema-modal.is-focus-mode .player-studio-drawer,
+#cinema-modal.is-focus-mode .cinema-sidebar-column,
+#cinema-modal.is-focus-mode .player-fallback-bar,
+#cinema-modal.is-focus-mode .player-stream-stats-panel {
   display: none !important;
 }
 
-#cinema-modal.is-focus-mode .cinema-modal-dialog {
+#cinema-modal.is-focus-mode .cinema-modal-dialog,
+#cinema-modal.is-focus-mode .storm-modal-body,
+#cinema-modal.is-focus-mode .cinema-layout-grid,
+#cinema-modal.is-focus-mode .cinema-main-column,
+#cinema-modal.is-focus-mode .cinema-player-container,
+#cinema-modal.is-focus-mode .cinema-player-wrapper {
   max-width: 100vw !important;
   width: 100vw !important;
   height: 100vh !important;
+  max-height: 100vh !important;
   border-radius: 0 !important;
   border: none !important;
   margin: 0 !important;
   padding: 0 !important;
-  background: #000 !important;
+  background: #000000 !important;
+  aspect-ratio: unset !important;
+  box-shadow: none !important;
 }
 
 #cinema-modal.is-focus-mode .player-video-box {
   border-radius: 0 !important;
+  width: 100vw !important;
   height: 100vh !important;
 }
 
@@ -7959,9 +7971,9 @@ body.player-dropdown-active .cinema-player-iframe {
   right: 20px;
   bottom: 80px;
   width: 170px;
-  background: rgba(10, 11, 16, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(10, 11, 16, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
   padding: 12px;
@@ -7969,7 +7981,8 @@ body.player-dropdown-active .cinema-player-iframe {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  z-index: 45;
+  z-index: 95 !important;
+  pointer-events: auto !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75), 0 0 16px rgba(0, 210, 255, 0.15);
   animation: slideInJog 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -8072,7 +8085,8 @@ body.player-dropdown-active .cinema-player-iframe {
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
   padding: 16px 20px;
-  z-index: 45;
+  z-index: 95 !important;
+  pointer-events: auto !important;
   display: flex;
   flex-direction: column;
   gap: 12px;

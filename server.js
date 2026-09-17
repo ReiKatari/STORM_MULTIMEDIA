@@ -4423,7 +4423,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.21';
+  const currentAppVersion = '1.0.22';
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {
