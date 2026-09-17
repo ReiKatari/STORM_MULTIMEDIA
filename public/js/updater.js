@@ -6,7 +6,7 @@
 
 import { showToast } from './auth.js';
 
-export const CURRENT_APP_VERSION = '1.0.8';
+export const CURRENT_APP_VERSION = '1.0.9';
 const GITHUB_REPO = 'ReiKatari/STORM_MULTIMEDIA';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 час для пассивных проверок в браузере
 
