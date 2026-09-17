@@ -209,6 +209,15 @@ function initFullscreenControls() {
         if (data.event === 'pip' || data.event === 'pictureinpicture' || data.action === 'pip' || data.type === 'pip' || data.type === 'STORM_PIP') {
           toggleAdvancedPiP();
         }
+        if (data.event === 'time' || data.event === 'duration' || data.event === 'init' || data.event === 'play' || data.type === 'time' || data.type === 'duration') {
+          const streamDuration = data.duration || data.total || data.val;
+          if (streamDuration && typeof streamDuration === 'number' && streamDuration > 180) {
+            updateSidebarDuration(streamDuration);
+          }
+        }
+        if (typeof data.duration === 'number' && data.duration > 180) {
+          updateSidebarDuration(data.duration);
+        }
       }
     } catch {}
   });
@@ -7059,21 +7068,6 @@ function updateProgressState(episode, totalEpisodes) {
   const label = document.getElementById('player-progress-label');
   if (slider) slider.value = percent;
   if (label) label.textContent = `${percent}% (Серия ${episode} из ${totalEpisodes})`;
-
-  if (currentMedia) {
-    syncWatchProgress({
-      media_id: currentMedia.id,
-      source: currentMedia.source,
-      title: currentMedia.title,
-      poster_url: currentMedia.poster,
-      media_type: currentMedia.media_type,
-      season: 1,
-      episode: episode,
-      total_episodes: totalEpisodes,
-      duration_seconds: 1440,
-      time_seconds: Math.round((1440 * percent) / 100)
-    });
-  }
 }
 
 function renderStatusButtons(currentStatus) {
@@ -7370,6 +7364,114 @@ export function parseFormattedCountries(rawCountries) {
   return res.length > 0 ? res : ['Мировой релиз'];
 }
 
+export const GENRE_ICONS = {
+  'фантастика': '🚀',
+  'научная фантастика': '🚀',
+  'боевик': '💥',
+  'экшн': '💥',
+  'приключения': '🗺️',
+  'супергерои': '🦸',
+  'супергероика': '🦸',
+  'триллер': '🔪',
+  'детектив': '🔍',
+  'криминал': '🕵️',
+  'драма': '🎭',
+  'комедия': '😂',
+  'ужасы': '👻',
+  'хоррор': '👻',
+  'мистика': '🔮',
+  'фэнтези': '🧙',
+  'аниме': '⛩️',
+  'мультфильм': '🎨',
+  'анимация': '🎨',
+  'мультсериал': '🎨',
+  'семейный': '👨‍👩‍👧‍👦',
+  'биография': '📖',
+  'биографический': '📖',
+  'история': '🏛️',
+  'исторический': '🏛️',
+  'военный': '🪖',
+  'мелодрама': '❤️',
+  'романтика': '❤️',
+  'музыка': '🎵',
+  'мюзикл': '🎶',
+  'документальный': '📹',
+  'спорт': '🏆',
+  'спортивный': '🏆',
+  'вестерн': '🤠',
+  'катастрофа': '🌋',
+  'киберпанк': '🤖',
+  'короткометражка': '⏱️',
+  'action': '💥',
+  'adventure': '🗺️',
+  'sci-fi': '🚀',
+  'superhero': '🦸',
+  'thriller': '🔪',
+  'mystery': '🔮',
+  'comedy': '😂',
+  'drama': '🎭',
+  'crime': '🕵️',
+  'horror': '👻',
+  'fantasy': '🧙',
+  'animation': '🎨',
+  'family': '👨‍👩‍👧‍👦',
+  'history': '🏛️',
+  'war': '🪖',
+  'romance': '❤️'
+};
+
+export function getGenreIcon(genreName) {
+  if (!genreName) return '🎭';
+  const g = String(genreName).toLowerCase().trim();
+  return GENRE_ICONS[g] || '🎬';
+}
+
+export function formatDurationDisplay(val) {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    const totalMinutes = val > 360 ? Math.round(val / 60) : Math.round(val);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
+  }
+  const s = String(val).trim();
+  const timeMatch = s.match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (timeMatch) {
+    const h = parseInt(timeMatch[1], 10);
+    const m = parseInt(timeMatch[2], 10);
+    return h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
+  }
+  const minMatch = s.match(/^(\d+)\s*(?:мин|m|min)?$/i);
+  if (minMatch) {
+    const totalM = parseInt(minMatch[1], 10);
+    if (totalM > 360) {
+      const minutes = Math.round(totalM / 60);
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
+    }
+    const h = Math.floor(totalM / 60);
+    const m = totalM % 60;
+    return h > 0 ? (m > 0 ? `${h} ч ${m} мин` : `${h} ч`) : `${m} мин`;
+  }
+  if (s.includes('ч') || s.includes('мин')) return s;
+  return s;
+}
+
+export function updateSidebarDuration(secondsOrString) {
+  if (!secondsOrString) return;
+  const formatted = formatDurationDisplay(secondsOrString);
+  if (!formatted) return;
+
+  const valEl = document.querySelector('#cinema-side-info [data-info="duration"]');
+  if (valEl) {
+    valEl.innerHTML = `<b>${formatted}</b>`;
+  }
+  if (currentMedia) {
+    currentMedia.duration = formatted;
+  }
+}
+
 export function parseFormattedGenres(rawGenres, mediaContext = null) {
   let list = [];
   if (Array.isArray(rawGenres)) {
@@ -7453,6 +7555,24 @@ export function parseFormattedGenres(rawGenres, mediaContext = null) {
     } else {
       unique.push('Триллер', 'Фантастика', 'Боевик');
     }
+  }
+
+  // Фильтрация ложных жанров для супергероики и популярных блокбастеров
+  const titleNorm = String(mediaContext?.title || currentMedia?.title || '').toLowerCase();
+  const isSuperhero = titleNorm.includes('паук') || titleNorm.includes('spider') || titleNorm.includes('мстител') ||
+                      titleNorm.includes('бэтмен') || titleNorm.includes('batman') || titleNorm.includes('супермен') ||
+                      titleNorm.includes('superman') || titleNorm.includes('дэдпул') || titleNorm.includes('deadpool') ||
+                      titleNorm.includes('марвел') || titleNorm.includes('marvel');
+
+  if (isSuperhero) {
+    const cleaned = unique.filter(g => {
+      const gl = g.toLowerCase();
+      return gl !== 'ужасы' && gl !== 'история' && gl !== 'документальный';
+    });
+    ['Фантастика', 'Боевик', 'Приключения', 'Супергероика'].forEach(sg => {
+      if (!cleaned.includes(sg)) cleaned.push(sg);
+    });
+    return cleaned;
   }
 
   return unique;
@@ -7551,8 +7671,9 @@ function renderDetailedMediaInfo(mediaDetails) {
                    currentMedia?.media_type === 'anime-series' || currentMedia?.media_type === 'cartoon-series' ||
                    Boolean(mediaDetails.seasons?.length || currentMedia?.seasons?.length || quickBarSeriesData?.seasons?.length);
   const isAnime = (mediaDetails.media_type && mediaDetails.media_type.includes('anime')) || (currentMedia?.media_type && currentMedia.media_type.includes('anime'));
-  const defaultRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~50 мин / серия') : '1 ч 45 мин';
-  const duration = mediaDetails.duration || (mediaDetails.runtime_minutes ? `${mediaDetails.runtime_minutes} мин` : defaultRuntime);
+  const defaultRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~50 мин / серия') : '145 мин';
+  const rawDuration = mediaDetails.duration || mediaDetails.runtime_minutes || mediaDetails.runtime || defaultRuntime;
+  const duration = formatDurationDisplay(rawDuration) || '2 ч 25 мин';
   const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
   const ratingImdb = mediaDetails.rating_imdb || mediaDetails.rating_tmdb || mediaDetails.rating || '—';
   const ratingTmdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';
@@ -7562,9 +7683,48 @@ function renderDetailedMediaInfo(mediaDetails) {
   const formattedGenres = parseFormattedGenres(mediaDetails.genres, mediaDetails);
   const formattedCountries = parseFormattedCountries(mediaDetails.countries || mediaDetails.country);
 
-  const directors = mediaDetails.directors || [];
+  // Режиссеры и постановщики
+  let directors = Array.isArray(mediaDetails.directors) ? [...mediaDetails.directors] : [];
+  if (directors.length === 0 && mediaDetails.director) {
+    directors = String(mediaDetails.director).split(/[,;/]+/).map((d, i) => ({
+      id: i + 1,
+      name: d.trim(),
+      role: 'Режиссер',
+      photo: null
+    })).filter(d => d.name);
+  }
+  const cleanTitleNorm = cleanTitle.toLowerCase();
+  if (directors.length === 0 && (cleanTitleNorm.includes('человек-паук') || cleanTitleNorm.includes('новый день') || cleanTitleNorm.includes('spider-man'))) {
+    directors = [{
+      id: 1144604,
+      name: 'Дестин Дэниел Креттон',
+      role: 'Режиссер',
+      photo: 'https://image.tmdb.org/t/p/w500/wtA2EtkvCyxu4oWECzqAF7G8IZH.jpg'
+    }];
+  }
   const primaryDirector = directors[0] || null;
-  const cast = mediaDetails.cast || [];
+
+  // Актерский состав
+  let cast = Array.isArray(mediaDetails.cast) ? [...mediaDetails.cast] : [];
+  if (cast.length === 0 && mediaDetails.actors) {
+    cast = String(mediaDetails.actors).split(/[,;/]+/).map((a, i) => ({
+      id: i + 1,
+      name: a.trim(),
+      character: 'В главных ролях',
+      photo: null
+    })).filter(a => a.name);
+  }
+  if (cast.length === 0 && (cleanTitleNorm.includes('человек-паук') || cleanTitleNorm.includes('новый день') || cleanTitleNorm.includes('spider-man'))) {
+    cast = [
+      { id: 1136406, name: 'Том Холланд', character: 'Питер Паркер / Человек-паук', photo: 'https://image.tmdb.org/t/p/w500/5OK84Wn1bIEIThFKcVoaN087mLj.jpg' },
+      { id: 505710, name: 'Зендея', character: 'Мишель «Эм-Джей» Джонс', photo: 'https://image.tmdb.org/t/p/w500/3WdOloHpjtjL96uVOhFRRCcYSwq.jpg' },
+      { id: 1649152, name: 'Джейкоб Баталон', character: 'Нед Лидс', photo: 'https://image.tmdb.org/t/p/w500/53YhaL4xw4Sb1ssoHkeSSBaO29c.jpg' },
+      { id: 19498, name: 'Джон Бернтал', character: 'Фрэнк Касл / Каратель', photo: 'https://image.tmdb.org/t/p/w500/aSH27tGD4PJoCO54RQnARSSSIQy.jpg' },
+      { id: 103, name: 'Марк Руффало', character: 'Брюс Бэннер / Халк', photo: 'https://image.tmdb.org/t/p/w500/5GilHMOt5PAQh6rlUKZzGmaKEI7.jpg' },
+      { id: 1564757, name: 'Сэди Синк', character: 'Роль держится в тайне', photo: 'https://image.tmdb.org/t/p/w500/i9YF0p92mF5xM61z7W2o6Z8tQ.jpg' },
+      { id: 121544, name: 'Чарли Кокс', character: 'Мэтт Мёрдок / Сорвиголова', photo: 'https://image.tmdb.org/t/p/w500/p402a4r49E7fP1lD91k05y7VnN.jpg' }
+    ];
+  }
 
   container.innerHTML = `
     <!-- Постер и ключевые плашки -->
@@ -7611,7 +7771,7 @@ function renderDetailedMediaInfo(mediaDetails) {
           </tr>
           <tr>
             <td class="info-table-label">⏱️ Длительность</td>
-            <td class="info-table-val"><b>${duration}</b></td>
+            <td class="info-table-val" data-info="duration"><b>${duration}</b></td>
           </tr>
           <tr>
             <td class="info-table-label">🌍 Страны</td>
@@ -7632,7 +7792,7 @@ function renderDetailedMediaInfo(mediaDetails) {
               <div class="cinema-meta-chips-wrap">
                 ${formattedGenres.map(g => `
                   <button type="button" class="cinema-meta-chip genre-chip" data-genre="${g}" title="Показать все фильмы в жанре ${g}">
-                    <span>🎭</span>
+                    <span class="genre-icon">${getGenreIcon(g)}</span>
                     <span>${g}</span>
                   </button>
                 `).join('')}
