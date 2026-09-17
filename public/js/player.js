@@ -190,6 +190,8 @@ function initFullscreenControls() {
       }
       if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
         toggleCinemaFullscreen();
+      } else if (data === 'pip' || data === 'pictureinpicture' || data === 'toggle_pip') {
+        toggleAdvancedPiP();
       } else if (typeof data === 'object' && data) {
         if (data.type === 'STORM_SWITCH_NEXT_SOURCE' || data.type === 'STORM_PLAYER_FALLBACK') {
           switchToNextSource();
@@ -203,6 +205,9 @@ function initFullscreenControls() {
         }
         if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.event === 'dblclick' || data.action === 'fullscreen') {
           toggleCinemaFullscreen();
+        }
+        if (data.event === 'pip' || data.event === 'pictureinpicture' || data.action === 'pip' || data.type === 'pip' || data.type === 'STORM_PIP') {
+          toggleAdvancedPiP();
         }
       }
     } catch {}
@@ -553,24 +558,9 @@ function initMobilePlayerControls() {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try { navigator.vibrate(15); } catch (_) {}
       }
-
-      const video = document.querySelector('#cinema-player-wrapper video');
-      if (video && document.pictureInPictureEnabled) {
-        try {
-          if (document.pictureInPictureElement) {
-            await document.exitPictureInPicture();
-          } else {
-            await video.requestPictureInPicture();
-          }
-          return;
-        } catch (_) {}
-      }
-
-      // Внутренний мини-PiP режим приложения
-      const isPip = modal.classList.toggle('is-mini-pip');
+      await toggleAdvancedPiP();
+      const isPip = modal.classList.contains('is-mini-pip');
       pipBtn.classList.toggle('active', isPip);
-      const modalBody = modal.querySelector('.storm-modal-body');
-      if (modalBody) modalBody.scrollTop = 0;
     };
   }
 
@@ -2548,7 +2538,7 @@ function playStreamUrl(url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
 
@@ -4857,8 +4847,8 @@ export function mountInPlayerOverlay(videoBox) {
 // ==========================================
 export async function toggleAdvancedPiP() {
   const modal = document.getElementById('cinema-modal');
-  const video = document.getElementById('storm-video-player');
-  const iframe = document.getElementById('cinema-player-wrapper')?.querySelector('iframe');
+  const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
+  const iframe = document.getElementById('cinema-player-wrapper')?.querySelector('iframe') || document.querySelector('.cinema-player-iframe');
 
   // Если окно уже в режиме плавающего mini-PiP — восстанавливаем кинотеатр
   if (modal && modal.classList.contains('is-mini-pip')) {
@@ -7042,7 +7032,7 @@ function playAnixartEpisode(episode) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay *; encrypted-media *; fullscreen *; picture-in-picture *; display-capture *" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
