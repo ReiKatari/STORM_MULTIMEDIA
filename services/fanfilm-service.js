@@ -769,20 +769,63 @@ export async function getFanFilmDetails(idOrUrl) {
 
     // 1. Плеер 4K (transfusion-as / stravers / fanfilm direct iframe)
     const player4kIframe = $('[data-tab-content="4kplayer"] iframe').attr('src') || '';
+    let is4kStreamHealthy = true;
+    let final4kUrl = '';
     if (player4kIframe) {
+      final4kUrl = player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe;
+      if (final4kUrl.includes('stravers.live') || final4kUrl.includes('transfusion')) {
+        try {
+          const chkRes = await fetch(final4kUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+              'Referer': url
+            },
+            signal: AbortSignal.timeout(2000)
+          });
+          if (chkRes.ok) {
+            const chkText = await chkRes.text();
+            if (chkText.includes('не найден') || chkText.includes('неудобства') || chkText.includes('404')) {
+              is4kStreamHealthy = false;
+            }
+          } else {
+            is4kStreamHealthy = false;
+          }
+        } catch {
+          // При таймауте не блокируем
+        }
+      }
+
       players.push({
         id: 'fanfilm4k_uhd',
-        name: '4K Ultra HD Плеер (FanFilm4K)',
+        name: is4kStreamHealthy ? '4K Ultra HD Плеер (FanFilm4K)' : '4K Плеер (Поток в архиве)',
         type: 'iframe',
-        quality: '4K UHD',
+        quality: is4kStreamHealthy ? '4K UHD' : '1080p FHD',
         badge: 'FANFILM 4K',
+        status: is4kStreamHealthy ? 'working' : 'broken',
+        status_label: is4kStreamHealthy ? '🟢 Онлайн' : '🔴 Недоступен',
+        audio_info: is4kStreamHealthy ? 'Многоканальный звук Dolby Digital' : 'Поток временно в архиве',
+        speed: is4kStreamHealthy ? '⚡ Сверхскоростной CDN' : '⚠️ Рекомендуется Kodik',
+        url: final4kUrl,
+        is_recommended: is4kStreamHealthy,
+        recommended_badge: is4kStreamHealthy ? '🔥 Рекомендуемый' : ''
+      });
+    }
+
+    // 2. Гарантированный проверенный Kodik при наличии Kinopoisk ID
+    if (kpId) {
+      players.push({
+        id: 'kodik_direct',
+        name: 'Kodik Плеер (сериалы и озвучки)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'KODIK',
         status: 'working',
         status_label: '🟢 Онлайн',
-        audio_info: 'Многоканальный звук Dolby Digital',
-        speed: '⚡ Сверхскоростной CDN',
-        url: player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe,
-        is_recommended: true,
-        recommended_badge: '🔥 Рекомендуемый'
+        audio_info: 'Большой выбор студийных озвучек',
+        speed: '⚡ Быстрый поток',
+        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}`,
+        is_recommended: !is4kStreamHealthy,
+        recommended_badge: !is4kStreamHealthy ? '🔥 Рекомендуемый' : ''
       });
     }
 

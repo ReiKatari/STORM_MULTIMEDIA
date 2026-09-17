@@ -1008,20 +1008,43 @@ export async function openPlayerModal(mediaItem, options = {}) {
   renderPlayerUtilityButtons();
   renderFranchiseOrder(mediaItem);
 
+  // Инициализируем плавающую кнопку аварийного переключения
+  const fallbackBtn = document.getElementById('player-fallback-btn');
+  if (fallbackBtn) {
+    fallbackBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      switchToNextSource(true);
+    };
+  }
+
   // 🛡️ ГАРАНТИЯ ИСТОЧНИКОВ: Создаем полный универсальный набор онлайн-плееров сразу!
   // Никакой источник никогда не пропадает, даже при задержке сети или таймауте
   const fallbackSuite = buildUniversalPlayerSuite(mediaItem, cleanTitle);
   currentPlayers = [...fallbackSuite];
   renderPlayerSources(currentPlayers);
 
-  // Определяем стартовый рекомендуемый плеер
+  // Определяем стартовый рекомендуемый плеер с защитой от удаленных 4K архивов
+  const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
+  const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+  const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
+  const preferStableKodik = itemYr < 2020;
+
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
-    const isStable = p => p && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-    initialChoice = currentPlayers.find(p => p.is_recommended && isStable(p))
-      || currentPlayers.find(p => p.is_recommended)
-      || currentPlayers.find(isStable)
-      || currentPlayers[0];
+    if (preferStableKodik) {
+      initialChoice = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+        || currentPlayers.find(p => p.is_recommended && isStable(p))
+        || currentPlayers.find(isStable)
+        || currentPlayers.find(isWorking)
+        || currentPlayers[0];
+    } else {
+      initialChoice = currentPlayers.find(p => p.is_recommended && isStable(p))
+        || currentPlayers.find(p => p.is_recommended && isWorking(p))
+        || currentPlayers.find(isStable)
+        || currentPlayers.find(isWorking)
+        || currentPlayers[0];
+    }
   }
 
   currentActivePlayer = initialChoice || {
@@ -1123,11 +1146,24 @@ export async function openPlayerModal(mediaItem, options = {}) {
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
         if (!defaultPlayer) {
-          const isStable = p => p && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-          defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
-            || currentPlayers.find(p => p.is_recommended)
-            || currentPlayers.find(isStable)
-            || currentPlayers[0];
+          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
+          const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+          const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
+          const preferStableKodik = itemYr < 2020;
+
+          if (preferStableKodik) {
+            defaultPlayer = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+              || currentPlayers.find(p => p.is_recommended && isStable(p))
+              || currentPlayers.find(isStable)
+              || currentPlayers.find(isWorking)
+              || currentPlayers[0];
+          } else {
+            defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
+              || currentPlayers.find(p => p.is_recommended && isWorking(p))
+              || currentPlayers.find(isStable)
+              || currentPlayers.find(isWorking)
+              || currentPlayers[0];
+          }
         }
         selectPlayer(defaultPlayer);
       } else if (currentMedia.is_upcoming) {
@@ -1429,24 +1465,37 @@ function selectPlayer(player) {
   playStreamUrl(player.url);
 }
 
-export function switchToNextSource() {
+export function switchToNextSource(preferWorking = true) {
   if (!currentPlayers || currentPlayers.length <= 1) {
     showToast('Нет других доступных источников', 'warning');
     return;
   }
-  const curIdx = currentPlayers.findIndex(p => p.id === currentActivePlayer?.id);
-  const nextIdx = (curIdx + 1) % currentPlayers.length;
-  const nextPlayer = currentPlayers[nextIdx];
+  let nextPlayer = null;
+  if (preferWorking) {
+    const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
+    // Приоритет: проверенный Kodik, затем HDRezka / Collaps, затем любой другой рабочий
+    nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
+      || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rezka_cinema' || p.id === 'collaps_player'))
+      || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
+      || null;
+  }
+  if (!nextPlayer) {
+    const curIdx = currentPlayers.findIndex(p => p.id === currentActivePlayer?.id);
+    const nextIdx = (curIdx + 1) % currentPlayers.length;
+    nextPlayer = currentPlayers[nextIdx];
+  }
   if (nextPlayer) {
     selectPlayer(nextPlayer);
     updatePlayerTriggerInfo(nextPlayer);
     const list = document.getElementById('player-source-list');
     if (list) {
-      list.querySelectorAll('.player-dropdown-item').forEach((el, idx) => {
-        el.classList.toggle('active', idx === nextIdx);
+      list.querySelectorAll('.player-dropdown-item').forEach((el) => {
+        const idx = parseInt(el.dataset.idx, 10);
+        const p = currentPlayers ? currentPlayers[idx] : null;
+        el.classList.toggle('active', Boolean(p && p.id === nextPlayer.id));
       });
     }
-    showToast(`🔁 Источник переключен: ${nextPlayer.name}`, 'info');
+    showToast(`⚡ Источник переключен: ${nextPlayer.name}`, 'info');
   }
 }
 
@@ -2272,6 +2321,45 @@ async function selectQuickVoiceover(translationId) {
   trackClientAction('switch_voiceover', { translation_id: translationId });
 }
 
+let streamCheckAbort = null;
+async function checkAndAutoFallbackStream(rawUrl) {
+  if (!rawUrl || rawUrl.includes('kodik') || rawUrl.includes('youtube')) return;
+  if (streamCheckAbort) {
+    try { streamCheckAbort.abort(); } catch {}
+  }
+  streamCheckAbort = new AbortController();
+  try {
+    const res = await fetch(`/api/player/check-stream?url=${encodeURIComponent(rawUrl)}`, {
+      signal: streamCheckAbort.signal
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.alive === false) {
+        console.warn('Обнаружен недействительный поток FanFilm4K, выполняем авто-переход на Kodik');
+        const brokenP = currentPlayers?.find(p => p.id === 'fanfilm4k_uhd' || p.url === rawUrl);
+        if (brokenP) {
+          brokenP.status = 'broken';
+          brokenP.status_label = '🔴 Недоступен';
+        }
+        const kodik = currentPlayers?.find(p => p.id === 'kodik_direct' && p.status !== 'broken');
+        if (kodik && currentActivePlayer?.id !== kodik.id) {
+          selectPlayer(kodik);
+          showToast('⚠️ 4K поток FanFilm в архиве. Автоматически включен Full HD плеер Kodik!', 'info');
+        } else {
+          switchToNextSource(true);
+        }
+      }
+    }
+  } catch {}
+}
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'STORM_SWITCH_NEXT_SOURCE') {
+    console.warn('Получен сигнал переключения источника:', e.data?.reason);
+    switchToNextSource(true);
+  }
+});
+
 function playStreamUrl(url) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
@@ -2360,6 +2448,7 @@ function playStreamUrl(url) {
   if (isFanfilmOrStravers) {
     streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation`;
     initSeriesQuickBar(url);
+    checkAndAutoFallbackStream(url);
   } else if (!quickBarSeriesData?.isAnime) {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
