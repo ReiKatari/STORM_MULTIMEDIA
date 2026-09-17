@@ -3250,11 +3250,13 @@ body.drawer-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 0;
+  gap: clamp(140px, 36vw, 400px);
+  padding: 0 20px;
+  box-sizing: border-box;
   background: transparent !important;
   pointer-events: none;
   z-index: 50;
+  transition: gap 0.25s cubic-bezier(0.16, 1, 0.3, 1), bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .inplayer-episode-nav-btn {
@@ -5659,6 +5661,18 @@ body.tv-mode .storm-bottom-nav {
     width: 22px !important;
     height: 22px !important;
     font-size: 11px !important;
+  }
+
+  .inplayer-bottom-bar {
+    gap: clamp(60px, 20vw, 130px) !important;
+    padding: 0 8px !important;
+    bottom: 52px !important;
+  }
+
+  .inplayer-episode-nav-btn {
+    padding: 5px 10px !important;
+    font-size: 10.5px !important;
+    gap: 4px !important;
   }
 }
 
