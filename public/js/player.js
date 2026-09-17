@@ -792,23 +792,44 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 
   const suite = [];
 
-  // 1. FanFilm 4K Ultra HD
+  // 1. FanFilm HD и 4K Ultra HD
   const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
-  if (fanfilmUrl) {
-    suite.push({
-      id: 'fanfilm4k_uhd',
-      name: '4K Ultra HD Плеер (FanFilm4K)',
-      type: 'iframe',
-      quality: '4K UHD',
-      badge: 'FANFILM 4K',
-      status: 'working',
-      status_label: '🟢 4K поток',
-      audio_info: 'Многоголосый дубляж 5.1 / HDR',
-      speed: '💎 Премиум CDN',
-      url: fanfilmUrl,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
-    });
+  const fanfilmHdUrl = mediaItem.fanfilm_hd_url || (mediaItem.source === 'fanfilm4k' && kpId ? `https://river-3-329.kinescopecdn.net/675571372/embed-kp/${kpId}?design=2&lang=ru` : (mediaItem.source === 'fanfilm4k' ? fanfilmUrl : ''));
+
+  if (fanfilmHdUrl || fanfilmUrl) {
+    if (fanfilmHdUrl) {
+      suite.push({
+        id: 'fanfilm_hd',
+        name: 'FanFilm HD Плеер (Full HD / Kinescope)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'FANFILM HD',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Многоголосый дубляж и выбор озвучек',
+        speed: '⚡ Скоростной CDN Kinescope',
+        url: fanfilmHdUrl,
+        is_recommended: true,
+        recommended_badge: '🔥 Рекомендуемый'
+      });
+    }
+
+    if (fanfilmUrl) {
+      suite.push({
+        id: 'fanfilm4k_uhd',
+        name: '4K Ultra HD Плеер (FanFilm4K)',
+        type: 'iframe',
+        quality: '4K UHD',
+        badge: 'FANFILM 4K',
+        status: 'working',
+        status_label: '🟢 4K поток',
+        audio_info: 'Многоканальный звук Dolby Digital',
+        speed: '💎 Премиум CDN',
+        url: fanfilmUrl,
+        is_recommended: !fanfilmHdUrl,
+        recommended_badge: !fanfilmHdUrl ? '🔥 Рекомендуемый' : ''
+      });
+    }
   }
 
   // 2. HDRezka Cinema (FHD и 4K)
@@ -1473,8 +1494,9 @@ export function switchToNextSource(preferWorking = true) {
   let nextPlayer = null;
   if (preferWorking) {
     const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-    // Приоритет: проверенный Kodik, затем HDRezka / Collaps, затем любой другой рабочий
-    nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
+    // Приоритет: проверенный FanFilm HD (Kinescope), затем Kodik, затем HDRezka / Collaps, затем любой другой рабочий
+    nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm_hd')
+      || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
       || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rezka_cinema' || p.id === 'collaps_player'))
       || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
       || null;
@@ -2335,11 +2357,41 @@ async function checkAndAutoFallbackStream(rawUrl) {
     if (res.ok) {
       const data = await res.json();
       if (data && data.alive === false) {
-        console.warn('Обнаружен недействительный поток FanFilm4K, выполняем авто-переход на Kodik');
+        console.warn('Обнаружен недействительный поток FanFilm4K, выполняем авто-переход');
         const brokenP = currentPlayers?.find(p => p.id === 'fanfilm4k_uhd' || p.url === rawUrl);
         if (brokenP) {
           brokenP.status = 'broken';
           brokenP.status_label = '🔴 Недоступен';
+        }
+        const hdPlayer = currentPlayers?.find(p => p.id === 'fanfilm_hd' && p.status !== 'broken');
+        if (hdPlayer && currentActivePlayer?.id !== hdPlayer.id) {
+          selectPlayer(hdPlayer);
+          showToast('⚡ Автоматически включен проверенный HD плеер (Kinescope)', 'info');
+          return;
+        }
+        if (data.fallback_url) {
+          let dynHd = currentPlayers?.find(p => p.url === data.fallback_url);
+          if (!dynHd) {
+            dynHd = {
+              id: 'fanfilm_hd',
+              name: 'FanFilm HD Плеер (Full HD / Kinescope)',
+              type: 'iframe',
+              quality: '1080p FHD',
+              badge: 'FANFILM HD',
+              status: 'working',
+              status_label: '🟢 Онлайн',
+              audio_info: 'Многоголосый дубляж и выбор озвучек',
+              speed: '⚡ Скоростной CDN Kinescope',
+              url: data.fallback_url,
+              is_recommended: true,
+              recommended_badge: '🔥 Рекомендуемый'
+            };
+            currentPlayers.unshift(dynHd);
+            renderPlayerSources(currentPlayers);
+          }
+          selectPlayer(dynHd);
+          showToast('⚡ Автоматически включен проверенный HD плеер (Kinescope)', 'info');
+          return;
         }
         const kodik = currentPlayers?.find(p => p.id === 'kodik_direct' && p.status !== 'broken');
         if (kodik && currentActivePlayer?.id !== kodik.id) {
