@@ -206,8 +206,34 @@ export async function searchTmdb(query, page = 1) {
  * Получение подробной информации о релизе (актеры, режиссеры, жанры, рейтинги, сезоны)
  */
 export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = null, yearHint = null) {
-  if (!id) return null;
-  const cleanId = String(id).replace('tmdb_', '').trim();
+  let cleanId = id ? String(id).replace('tmdb_', '').trim() : '';
+
+  // Если числовой ID не передан, но указано название — находим точный релиз в TMDB
+  if (!cleanId && titleHint) {
+    try {
+      const cleanTitle = String(titleHint).replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+      const searchRes = await searchTmdb(cleanTitle, 1);
+      const isWantTv = mediaTypeHint === 'series' || mediaTypeHint === 'tv' || mediaTypeHint === 'cartoon-series' || mediaTypeHint === 'anime-series';
+      
+      let match = (searchRes?.items || []).find(it => {
+        const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
+        return isWantTv ? itIsTv : !itIsTv;
+      });
+
+      // Специальные псевдонимы: "Джек Ричер" (сериал) -> в TMDB называется "Ричер"
+      if (!match && isWantTv && cleanTitle.toLowerCase().includes('ричер')) {
+        const reacherRes = await searchTmdb('Ричер', 1);
+        match = (reacherRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv');
+      }
+
+      if (!match) match = searchRes?.items?.[0];
+      if (match && match.id) {
+        cleanId = String(match.id).replace('tmdb_', '').trim();
+      }
+    } catch (_) {}
+  }
+
+  if (!cleanId) return null;
   const cacheKey = `details_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached) return cached;
