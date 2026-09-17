@@ -261,9 +261,9 @@ export async function getAnixartEpisodes(releaseId, typeId) {
     const rawEpisodes = episodesRes?.episodes || [];
 
     const episodes = rawEpisodes.map((ep, idx) => {
-      let finalUrl = ep.url || '';
-      if (finalUrl && finalUrl.includes('kodik') && !finalUrl.includes('/api/player/kodik-embed')) {
-        finalUrl = `/api/player/kodik-embed?url=${encodeURIComponent(finalUrl)}`;
+      let finalUrl = (ep.url || '').trim();
+      if (finalUrl.startsWith('//')) {
+        finalUrl = 'https:' + finalUrl;
       }
       return {
         position: ep.position || (idx + 1),

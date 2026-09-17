@@ -869,7 +869,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     audio_info: 'Большой выбор студийных озвучек',
     speed: '⚡ Быстрый поток',
     url: kodikUrl,
-    is_recommended: isAnime && !fanfilmUrl
+    is_recommended: isAnime && !fanfilmUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
   });
 
   // 6. Red Head Sound (Дубляж RHS)
@@ -1290,9 +1290,10 @@ function renderPlayerSources(players) {
   }).join('');
 
   // Обновляем плашку выбранного плеера
-  updatePlayerTriggerInfo(defaultPlayer);
-  if (!currentActivePlayer) {
-    selectPlayer(defaultPlayer);
+  if (currentActivePlayer) {
+    updatePlayerTriggerInfo(currentActivePlayer);
+  } else if (defaultPlayer) {
+    updatePlayerTriggerInfo(defaultPlayer);
   }
 
   // Клик по пункту выпадающего списка
@@ -2363,8 +2364,18 @@ function playStreamUrl(url) {
     if (quickBar) quickBar.style.display = 'none';
   }
 
-  if (typeof streamUrl === 'string' && streamUrl.includes('kodik') && !streamUrl.includes('/api/player/kodik-embed')) {
-    streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
+  if (typeof streamUrl === 'string') {
+    streamUrl = streamUrl.trim();
+    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
+      try {
+        const parsed = new URL(streamUrl, window.location.origin);
+        const inner = parsed.searchParams.get('url');
+        if (inner) streamUrl = inner;
+      } catch {}
+    }
+    if (streamUrl.startsWith('//')) {
+      streamUrl = 'https:' + streamUrl;
+    }
   }
 
     container.innerHTML = `
@@ -5989,8 +6000,18 @@ function playAnixartEpisode(episode) {
     return;
   }
 
-  if (streamUrl.includes('kodik') && !streamUrl.includes('/api/player/kodik-embed')) {
-    streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
+  if (typeof streamUrl === 'string') {
+    streamUrl = streamUrl.trim();
+    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
+      try {
+        const parsed = new URL(streamUrl, window.location.origin);
+        const inner = parsed.searchParams.get('url');
+        if (inner) streamUrl = inner;
+      } catch {}
+    }
+    if (streamUrl.startsWith('//')) {
+      streamUrl = 'https:' + streamUrl;
+    }
   }
 
   container.innerHTML = `
