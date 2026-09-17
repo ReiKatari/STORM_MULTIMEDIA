@@ -5760,9 +5760,9 @@ body.tv-mode .storm-bottom-nav {
 /* Сенсорные зоны двойного тапа для перемотки (±10 сек) */
 .player-tap-zone {
   position: absolute;
-  top: 56px; /* Оставляем верхнюю панель оверлея плеера полностью свободной и доступной для кликов */
-  bottom: 74px; /* Оставляем нижнюю панель управления плеера полностью доступной для кликов */
-  width: 25%; /* Оставляем центральную часть экрана свободной для кликов и жестов */
+  top: 70px;
+  bottom: 240px; /* Оставляем ВСЮ нижнюю треть экрана, элементы управления и всплывающие меню полностью свободными */
+  width: 25%;
   z-index: 15;
   pointer-events: auto;
   display: flex;
@@ -5771,6 +5771,13 @@ body.tv-mode .storm-bottom-nav {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   cursor: pointer;
+}
+
+/* На устройствах с мышью (Desktop) зоны тапа никогда не перехватывают клики пользователя */
+@media (hover: hover) and (pointer: fine) {
+  .player-tap-zone {
+    pointer-events: none !important;
+  }
 }
 
 .player-tap-left {
