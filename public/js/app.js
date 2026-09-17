@@ -54,7 +54,7 @@
 
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI } from './auth.js';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining } from './player.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
@@ -2589,7 +2589,7 @@ function renderHomeView(items) {
       id: 'legend_dune_2',
       title: 'Дюна: Часть вторая',
       original_title: 'Dune: Part Two',
-      poster: 'https://image.tmdb.org/t/p/w500/czembW0RJJ1rboOmCY2eo9NjhbL.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg',
       year: '2024',
       rating: 8.5,
       quality: '4K Ultra HD',
@@ -3295,8 +3295,10 @@ function renderCatalogPagination(shownCount) {
   const totalPages = Math.max(1, totalCatalogPages);
   const totalCount = Math.max(shownCount, totalCatalogItems);
 
-  const maxButtons = 5;
-  let startPage = Math.max(1, currentPage - 2);
+  // Ограничиваем количество кнопок на узких мобильных экранах
+  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 500;
+  const maxButtons = isNarrow ? 3 : 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
   let endPage = Math.min(totalPages, startPage + maxButtons - 1);
   if (endPage - startPage < maxButtons - 1) {
     startPage = Math.max(1, endPage - maxButtons + 1);
@@ -3324,20 +3326,25 @@ function renderCatalogPagination(shownCount) {
   host.style.display = 'block';
   host.innerHTML = `
     <div class="storm-pagination-container">
-      <div class="storm-pagination-info">
-        <span>Показано: <strong>${shownCount}</strong> из <strong>${totalCount}</strong></span>
+      <div class="storm-pagination-meta">
+        <div class="storm-pagination-info">
+          <span class="storm-pagination-badge">Стр. <strong>${currentPage}</strong> из <strong>${totalPages}</strong></span>
+          <span class="storm-pagination-count">Показано: <strong>${shownCount}</strong> из <strong>${totalCount.toLocaleString('ru-RU')}</strong></span>
+        </div>
+        <div class="storm-pagination-jump">
+          <span>Стр:</span>
+          <input type="number" min="1" max="${totalPages}" value="${currentPage}" class="storm-page-jump-input" id="storm-page-jump-input" aria-label="Номер страницы" />
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm storm-page-jump-btn" id="storm-page-jump-btn">Перейти</button>
+        </div>
       </div>
       <div class="storm-pagination-controls">
-        <button type="button" class="storm-page-btn first-page-btn" ${currentPage <= 1 ? 'disabled' : ''} title="Первая страница" data-page="1">« 1</button>
-        <button type="button" class="storm-page-btn prev-page-btn" ${currentPage <= 1 ? 'disabled' : ''} title="Предыдущая страница" data-page="${Math.max(1, currentPage - 1)}">‹ Назад</button>
-        ${pillsHtml}
-        <button type="button" class="storm-page-btn next-page-btn" ${currentPage >= totalPages ? 'disabled' : ''} title="Следующая страница" data-page="${Math.min(totalPages, currentPage + 1)}">Вперёд ›</button>
-        <button type="button" class="storm-page-btn last-page-btn" ${currentPage >= totalPages ? 'disabled' : ''} title="Последняя страница" data-page="${totalPages}">» ${totalPages}</button>
-      </div>
-      <div class="storm-pagination-jump">
-        <span>Перейти:</span>
-        <input type="number" min="1" max="${totalPages}" value="${currentPage}" class="storm-page-jump-input" id="storm-page-jump-input" />
-        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm storm-page-jump-btn" id="storm-page-jump-btn">Перейти</button>
+        <button type="button" class="storm-page-btn nav-btn first-page-btn" ${currentPage <= 1 ? 'disabled' : ''} title="Первая страница" data-page="1">«</button>
+        <button type="button" class="storm-page-btn nav-btn prev-page-btn" ${currentPage <= 1 ? 'disabled' : ''} title="Предыдущая страница" data-page="${Math.max(1, currentPage - 1)}">‹</button>
+        <div class="storm-pagination-pills">
+          ${pillsHtml}
+        </div>
+        <button type="button" class="storm-page-btn nav-btn next-page-btn" ${currentPage >= totalPages ? 'disabled' : ''} title="Следующая страница" data-page="${Math.min(totalPages, currentPage + 1)}">›</button>
+        <button type="button" class="storm-page-btn nav-btn last-page-btn" ${currentPage >= totalPages ? 'disabled' : ''} title="Последняя страница" data-page="${totalPages}">»</button>
       </div>
     </div>
   `;
@@ -4445,14 +4452,23 @@ function initModals() {
   if (loginForm) {
     loginForm.onsubmit = async (e) => {
       e.preventDefault();
-      const loginVal = document.getElementById('login-username').value;
-      const passVal = document.getElementById('login-password').value;
+      const loginVal = (document.getElementById('login-username')?.value || '').trim();
+      const passVal = (document.getElementById('login-password')?.value || '').trim();
       try {
         await login(loginVal, passVal);
         authModal.classList.remove('is-open');
       } catch (err) {
         showToast(err.message, 'error');
       }
+    };
+  }
+
+  // Гостевой вход без пароля
+  const guestLoginBtn = document.getElementById('guest-login-btn');
+  if (guestLoginBtn) {
+    guestLoginBtn.onclick = () => {
+      loginAsGuest();
+      authModal.classList.remove('is-open');
     };
   }
 

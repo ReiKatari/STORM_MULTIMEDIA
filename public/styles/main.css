@@ -5263,7 +5263,7 @@ body.tv-mode .storm-bottom-nav {
   width: 100%;
   z-index: 450;
   margin-top: auto;
-  padding: 12px 0 16px 0;
+  padding: 10px 24px 14px 24px;
   background: linear-gradient(180deg, rgba(10, 11, 16, 0) 0%, rgba(10, 11, 16, 0.88) 30%, rgba(10, 11, 16, 0.98) 100%);
   pointer-events: none;
   box-sizing: border-box;
@@ -5272,89 +5272,29 @@ body.tv-mode .storm-bottom-nav {
 .storm-pagination-container {
   pointer-events: auto;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 20px;
-  margin: 0;
+  padding: 10px 20px;
+  margin: 0 auto;
+  max-width: 1280px;
   width: 100%;
   box-sizing: border-box;
-  background: rgba(18, 22, 34, 0.94);
+  background: rgba(18, 22, 34, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
-  box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.65), 0 0 15px rgba(0, 210, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.6), 0 0 12px rgba(0, 210, 255, 0.08);
+}
+
+.storm-pagination-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .storm-pagination-info {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.storm-pagination-info strong {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-.storm-pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.storm-page-btn {
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: var(--shadow-sm), inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  user-select: none;
-  min-width: 36px;
-  text-align: center;
-}
-
-.storm-page-btn:hover:not(:disabled) {
-  background: var(--bg-card-hover);
-  border-color: var(--accent);
-  transform: translateY(-1.5px);
-  box-shadow: var(--shadow-md), 0 0 12px var(--accent-subtle);
-}
-
-.storm-page-btn:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.storm-page-btn.active {
-  background: linear-gradient(135deg, #00d2ff 0%, #0072ff 100%);
-  border-color: #00d2ff;
-  color: #000000;
-  font-weight: 800;
-  box-shadow: 0 4px 14px rgba(0, 210, 255, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.6);
-}
-
-.storm-page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.storm-pagination-ellipsis {
-  padding: 0 4px;
-  color: var(--text-muted);
-  font-weight: 800;
-}
-
-.storm-pagination-jump {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5362,14 +5302,123 @@ body.tv-mode .storm-bottom-nav {
   color: var(--text-muted);
 }
 
+.storm-pagination-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.28);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.storm-pagination-badge strong {
+  color: #ffffff;
+  margin: 0 2px;
+}
+
+.storm-pagination-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.storm-pagination-count strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.storm-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.storm-pagination-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.storm-page-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  user-select: none;
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.storm-page-btn:hover:not(:disabled) {
+  background: var(--bg-card-hover);
+  border-color: var(--accent);
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), 0 0 10px var(--accent-subtle);
+}
+
+.storm-page-btn:active:not(:disabled) {
+  transform: translateY(1.5px) scale(0.96);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.storm-page-btn.active {
+  background: linear-gradient(135deg, #00d2ff 0%, #0072ff 100%);
+  border-color: #00d2ff;
+  color: #000000;
+  font-weight: 800;
+  box-shadow: 0 3px 12px rgba(0, 210, 255, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+}
+
+.storm-page-btn.nav-btn {
+  font-size: 15px;
+  font-weight: 800;
+  min-width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.storm-page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.storm-pagination-ellipsis {
+  padding: 0 3px;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.storm-pagination-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .storm-page-jump-input {
-  width: 60px;
-  padding: 7px 10px;
+  width: 46px;
+  height: 30px;
+  padding: 3px 6px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: 6px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-align: center;
   outline: none;
@@ -5378,24 +5427,117 @@ body.tv-mode .storm-bottom-nav {
 
 .storm-page-jump-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 10px var(--accent-subtle);
+  box-shadow: 0 0 8px var(--accent-subtle);
+}
+
+.storm-page-jump-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
 }
 
 @media (max-width: 768px) {
   .storm-pagination-host {
-    bottom: 64px;
-    padding: 8px 12px 12px 12px;
+    position: fixed !important;
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 3100 !important;
+    padding: 6px 10px !important;
+    background: linear-gradient(180deg, rgba(10, 13, 20, 0) 0%, rgba(10, 13, 20, 0.94) 30%, rgba(10, 13, 20, 0.98) 100%) !important;
+    pointer-events: none !important;
+    box-sizing: border-box !important;
   }
 
   .storm-pagination-container {
-    padding: 10px 14px;
-    gap: 10px;
-    justify-content: center;
+    pointer-events: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 7px !important;
+    padding: 8px 12px !important;
+    border-radius: 12px !important;
+    background: rgba(14, 18, 28, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(0, 210, 255, 0.22) !important;
+    box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.65), 0 0 10px rgba(0, 210, 255, 0.1) !important;
+  }
+
+  .storm-pagination-meta {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 6px !important;
   }
 
   .storm-pagination-info {
-    width: 100%;
-    text-align: center;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .storm-pagination-badge {
+    padding: 2px 6px !important;
+    font-size: 11px !important;
+  }
+
+  .storm-pagination-count {
+    font-size: 11px !important;
+  }
+
+  .storm-pagination-jump {
+    gap: 4px !important;
+    font-size: 11px !important;
+  }
+
+  .storm-page-jump-input {
+    width: 38px !important;
+    height: 26px !important;
+    padding: 2px 4px !important;
+    font-size: 11px !important;
+  }
+
+  .storm-page-jump-btn {
+    height: 26px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+  }
+
+  .storm-pagination-controls {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    width: 100% !important;
+  }
+
+  .storm-pagination-pills {
+    display: flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+
+  .storm-page-btn {
+    min-width: 30px !important;
+    height: 30px !important;
+    padding: 2px 6px !important;
+    font-size: 12px !important;
+    border-radius: 6px !important;
+  }
+
+  .storm-page-btn.nav-btn {
+    min-width: 30px !important;
+    height: 30px !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+  }
+
+  .storm-main-container {
+    padding-bottom: 140px !important;
   }
 }
 
@@ -5821,7 +5963,7 @@ body.tv-mode .storm-bottom-nav {
 
 @media (max-width: 768px) {
   .storm-scroll-top-fab {
-    bottom: calc(72px + env(safe-area-inset-bottom, 12px));
+    bottom: calc(134px + env(safe-area-inset-bottom, 12px));
     right: 16px;
     width: 42px;
     height: 42px;
