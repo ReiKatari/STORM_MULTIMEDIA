@@ -1217,7 +1217,11 @@ export function renderProVideoPanel(hostElement) {
   const closeBtn = hostElement.querySelector('#close-pro-video-btn');
   if (closeBtn) {
     closeBtn.onclick = () => {
-      hostElement.style.display = 'none';
+      const modalBackdrop = hostElement.closest('.player-studio-modal-backdrop') || document.getElementById('player-studio-modal-backdrop');
+      if (modalBackdrop) modalBackdrop.style.display = 'none';
+      if (hostElement) hostElement.style.display = 'block';
+      const videoTabBtn = document.getElementById('studio-tab-video');
+      if (videoTabBtn) videoTabBtn.classList.remove('active');
     };
   }
 }
@@ -1645,7 +1649,11 @@ export function renderProAudioPanel(hostElement) {
   const closeBtn = hostElement.querySelector('#close-pro-audio-btn');
   if (closeBtn) {
     closeBtn.onclick = () => {
-      hostElement.style.display = 'none';
+      const modalBackdrop = hostElement.closest('.player-studio-modal-backdrop') || document.getElementById('player-studio-modal-backdrop');
+      if (modalBackdrop) modalBackdrop.style.display = 'none';
+      if (hostElement) hostElement.style.display = 'block';
+      const audioTabBtn = document.getElementById('studio-tab-audio');
+      if (audioTabBtn) audioTabBtn.classList.remove('active');
       if (visualizerRaf) {
         cancelAnimationFrame(visualizerRaf);
         visualizerRaf = null;
