@@ -112,13 +112,14 @@ class MainActivity : ComponentActivity() {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // Отключаем десктопный overview режим, вызывающий неконтролируемое масштабирование и блокировку зума
-        settings.useWideViewPort = false
-        settings.loadWithOverviewMode = false
+        // Корректный мобильный адаптивный viewport и запрет искажения текста системным зумом Android
+        settings.useWideViewPort = true
+        settings.loadWithOverviewMode = true
+        settings.textZoom = 100
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.12"
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.24"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true

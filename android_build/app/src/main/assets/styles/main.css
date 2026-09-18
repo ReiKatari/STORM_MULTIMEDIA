@@ -2846,18 +2846,24 @@ body.drawer-open {
   }
 
   #cinema-modal .storm-modal-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
     padding: 8px 12px !important;
     position: relative !important;
     top: auto !important;
     background: var(--bg-secondary) !important;
     z-index: 10 !important;
     border-bottom: 1px solid var(--border-subtle) !important;
+    gap: 8px !important;
   }
 
   #cinema-modal .storm-modal-title {
-    font-size: 14.5px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
-    max-width: calc(100vw - 90px) !important;
+    max-width: calc(100% - 210px) !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;

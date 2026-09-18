@@ -1271,6 +1271,9 @@ export function closePlayerModal() {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
 
+    const studioBackdrop = document.getElementById('player-studio-modal-backdrop');
+    if (studioBackdrop) studioBackdrop.style.display = 'none';
+
     quickBarSeriesData = null;
     currentEpisodes = [];
     currentEpisodeIndex = 1;
@@ -6077,39 +6080,60 @@ function renderPlayerUtilityButtons() {
         </div>
       </div>
 
-      <!-- Выдвижная панель студии (Studio Drawer), открывающаяся НЕПОСРЕДСТВЕННО под панелью кнопок -->
-      <div class="player-studio-drawer" id="player-studio-drawer" style="display: none;">
+    </div>
+  `;
+
+  // Всплывающее модальное окно студии (Studio Floating Modal Dialog)
+  let backdrop = document.getElementById('player-studio-modal-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.id = 'player-studio-modal-backdrop';
+    backdrop.className = 'player-studio-modal-backdrop';
+    backdrop.style.display = 'none';
+    backdrop.innerHTML = `
+      <div class="player-studio-modal-dialog" id="player-studio-drawer">
         <div class="studio-drawer-header">
           <div class="studio-drawer-title">
             <span id="studio-drawer-icon">🎛️</span>
             <span id="studio-drawer-heading">Pro Видео</span>
           </div>
-          <button type="button" class="studio-drawer-close" id="studio-drawer-close" title="Закрыть панель">✕</button>
+          <button type="button" class="studio-drawer-close" id="studio-drawer-close" title="Закрыть окно">✕</button>
         </div>
         <div class="studio-drawer-body" id="studio-drawer-body"></div>
       </div>
-    </div>
-  `;
+    `;
+    document.body.appendChild(backdrop);
+  }
 
-  const drawer = container.querySelector('#player-studio-drawer');
-  const drawerBody = container.querySelector('#studio-drawer-body');
-  const drawerIcon = container.querySelector('#studio-drawer-icon');
-  const drawerHeading = container.querySelector('#studio-drawer-heading');
-  const drawerClose = container.querySelector('#studio-drawer-close');
+  const drawer = backdrop.querySelector('#player-studio-drawer');
+  const drawerBody = backdrop.querySelector('#studio-drawer-body');
+  const drawerIcon = backdrop.querySelector('#studio-drawer-icon');
+  const drawerHeading = backdrop.querySelector('#studio-drawer-heading');
+  const drawerClose = backdrop.querySelector('#studio-drawer-close');
   const tabButtons = container.querySelectorAll('.studio-tab-btn');
 
   let activeTabName = null;
 
   const closeDrawer = () => {
-    if (drawer) drawer.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
     activeTabName = null;
     tabButtons.forEach(btn => btn.classList.remove('active'));
   };
 
   if (drawerClose) drawerClose.onclick = closeDrawer;
+  backdrop.onclick = (e) => {
+    if (e.target === backdrop) closeDrawer();
+  };
+
+  const onKeyEscape = (e) => {
+    if (e.key === 'Escape' && backdrop && backdrop.style.display !== 'none') {
+      closeDrawer();
+    }
+  };
+  window.addEventListener('keydown', onKeyEscape);
 
   const openDrawerTab = (tabName, icon, heading, renderFn) => {
-    if (activeTabName === tabName && drawer.style.display !== 'none') {
+    if (activeTabName === tabName && backdrop.style.display !== 'none') {
       closeDrawer();
       return;
     }
@@ -6120,7 +6144,7 @@ function renderPlayerUtilityButtons() {
     if (drawerIcon) drawerIcon.textContent = icon;
     if (drawerHeading) drawerHeading.textContent = heading;
 
-    drawer.style.display = 'block';
+    backdrop.style.display = 'flex';
     drawerBody.innerHTML = '';
     renderFn(drawerBody);
   };
@@ -8576,13 +8600,13 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
             ${ep.duration ? `<span class="series-episode-duration">${ep.duration}</span>` : ''}
           </div>
           <div class="series-episode-content">
-            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
-              <div class="series-episode-title" title="${escapeHtml(ep.name)}">${escapeHtml(ep.name)}</div>
-              <span class="season-status-chip ${epStatusClass} ep-status-toggle" data-ep-num="${ep.episode_number}" title="Нажмите для переключения статуса серии" style="font-size: 9.5px; padding: 2px 7px; cursor: pointer; flex-shrink: 0;">
+            <div class="series-episode-title" title="${escapeHtml(ep.name)}">${escapeHtml(ep.name)}</div>
+            <div class="series-episode-meta-row">
+              <span class="series-episode-airdate">${ep.air_date ? '📅 ' + ep.air_date : ''}</span>
+              <span class="season-status-chip ${epStatusClass} ep-status-toggle" data-ep-num="${ep.episode_number}" title="Нажмите для переключения статуса серии">
                 ${epStatusLabel}
               </span>
             </div>
-            <div class="series-episode-airdate">${ep.air_date ? '📅 ' + ep.air_date : ''}</div>
             <p class="series-episode-desc" title="${escapeHtml(ep.overview)}">${escapeHtml(ep.overview)}</p>
           </div>
         </div>

@@ -1089,52 +1089,97 @@ export function renderProVideoPanel(hostElement) {
     </div>
   `;
 
-  // Обработчики пресетов
+  // Обработчики пресетов (с поддержкой повторного клика для отключения / сброса в стандарт)
   hostElement.querySelectorAll('[data-preset]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proVideoSettings.preset === btn.dataset.preset;
       hostElement.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proVideoSettings.preset = btn.dataset.preset;
+      if (isAlreadyActive && btn.dataset.preset !== 'standard') {
+        proVideoSettings.preset = 'standard';
+        const stdBtn = hostElement.querySelector('[data-preset="standard"]');
+        if (stdBtn) stdBtn.classList.add('active');
+        showToast('Пресет видео сброшен (Стандарт)', 'info');
+      } else {
+        btn.classList.add('active');
+        proVideoSettings.preset = btn.dataset.preset;
+        const name = btn.querySelector('.pro-card-name')?.textContent || btn.textContent.trim();
+        showToast(`Пресет видео: ${name}`, 'info');
+      }
       applyProVideoSettings();
     };
   });
 
-  // Шейдерный апскейлер WebGL
+  // Шейдерный апскейлер WebGL (с поддержкой отключения повторным кликом)
   hostElement.querySelectorAll('[data-upscaler]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proVideoSettings.upscalerShader === btn.dataset.upscaler;
       hostElement.querySelectorAll('[data-upscaler]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      setVideoUpscalerShader(btn.dataset.upscaler);
-      showToast(`Шейдер апскейлера: ${btn.textContent.trim()}`, 'info');
+      if (isAlreadyActive || btn.dataset.upscaler === 'off') {
+        setVideoUpscalerShader('off');
+        const offBtn = hostElement.querySelector('[data-upscaler="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Шейдер апскейлера отключен', 'info');
+      } else {
+        btn.classList.add('active');
+        setVideoUpscalerShader(btn.dataset.upscaler);
+        showToast(`Шейдер апскейлера: ${btn.textContent.trim()}`, 'info');
+      }
     };
   });
 
-  // Резкость CAS
+  // Резкость CAS (с поддержкой отключения повторным кликом)
   hostElement.querySelectorAll('[data-cas]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proVideoSettings.casSharpness === btn.dataset.cas;
       hostElement.querySelectorAll('[data-cas]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proVideoSettings.casSharpness = btn.dataset.cas;
+      if (isAlreadyActive || btn.dataset.cas === 'off') {
+        proVideoSettings.casSharpness = 'off';
+        const offBtn = hostElement.querySelector('[data-cas="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Резкость CAS отключена', 'info');
+      } else {
+        btn.classList.add('active');
+        proVideoSettings.casSharpness = btn.dataset.cas;
+        showToast(`Резкость CAS: ${btn.textContent.trim()}`, 'info');
+      }
       applyProVideoSettings();
     };
   });
 
-  // Зерно пленки
+  // Зерно пленки (с поддержкой отключения повторным кликом)
   hostElement.querySelectorAll('[data-grain]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proVideoSettings.filmGrain === btn.dataset.grain;
       hostElement.querySelectorAll('[data-grain]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proVideoSettings.filmGrain = btn.dataset.grain;
+      if (isAlreadyActive || btn.dataset.grain === 'off') {
+        proVideoSettings.filmGrain = 'off';
+        const offBtn = hostElement.querySelector('[data-grain="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Зерно пленки отключено', 'info');
+      } else {
+        btn.classList.add('active');
+        proVideoSettings.filmGrain = btn.dataset.grain;
+        showToast(`Зерно пленки: ${btn.textContent.trim()}`, 'info');
+      }
       applyProVideoSettings();
     };
   });
 
-  // Соотношение сторон
+  // Соотношение сторон (с поддержкой сброса в 16:9 повторным кликом)
   hostElement.querySelectorAll('[data-aspect]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proVideoSettings.aspectRatio === btn.dataset.aspect;
       hostElement.querySelectorAll('[data-aspect]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proVideoSettings.aspectRatio = btn.dataset.aspect;
+      if (isAlreadyActive && btn.dataset.aspect !== '16:9') {
+        proVideoSettings.aspectRatio = '16:9';
+        const defBtn = hostElement.querySelector('[data-aspect="16:9"]');
+        if (defBtn) defBtn.classList.add('active');
+        showToast('Соотношение сторон сброшено (16:9)', 'info');
+      } else {
+        btn.classList.add('active');
+        proVideoSettings.aspectRatio = btn.dataset.aspect;
+        showToast(`Соотношение сторон: ${btn.textContent.trim()}`, 'info');
+      }
       applyProVideoSettings();
     };
   });
@@ -1369,82 +1414,130 @@ export function renderProAudioPanel(hostElement) {
     };
   }
 
-  // Preamp громкость
+  // Preamp громкость (с поддержкой сброса в 100% повторным кликом)
   hostElement.querySelectorAll('[data-preamp]').forEach(btn => {
     btn.onclick = () => {
+      const val = parseFloat(btn.dataset.preamp);
+      const isAlreadyActive = btn.classList.contains('active') && proAudioSettings.preampGain === val;
       hostElement.querySelectorAll('[data-preamp]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proAudioSettings.preampGain = parseFloat(btn.dataset.preamp);
+      if (isAlreadyActive && val !== 1.0) {
+        proAudioSettings.preampGain = 1.0;
+        const normBtn = hostElement.querySelector('[data-preamp="1.0"]');
+        if (normBtn) normBtn.classList.add('active');
+        showToast('Предусилитель сброшен на 100%', 'info');
+      } else {
+        btn.classList.add('active');
+        proAudioSettings.preampGain = val;
+        showToast(`🔊 Предусилитель: ${Math.round(val * 100)}%`, 'info');
+      }
       applyProAudioSettings();
-      showToast(`🔊 Предусилитель: ${Math.round(proAudioSettings.preampGain * 100)}%`, 'info');
     };
   });
 
-  // Пространственный звук
+  // Пространственный звук (с поддержкой сброса в стерео повторным кликом)
   hostElement.querySelectorAll('[data-spatial]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proAudioSettings.spatialMode === btn.dataset.spatial;
       hostElement.querySelectorAll('[data-spatial]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proAudioSettings.spatialMode = btn.dataset.spatial;
+      if (isAlreadyActive && btn.dataset.spatial !== 'stereo') {
+        proAudioSettings.spatialMode = 'stereo';
+        const stereoBtn = hostElement.querySelector('[data-spatial="stereo"]');
+        if (stereoBtn) stereoBtn.classList.add('active');
+        showToast('Пространственный звук отключен (Стерео)', 'info');
+      } else {
+        btn.classList.add('active');
+        proAudioSettings.spatialMode = btn.dataset.spatial;
+        const name = btn.querySelector('.pro-card-name')?.textContent || btn.textContent.trim();
+        showToast(`🎧 3D Звук: ${name}`, 'info');
+      }
       applyProAudioSettings();
-      showToast(`🎧 3D Звук: ${btn.textContent.trim()}`, 'info');
     };
   });
 
-  // Выделение речи
+  // Выделение речи (с поддержкой отключения повторным кликом)
   hostElement.querySelectorAll('[data-voice]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proAudioSettings.voiceBoost === btn.dataset.voice;
       hostElement.querySelectorAll('[data-voice]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proAudioSettings.voiceBoost = btn.dataset.voice;
+      if (isAlreadyActive || btn.dataset.voice === 'off') {
+        proAudioSettings.voiceBoost = 'off';
+        const offBtn = hostElement.querySelector('[data-voice="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Выделение речи отключено', 'info');
+      } else {
+        btn.classList.add('active');
+        proAudioSettings.voiceBoost = btn.dataset.voice;
+        showToast(`🎙️ Выделение речи: ${btn.textContent.trim()}`, 'info');
+      }
       applyProAudioSettings();
-      showToast(`🎙️ Выделение речи: ${btn.textContent.trim()}`, 'info');
     };
   });
 
-  // Выделение речи (Speech Isolation DSP)
+  // Выделение речи (Speech Isolation DSP) (с поддержкой отключения повторным кликом)
   hostElement.querySelectorAll('[data-speech-iso]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proAudioSettings.speechIsolation === btn.dataset.speechIso;
       hostElement.querySelectorAll('[data-speech-iso]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const mode = btn.dataset.speechIso;
-      setProAudioSpeechIsolation(mode);
-      showToast(`🎙️ Выделение диалогов: ${btn.textContent.trim()}`, 'info');
+      if (isAlreadyActive || btn.dataset.speechIso === 'off') {
+        setProAudioSpeechIsolation('off');
+        const offBtn = hostElement.querySelector('[data-speech-iso="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Выделение речи отключено', 'info');
+      } else {
+        btn.classList.add('active');
+        setProAudioSpeechIsolation(btn.dataset.speechIso);
+        showToast(`🎙️ Выделение диалогов: ${btn.textContent.trim()}`, 'info');
+      }
     };
   });
 
-  // Усиление баса
+  // Усиление баса (с поддержкой отключения повторным кликом)
   hostElement.querySelectorAll('[data-bass]').forEach(btn => {
     btn.onclick = () => {
+      const isAlreadyActive = btn.classList.contains('active') && proAudioSettings.bassBoost === btn.dataset.bass;
       hostElement.querySelectorAll('[data-bass]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      proAudioSettings.bassBoost = btn.dataset.bass;
+      if (isAlreadyActive || btn.dataset.bass === 'off') {
+        proAudioSettings.bassBoost = 'off';
+        const offBtn = hostElement.querySelector('[data-bass="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Усиление баса отключено', 'info');
+      } else {
+        btn.classList.add('active');
+        proAudioSettings.bassBoost = btn.dataset.bass;
+        showToast(`🔊 Усиление баса: ${btn.textContent.trim()}`, 'info');
+      }
       applyProAudioSettings();
-      showToast(`🔊 Усиление баса: ${btn.textContent.trim()}`, 'info');
     };
   });
 
-  // Пресеты EQ
+  // Пресеты EQ (с поддержкой сброса в плоский повторным кликом)
   hostElement.querySelectorAll('[data-eq-preset]').forEach(btn => {
     btn.onclick = () => {
       const p = btn.dataset.eqPreset;
-      if (EQ_PRESETS[p]) {
-        hostElement.querySelectorAll('[data-eq-preset]').forEach(b => b.classList.remove('active'));
+      const isAlreadyActive = btn.classList.contains('active') && proAudioSettings.eqPreset === p;
+      hostElement.querySelectorAll('[data-eq-preset]').forEach(b => b.classList.remove('active'));
+      if (isAlreadyActive && p !== 'flat') {
+        proAudioSettings.eqPreset = 'flat';
+        proAudioSettings.eqBands = [...EQ_PRESETS.flat];
+        const flatBtn = hostElement.querySelector('[data-eq-preset="flat"]');
+        if (flatBtn) flatBtn.classList.add('active');
+        showToast('Эквалайзер сброшен (Плоский)', 'info');
+      } else if (EQ_PRESETS[p]) {
         btn.classList.add('active');
         proAudioSettings.eqPreset = p;
         proAudioSettings.eqBands = [...EQ_PRESETS[p]];
-
-        // Обновляем ползунки в UI
-        proAudioSettings.eqBands.forEach((val, idx) => {
-          const slider = hostElement.querySelector(`.pro-eq-slider[data-band="${idx}"]`);
-          const label = hostElement.querySelector(`#eq-val-${idx}`);
-          if (slider) slider.value = val;
-          if (label) label.textContent = val > 0 ? `+${val}` : `${val}`;
-        });
-
-        applyProAudioSettings();
         showToast(`🎛️ Эквалайзер: ${btn.textContent.trim()}`, 'info');
       }
+
+      // Обновляем ползунки в UI
+      proAudioSettings.eqBands.forEach((val, idx) => {
+        const slider = hostElement.querySelector(`.pro-eq-slider[data-band="${idx}"]`);
+        const label = hostElement.querySelector(`#eq-val-${idx}`);
+        if (slider) slider.value = val;
+        if (label) label.textContent = val > 0 ? `+${val}` : `${val}`;
+      });
+
+      applyProAudioSettings();
     };
   });
 
@@ -1531,12 +1624,20 @@ export function renderProAudioPanel(hostElement) {
 
   hostElement.querySelectorAll('[data-visualizer]').forEach(btn => {
     btn.onclick = () => {
-      hostElement.querySelectorAll('[data-visualizer]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
       const mode = btn.dataset.visualizer;
+      const isAlreadyActive = btn.classList.contains('active') && currentVisualizerMode === mode;
+      hostElement.querySelectorAll('[data-visualizer]').forEach(b => b.classList.remove('active'));
       const cvs = hostElement.querySelector('#pro-audio-visualizer-canvas');
-      setAudioVisualizerMode(mode, cvs);
-      showToast(mode === 'off' ? 'Визуализатор выключен' : `Визуализатор: ${btn.textContent}`, 'info');
+      if (isAlreadyActive || mode === 'off') {
+        setAudioVisualizerMode('off', cvs);
+        const offBtn = hostElement.querySelector('[data-visualizer="off"]');
+        if (offBtn) offBtn.classList.add('active');
+        showToast('Визуализатор выключен', 'info');
+      } else {
+        btn.classList.add('active');
+        setAudioVisualizerMode(mode, cvs);
+        showToast(`Визуализатор: ${btn.textContent}`, 'info');
+      }
     };
   });
 
