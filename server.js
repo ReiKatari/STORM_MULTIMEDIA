@@ -3440,7 +3440,16 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 }
               }, true);
 
-              // 2. Перехват горячих клавиш F / А (в русской и английской раскладке)
+              // 2. Перехват двойного клика по области видео для переключения на полный экран
+              document.addEventListener('dblclick', function(e) {
+                var isControl = e.target && e.target.closest ? e.target.closest('button, input, select, a, [role="button"], [class*="control"], .plyr__controls, [class*="menu"], [class*="setting"], [class*="slider"], [class*="progress"]') : null;
+                if (!isControl) {
+                  try { e.preventDefault(); } catch (_) {}
+                  notifyParentFullscreen();
+                }
+              }, true);
+
+              // 3. Перехват горячих клавиш F / А (в русской и английской раскладке)
               document.addEventListener('keydown', function(e) {
                 if ((e.key === 'f' || e.key === 'F' || e.code === 'KeyF' || e.key === 'а' || e.key === 'А') && 
                     e.target && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
@@ -3735,6 +3744,14 @@ app.get('/api/player/vpn-proxy', async (req, res) => {
               document.addEventListener('click', function(e) {
                 var btn = e.target && e.target.closest ? e.target.closest('[data-plyr="fullscreen"], [data-allplay="fullscreen"], [class*="fullscreen"], button[title*="экран"], button[aria-label*="экран"], button[title*="fullscreen"], button[aria-label*="fullscreen"], .plyr__control--fullscreen') : null;
                 if (btn) {
+                  notifyParentFullscreen();
+                }
+              }, true);
+
+              document.addEventListener('dblclick', function(e) {
+                var isControl = e.target && e.target.closest ? e.target.closest('button, input, select, a, [role="button"], [class*="control"], .plyr__controls, [class*="menu"], [class*="setting"], [class*="slider"], [class*="progress"]') : null;
+                if (!isControl) {
+                  try { e.preventDefault(); } catch (_) {}
                   notifyParentFullscreen();
                 }
               }, true);

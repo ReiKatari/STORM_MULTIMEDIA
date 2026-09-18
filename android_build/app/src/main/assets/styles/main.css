@@ -1203,10 +1203,10 @@ body {
 }
 
 .cinema-modal-dialog {
-  width: 100vw !important;
-  max-width: 100vw !important;
-  height: 100vh !important;
-  max-height: 100vh !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
   box-sizing: border-box !important;
@@ -1296,8 +1296,11 @@ body.cinema-open {
 #cinema-modal.is-fullscreen:hover .storm-modal-header,
 #cinema-modal:fullscreen:hover .storm-modal-header,
 #cinema-modal.is-fullscreen .storm-modal-header:hover,
-#cinema-modal:fullscreen .storm-modal-header:hover {
+#cinema-modal:fullscreen .storm-modal-header:hover,
+#cinema-modal.is-fullscreen.controls-visible .storm-modal-header,
+#cinema-modal:fullscreen.controls-visible .storm-modal-header {
   opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 #cinema-modal.is-fullscreen .cinema-layout-grid,
@@ -2937,8 +2940,8 @@ body.drawer-open {
   }
 
   #cinema-modal .cinema-modal-dialog {
-    width: 100vw !important;
-    max-width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
     height: 100% !important;
     max-height: 100% !important;
     border-radius: 0 !important;
@@ -2964,7 +2967,8 @@ body.drawer-open {
     border-bottom: 1px solid var(--border-subtle) !important;
     gap: 8px !important;
     box-sizing: border-box !important;
-    max-width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
     overflow: hidden !important;
   }
 
@@ -3045,8 +3049,8 @@ body.drawer-open {
 
   #cinema-modal .cinema-player-container {
     border-radius: 0 !important;
-    width: 100vw !important;
-    max-width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
     aspect-ratio: 16 / 9 !important;
     position: relative !important;
     top: auto !important;
