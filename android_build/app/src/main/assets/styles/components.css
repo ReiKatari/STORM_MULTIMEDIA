@@ -3828,17 +3828,25 @@ button:active .storm-status-svg {
 
 /* Всплывающее модальное окно студии (Studio Floating Modal Dialog) */
 .player-studio-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(4, 7, 14, 0.78);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  z-index: 10005;
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(4, 7, 14, 0.82) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  z-index: 2000000 !important;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  box-sizing: border-box;
   animation: studioBackdropFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto !important;
 }
 
 @keyframes studioBackdropFadeIn {
@@ -3850,8 +3858,8 @@ button:active .storm-status-svg {
 .player-studio-drawer {
   position: relative;
   width: 100%;
-  max-width: 740px;
-  max-height: 86vh;
+  max-width: 760px;
+  max-height: 88vh;
   background: linear-gradient(135deg, rgba(16, 22, 34, 0.98) 0%, rgba(10, 14, 22, 0.99) 100%);
   border: 1px solid var(--accent, #00f0ff);
   border-radius: 16px;
@@ -3861,6 +3869,8 @@ button:active .storm-status-svg {
   overflow: hidden;
   animation: studioModalScaleIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   margin: 0;
+  z-index: 2000001 !important;
+  pointer-events: auto !important;
 }
 
 @keyframes studioModalScaleIn {
@@ -3926,21 +3936,24 @@ button:active .storm-status-svg {
 
 @media (max-width: 640px) {
   .player-studio-modal-backdrop {
-    padding: 8px;
-    align-items: flex-end;
+    padding: 10px;
+    align-items: center;
+    justify-content: center;
   }
   .player-studio-modal-dialog,
   .player-studio-drawer {
-    max-height: 90vh;
-    border-radius: 18px 18px 10px 10px;
+    max-height: 88vh;
+    border-radius: 16px;
     max-width: 100%;
+    margin: auto;
   }
   .studio-drawer-header {
     padding: 12px 14px;
   }
   .studio-drawer-body {
     padding: 12px 14px 20px 14px;
-    max-height: calc(90vh - 56px);
+    max-height: calc(88vh - 56px);
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -6880,18 +6893,23 @@ body.player-dropdown-active .cinema-player-iframe {
 /* Модальная панель настроек CleanView */
 .storm-cleanview-panel {
   display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10000;
-  background: rgba(5, 7, 12, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 2000000 !important;
+  background: rgba(5, 7, 12, 0.82) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  box-sizing: border-box;
+  pointer-events: auto !important;
   animation: stormFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 

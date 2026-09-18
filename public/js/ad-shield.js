@@ -540,6 +540,9 @@ function mountFloatingCleanViewBadge(videoBox) {
  * Переключение модального окна / шторки управления CleanView
  */
 export function toggleCleanViewModal() {
+  const cinemaModal = document.getElementById('cinema-modal');
+  const targetParent = cinemaModal || document.body;
+
   let modal = document.getElementById('storm-cleanview-panel');
   if (modal && modal.classList.contains('is-open')) {
     modal.classList.remove('is-open');
@@ -554,7 +557,9 @@ export function toggleCleanViewModal() {
     modal = document.createElement('div');
     modal.id = 'storm-cleanview-panel';
     modal.className = 'storm-cleanview-panel';
-    document.body.appendChild(modal);
+    targetParent.appendChild(modal);
+  } else if (targetParent && modal.parentElement !== targetParent) {
+    targetParent.appendChild(modal);
   }
 
   renderCleanViewPanelContent(modal);

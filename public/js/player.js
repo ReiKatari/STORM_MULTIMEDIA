@@ -5626,7 +5626,7 @@ function updateStatsForNerdsContent(overlay) {
   overlay.innerHTML = `
     <div class="nerd-stats-header">
       <div class="nerd-stats-title">
-        <span style="color: var(--accent);">●</span> Статистика для гиков (Stats for Nerds)
+        <span style="color: var(--accent);">●</span> Статистика для гиков
       </div>
       <button type="button" class="nerd-stats-close-btn" id="close-nerd-stats-btn">✕</button>
     </div>
@@ -6084,6 +6084,9 @@ function renderPlayerUtilityButtons() {
   `;
 
   // Всплывающее модальное окно студии (Studio Floating Modal Dialog)
+  const cinemaModal = document.getElementById('cinema-modal');
+  const targetParent = cinemaModal || document.body;
+
   let backdrop = document.getElementById('player-studio-modal-backdrop');
   if (!backdrop) {
     backdrop = document.createElement('div');
@@ -6102,7 +6105,9 @@ function renderPlayerUtilityButtons() {
         <div class="studio-drawer-body" id="studio-drawer-body"></div>
       </div>
     `;
-    document.body.appendChild(backdrop);
+    targetParent.appendChild(backdrop);
+  } else if (targetParent && backdrop.parentElement !== targetParent) {
+    targetParent.appendChild(backdrop);
   }
 
   const drawer = backdrop.querySelector('#player-studio-drawer');
@@ -6116,6 +6121,7 @@ function renderPlayerUtilityButtons() {
 
   const closeDrawer = () => {
     if (backdrop) backdrop.style.display = 'none';
+    if (drawerBody) drawerBody.style.display = 'block';
     activeTabName = null;
     tabButtons.forEach(btn => btn.classList.remove('active'));
   };
@@ -6125,14 +6131,21 @@ function renderPlayerUtilityButtons() {
     if (e.target === backdrop) closeDrawer();
   };
 
-  const onKeyEscape = (e) => {
-    if (e.key === 'Escape' && backdrop && backdrop.style.display !== 'none') {
-      closeDrawer();
-    }
-  };
-  window.addEventListener('keydown', onKeyEscape);
+  if (!backdrop._hasEscapeListener) {
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && backdrop && backdrop.style.display !== 'none') {
+        closeDrawer();
+      }
+    });
+    backdrop._hasEscapeListener = true;
+  }
 
   const openDrawerTab = (tabName, icon, heading, renderFn) => {
+    const curCinemaModal = document.getElementById('cinema-modal');
+    if (curCinemaModal && backdrop.parentElement !== curCinemaModal) {
+      curCinemaModal.appendChild(backdrop);
+    }
+
     if (activeTabName === tabName && backdrop.style.display !== 'none') {
       closeDrawer();
       return;
@@ -6145,8 +6158,12 @@ function renderPlayerUtilityButtons() {
     if (drawerHeading) drawerHeading.textContent = heading;
 
     backdrop.style.display = 'flex';
-    drawerBody.innerHTML = '';
-    renderFn(drawerBody);
+    if (drawerBody) {
+      drawerBody.style.display = 'block';
+      drawerBody.innerHTML = '';
+      renderFn(drawerBody);
+      drawerBody.scrollTop = 0;
+    }
   };
 
   // 1. Pro Видео
