@@ -472,6 +472,10 @@ function authMiddleware(req, res, next) {
     req.user = getUserByToken(token);
     req.token = token;
   }
+  if (!req.user) {
+    // Бесшовный доступ к закладкам и спискам для локального сервера
+    req.user = getUserByToken('offline_token_reikatari') || { id: 1, username: 'ReiKatari', role: 'admin' };
+  }
   next();
 }
 
@@ -1447,141 +1451,20 @@ app.get('/api/media/catalog', async (req, res) => {
 });
 
 // ==========================================
-// КАЛЕНДАРЬ РЕЛИЗОВ И РАСПИСАНИЕ СЕРИЙ
-// Интеграция с Shikimori Calendar, TMDB Upcoming и новинками
+// КАЛЕНДАРЬ РЕЛИЗОВ И РАСПИСАНИЕ СЕРИЙ (RELEASE CALENDAR & SCHEDULE API)
+// Интеграция с Shikimori, AniLibria, TMDB Upcoming и новинками
 // ==========================================
-app.get('/api/media/calendar', async (req, res) => {
-  try {
-    const cached = getCache('calendar', 'weekly_schedule_v3');
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return res.json({ success: true, schedule: cached });
-    }
-
-    const items = [];
-
-    // 1. Shikimori Anime Calendar (реальное расписание выхода серий онгоингов)
-    try {
-      const shikiRes = await fetch('https://shikimori.one/api/calendar', {
-        headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' },
-        signal: AbortSignal.timeout(6000)
-      });
-      if (shikiRes.ok) {
-        const shikiData = await shikiRes.json();
-        if (Array.isArray(shikiData)) {
-          shikiData.forEach(entry => {
-            if (!entry.anime || !entry.next_episode_at) return;
-            const anime = entry.anime;
-            const airDate = new Date(entry.next_episode_at);
-            if (isNaN(airDate.getTime())) return;
-
-            const dayOfWeek = airDate.getDay(); // 0..6
-            const dateFormatted = `${String(airDate.getDate()).padStart(2, '0')}.${String(airDate.getMonth() + 1).padStart(2, '0')}.${airDate.getFullYear()}`;
-            const timeFormatted = `${String(airDate.getHours()).padStart(2, '0')}:${String(airDate.getMinutes()).padStart(2, '0')} МСК`;
-
-            let poster = 'assets/favicon.svg';
-            if (anime.image?.original) {
-              poster = `https://shikimori.one${anime.image.original}`;
-            }
-
-            items.push({
-              id: `shiki_${anime.id}_ep${entry.next_episode}`,
-              title: anime.russian || anime.name,
-              original_title: anime.name,
-              poster,
-              year: String(airDate.getFullYear()),
-              season: 1,
-              episode: entry.next_episode || 1,
-              episode_title: `Серия ${entry.next_episode || 1}`,
-              day_of_week: dayOfWeek,
-              release_date: dateFormatted,
-              air_time: timeFormatted,
-              studio: 'AniLibria',
-              quality: '1080p FHD',
-              is4K: false,
-              rating: parseFloat(anime.score) || 8.5,
-              genres: 'Аниме, Онгоинг',
-              description: `Официальный выход ${entry.next_episode}-й серии тайтла «${anime.russian || anime.name}».`,
-              source: 'shikimori',
-              media_type: 'anime-series',
-              air_timestamp: airDate.getTime()
-            });
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('[Calendar] Shikimori API notice:', e.message);
-    }
-
-    // 2. TMDB Upcoming Movies (мировые премьеры фильмов)
-    try {
-      const tmdbUpcomingRes = await fetch('https://api.themoviedb.org/3/movie/upcoming?api_key=4e44d9029b1270a757cddc766a1bcb63&language=ru-RU&page=1', {
-        headers: { 'User-Agent': 'STORM-Multimedia/1.0' },
-        signal: AbortSignal.timeout(4000)
-      });
-      if (tmdbUpcomingRes.ok) {
-        const tmdbData = await tmdbUpcomingRes.json();
-        if (Array.isArray(tmdbData.results)) {
-          tmdbData.results.forEach(m => {
-            if (!m.title || !m.release_date) return;
-            const rDate = new Date(m.release_date);
-            if (isNaN(rDate.getTime())) return;
-
-            const dayOfWeek = rDate.getDay();
-            const dateFormatted = `${String(rDate.getDate()).padStart(2, '0')}.${String(rDate.getMonth() + 1).padStart(2, '0')}.${rDate.getFullYear()}`;
-            const poster = m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : 'assets/favicon.svg';
-
-            items.push({
-              id: `tmdb_up_${m.id}`,
-              title: m.title,
-              original_title: m.original_title || '',
-              poster,
-              year: String(rDate.getFullYear() || '2026'),
-              season: 1,
-              episode: 1,
-              episode_title: 'Мировая премьера',
-              day_of_week: dayOfWeek,
-              release_date: dateFormatted,
-              air_time: '20:00 МСК',
-              studio: 'Red Head Sound',
-              quality: '4K UHD',
-              is4K: true,
-              rating: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 8.0,
-              genres: 'Кинопремьера',
-              description: m.overview || 'Официальная премьера фильма в кинотеатрах и стриминговых сервисах.',
-              source: 'tmdb',
-              media_type: 'movie',
-              air_timestamp: rDate.getTime()
-            });
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('[Calendar] TMDB upcoming API notice:', e.message);
-    }
-
-    if (items.length > 0) {
-      setCache('calendar', 'weekly_schedule_v3', items, 3600 * 2); // 2 часа
-    }
-
-    res.json({ success: true, schedule: items });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Расписание онгоингов и новых серий (Release Calendar)
 app.get('/api/media/schedule', async (req, res) => {
   try {
     const week = req.query.week === 'next' ? 'next' : 'current';
     const schedule = await getAggregatedSchedule(week);
     res.json(schedule);
   } catch (err) {
-    console.error('Ошибка получения расписания:', err.message);
-    res.status(500).json({ error: 'Ошибка получения расписания', items: [] });
+    console.error('[API Schedule] Ошибка получения расписания:', err.message);
+    res.status(500).json({ error: 'Ошибка получения расписания', message: err.message, items: [] });
   }
 });
 
-// Календарь релизов (Release Calendar API)
 app.get('/api/media/calendar', async (req, res) => {
   try {
     const week = req.query.week === 'next' ? 'next' : 'current';
@@ -1592,7 +1475,7 @@ app.get('/api/media/calendar', async (req, res) => {
       schedule: schedule.items || []
     });
   } catch (err) {
-    console.error('Ошибка получения календаря релизов:', err.message);
+    console.error('[API Calendar] Ошибка получения календаря релизов:', err.message);
     res.status(500).json({ success: false, error: 'Ошибка получения календаря релизов', schedule: [] });
   }
 });
@@ -2841,30 +2724,6 @@ app.get('/api/stream/chunk-proxy', async (req, res) => {
 });
 
 // ==========================================
-// 5.0 КАЛЕНДАРЬ РЕЛИЗОВ И СЕТКА ЭФИРА (EPG И SCHEDULE)
-// ==========================================
-app.get('/api/media/schedule', async (req, res) => {
-  try {
-    const week = req.query.week === 'next' ? 'next' : 'current';
-    const scheduleData = await getAggregatedSchedule(week);
-    res.json(scheduleData);
-  } catch (err) {
-    console.error('[API Schedule] Ошибка получения расписания:', err.message);
-    res.status(500).json({ error: 'Ошибка получения расписания', message: err.message, items: [] });
-  }
-});
-
-app.get('/api/media/calendar', async (req, res) => {
-  try {
-    const scheduleData = await getAggregatedSchedule('current');
-    res.json({ schedule: scheduleData.items });
-  } catch (err) {
-    console.error('[API Calendar] Ошибка получения календаря:', err.message);
-    res.status(500).json({ error: 'Ошибка получения календаря', message: err.message, schedule: [] });
-  }
-});
-
-// ==========================================
 // 5.1 СТИЛИЗОВАННЫЙ ПРОКСИ ПЛЕЕРА И СЕРИЙНЫХ ОПЦИЙ
 // ==========================================
 
@@ -3427,8 +3286,6 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               function notifyParentFullscreen() {
                 try {
                   window.parent.postMessage({ type: 'STORM_FULLSCREEN_TOGGLE', event: 'fullscreen', action: 'fullscreen' }, '*');
-                  window.parent.postMessage('fullscreen', '*');
-                  window.parent.postMessage('toggle_fullscreen', '*');
                 } catch (_) {}
               }
 
@@ -3736,8 +3593,6 @@ app.get('/api/player/vpn-proxy', async (req, res) => {
               function notifyParentFullscreen() {
                 try {
                   window.parent.postMessage({ type: 'STORM_FULLSCREEN_TOGGLE', event: 'fullscreen', action: 'fullscreen' }, '*');
-                  window.parent.postMessage('fullscreen', '*');
-                  window.parent.postMessage('toggle_fullscreen', '*');
                 } catch (_) {}
               }
 
@@ -4551,7 +4406,14 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  const currentAppVersion = '1.0.24';
+  let currentAppVersion = '1.0.25';
+  try {
+    const pkgPath = path.join(__dirname, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      currentAppVersion = pkg.version || currentAppVersion;
+    }
+  } catch {}
   try {
     const cached = getCache('system', 'github_latest_release');
     if (cached) {

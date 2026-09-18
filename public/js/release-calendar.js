@@ -244,7 +244,9 @@ async function loadAndRenderWeek(container) {
 
   // 1. Быстрая загрузка из локального кэша, если есть
   try {
-    const localCached = localStorage.getItem(`storm_cal_v108_${selectedWeek}`);
+    // Очищаем устаревший кэш v108 с моковыми данными
+    localStorage.removeItem(`storm_cal_v108_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v110_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -253,7 +255,7 @@ async function loadAndRenderWeek(container) {
     }
   } catch {}
 
-  // 2. Мгновенно отрисовываем расписание БЕЗ мерцаний и пустого экрана
+  // 2. Отрисовываем текущие данные
   renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
 
   // 3. Фоновое обновление с сервера (актуализация эфира и премьер)
@@ -261,30 +263,26 @@ async function loadAndRenderWeek(container) {
     const res = await fetch(`/api/media/schedule?week=${selectedWeek}`);
     if (res.ok) {
       const schedData = await res.json();
-      if (schedData && Array.isArray(schedData.items) && schedData.items.length > 0) {
+      const liveList = Array.isArray(schedData) ? schedData : (schedData.items || schedData.schedule || []);
+      if (liveList && liveList.length > 0) {
         const combined = [];
         const seen = new Set();
-        schedData.items.forEach(it => {
-          const k = (it.title || '').toLowerCase().trim();
-          if (k && !seen.has(k)) { seen.add(k); combined.push(it); }
-        });
-        defaultItems.forEach(it => {
+        liveList.forEach(it => {
           const k = (it.title || '').toLowerCase().trim();
           if (k && !seen.has(k)) { seen.add(k); combined.push(it); }
         });
 
         try {
-          localStorage.setItem(`storm_cal_v108_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v110_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
-        // Если полученные данные идентичны текущим, не производим перерисовку (устраняет моргание)
         if (!areCalendarListsEqual(scheduleItems, combined)) {
           renderScheduleDaysAndGrid(container, combined, daysConfig);
         }
       }
     }
   } catch (_) {
-    // В случае сбоя сети эталонное расписание уже на экране
+    // В случае сбоя сети данные уже на экране
   }
 }
 

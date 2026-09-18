@@ -3834,8 +3834,10 @@ button:active .storm-status-svg {
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
   background: rgba(4, 7, 14, 0.82) !important;
   backdrop-filter: blur(14px) !important;
   -webkit-backdrop-filter: blur(14px) !important;
@@ -6712,7 +6714,8 @@ body.player-dropdown-active .cinema-player-iframe {
   }
 
   .admin-dashboard-dialog {
-    width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
     height: 100dvh !important;
     max-height: 100dvh !important;
     min-height: 100dvh !important;
@@ -6899,8 +6902,10 @@ body.player-dropdown-active .cinema-player-iframe {
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
   z-index: 2000000 !important;
   background: rgba(5, 7, 12, 0.82) !important;
   backdrop-filter: blur(14px) !important;
@@ -8252,10 +8257,12 @@ body.cinema-focus-active::-webkit-scrollbar,
 }
 
 #cinema-modal.is-focus-mode .cinema-modal-dialog {
-  max-width: 100vw !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  max-height: 100vh !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100% !important;
+  max-height: 100dvh !important;
   border-radius: 0 !important;
   border: none !important;
   margin: 0 !important;
@@ -8296,8 +8303,8 @@ body.cinema-focus-active::-webkit-scrollbar,
   min-height: 0 !important;
   height: auto !important;
   max-height: none !important;
-  width: 100vw !important;
-  max-width: 100vw !important;
+  width: 100% !important;
+  max-width: 100% !important;
   padding: 0 !important;
   margin: 0 !important;
   background: #000000 !important;
