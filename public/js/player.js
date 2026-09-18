@@ -117,6 +117,7 @@ export function toggleCinemaFullscreen() {
   const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
   const videoBox = document.querySelector('.player-video-box');
   const modal = document.getElementById('cinema-modal');
+  const fsBtn = document.getElementById('cinema-header-fullscreen-btn');
 
   // 1. Для iOS Safari нативных HTML5 <video> используем нативный webkitEnterFullscreen
   if (video && typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenElement) {
@@ -136,28 +137,32 @@ export function toggleCinemaFullscreen() {
     } else if (document.mozCancelFullScreen) {
       document.mozCancelFullScreen();
     }
+    if (fsBtn) delete fsBtn.dataset.manualCssFs;
     if (modal) modal.classList.remove('is-fullscreen');
     if (videoBox) videoBox.classList.remove('is-fullscreen');
   } else {
-    const target = videoBox || modal;
-    const req = target?.requestFullscreen || target?.webkitRequestFullscreen || target?.mozRequestFullScreen || modal?.requestFullscreen || modal?.webkitRequestFullscreen;
+    // В полноэкранный режим переводим само модальное окно целиком,
+    // чтобы все кнопки управления, шапка с кнопками и плеер работали гармонично
+    const target = modal;
+    const req = target?.requestFullscreen || target?.webkitRequestFullscreen || target?.mozRequestFullScreen;
     if (req) {
-      req.call(target || modal).then(() => {
+      req.call(target).then(() => {
         if (modal) modal.classList.add('is-fullscreen');
         if (videoBox) videoBox.classList.add('is-fullscreen');
       }).catch(() => {
-        if (modal) modal.classList.toggle('is-fullscreen');
-        if (videoBox) videoBox.classList.toggle('is-fullscreen');
+        if (fsBtn) fsBtn.dataset.manualCssFs = 'true';
+        if (modal) modal.classList.add('is-fullscreen');
+        if (videoBox) videoBox.classList.add('is-fullscreen');
       });
     } else if (modal) {
       // Fallback в CSS-полноэкранный режим для браузеров без Fullscreen API (iPhone Safari)
-      modal.classList.toggle('is-fullscreen');
-      if (videoBox) videoBox.classList.toggle('is-fullscreen');
+      if (fsBtn) fsBtn.dataset.manualCssFs = 'true';
+      modal.classList.add('is-fullscreen');
+      if (videoBox) videoBox.classList.add('is-fullscreen');
     }
   }
 
   setTimeout(() => {
-    const fsBtn = document.getElementById('cinema-header-fullscreen-btn');
     if (fsBtn && modal) {
       const activeFs = !!(document.fullscreenElement || document.webkitFullscreenElement || modal.classList.contains('is-fullscreen'));
       fsBtn.textContent = activeFs ? '🗗' : '⛶';
@@ -4845,55 +4850,89 @@ export function mountInPlayerOverlay(videoBox) {
   }
 
   // Таймер авто-скрытия элементов управления (Controls Hide Timer)
+  const modal = document.getElementById('cinema-modal');
   let hideTimer = null;
   const resetHideTimer = () => {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      const isVoiceOpen = voiceSheet && voiceSheet.style.display !== 'none';
-      const isJogOpen = jogWidget && jogWidget.style.display !== 'none';
-      const isEpOpen = episodesSheet && episodesSheet.classList.contains('is-open');
+      const vs = videoBox.querySelector('#player-inplayer-voice-sheet');
+      const jw = videoBox.querySelector('#inplayer-jog-dial-widget');
+      const es = videoBox.querySelector('#player-inplayer-episodes-sheet');
+      const isVoiceOpen = vs && vs.style.display !== 'none' && vs.classList.contains('is-open');
+      const isJogOpen = jw && jw.style.display !== 'none';
+      const isEpOpen = es && es.classList.contains('is-open');
       if (!isVoiceOpen && !isJogOpen && !isEpOpen) {
         videoBox.classList.remove('controls-visible');
+        if (modal) modal.classList.remove('controls-visible');
       }
     }, 3500);
   };
 
   const showControls = () => {
     videoBox.classList.add('controls-visible');
+    if (modal) modal.classList.add('controls-visible');
     resetHideTimer();
   };
 
-  videoBox.addEventListener('mousemove', showControls);
-  videoBox.addEventListener('pointermove', showControls);
+  if (!videoBox.dataset.hasInplayerListeners) {
+    videoBox.dataset.hasInplayerListeners = 'true';
 
-  // Тап/клик по видео: переключение видимости оверлея
-  videoBox.addEventListener('click', (e) => {
-    if (e.target.closest('.inplayer-top-bar') || 
-        e.target.closest('.inplayer-bottom-bar') || 
-        e.target.closest('.player-inplayer-episodes-sheet') || 
-        e.target.closest('.player-inplayer-voice-sheet') || 
-        e.target.closest('.inplayer-jog-dial-widget') ||
-        e.target.closest('.inplayer-ctrl-btn')) {
-      resetHideTimer();
-      return;
-    }
-    const isVis = videoBox.classList.contains('controls-visible');
-    if (isVis) {
-      videoBox.classList.remove('controls-visible');
-      clearTimeout(hideTimer);
-    } else {
-      showControls();
-    }
-  });
+    videoBox.addEventListener('mousemove', showControls);
+    videoBox.addEventListener('pointermove', showControls);
 
-  videoBox.addEventListener('touchstart', (e) => {
-    if (!e.target.closest('.inplayer-ctrl-btn') && 
-        !e.target.closest('.player-inplayer-episodes-sheet') &&
-        !e.target.closest('.player-inplayer-voice-sheet') &&
-        !e.target.closest('.inplayer-jog-dial-widget')) {
-      resetHideTimer();
-    }
-  }, { passive: true });
+    // Тап/клик по видео: закрытие шторок или переключение видимости оверлея
+    videoBox.addEventListener('click', (e) => {
+      if (e.target.closest('.inplayer-top-bar') || 
+          e.target.closest('.inplayer-bottom-bar') || 
+          e.target.closest('.player-inplayer-episodes-sheet') || 
+          e.target.closest('.player-inplayer-voice-sheet') || 
+          e.target.closest('.inplayer-jog-dial-widget') ||
+          e.target.closest('.inplayer-ctrl-btn') ||
+          e.target.closest('.storm-skip-btn')) {
+        resetHideTimer();
+        return;
+      }
+
+      // Если открыта любая вложенная шторка (озвучки, серий, джога) — клик закрывает её без скрытия контролов
+      const vs = videoBox.querySelector('#player-inplayer-voice-sheet');
+      const es = videoBox.querySelector('#player-inplayer-episodes-sheet');
+      const jw = videoBox.querySelector('#inplayer-jog-dial-widget');
+      const hasOpenSheet = (vs && vs.classList.contains('is-open')) || (es && es.classList.contains('is-open')) || (jw && jw.style.display !== 'none');
+      if (hasOpenSheet) {
+        if (vs) { vs.classList.remove('is-open'); vs.style.display = 'none'; videoBox.querySelector('#inplayer-voice-btn')?.classList.remove('active'); }
+        if (es) { es.classList.remove('is-open'); es.style.display = 'none'; videoBox.querySelector('#inplayer-episodes-btn')?.classList.remove('active'); }
+        if (jw) { jw.style.display = 'none'; videoBox.querySelector('#inplayer-jog-btn')?.classList.remove('active'); }
+        return;
+      }
+
+      const isVis = videoBox.classList.contains('controls-visible');
+      if (isVis) {
+        videoBox.classList.remove('controls-visible');
+        if (modal) modal.classList.remove('controls-visible');
+        clearTimeout(hideTimer);
+      } else {
+        showControls();
+      }
+    });
+
+    // Двойной клик по области видео: переключение полноэкранного режима
+    videoBox.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button, input, select, a, .inplayer-ctrl-btn, .inplayer-top-bar, .inplayer-bottom-bar, .player-inplayer-episodes-sheet, .player-inplayer-voice-sheet, .inplayer-jog-dial-widget, .storm-skip-btn')) {
+        return;
+      }
+      e.preventDefault();
+      toggleCinemaFullscreen();
+    });
+
+    videoBox.addEventListener('touchstart', (e) => {
+      if (!e.target.closest('.inplayer-ctrl-btn') && 
+          !e.target.closest('.player-inplayer-episodes-sheet') && 
+          !e.target.closest('.player-inplayer-voice-sheet') && 
+          !e.target.closest('.inplayer-jog-dial-widget')) {
+        resetHideTimer();
+      }
+    }, { passive: true });
+  }
 
   showControls();
 
@@ -4909,60 +4948,40 @@ export async function toggleAdvancedPiP() {
   const modal = document.getElementById('cinema-modal');
   const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
   const iframe = document.getElementById('cinema-player-wrapper')?.querySelector('iframe') || document.querySelector('.cinema-player-iframe');
+  const pipBtn = document.getElementById('player-pip-btn');
 
-  // Если окно уже в режиме плавающего mini-PiP — восстанавливаем кинотеатр
+  // Если окно уже в режиме плавающего mini-PiP — восстанавливаем полноразмерный кинотеатр
   if (modal && modal.classList.contains('is-mini-pip')) {
     modal.classList.remove('is-mini-pip');
+    if (pipBtn) pipBtn.classList.remove('active');
     showToast('Полноразмерный кинотеатр восстановлен', 'info');
     return;
   }
 
-  // 1. Попытка Document Picture-in-Picture API для видео или любого iframe
-  if ('documentPictureInPicture' in window) {
-    try {
-      const pipTarget = video || iframe;
-      if (pipTarget) {
-        const parent = pipTarget.parentElement;
-        const nextSibling = pipTarget.nextSibling;
-        const pipWindow = await window.documentPictureInPicture.requestWindow({
-          width: 540,
-          height: 320
-        });
-
-        document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-          pipWindow.document.head.appendChild(link.cloneNode(true));
-        });
-
-        pipWindow.document.body.style.margin = '0';
-        pipWindow.document.body.style.background = '#000';
-        pipWindow.document.body.style.display = 'flex';
-        pipWindow.document.body.style.flexDirection = 'column';
-        pipWindow.document.body.style.height = '100vh';
-        pipWindow.document.body.appendChild(pipTarget);
-
-        trackClientAction('use_pip');
-        showToast('Режим «Картинка в картинке» активирован', 'info');
-
-        pipWindow.addEventListener('pagehide', () => {
-          if (parent) {
-            if (nextSibling) parent.insertBefore(pipTarget, nextSibling);
-            else parent.appendChild(pipTarget);
-          }
-        });
-        return;
-      }
-    } catch (err) {
-      console.warn('Document PiP не запустился, переходим к альтернативному режиму:', err);
+  // 1. Для iframe плееров (FanFilm4K, Stravers, Kodik, Allplay и др.)
+  // Категорически НЕЛЬЗЯ перемещать iframe в другой document через Document PiP API,
+  // так как браузер немедленно перезагружает фрейм, и одноразовые токены балансеров
+  // сгорают с ошибкой «К сожалению, запрашиваемый контент не найден».
+  // Для них активируем встроенный плавающий мини-плеер без перемещения DOM элементов!
+  if (iframe) {
+    if (modal) {
+      modal.classList.add('is-mini-pip');
+      if (pipBtn) pipBtn.classList.add('active');
+      trackClientAction('use_pip');
+      showToast('Плавающий мини-плеер активирован (кликните 🪟 для возврата)', 'info');
     }
+    return;
   }
 
-  // 2. Стандартный HTML5 Video PiP
+  // 2. Стандартный нативный HTML5 Video PiP (плавающее окно поверх всех окон ОС)
   if (video && video.requestPictureInPicture) {
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
+        if (pipBtn) pipBtn.classList.remove('active');
       } else {
         await video.requestPictureInPicture();
+        if (pipBtn) pipBtn.classList.add('active');
         trackClientAction('use_pip');
         showToast('Режим «Картинка в картинке» активирован', 'info');
       }
@@ -4972,11 +4991,12 @@ export async function toggleAdvancedPiP() {
     }
   }
 
-  // 3. Универсальный плавающий режим Mini-Player (для всех плееров, включая iframes)
+  // 3. Универсальный плавающий режим Mini-Player (безопасный fallback)
   if (modal) {
     modal.classList.add('is-mini-pip');
+    if (pipBtn) pipBtn.classList.add('active');
     trackClientAction('use_pip');
-    showToast('Плавающий мини-плеер активирован (кликните 🖼️ PiP для возврата)', 'info');
+    showToast('Плавающий мини-плеер активирован (кликните 🪟 для возврата)', 'info');
   }
 }
 
