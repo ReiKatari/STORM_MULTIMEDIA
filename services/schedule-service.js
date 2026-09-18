@@ -5587,7 +5587,7 @@ export const NEXT_WEEK_ITEMS = [
 export const VERIFIED_SCHEDULE_ITEMS = CURRENT_WEEK_ITEMS;
 
 export async function getAggregatedSchedule(week = 'current') {
-  const cacheKey = `storm_verified_schedule_${week}_v108`;
+  const cacheKey = `storm_live_schedule_${week}_v110`;
   const cached = getCache('schedule', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) {
     return {
@@ -5597,13 +5597,140 @@ export async function getAggregatedSchedule(week = 'current') {
     };
   }
 
-  const baseItems = week === 'next' ? [...NEXT_WEEK_ITEMS] : [...CURRENT_WEEK_ITEMS];
-  setCache('schedule', cacheKey, baseItems, 1800);
+  const liveItems = [];
+  const seenTitles = new Set();
+
+  // 1. Shikimori Anime Calendar (реальное официальное расписание выхода серий онгоингов)
+  try {
+    const shikiRes = await fetch('https://shikimori.one/api/calendar', {
+      headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (shikiRes.ok) {
+      const shikiData = await shikiRes.json();
+      if (Array.isArray(shikiData)) {
+        shikiData.forEach(entry => {
+          if (!entry.anime || !entry.next_episode_at) return;
+          const anime = entry.anime;
+          const airDate = new Date(entry.next_episode_at);
+          if (isNaN(airDate.getTime())) return;
+
+          const title = anime.russian || anime.name;
+          const tKey = title.toLowerCase().trim();
+          if (seenTitles.has(tKey)) return;
+          seenTitles.add(tKey);
+
+          const dayOfWeek = airDate.getDay(); // 0..6
+          const dateFormatted = `${String(airDate.getDate()).padStart(2, '0')}.${String(airDate.getMonth() + 1).padStart(2, '0')}.${airDate.getFullYear()}`;
+          const timeFormatted = `${String(airDate.getHours()).padStart(2, '0')}:${String(airDate.getMinutes()).padStart(2, '0')} МСК`;
+
+          let poster = 'assets/favicon.svg';
+          if (anime.image?.original) {
+            poster = `https://shikimori.one${anime.image.original}`;
+          }
+
+          liveItems.push({
+            id: `shiki_${anime.id}_ep${entry.next_episode || 1}`,
+            title,
+            original_title: anime.name || '',
+            poster: wrapPoster(poster),
+            year: String(airDate.getFullYear() || '2026'),
+            season: 1,
+            episode: entry.next_episode || 1,
+            episode_title: `Серия ${entry.next_episode || 1}`,
+            day_of_week: dayOfWeek,
+            release_date: dateFormatted,
+            air_time: timeFormatted,
+            studio: 'AniLibria',
+            quality: '1080p FHD',
+            is4K: false,
+            rating: parseFloat(anime.score) || 8.5,
+            genres: 'Аниме, Онгоинг',
+            description: `Официальный выход ${entry.next_episode || 1}-й серии тайтла «${title}».`,
+            source: 'shikimori',
+            media_type: 'anime-series',
+            air_timestamp: airDate.getTime()
+          });
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[Schedule] Shikimori notice:', e.message);
+  }
+
+  // 2. AniLibria Live Schedule
+  try {
+    const aniItems = await getAniLibriaSchedule();
+    if (Array.isArray(aniItems)) {
+      aniItems.forEach(it => {
+        const tKey = (it.title || '').toLowerCase().trim();
+        if (!seenTitles.has(tKey)) {
+          seenTitles.add(tKey);
+          liveItems.push(it);
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('[Schedule] AniLibria notice:', e.message);
+  }
+
+  // 3. TMDB Upcoming Movies (мировые кинопремьеры с реальными датами)
+  try {
+    const tmdbRes = await fetch('https://api.themoviedb.org/3/movie/upcoming?api_key=REDACTED_TMDB_KEY&language=ru-RU&page=1', {
+      headers: { 'User-Agent': 'STORM-Multimedia/1.0' },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (tmdbRes.ok) {
+      const tmdbData = await tmdbRes.json();
+      if (Array.isArray(tmdbData.results)) {
+        tmdbData.results.forEach(m => {
+          if (!m.title || !m.release_date) return;
+          const tKey = m.title.toLowerCase().trim();
+          if (seenTitles.has(tKey)) return;
+          seenTitles.add(tKey);
+
+          const rDate = new Date(m.release_date);
+          if (isNaN(rDate.getTime())) return;
+          const dayOfWeek = rDate.getDay();
+          const dateFormatted = `${String(rDate.getDate()).padStart(2, '0')}.${String(rDate.getMonth() + 1).padStart(2, '0')}.${rDate.getFullYear()}`;
+          const poster = m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : 'assets/favicon.svg';
+
+          liveItems.push({
+            id: `tmdb_up_${m.id}`,
+            title: m.title,
+            original_title: m.original_title || '',
+            poster: wrapPoster(poster),
+            year: String(rDate.getFullYear() || '2026'),
+            season: 1,
+            episode: 1,
+            episode_title: 'Мировая премьера',
+            day_of_week: dayOfWeek,
+            release_date: dateFormatted,
+            air_time: '20:00 МСК',
+            studio: 'Red Head Sound',
+            quality: '4K UHD',
+            is4K: true,
+            rating: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 8.0,
+            genres: 'Кинопремьера',
+            description: m.overview || 'Официальная премьера фильма в кинотеатрах и на стриминговых сервисах.',
+            source: 'tmdb',
+            media_type: 'movie',
+            air_timestamp: rDate.getTime()
+          });
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[Schedule] TMDB upcoming notice:', e.message);
+  }
+
+  const resultItems = liveItems.length > 0 ? liveItems : (week === 'next' ? [...NEXT_WEEK_ITEMS] : [...CURRENT_WEEK_ITEMS]);
+  setCache('schedule', cacheKey, resultItems, 3600);
 
   return {
     week,
     weekLabel: week === 'next' ? 'Следующая неделя' : 'Текущая неделя',
-    items: baseItems
+    items: resultItems
   };
 }
 

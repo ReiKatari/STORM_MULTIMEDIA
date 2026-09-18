@@ -113,36 +113,43 @@ function getSourceName(item) {
   return map[item?.source] || (item?.source || 'STORM').toUpperCase();
 }
 
-export function toggleCinemaFullscreen() {
+let lastFsToggleTime = 0;
+
+export function setCinemaFullscreen(enable) {
+  const now = Date.now();
+  if (now - lastFsToggleTime < 350) return;
+  lastFsToggleTime = now;
+
   const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
   const videoBox = document.querySelector('.player-video-box');
   const modal = document.getElementById('cinema-modal');
   const fsBtn = document.getElementById('cinema-header-fullscreen-btn');
 
-  // 1. Для iOS Safari нативных HTML5 <video> используем нативный webkitEnterFullscreen
-  if (video && typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenElement) {
-    try {
-      video.webkitEnterFullscreen();
-      return;
-    } catch (_) {}
-  }
+  const currentlyFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || (modal && modal.classList.contains('is-fullscreen')));
 
-  // 2. Стандартный Fullscreen API (Desktop / Android / macOS) и CSS-полноэкранный режим
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || (modal && modal.classList.contains('is-fullscreen')));
-  if (isFs) {
-    if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    } else if (document.mozCancelFullScreen) {
-      document.mozCancelFullScreen();
+  if (!enable) {
+    if (currentlyFs) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      }
+      if (fsBtn) delete fsBtn.dataset.manualCssFs;
+      if (modal) modal.classList.remove('is-fullscreen');
+      if (videoBox) videoBox.classList.remove('is-fullscreen');
     }
-    if (fsBtn) delete fsBtn.dataset.manualCssFs;
-    if (modal) modal.classList.remove('is-fullscreen');
-    if (videoBox) videoBox.classList.remove('is-fullscreen');
   } else {
-    // В полноэкранный режим переводим само модальное окно целиком,
-    // чтобы все кнопки управления, шапка с кнопками и плеер работали гармонично
+    // 1. Для iOS Safari нативных HTML5 <video>
+    if (video && typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenElement) {
+      try {
+        video.webkitEnterFullscreen();
+        return;
+      } catch (_) {}
+    }
+
+    // 2. Стандартный Fullscreen API и CSS fallback
     const target = modal;
     const req = target?.requestFullscreen || target?.webkitRequestFullscreen || target?.mozRequestFullScreen;
     if (req) {
@@ -155,7 +162,6 @@ export function toggleCinemaFullscreen() {
         if (videoBox) videoBox.classList.add('is-fullscreen');
       });
     } else if (modal) {
-      // Fallback в CSS-полноэкранный режим для браузеров без Fullscreen API (iPhone Safari)
       if (fsBtn) fsBtn.dataset.manualCssFs = 'true';
       modal.classList.add('is-fullscreen');
       if (videoBox) videoBox.classList.add('is-fullscreen');
@@ -171,7 +177,24 @@ export function toggleCinemaFullscreen() {
   }, 100);
 }
 
+export function toggleCinemaFullscreen() {
+  const modal = document.getElementById('cinema-modal');
+  const currentlyFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || (modal && modal.classList.contains('is-fullscreen')));
+  setCinemaFullscreen(!currentlyFs);
+}
+
 let fullscreenInitialized = false;
+export function attachCinemaDblClick(el) {
+  if (!el || el.dataset?.hasDblClickListener) return;
+  el.dataset.hasDblClickListener = 'true';
+  el.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button, input, select, a, .storm-skip-btn, .storm-btn, .studio-tab-btn, .player-studio-dock, .player-studio-drawer, .xray-header, .xray-tab-content, .player-series-quick-bar, .inplayer-ctrl-btn, .quick-dropdown-menu')) {
+      return;
+    }
+    toggleCinemaFullscreen();
+  });
+}
+
 function initFullscreenControls() {
   const fsBtn = document.getElementById('cinema-header-fullscreen-btn');
   if (fsBtn && !fsBtn.dataset.hasFsListener) {
@@ -181,6 +204,10 @@ function initFullscreenControls() {
       toggleCinemaFullscreen();
     };
   }
+
+  attachCinemaDblClick(document.getElementById('cinema-player-wrapper'));
+  attachCinemaDblClick(document.getElementById('cinema-player-container'));
+  attachCinemaDblClick(document.querySelector('.cinema-main-column'));
 
   if (fullscreenInitialized) return;
   fullscreenInitialized = true;
@@ -193,7 +220,6 @@ function initFullscreenControls() {
       btn.textContent = isFs ? '🗗' : '⛶';
       btn.title = isFs ? 'Выйти из полноэкранного режима (F / Esc)' : 'Развернуть на весь экран (F)';
     }
-    // Синхронизация: при выходе из нативного Fullscreen (по Esc) снимаем класс is-fullscreen
     const isNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
     if (!isNativeFs && modal && !btn?.dataset?.manualCssFs) {
       modal.classList.remove('is-fullscreen');
@@ -204,19 +230,7 @@ function initFullscreenControls() {
   document.addEventListener('webkitfullscreenchange', updateFsIcon);
   document.addEventListener('mozfullscreenchange', updateFsIcon);
 
-  // Обработка двойного клика по области видео для переключения Fullscreen
-  const wrapper = document.getElementById('cinema-player-wrapper');
-  if (wrapper && !wrapper.dataset.hasDblClickListener) {
-    wrapper.dataset.hasDblClickListener = 'true';
-    wrapper.addEventListener('dblclick', (e) => {
-      if (e.target.closest('button, input, select, a, .storm-skip-btn, .storm-btn, .studio-tab-btn, .player-studio-dock, .player-studio-drawer, .xray-header, .xray-tab-content, .player-series-quick-bar')) {
-        return;
-      }
-      toggleCinemaFullscreen();
-    });
-  }
-
-  // Обработка запросов полноэкранного режима и изменения скорости от встроенных плееров (PlayerJS, Kodik, Allplay, FanFilm и др.)
+  // Обработка сообщений от встроенных и сторонних плееров (Kodik, PlayerJS, Allplay, FanFilm и др.)
   window.addEventListener('message', (event) => {
     if (!event || !event.data) return;
     try {
@@ -224,11 +238,27 @@ function initFullscreenControls() {
       if (typeof data === 'string') {
         try { data = JSON.parse(data); } catch {}
       }
-      if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'exitfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
+
+      // 1. Примитивные строки
+      if (data === 'fullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
         toggleCinemaFullscreen();
-      } else if (data === 'pip' || data === 'pictureinpicture' || data === 'toggle_pip') {
+        return;
+      }
+      if (data === 'enterfullscreen' || data === 'enter_fullscreen') {
+        setCinemaFullscreen(true);
+        return;
+      }
+      if (data === 'exitfullscreen' || data === 'exit_fullscreen') {
+        setCinemaFullscreen(false);
+        return;
+      }
+      if (data === 'pip' || data === 'pictureinpicture' || data === 'toggle_pip') {
         toggleAdvancedPiP();
-      } else if (typeof data === 'object' && data) {
+        return;
+      }
+
+      // 2. Объектные сообщения от Kodik, Playerjs, Allplay, FanFilm и др.
+      if (typeof data === 'object' && data) {
         if (data.type === 'STORM_SWITCH_NEXT_SOURCE' || data.type === 'STORM_PLAYER_FALLBACK') {
           switchToNextSource();
         }
@@ -239,12 +269,36 @@ function initFullscreenControls() {
             updateInPlayerSpeedDisplay(sp);
           }
         }
-        if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.event === 'dblclick' || data.action === 'fullscreen' || data.type === 'STORM_FULLSCREEN_TOGGLE' || data.type === 'fullscreen' || data.type === 'toggle_fullscreen') {
+
+        // Kodik Player API
+        if (data.key === 'kodik_player_api' && data.value) {
+          const val = data.value;
+          if (val.action === 'enter_fullscreen' || val.event === 'enter_fullscreen') {
+            setCinemaFullscreen(true);
+          } else if (val.action === 'exit_fullscreen' || val.event === 'exit_fullscreen') {
+            setCinemaFullscreen(false);
+          } else if (val.action === 'fullscreen' || val.event === 'fullscreen') {
+            toggleCinemaFullscreen();
+          }
+        }
+
+        // Плееры Playerjs, Plyr, Allplay, FanFilm
+        if (data.action === 'enter_fullscreen' || data.event === 'enterfullscreen' || data.event === 'enter_fullscreen') {
+          setCinemaFullscreen(true);
+        } else if (data.action === 'exit_fullscreen' || data.event === 'exitfullscreen' || data.event === 'exit_fullscreen') {
+          setCinemaFullscreen(false);
+        } else if (
+          data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' ||
+          data.event === 'dblclick' || data.action === 'fullscreen' || data.action === 'toggle_fullscreen' ||
+          data.type === 'STORM_FULLSCREEN_TOGGLE' || data.type === 'fullscreen' || data.type === 'toggle_fullscreen'
+        ) {
           toggleCinemaFullscreen();
         }
+
         if (data.event === 'pip' || data.event === 'pictureinpicture' || data.action === 'pip' || data.type === 'pip' || data.type === 'STORM_PIP') {
           toggleAdvancedPiP();
         }
+
         let streamDuration = data.duration ?? data.total ?? data.val ?? data.value?.duration ?? data.data?.duration ?? data.data?.total;
         if (data.key === 'kodik_player_time_update' || data.key === 'kodik_player_duration_update') {
           streamDuration = data.value?.duration || streamDuration;
@@ -559,6 +613,24 @@ export function sendSeekDelta(secondsDelta) {
 let currentAspectRatioMode = 'default';
 let isPlayerScreenLocked = false;
 
+export function applySavedAspectRatioMode() {
+  const savedMode = localStorage.getItem('storm_aspect_ratio_mode') || 'default';
+  currentAspectRatioMode = savedMode;
+  const playerContainer = document.getElementById('cinema-player-container');
+  const aspectBtn = document.getElementById('player-aspect-btn');
+  if (!playerContainer) return;
+  playerContainer.classList.remove('aspect-fill', 'aspect-original');
+  if (aspectBtn) aspectBtn.classList.remove('active');
+
+  if (savedMode === 'fill') {
+    playerContainer.classList.add('aspect-fill');
+    if (aspectBtn) aspectBtn.classList.add('active');
+  } else if (savedMode === 'original') {
+    playerContainer.classList.add('aspect-original');
+    if (aspectBtn) aspectBtn.classList.add('active');
+  }
+}
+
 function initMobilePlayerControls() {
   const modal = document.getElementById('cinema-modal');
   if (!modal) return;
@@ -580,21 +652,25 @@ function initMobilePlayerControls() {
         playerContainer.classList.remove('aspect-original');
         playerContainer.classList.add('aspect-fill');
         aspectBtn.classList.add('active');
+        localStorage.setItem('storm_aspect_ratio_mode', 'fill');
         showToast('📐 Масштаб: 21:9 во весь экран (Fill)');
       } else if (currentAspectRatioMode === 'fill') {
         currentAspectRatioMode = 'original';
         playerContainer.classList.remove('aspect-fill');
         playerContainer.classList.add('aspect-original');
         aspectBtn.classList.add('active');
+        localStorage.setItem('storm_aspect_ratio_mode', 'original');
         showToast('📐 Масштаб: Исходный (Fit)');
       } else {
         currentAspectRatioMode = 'default';
         playerContainer.classList.remove('aspect-fill', 'aspect-original');
         aspectBtn.classList.remove('active');
+        localStorage.setItem('storm_aspect_ratio_mode', 'default');
         showToast('📐 Масштаб: Стандартный 16:9');
       }
     };
   }
+  applySavedAspectRatioMode();
 
   // 2. Кнопка «Картинка в картинке» (PiP)
   const pipBtn = document.getElementById('player-pip-btn');
@@ -1287,7 +1363,6 @@ export function closePlayerModal() {
     if (aspectBtn) aspectBtn.classList.remove('active');
     const playerContainer = document.getElementById('cinema-player-container');
     if (playerContainer) playerContainer.classList.remove('aspect-fill', 'aspect-original');
-    currentAspectRatioMode = 'default';
 
     const jogWidget = document.getElementById('inplayer-jog-dial-widget');
     if (jogWidget) jogWidget.style.display = 'none';
@@ -4377,6 +4452,7 @@ export function playNextEpisode() {
 
 export function mountInPlayerOverlay(videoBox) {
   if (!videoBox) return;
+  attachCinemaDblClick(videoBox);
   const isSeries = checkIfMediaIsSeries(currentMedia);
   const oldOverlay = videoBox.querySelector('.storm-inplayer-overlay');
   if (oldOverlay) {
@@ -4386,6 +4462,7 @@ export function mountInPlayerOverlay(videoBox) {
   const overlay = document.createElement('div');
   overlay.className = 'storm-inplayer-overlay';
   overlay.id = 'storm-inplayer-overlay';
+  attachCinemaDblClick(overlay);
   overlay.innerHTML = `
     <!-- Верхняя полоса управления Progressive Disclosure HUD -->
     <div class="inplayer-top-bar">

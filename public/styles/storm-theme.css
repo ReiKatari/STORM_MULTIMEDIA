@@ -33,6 +33,21 @@
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-fluid: cubic-bezier(0.2, 0, 0, 1);
 
+  /* Адаптивные метрики масштабирования (Fluid Typography & Scalable Layout Metrics) */
+  --font-hero-title: clamp(20px, 1.4rem + 1vw, 32px);
+  --font-modal-title: clamp(14px, 0.95rem + 0.35vw, 18px);
+  --font-section-title: clamp(15px, 1rem + 0.4vw, 20px);
+  --font-card-title: clamp(12px, 0.8rem + 0.2vw, 14.5px);
+  --font-body: clamp(12px, 0.78rem + 0.2vw, 14px);
+  --font-meta: clamp(10.5px, 0.7rem + 0.15vw, 12px);
+
+  --touch-target-min: 44px;
+  --touch-target-compact: 38px;
+  --radius-card: clamp(10px, 0.9vw, 14px);
+  --radius-control: clamp(6px, 0.6vw, 10px);
+  --gap-grid: clamp(10px, 1.1vw, 20px);
+  --padding-section: clamp(12px, 1.4vw, 24px);
+
   /* Индивидуальные стили вкладок */
   --tab-continue-color: #10b981;
   --tab-continue-bg: rgba(16, 185, 129, 0.12);

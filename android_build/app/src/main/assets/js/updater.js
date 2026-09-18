@@ -6,9 +6,9 @@
 
 import { showToast } from './auth.js';
 
-export const CURRENT_APP_VERSION = '1.0.24';
+export const CURRENT_APP_VERSION = '1.0.25';
 const GITHUB_REPO = 'ReiKatari/STORM_MULTIMEDIA';
-const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 час для пассивных проверок в браузере
+const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 час для пассивных проверок
 
 /**
  * Семантическое сравнение версий (1.0.1 vs 1.0.0)
@@ -43,11 +43,19 @@ export async function checkForUpdates(manualTrigger = false) {
     Boolean(window.StormNativeApp)
   );
 
+  // В обычном веб-браузере (на ПК или смартфоне) автоматическое модальное окно загрузки Android APK не показывается!
+  // Веб-версия обновляется непрерывно через сервер и кэш Service Worker.
+  if (!isNative) {
+    if (manualTrigger) {
+      showToast(`Веб-версия STORM MULTIMEDIA актуальна (${CURRENT_APP_VERSION})`, 'success');
+    }
+    return null;
+  }
+
   const now = Date.now();
   const lastCheck = parseInt(localStorage.getItem('storm_last_update_check') || '0', 10);
 
-  // В нативном приложении при запуске проверяем всегда без кулдауна, в браузере — с интервалом
-  if (!manualTrigger && !isNative && (now - lastCheck < CHECK_INTERVAL_MS)) {
+  if (!manualTrigger && (now - lastCheck < CHECK_INTERVAL_MS)) {
     return null;
   }
 
@@ -135,7 +143,31 @@ export async function checkForUpdates(manualTrigger = false) {
 }
 
 /**
- * Отображение фирменного модального окна обновления STORM
+ * Преобразование Markdown-описания релиза в стилизованный HTML
+ */
+function formatReleaseNotesHtml(rawText) {
+  if (!rawText) return '<div>Новые улучшения интерфейса, повышение плавности и обновление каталога.</div>';
+  const lines = rawText.split('\n');
+  const formatted = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('>') || trimmed.startsWith('---') || trimmed.startsWith('<details') || trimmed.startsWith('</details') || trimmed.startsWith('<summary')) {
+      continue;
+    }
+    if (trimmed.startsWith('###')) {
+      formatted.push(`<div style="font-weight: 700; color: var(--accent); margin: 8px 0 4px; font-size: 13.5px;">${escapeHtml(trimmed.replace(/^###\s*/, ''))}</div>`);
+    } else if (trimmed.startsWith('- 🌟') || trimmed.startsWith('- 🔹') || trimmed.startsWith('- 🔸') || trimmed.startsWith('*') || trimmed.startsWith('-')) {
+      const cleanLine = trimmed.replace(/^[-*]\s*(?:[🌟🔹🔸]\s*)?/, '');
+      const withBold = escapeHtml(cleanLine).replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text-primary);">$1</strong>');
+      formatted.push(`<div style="display: flex; gap: 8px; margin: 4px 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary);"><span style="color:var(--accent);flex-shrink:0;">✦</span><div>${withBold}</div></div>`);
+    }
+    if (formatted.length >= 6) break;
+  }
+  return formatted.join('') || '<div>Новые улучшения интерфейса, повышение плавности и обновление каталога.</div>';
+}
+
+/**
+ * Отображение фирменного модального окна обновления STORM (только для Android APK)
  */
 export function showUpdateModal(release, latestVersion) {
   let modal = document.getElementById('storm-update-modal');
@@ -152,17 +184,10 @@ export function showUpdateModal(release, latestVersion) {
   const apkAsset = (release.assets || []).find(a => a.name && a.name.endsWith('.apk'));
   const downloadUrl = apkAsset ? apkAsset.browser_download_url : (release.html_url || `https://github.com/${GITHUB_REPO}/releases`);
   const apkSizeMb = apkAsset ? (apkAsset.size / (1024 * 1024)).toFixed(2) + ' МБ' : '';
-
-  // Очистка и форматирование тела релиза для компактного превью
-  const bodySnippet = (release.body || '')
-    .split('\n')
-    .filter(line => !line.startsWith('>') && !line.startsWith('<details') && !line.startsWith('</details') && !line.startsWith('<summary'))
-    .slice(0, 8)
-    .join('\n')
-    .trim();
+  const changelogHtml = formatReleaseNotesHtml(release.body || '');
 
   modal.innerHTML = `
-    <div class="storm-modal storm-update-modal-dialog" style="max-width: 540px; border: 1px solid var(--accent-glow); box-shadow: 0 0 32px var(--accent-glow);">
+    <div class="storm-modal storm-update-modal-dialog" style="max-width: 540px; border: 1px solid var(--accent-glow); box-shadow: 0 0 32px var(--accent-glow); border-radius: 16px; overflow: hidden; background: var(--bg-secondary);">
       <div class="storm-modal-header" style="justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 18px 24px;">
         <div style="display: flex; align-items: center; gap: 12px;">
           <span style="font-size: 26px;">🚀</span>
@@ -175,12 +200,12 @@ export function showUpdateModal(release, latestVersion) {
       </div>
       <div class="storm-modal-body" style="padding: 22px 24px;">
         <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 14px 18px; margin-bottom: 18px;">
-          <div style="font-weight: 700; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Ключевые новшества:</div>
-          <div style="font-size: 13.5px; line-height: 1.6; color: var(--text-primary); white-space: pre-line;">${escapeHtml(bodySnippet || 'Новые улучшения интерфейса, повышение плавности и обновление каталога.')}</div>
+          <div style="font-weight: 700; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Ключевые новшества:</div>
+          <div style="max-height: 240px; overflow-y: auto;">${changelogHtml}</div>
         </div>
         ${apkAsset ? `
         <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--text-muted); margin-bottom: 20px; padding: 0 4px;">
-          <span>📦 Установочный пакет Android: <strong>${apkAsset.name}</strong></span>
+          <span>📦 Установочный пакет Android: <strong>${escapeHtml(apkAsset.name)}</strong></span>
           <span>${apkSizeMb}</span>
         </div>` : ''}
         <div style="display: flex; gap: 12px; justify-content: flex-end;">
@@ -224,3 +249,4 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+

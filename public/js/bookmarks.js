@@ -53,32 +53,118 @@ export function resolveMediaUserStatus(item) {
   return null;
 }
 
+export function getLocalBookmarksList() {
+  try {
+    const raw = localStorage.getItem('storm_local_bookmarks');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+export function saveLocalBookmarksList(list) {
+  try {
+    if (Array.isArray(list)) {
+      localStorage.setItem('storm_local_bookmarks', JSON.stringify(list));
+    }
+  } catch {}
+}
+
+export function syncLocalBookmarkItem(mediaData, status) {
+  if (!mediaData) return;
+  const list = getLocalBookmarksList();
+  const mediaId = String(mediaData.id || mediaData.media_id || '');
+  const normTitle = String(mediaData.title || '').trim().toLowerCase();
+
+  let filtered = list.filter(it => {
+    const itId = String(it.id || it.media_id || '');
+    const itTitle = String(it.title || '').trim().toLowerCase();
+    if (mediaId && itId === mediaId) return false;
+    if (normTitle && itTitle === normTitle) return false;
+    return true;
+  });
+
+  if (status && status !== 'none') {
+    const mType = (typeof detectClientMediaType === 'function' ? detectClientMediaType(mediaData) : null) || mediaData.media_type || 'movie';
+    const mYear = mediaData.year || (typeof detectClientYear === 'function' ? detectClientYear(mediaData) : '') || '';
+    filtered.unshift({
+      id: mediaId,
+      media_id: mediaId,
+      source: mediaData.source || 'all',
+      title: mediaData.title || '',
+      original_title: mediaData.original_title || '',
+      poster: mediaData.poster || mediaData.poster_url || '',
+      poster_url: mediaData.poster || mediaData.poster_url || '',
+      media_type: mType,
+      year: mYear,
+      status: status,
+      user_status: status,
+      progress_percent: mediaData.progress_percent || 0,
+      episodes_watched: mediaData.episodes_watched || 0,
+      total_episodes: mediaData.total_episodes || 0,
+      updated_at: Date.now()
+    });
+  }
+  saveLocalBookmarksList(filtered);
+}
+
 export async function fetchUserBookmarks(status = null, type = null) {
   const token = getToken();
   let serverBookmarks = [];
-  if (token) {
+
+  // 1. Запрос к серверу
+  try {
     let url = '/api/bookmarks';
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (type) params.append('type', type);
     if (params.toString()) url += `?${params.toString()}`;
 
-    try {
-      const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        serverBookmarks = await res.json();
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        serverBookmarks = data;
       }
-    } catch (err) {
-      console.error('Ошибка получения закладок:', err);
     }
+  } catch (err) {
+    console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
   }
 
+  // 2. Если сервер вернул список, синхронизируем с локальным кэшем
   if (serverBookmarks.length > 0) {
-    setMemoryBookmarksCache(serverBookmarks);
+    const localList = getLocalBookmarksList();
+    const map = new Map();
+    localList.forEach(it => {
+      const k = String(it.media_id || it.id || '');
+      if (k) map.set(k, it);
+    });
+    serverBookmarks.forEach(it => {
+      const k = String(it.media_id || it.id || '');
+      if (k && !map.has(k)) map.set(k, it);
+    });
+    const merged = Array.from(map.values());
+    saveLocalBookmarksList(merged);
+    setMemoryBookmarksCache(merged);
+    return serverBookmarks;
   }
-  return serverBookmarks;
+
+  // 3. Резервная отдача из локального хранилища storm_local_bookmarks
+  const localBookmarks = getLocalBookmarksList();
+  if (localBookmarks.length > 0) {
+    let filtered = localBookmarks;
+    if (status) filtered = filtered.filter(b => b.status === status || b.user_status === status);
+    if (type) filtered = filtered.filter(b => b.media_type === type);
+    setMemoryBookmarksCache(filtered);
+    return filtered;
+  }
+
+  return [];
 }
 
 export function removeFromLocalContinueWatching(mediaId, title = '') {
@@ -174,6 +260,7 @@ export async function saveBookmarkStatus(mediaData, status) {
     if (normTitle) {
       localStorage.setItem(`storm_status_title_${normTitle}`, status);
     }
+    syncLocalBookmarkItem(mediaData, status);
   } catch {}
 
   // Если статус завершён/брошен/не буду — немедленно удаляем из Продолжить просмотр
@@ -234,6 +321,7 @@ export async function deleteBookmark(mediaId, source, title = '') {
   try {
     if (mediaId) localStorage.removeItem(`storm_status_${mediaId}`);
     if (normTitle) localStorage.removeItem(`storm_status_title_${normTitle}`);
+    syncLocalBookmarkItem({ id: mediaId, title }, 'none');
   } catch {}
 
   const token = getToken();

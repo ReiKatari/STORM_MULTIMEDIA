@@ -56,7 +56,7 @@ import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
 import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining } from './player.js';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
 import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
 import { renderSyncModalContent } from './sync-service.js';
@@ -235,17 +235,21 @@ function initViewModes() {
 
   document.querySelectorAll('.view-mode-btn').forEach(btn => {
     const mode = btn.dataset.view;
-    if (mode === currentViewMode) btn.classList.add('active');
+    btn.classList.toggle('active', mode === currentViewMode);
 
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
       currentViewMode = mode;
       localStorage.setItem('storm_view_mode', mode);
       if (container) {
         container.className = `media-container view-${mode}`;
       }
-      renderMediaItems(currentItems);
+      try {
+        const itemsToRender = (currentItems && currentItems.length > 0) ? currentItems : (rawCatalogItems && rawCatalogItems.length > 0 ? rawCatalogItems : []);
+        renderMediaItems(itemsToRender);
+      } catch (err) {
+        console.error('Ошибка переключения вида каталога:', err);
+      }
     });
   });
 }
@@ -3038,7 +3042,7 @@ function renderMediaItems(items) {
             <div class="media-play-icon">▶</div>
           </div>
           ${item.progress_percent > 0 ? (
-            checkIfMediaIsSeries(item) ? renderSegmentedEpisodeBar(item.progress_percent, parseInt(item.total_episodes, 10) || 8) : `
+            ((typeof checkIfMediaIsSeries === 'function' ? checkIfMediaIsSeries(item) : (item.media_type === 'series' || item.media_type === 'cartoon-series' || item.media_type === 'anime-series' || Boolean(item.season || item.episode))) && typeof renderSegmentedEpisodeBar === 'function') ? renderSegmentedEpisodeBar(item.progress_percent, parseInt(item.total_episodes, 10) || 8) : `
             <div class="media-card-progress storm-progress-container">
               <div class="storm-progress-bar" style="width: ${item.progress_percent}%"></div>
             </div>
