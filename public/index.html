@@ -294,14 +294,14 @@
       <div class="cinema-modal-drag-handle" id="cinema-modal-drag-handle"></div>
 
       <div class="storm-modal-header">
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="cinema-header-title-group" style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; overflow: hidden;">
           <h3 class="storm-modal-title" id="cinema-modal-title">Название фильма</h3>
-          <span style="font-size: 12px; color: var(--text-muted);" id="cinema-modal-year">2026</span>
+          <span style="font-size: 12px; color: var(--text-muted); flex-shrink: 0;" id="cinema-modal-year">2026</span>
           <button type="button" class="cinema-focus-exit-badge" id="cinema-focus-exit-badge" title="Выйти из режима фокуса">
             <span>👁️</span> <span>Выйти из фокуса</span>
           </button>
         </div>
-        <div class="cinema-header-actions" style="display: flex; align-items: center; gap: 6px;">
+        <div class="cinema-header-actions">
           <button type="button" class="storm-modal-tool-btn" id="player-aspect-btn" title="Масштаб видео (16:9 / 21:9 Cover / Fit)">📐</button>
           <button type="button" class="storm-modal-tool-btn" id="player-pip-btn" title="Картинка в картинке (PiP)">🪟</button>
           <button type="button" class="storm-modal-tool-btn" id="player-sleep-btn" title="Таймер сна">⏱️</button>
