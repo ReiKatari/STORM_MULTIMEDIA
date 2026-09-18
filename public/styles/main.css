@@ -2856,17 +2856,73 @@ body.drawer-open {
     z-index: 10 !important;
     border-bottom: 1px solid var(--border-subtle) !important;
     gap: 8px !important;
+    box-sizing: border-box !important;
+    max-width: 100vw !important;
+    overflow: hidden !important;
+  }
+
+  #cinema-modal .cinema-header-title-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
   }
 
   #cinema-modal .storm-modal-title {
     font-size: 14px !important;
     font-weight: 700 !important;
-    max-width: calc(100% - 210px) !important;
     min-width: 0 !important;
     flex: 1 1 auto !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    max-width: 100% !important;
+  }
+
+  #cinema-modal .cinema-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+    margin-left: auto !important;
+  }
+
+  @media (max-width: 640px) {
+    #cinema-modal .storm-modal-header {
+      padding: 6px 10px !important;
+      gap: 6px !important;
+    }
+
+    #cinema-modal .cinema-header-actions {
+      gap: 4px !important;
+      flex-shrink: 0 !important;
+    }
+
+    #cinema-modal .storm-modal-tool-btn,
+    #cinema-modal .storm-modal-fullscreen-btn,
+    #cinema-modal .storm-modal-close {
+      width: 32px !important;
+      height: 32px !important;
+      min-width: 32px !important;
+      max-width: 32px !important;
+      padding: 0 !important;
+      font-size: 14px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 8px !important;
+      flex-shrink: 0 !important;
+      box-sizing: border-box !important;
+    }
+
+    /* На смартфонах скрываем второстепенные кнопки из узкой шапки, освобождая место для полноэкранного режима и крестика */
+    #cinema-modal #player-sleep-btn,
+    #cinema-modal #player-screen-lock-btn,
+    #cinema-modal .cinema-focus-exit-badge {
+      display: none !important;
+    }
   }
 
   #cinema-modal .storm-modal-body {
@@ -3746,8 +3802,10 @@ body.drawer-open {
     margin: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
     max-width: 100vw !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
     align-items: stretch !important;
     justify-content: stretch !important;
     background: #000000 !important;
@@ -3757,8 +3815,10 @@ body.drawer-open {
   #cinema-modal .cinema-modal-dialog {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
     max-width: 100vw !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
     border: none !important;
     margin: 0 !important;
@@ -3781,7 +3841,9 @@ body.drawer-open {
     flex: 1 !important;
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
     overflow: hidden !important;
     display: flex !important;
     flex-direction: column !important;
@@ -3793,6 +3855,8 @@ body.drawer-open {
     flex-direction: column !important;
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     gap: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -3801,6 +3865,8 @@ body.drawer-open {
   #cinema-modal .cinema-main-column {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     margin: 0 !important;
     padding: 0 !important;
     display: flex !important;
@@ -3811,11 +3877,23 @@ body.drawer-open {
     box-shadow: none !important;
   }
 
+  #cinema-modal .cinema-player-container {
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    flex: 1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   #cinema-modal .cinema-player-wrapper {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
     max-width: 100vw !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
     aspect-ratio: unset !important;
     border-radius: 0 !important;
     margin: 0 !important;
@@ -3828,6 +3906,8 @@ body.drawer-open {
   #cinema-modal .player-video-box {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
     background: #000000 !important;
   }
@@ -3836,14 +3916,18 @@ body.drawer-open {
   #cinema-modal #storm-video-player {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
     object-fit: contain !important;
     background: #000000 !important;
   }
 
-  /* Скрытие второстепенных блоков информации в альбомном режиме для непрерывного просмотра */
+  /* Скрытие ВСЕХ второстепенных блоков информации и меню в альбомном режиме для исключения наползания */
   #cinema-modal .player-series-quick-bar,
+  #cinema-modal #player-fallback-bar,
+  #cinema-modal #player-selector-dropdown-wrap,
   #cinema-modal #player-utility-actions,
   #cinema-modal #cinema-modal-desc-wrap,
   #cinema-modal .series-seasons-container,
@@ -3852,7 +3936,10 @@ body.drawer-open {
   #cinema-modal #player-status-buttons,
   #cinema-modal #player-collection-dropdown,
   #cinema-modal #cinema-reviews-container,
-  #cinema-modal #cinema-modal-screenshots-container {
+  #cinema-modal #cinema-modal-screenshots-container,
+  #cinema-modal .player-xray-panel,
+  .storm-bottom-nav,
+  .storm-mobile-bottom-bar {
     display: none !important;
   }
 
@@ -5766,10 +5853,10 @@ body.tv-mode .storm-bottom-nav {
 /* Сенсорные зоны двойного тапа для перемотки (±10 сек) */
 .player-tap-zone {
   position: absolute;
-  top: 70px;
-  bottom: 240px; /* Оставляем ВСЮ нижнюю треть экрана, элементы управления и всплывающие меню полностью свободными */
-  width: 25%;
-  z-index: 15;
+  top: 15%;
+  bottom: 20%;
+  width: 22%;
+  z-index: 10;
   pointer-events: auto;
   display: flex;
   align-items: center;

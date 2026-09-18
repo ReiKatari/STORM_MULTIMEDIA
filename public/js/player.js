@@ -114,12 +114,20 @@ function getSourceName(item) {
 }
 
 export function toggleCinemaFullscreen() {
+  const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
   const videoBox = document.querySelector('.player-video-box');
   const modal = document.getElementById('cinema-modal');
-  const target = videoBox || modal;
-  if (!target) return;
 
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+  // 1. Для iOS Safari нативных HTML5 <video> используем нативный webkitEnterFullscreen
+  if (video && typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenElement) {
+    try {
+      video.webkitEnterFullscreen();
+      return;
+    } catch (_) {}
+  }
+
+  // 2. Стандартный Fullscreen API (Desktop / Android / macOS) и CSS-полноэкранный режим
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || (modal && modal.classList.contains('is-fullscreen')));
   if (isFs) {
     if (document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
@@ -128,17 +136,28 @@ export function toggleCinemaFullscreen() {
     } else if (document.mozCancelFullScreen) {
       document.mozCancelFullScreen();
     }
+    if (modal) modal.classList.remove('is-fullscreen');
   } else {
-    const req = target.requestFullscreen || target.webkitRequestFullscreen || target.mozRequestFullScreen || target.msRequestFullscreen;
+    const target = videoBox || modal;
+    const req = target?.requestFullscreen || target?.webkitRequestFullscreen || target?.mozRequestFullScreen || modal?.requestFullscreen || modal?.webkitRequestFullscreen;
     if (req) {
-      req.call(target).catch(() => {
-        if (modal && modal !== target) {
-          const mReq = modal.requestFullscreen || modal.webkitRequestFullscreen || modal.mozRequestFullScreen;
-          if (mReq) mReq.call(modal).catch(() => {});
-        }
+      req.call(target || modal).catch(() => {
+        if (modal) modal.classList.toggle('is-fullscreen');
       });
+    } else if (modal) {
+      // Fallback в CSS-полноэкранный режим для браузеров без Fullscreen API (iPhone Safari)
+      modal.classList.toggle('is-fullscreen');
     }
   }
+
+  setTimeout(() => {
+    const fsBtn = document.getElementById('cinema-header-fullscreen-btn');
+    if (fsBtn && modal) {
+      const activeFs = !!(document.fullscreenElement || document.webkitFullscreenElement || modal.classList.contains('is-fullscreen'));
+      fsBtn.textContent = activeFs ? '🗗' : '⛶';
+      fsBtn.title = activeFs ? 'Выйти из полноэкранного режима (F / Esc)' : 'Развернуть на весь экран (F)';
+    }
+  }, 100);
 }
 
 let fullscreenInitialized = false;
@@ -156,7 +175,8 @@ function initFullscreenControls() {
   fullscreenInitialized = true;
 
   const updateFsIcon = () => {
-    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+    const modal = document.getElementById('cinema-modal');
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || (modal && modal.classList.contains('is-fullscreen')));
     const btn = document.getElementById('cinema-header-fullscreen-btn');
     if (btn) {
       btn.textContent = isFs ? '🗗' : '⛶';
@@ -698,31 +718,20 @@ function initMobilePlayerControls() {
     if (!zoneEl || zoneEl.dataset.hasListener) return;
     zoneEl.dataset.hasListener = 'true';
     let lastTapTime = 0;
-    let singleTapTimer = null;
 
     const handleTap = (e) => {
       if (isPlayerScreenLocked) return;
       const now = Date.now();
       const timeDiff = now - lastTapTime;
 
-      if (timeDiff < 320) {
-        // Двойной тап: отменяем одиночный тап и перематываем на 10 сек
-        if (singleTapTimer) {
-          clearTimeout(singleTapTimer);
-          singleTapTimer = null;
-        }
-        e.preventDefault();
+      if (timeDiff > 40 && timeDiff < 360) {
+        // Двойной тап: перематываем на 10 сек
+        if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         triggerDoubleTapRipple(indicatorEl, isForward);
         lastTapTime = 0;
       } else {
         lastTapTime = now;
-        // Одиночный тап: если в течение 280мс не последовал второй тап — переключаем Воспроизведение / Пауза
-        if (singleTapTimer) clearTimeout(singleTapTimer);
-        singleTapTimer = setTimeout(() => {
-          singleTapTimer = null;
-          togglePlayerPlayPause();
-        }, 280);
       }
     };
 
@@ -746,7 +755,10 @@ function initMobilePlayerControls() {
           (e.changedTouches?.[0] && e.changedTouches[0].clientY < 60)) {
         return;
       }
-      e.preventDefault();
+      const now = Date.now();
+      if (now - lastTapTime < 360) {
+        if (e.cancelable) e.preventDefault();
+      }
       handleTap(e);
     }, { passive: false });
   };
@@ -760,7 +772,15 @@ function initMobilePlayerControls() {
     playerWrapper.dataset.hasTapListener = 'true';
     playerWrapper.addEventListener('click', (e) => {
       if (isPlayerScreenLocked) return;
-      if (e.target.closest('.player-tap-zone') || e.target.closest('#player-screen-locked-overlay') || e.target.closest('.storm-inplayer-overlay')) {
+      if (e.target.closest('.player-tap-zone') || 
+          e.target.closest('#player-screen-locked-overlay') || 
+          e.target.closest('.storm-inplayer-overlay') ||
+          e.target.closest('.inplayer-ctrl-btn') ||
+          e.target.closest('#player-xray-panel')) {
+        return;
+      }
+      // На мобильных устройствах при клике по видео не перебиваем нативные контролы
+      if (e.target.tagName === 'VIDEO' && (window.innerWidth <= 768 || e.target.hasAttribute('controls'))) {
         return;
       }
       togglePlayerPlayPause();
@@ -2745,12 +2765,8 @@ export function applyNightModeAudio(video) {
 function setupXRayMode(video, wrapper) {
   if (!video || !wrapper) return;
 
-  video.addEventListener('pause', () => {
-    if (currentMedia) {
-      showXRayPanel(wrapper);
-    }
-  });
-
+  // Автоматическое навязчивое открытие X-Ray на паузе отключено, чтобы не блокировать управление видео и экраном на мобильных.
+  // Пользователь может открыть X-Ray вручную через студийное меню (toggleXRayManual).
   video.addEventListener('play', () => {
     hideXRayPanel(wrapper);
   });
