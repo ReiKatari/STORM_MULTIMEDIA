@@ -3421,6 +3421,50 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 } catch(e) {}
               }, 300);
             })();
+
+            // STORM Fullscreen Bridge: перехват кликов по кнопкам полноэкранного режима, горячей клавиши F и вызовов Fullscreen API
+            (function() {
+              function notifyParentFullscreen() {
+                try {
+                  window.parent.postMessage({ type: 'STORM_FULLSCREEN_TOGGLE', event: 'fullscreen', action: 'fullscreen' }, '*');
+                  window.parent.postMessage('fullscreen', '*');
+                  window.parent.postMessage('toggle_fullscreen', '*');
+                } catch (_) {}
+              }
+
+              // 1. Перехват клика по кнопке Fullscreen плеера (Plyr, Allplay, Playerjs, HTML5)
+              document.addEventListener('click', function(e) {
+                var btn = e.target && e.target.closest ? e.target.closest('[data-plyr="fullscreen"], [data-allplay="fullscreen"], [class*="fullscreen"], button[title*="экран"], button[aria-label*="экран"], button[title*="fullscreen"], button[aria-label*="fullscreen"], .plyr__control--fullscreen') : null;
+                if (btn) {
+                  notifyParentFullscreen();
+                }
+              }, true);
+
+              // 2. Перехват горячих клавиш F / А (в русской и английской раскладке)
+              document.addEventListener('keydown', function(e) {
+                if ((e.key === 'f' || e.key === 'F' || e.code === 'KeyF' || e.key === 'а' || e.key === 'А') && 
+                    e.target && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                  notifyParentFullscreen();
+                }
+              }, true);
+
+              // 3. Перехват Element.prototype.requestFullscreen внутри фрейма
+              try {
+                var origReq = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen || Element.prototype.mozRequestFullScreen;
+                Element.prototype.requestFullscreen = function() {
+                  notifyParentFullscreen();
+                  if (origReq) {
+                    try { return origReq.apply(this, arguments); } catch (_) {}
+                  }
+                  return Promise.resolve();
+                };
+                if (Element.prototype.webkitRequestFullscreen) {
+                  Element.prototype.webkitRequestFullscreen = function() {
+                    notifyParentFullscreen();
+                  };
+                }
+              } catch (_) {}
+            })();
           })();
           </script>
           <style>
@@ -3677,6 +3721,47 @@ app.get('/api/player/vpn-proxy', async (req, res) => {
                 }
               } catch(e) {}
             }, 300);
+
+            // STORM Fullscreen Bridge: перехват кликов по кнопкам полноэкранного режима, горячей клавиши F и вызовов Fullscreen API
+            (function() {
+              function notifyParentFullscreen() {
+                try {
+                  window.parent.postMessage({ type: 'STORM_FULLSCREEN_TOGGLE', event: 'fullscreen', action: 'fullscreen' }, '*');
+                  window.parent.postMessage('fullscreen', '*');
+                  window.parent.postMessage('toggle_fullscreen', '*');
+                } catch (_) {}
+              }
+
+              document.addEventListener('click', function(e) {
+                var btn = e.target && e.target.closest ? e.target.closest('[data-plyr="fullscreen"], [data-allplay="fullscreen"], [class*="fullscreen"], button[title*="экран"], button[aria-label*="экран"], button[title*="fullscreen"], button[aria-label*="fullscreen"], .plyr__control--fullscreen') : null;
+                if (btn) {
+                  notifyParentFullscreen();
+                }
+              }, true);
+
+              document.addEventListener('keydown', function(e) {
+                if ((e.key === 'f' || e.key === 'F' || e.code === 'KeyF' || e.key === 'а' || e.key === 'А') && 
+                    e.target && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                  notifyParentFullscreen();
+                }
+              }, true);
+
+              try {
+                var origReq = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen || Element.prototype.mozRequestFullScreen;
+                Element.prototype.requestFullscreen = function() {
+                  notifyParentFullscreen();
+                  if (origReq) {
+                    try { return origReq.apply(this, arguments); } catch (_) {}
+                  }
+                  return Promise.resolve();
+                };
+                if (Element.prototype.webkitRequestFullscreen) {
+                  Element.prototype.webkitRequestFullscreen = function() {
+                    notifyParentFullscreen();
+                  };
+                }
+              } catch (_) {}
+            })();
           } catch(e) {}
         })();
         </script>

@@ -1254,12 +1254,119 @@ body.cinema-open {
 #cinema-modal:fullscreen .cinema-modal-dialog {
   width: 100vw !important;
   height: 100vh !important;
+  height: 100dvh !important;
   max-width: 100vw !important;
   max-height: 100vh !important;
+  max-height: 100dvh !important;
   border-radius: 0 !important;
   border: none !important;
   margin: 0 !important;
   padding: 0 !important;
+  background: #000000 !important;
+  overflow: hidden !important;
+}
+
+#cinema-modal.is-fullscreen .storm-modal-body,
+#cinema-modal:fullscreen .storm-modal-body {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+#cinema-modal.is-fullscreen .storm-modal-header,
+#cinema-modal:fullscreen .storm-modal-header {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 1000 !important;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, transparent 100%) !important;
+  border-bottom: none !important;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: auto;
+}
+
+#cinema-modal.is-fullscreen:hover .storm-modal-header,
+#cinema-modal:fullscreen:hover .storm-modal-header,
+#cinema-modal.is-fullscreen .storm-modal-header:hover,
+#cinema-modal:fullscreen .storm-modal-header:hover {
+  opacity: 1 !important;
+}
+
+#cinema-modal.is-fullscreen .cinema-layout-grid,
+#cinema-modal:fullscreen .cinema-layout-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#cinema-modal.is-fullscreen .cinema-side-column,
+#cinema-modal:fullscreen .cinema-side-column,
+#cinema-modal.is-fullscreen #cinema-side-info,
+#cinema-modal:fullscreen #cinema-side-info,
+#cinema-modal.is-fullscreen #player-utility-actions,
+#cinema-modal:fullscreen #player-utility-actions,
+#cinema-modal.is-fullscreen #player-selector-dropdown-wrap,
+#cinema-modal:fullscreen #player-selector-dropdown-wrap,
+#cinema-modal.is-fullscreen .player-series-quick-bar,
+#cinema-modal:fullscreen .player-series-quick-bar,
+#cinema-modal.is-fullscreen #player-fallback-bar,
+#cinema-modal:fullscreen #player-fallback-bar {
+  display: none !important;
+}
+
+#cinema-modal.is-fullscreen .cinema-main-column,
+#cinema-modal:fullscreen .cinema-main-column,
+#cinema-modal.is-fullscreen .cinema-player-container,
+#cinema-modal:fullscreen .cinema-player-container,
+#cinema-modal.is-fullscreen .cinema-player-wrapper,
+#cinema-modal:fullscreen .cinema-player-wrapper,
+#cinema-modal.is-fullscreen .player-video-box,
+#cinema-modal:fullscreen .player-video-box {
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  aspect-ratio: unset !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  background: #000000 !important;
+  flex: 1 1 100% !important;
+}
+
+#cinema-modal.is-fullscreen .cinema-player-iframe,
+#cinema-modal:fullscreen .cinema-player-iframe,
+#cinema-modal.is-fullscreen #storm-video-player,
+#cinema-modal:fullscreen #storm-video-player {
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  object-fit: contain !important;
+  background: #000000 !important;
 }
 
 .cinema-layout-grid {

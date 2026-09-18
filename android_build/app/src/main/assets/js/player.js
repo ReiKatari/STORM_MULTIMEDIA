@@ -137,16 +137,22 @@ export function toggleCinemaFullscreen() {
       document.mozCancelFullScreen();
     }
     if (modal) modal.classList.remove('is-fullscreen');
+    if (videoBox) videoBox.classList.remove('is-fullscreen');
   } else {
     const target = videoBox || modal;
     const req = target?.requestFullscreen || target?.webkitRequestFullscreen || target?.mozRequestFullScreen || modal?.requestFullscreen || modal?.webkitRequestFullscreen;
     if (req) {
-      req.call(target || modal).catch(() => {
+      req.call(target || modal).then(() => {
+        if (modal) modal.classList.add('is-fullscreen');
+        if (videoBox) videoBox.classList.add('is-fullscreen');
+      }).catch(() => {
         if (modal) modal.classList.toggle('is-fullscreen');
+        if (videoBox) videoBox.classList.toggle('is-fullscreen');
       });
     } else if (modal) {
       // Fallback в CSS-полноэкранный режим для браузеров без Fullscreen API (iPhone Safari)
       modal.classList.toggle('is-fullscreen');
+      if (videoBox) videoBox.classList.toggle('is-fullscreen');
     }
   }
 
@@ -182,6 +188,11 @@ function initFullscreenControls() {
       btn.textContent = isFs ? '🗗' : '⛶';
       btn.title = isFs ? 'Выйти из полноэкранного режима (F / Esc)' : 'Развернуть на весь экран (F)';
     }
+    // Синхронизация: при выходе из нативного Fullscreen (по Esc) снимаем класс is-fullscreen
+    const isNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+    if (!isNativeFs && modal && !btn?.dataset?.manualCssFs) {
+      modal.classList.remove('is-fullscreen');
+    }
   };
 
   document.addEventListener('fullscreenchange', updateFsIcon);
@@ -200,7 +211,7 @@ function initFullscreenControls() {
     });
   }
 
-  // Обработка запросов полноэкранного режима и изменения скорости от встроенных плееров (PlayerJS, Kodik, Allplay и др.)
+  // Обработка запросов полноэкранного режима и изменения скорости от встроенных плееров (PlayerJS, Kodik, Allplay, FanFilm и др.)
   window.addEventListener('message', (event) => {
     if (!event || !event.data) return;
     try {
@@ -208,7 +219,7 @@ function initFullscreenControls() {
       if (typeof data === 'string') {
         try { data = JSON.parse(data); } catch {}
       }
-      if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
+      if (data === 'fullscreen' || data === 'enterfullscreen' || data === 'exitfullscreen' || data === 'toggle_fullscreen' || data === 'dblclick') {
         toggleCinemaFullscreen();
       } else if (data === 'pip' || data === 'pictureinpicture' || data === 'toggle_pip') {
         toggleAdvancedPiP();
@@ -223,7 +234,7 @@ function initFullscreenControls() {
             updateInPlayerSpeedDisplay(sp);
           }
         }
-        if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.event === 'dblclick' || data.action === 'fullscreen') {
+        if (data.event === 'fullscreen' || data.event === 'toggle_fullscreen' || data.event === 'fullscreen_toggle' || data.event === 'dblclick' || data.action === 'fullscreen' || data.type === 'STORM_FULLSCREEN_TOGGLE' || data.type === 'fullscreen' || data.type === 'toggle_fullscreen') {
           toggleCinemaFullscreen();
         }
         if (data.event === 'pip' || data.event === 'pictureinpicture' || data.action === 'pip' || data.type === 'pip' || data.type === 'STORM_PIP') {
