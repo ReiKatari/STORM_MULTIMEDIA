@@ -8,13 +8,11 @@ import { showToast } from './auth.js';
 let activeVideo = null;
 let currentSkipIntervals = null;
 let activeSkipBanner = null;
-let autoSkippedIntro = false;
-let autoSkippedOutro = false;
 
-// Стандартные интервалы для аниме и сериалов (только для ручного пропуска, НЕ для автопропуска)
+// Стандартные интервалы для аниме и сериалов (только для ручного пропуска)
 export function getEstimatedSkipIntervals(durationSeconds, mediaType = '') {
   if (!durationSeconds || durationSeconds < 300) return null;
-  // Для фильмов приблизительный автопропуск не применяется
+  // Для фильмов приблизительный пропуск не применяется
   if (mediaType === 'movie' || durationSeconds > 3600) return null;
 
   // Обычное аниме или короткая серия
@@ -36,8 +34,6 @@ export function getEstimatedSkipIntervals(durationSeconds, mediaType = '') {
 
 export function setSmartSkipIntervals(intervals) {
   currentSkipIntervals = intervals;
-  autoSkippedIntro = false;
-  autoSkippedOutro = false;
   if (activeVideo && activeVideo.duration) {
     renderChaptersOnTrack(activeVideo, currentSkipIntervals);
   }
@@ -46,8 +42,6 @@ export function setSmartSkipIntervals(intervals) {
 export function initSmartSkip(video, intervals = null) {
   activeVideo = video;
   currentSkipIntervals = intervals;
-  autoSkippedIntro = false;
-  autoSkippedOutro = false;
 
   if (!video) return;
 
@@ -68,102 +62,20 @@ export function initSmartSkip(video, intervals = null) {
 function checkSkipIntervals() {
   if (!activeVideo || !currentSkipIntervals) return;
   const t = activeVideo.currentTime;
-  const isAutoSkip = localStorage.getItem('storm_auto_skip') === 'true';
-
-  // Сброс флага, если пользователь вручную вернулся назад перед опенингом
-  if (currentSkipIntervals.intro && t < Math.max(0, currentSkipIntervals.intro.start - 3)) {
-    autoSkippedIntro = false;
-  }
-  if (currentSkipIntervals.outro && t < Math.max(0, currentSkipIntervals.outro.start - 3)) {
-    autoSkippedOutro = false;
-  }
 
   // 1. Проверка интро (опенинга / заставки)
   if (currentSkipIntervals.intro && t >= currentSkipIntervals.intro.start && t < currentSkipIntervals.intro.end) {
-    if (isAutoSkip && !autoSkippedIntro) {
-      showAutoSkipCountdownBanner(currentSkipIntervals.intro.label, currentSkipIntervals.intro.end, () => {
-        autoSkippedIntro = true;
-      });
-      return;
-    }
     showSkipBanner(currentSkipIntervals.intro.label, currentSkipIntervals.intro.end);
     return;
   }
 
   // 2. Проверка аутро (титров / эндинга)
   if (currentSkipIntervals.outro && t >= currentSkipIntervals.outro.start && t < currentSkipIntervals.outro.end) {
-    if (isAutoSkip && !autoSkippedOutro) {
-      showAutoSkipCountdownBanner(currentSkipIntervals.outro.label, currentSkipIntervals.outro.end, () => {
-        autoSkippedOutro = true;
-      });
-      return;
-    }
     showSkipBanner(currentSkipIntervals.outro.label, currentSkipIntervals.outro.end);
     return;
   }
 
   removeSkipBanner();
-}
-
-let autoSkipTimer = null;
-
-function showAutoSkipCountdownBanner(label, targetTime, onSkipCb) {
-  if (activeSkipBanner) return;
-
-  const wrapper = activeVideo?.closest('.player-video-box') || document.getElementById('cinema-player-wrapper');
-  if (!wrapper) return;
-
-  let secondsLeft = 3;
-  const banner = document.createElement('div');
-  banner.className = 'smart-skip-floating-banner auto-skip-countdown';
-  banner.id = 'smart-skip-floating-banner';
-  banner.innerHTML = `
-    <div class="smart-skip-content" style="flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 14px; min-width: 240px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-        <span class="smart-skip-text" style="font-size: 12px;">⏩ Автопропуск: <b>${label}</b> (<span id="auto-skip-count">3</span>с)</span>
-        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm smart-skip-cancel-btn" style="padding: 2px 8px; font-size: 11px;">Отмена</button>
-      </div>
-      <div style="height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden;">
-        <div id="auto-skip-bar" style="height: 100%; width: 100%; background: var(--accent, #00f0ff); transition: width 3s linear;"></div>
-      </div>
-    </div>
-  `;
-
-  wrapper.appendChild(banner);
-  activeSkipBanner = banner;
-
-  const bar = banner.querySelector('#auto-skip-bar');
-  const countEl = banner.querySelector('#auto-skip-count');
-  requestAnimationFrame(() => {
-    if (bar) bar.style.width = '0%';
-  });
-
-  const cancelBtn = banner.querySelector('.smart-skip-cancel-btn');
-  if (cancelBtn) {
-    cancelBtn.onclick = (e) => {
-      e.stopPropagation();
-      clearTimeout(autoSkipTimer);
-      if (onSkipCb) onSkipCb();
-      removeSkipBanner();
-      showToast('Автопропуск отменен', 'info');
-    };
-  }
-
-  const intervalId = setInterval(() => {
-    secondsLeft--;
-    if (countEl) countEl.textContent = `${Math.max(0, secondsLeft)}`;
-    if (secondsLeft <= 0) clearInterval(intervalId);
-  }, 1000);
-
-  autoSkipTimer = setTimeout(() => {
-    clearInterval(intervalId);
-    if (activeVideo && activeSkipBanner === banner) {
-      activeVideo.currentTime = targetTime;
-      if (onSkipCb) onSkipCb();
-      showToast(`⏩ ${label} пропущено`, 'info');
-    }
-    removeSkipBanner();
-  }, 3000);
 }
 
 function showSkipBanner(label, targetTime) {
@@ -209,10 +121,6 @@ function showSkipBanner(label, targetTime) {
 }
 
 function removeSkipBanner() {
-  if (autoSkipTimer) {
-    clearTimeout(autoSkipTimer);
-    autoSkipTimer = null;
-  }
   if (activeSkipBanner) {
     activeSkipBanner.remove();
     activeSkipBanner = null;

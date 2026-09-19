@@ -8818,12 +8818,7 @@ body.cinema-focus-active::-webkit-scrollbar,
   border: 1px solid rgba(0, 255, 102, 0.3);
 }
 
-/* 5. Auto-skip countdown banner */
-.auto-skip-countdown {
-  background: rgba(10, 11, 16, 0.94) !important;
-  border: 1px solid rgba(0, 240, 255, 0.4) !important;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.8), 0 0 16px rgba(0, 240, 255, 0.2) !important;
-}
+
 
 /* 6. Radial Quick Action Ring */
 .storm-radial-menu-portal {
