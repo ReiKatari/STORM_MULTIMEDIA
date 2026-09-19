@@ -71,11 +71,10 @@ try {
   const savedAudio = localStorage.getItem('storm_pro_audio_settings');
   if (savedAudio) {
     proAudioSettings = { ...DEFAULT_AUDIO_SETTINGS, ...JSON.parse(savedAudio) };
-  } else {
-    const nightAudio = localStorage.getItem('storm_night_audio');
-    if (nightAudio) {
-      proAudioSettings.nightMode = nightAudio === 'true';
-    }
+  }
+  const nightAudio = localStorage.getItem('storm_night_audio');
+  if (nightAudio !== null) {
+    proAudioSettings.nightMode = nightAudio === 'true';
   }
 } catch {}
 

@@ -1357,12 +1357,28 @@ body.cinema-open {
   padding: 0 !important;
 }
 
+#cinema-modal.is-fullscreen .cinema-main-column > *:not(.cinema-player-container),
+#cinema-modal:fullscreen .cinema-main-column > *:not(.cinema-player-container),
 #cinema-modal.is-fullscreen .cinema-side-column,
 #cinema-modal:fullscreen .cinema-side-column,
 #cinema-modal.is-fullscreen #cinema-side-info,
 #cinema-modal:fullscreen #cinema-side-info,
 #cinema-modal.is-fullscreen #player-utility-actions,
 #cinema-modal:fullscreen #player-utility-actions,
+#cinema-modal.is-fullscreen #ambilight-settings-panel-host,
+#cinema-modal:fullscreen #ambilight-settings-panel-host,
+#cinema-modal.is-fullscreen #cinema-modal-desc-wrap,
+#cinema-modal:fullscreen #cinema-modal-desc-wrap,
+#cinema-modal.is-fullscreen #series-seasons-container,
+#cinema-modal:fullscreen #series-seasons-container,
+#cinema-modal.is-fullscreen #cinema-reviews-container,
+#cinema-modal:fullscreen #cinema-reviews-container,
+#cinema-modal.is-fullscreen .franchise-order-section,
+#cinema-modal:fullscreen .franchise-order-section,
+#cinema-modal.is-fullscreen #cinema-modal-screenshots-container,
+#cinema-modal:fullscreen #cinema-modal-screenshots-container,
+#cinema-modal.is-fullscreen .cinema-modal-drag-handle,
+#cinema-modal:fullscreen .cinema-modal-drag-handle,
 #cinema-modal.is-fullscreen #player-selector-dropdown-wrap,
 #cinema-modal:fullscreen #player-selector-dropdown-wrap,
 #cinema-modal.is-fullscreen .player-series-quick-bar,
@@ -1373,18 +1389,33 @@ body.cinema-open {
 }
 
 #cinema-modal.is-fullscreen .cinema-main-column,
-#cinema-modal:fullscreen .cinema-main-column,
+#cinema-modal:fullscreen .cinema-main-column {
+  width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 #cinema-modal.is-fullscreen .cinema-player-container,
 #cinema-modal:fullscreen .cinema-player-container,
 #cinema-modal.is-fullscreen .cinema-player-wrapper,
 #cinema-modal:fullscreen .cinema-player-wrapper,
 #cinema-modal.is-fullscreen .player-video-box,
 #cinema-modal:fullscreen .player-video-box {
-  width: 100% !important;
-  height: 100% !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
   height: 100dvh !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
   max-height: 100dvh !important;
   aspect-ratio: unset !important;
   border-radius: 0 !important;
@@ -1394,6 +1425,8 @@ body.cinema-open {
   box-shadow: none !important;
   background: #000000 !important;
   flex: 1 1 100% !important;
+  z-index: 50 !important;
+  overflow: hidden !important;
 }
 
 #cinema-modal.is-fullscreen .cinema-player-iframe,
@@ -1470,7 +1503,7 @@ body.cinema-open {
   width: 100%;
   height: 100%;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .cinema-player-iframe {
@@ -3111,7 +3144,7 @@ body.drawer-open {
     top: auto !important;
     z-index: 5 !important;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8) !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     background: #000000 !important;
   }
 
@@ -3120,6 +3153,7 @@ body.drawer-open {
     height: 100% !important;
     border-radius: 0 !important;
     position: relative !important;
+    overflow: visible !important;
   }
 
   #cinema-modal .player-series-quick-bar {

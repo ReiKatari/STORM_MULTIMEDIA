@@ -205,8 +205,10 @@ export async function searchTmdb(query, page = 1) {
 /**
  * Получение подробной информации о релизе (актеры, режиссеры, жанры, рейтинги, сезоны)
  */
-export async function getTmdbItemDetails(id, mediaTypeHint = null, titleHint = null, yearHint = null) {
   let cleanId = id ? String(id).replace('tmdb_', '').trim() : '';
+  if (!/^\d+$/.test(cleanId)) {
+    cleanId = '';
+  }
 
   // Если числовой ID не передан, но указано название — находим точный релиз в TMDB
   if (!cleanId && titleHint) {

@@ -1713,7 +1713,8 @@ app.get('/api/media/item', async (req, res) => {
         };
       }
     } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-      const cleanTmdbId = String(id || '').replace('tmdb_', '');
+      const rawId = String(id || '').replace('tmdb_', '');
+      const cleanTmdbId = /^\d+$/.test(rawId) ? rawId : '';
       mediaDetails = await getTmdbItemDetails(cleanTmdbId, req.query.media_type, req.query.title, req.query.year);
 
       if (!mediaDetails) {
@@ -2382,15 +2383,18 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
   // 2. Если источник TMDB или ID содержит tmdb_
   const isTmdb = source === 'tmdb' || String(id).startsWith('tmdb_');
   if (isTmdb && id) {
-    const cleanId = String(id).replace('tmdb_', '').trim();
-    const details = await getTmdbItemDetails(cleanId, mediaType, cleanTitle, year);
-    if (details) {
-      cast = details.cast || [];
-      directors = details.directors || [];
-      composers = details.composers || [];
-      writers = details.writers || [];
-      cinematographers = details.cinematographers || [];
-      trivia = details.trivia || [];
+    const rawId = String(id).replace('tmdb_', '').trim();
+    const cleanId = /^\d+$/.test(rawId) ? rawId : '';
+    if (cleanId) {
+      const details = await getTmdbItemDetails(cleanId, mediaType, cleanTitle, year);
+      if (details) {
+        cast = details.cast || [];
+        directors = details.directors || [];
+        composers = details.composers || [];
+        writers = details.writers || [];
+        cinematographers = details.cinematographers || [];
+        trivia = details.trivia || [];
+      }
     }
   }
 

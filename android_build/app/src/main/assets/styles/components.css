@@ -924,16 +924,17 @@ button:active .storm-status-svg {
    ========================================================================== */
 .ambilight-aura {
   position: absolute;
-  top: -18px;
-  left: -18px;
-  right: -18px;
-  bottom: -18px;
+  top: -25px;
+  left: -25px;
+  right: -25px;
+  bottom: -25px;
   pointer-events: none;
   z-index: 1;
-  border-radius: 22px;
+  border-radius: 24px;
   transition: box-shadow 0.35s ease, opacity 0.4s ease, filter 0.35s ease;
   opacity: 0;
-  filter: blur(35px);
+  filter: blur(40px);
+  will-change: box-shadow, opacity;
 }
 
 .ambilight-aura.active {

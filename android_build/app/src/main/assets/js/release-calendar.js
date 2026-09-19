@@ -242,11 +242,11 @@ async function loadAndRenderWeek(container) {
   const defaultItems = selectedWeek === 'next' ? DEFAULT_NEXT_WEEK : DEFAULT_CURRENT_WEEK;
   let scheduleItems = [...defaultItems];
 
-  // 1. Быстрая загрузка из локального кэша, если есть
+  // 1. Быстрая загрузка из локального кэша v111, если есть
   try {
-    // Очищаем устаревший кэш v108 с моковыми данными
     localStorage.removeItem(`storm_cal_v108_${selectedWeek}`);
-    const localCached = localStorage.getItem(`storm_cal_v110_${selectedWeek}`);
+    localStorage.removeItem(`storm_cal_v110_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v111_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -255,8 +255,21 @@ async function loadAndRenderWeek(container) {
     }
   } catch {}
 
-  // 2. Отрисовываем текущие данные
-  renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
+  // 2. Если кэш пуст, показываем аккуратный спиннер загрузки
+  if (scheduleItems.length === 0) {
+    const grid = container.querySelector('#calendar-day-items-grid');
+    if (grid) {
+      grid.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
+          <div class="storm-spinner" style="width: 36px; height: 36px; border-width: 3px;"></div>
+          <div style="font-size: 14px; font-weight: 700; color: #ffffff;">Синхронизация расписания онгоингов...</div>
+          <div style="font-size: 11.5px; color: var(--text-muted);">Получение актуальных серий из Shikimori, AniLibria и TMDB</div>
+        </div>
+      `;
+    }
+  } else {
+    renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
+  }
 
   // 3. Фоновое обновление с сервера (актуализация эфира и премьер)
   try {
@@ -273,16 +286,18 @@ async function loadAndRenderWeek(container) {
         });
 
         try {
-          localStorage.setItem(`storm_cal_v110_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v111_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
-        if (!areCalendarListsEqual(scheduleItems, combined)) {
-          renderScheduleDaysAndGrid(container, combined, daysConfig);
-        }
+        renderScheduleDaysAndGrid(container, combined, daysConfig);
+      } else if (scheduleItems.length === 0) {
+        renderScheduleDaysAndGrid(container, [], daysConfig);
       }
     }
   } catch (_) {
-    // В случае сбоя сети данные уже на экране
+    if (scheduleItems.length > 0) {
+      renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
+    }
   }
 }
 

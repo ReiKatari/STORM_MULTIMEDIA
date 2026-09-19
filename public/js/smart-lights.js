@@ -159,6 +159,10 @@ export function renderSmartLightsSettings(container) {
         brightness: parseInt(briSlider.value, 10) || 180
       });
       showToast('Настройки умной подсветки сохранены', 'success');
+      const host = container.closest('#ambilight-settings-panel-host');
+      if (host) {
+        setTimeout(() => { host.innerHTML = ''; }, 350);
+      }
     };
   }
 }
