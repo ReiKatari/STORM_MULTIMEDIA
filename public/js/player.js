@@ -299,6 +299,10 @@ function initFullscreenControls() {
           toggleAdvancedPiP();
         }
 
+        if (data.type === 'STORM_MOUSE_MOVE' || data.type === 'STORM_USER_ACTIVITY' || data.event === 'mousemove') {
+          showInPlayerControls();
+        }
+
         // Автопереключение серий от встроенных плееров (Kodik, Playerjs, Allplay, FanFilm)
         const isEndedAction =
           data === 'ended' || data === 'finish' || data === 'complete' ||
@@ -1881,14 +1885,30 @@ async function initSeriesQuickBar(playerUrl) {
 
     // Синхронизируем список сезонов и серий при обнаружении многосезонного релиза
     if (data.seasons && data.seasons.length > 0) {
-      if (!currentMedia.seasons || currentMedia.seasons.length < data.seasons.length) {
-        currentMedia.seasons = data.seasons.map(s => ({
-          season_number: s.season,
-          name: s.name || `Сезон ${s.season}`,
-          episode_count: s.episodes?.length || s.episodes_count || 8,
-          overview: ''
-        }));
-        renderSeriesSeasons(currentMedia, quickBarActiveSeason, quickBarActiveEpisode);
+      if (currentMedia) {
+        currentMedia.media_type = 'series';
+        currentMedia.category = 'Сериал';
+        if (!currentMedia.seasons || currentMedia.seasons.length < data.seasons.length) {
+          currentMedia.seasons = data.seasons.map(s => ({
+            season_number: s.season,
+            name: s.name || `Сезон ${s.season}`,
+            episode_count: s.episodes?.length || s.episodes_count || 8,
+            overview: ''
+          }));
+        }
+      }
+      renderSeriesSeasons(currentMedia, quickBarActiveSeason, quickBarActiveEpisode);
+
+      // Обновляем оверлей плеера и делаем кнопки выбора серий и сезонов доступными
+      const overlay = document.getElementById('storm-inplayer-overlay');
+      if (overlay) {
+        const epBtn = overlay.querySelector('#inplayer-episodes-btn');
+        const bottomBar = overlay.querySelector('#inplayer-bottom-bar');
+        const epSheet = overlay.querySelector('#player-inplayer-episodes-sheet');
+        if (epBtn) epBtn.style.display = '';
+        if (bottomBar) bottomBar.style.display = '';
+        if (epSheet) epSheet.style.display = '';
+        updateInPlayerEpisodeInfo();
       }
     }
   } catch (err) {
@@ -4339,35 +4359,43 @@ export function checkIfMediaIsSeries(media) {
   if (titleLower.includes('обитель зла') && (titleLower.includes('мутация') || titleLower.includes('вендетта') || titleLower.includes('вырождение') || titleLower.includes('проклятие') || titleLower.includes('остров смерти') || titleLower.includes('resident evil'))) {
     return false;
   }
-  // Мультсериал "Рик и Морти" - строго сериал с сериями
+  // Мультсериалы и известные сериалы
   if (titleLower.includes('рик и морти') || titleLower.includes('rick and morty') || titleLower.includes('гриффины') || titleLower.includes('симпсоны') || titleLower.includes('южный парк')) {
     return true;
   }
-  // Явные признаки фильма или анимационного фильма (не сериала)
-  if (media.media_type === 'movie' || media.type === 'movie' || media.media_type === 'cartoon' || media.category === 'Фильм' || media.category === 'фильм' || media.category === 'Мультфильм') {
-    return false;
-  }
-  // Явные сериалы, мультсериалы и аниме-сериалы
-  if (media.media_type === 'series' || 
-      media.media_type === 'tv' || 
-      media.media_type === 'cartoon-series' || 
-      media.media_type === 'anime-series' || 
-      media.category === 'Сериал' || 
-      media.category === 'Аниме-сериал' || 
-      media.category === 'Мультсериал') {
-    return true;
-  }
-  if (media.source === 'anilibria' || media.source === 'anixart') {
+  // 1. Приоритет данных: если у медиа есть сезоны или серии - это 100% сериал
+  if (quickBarSeriesData && quickBarSeriesData.type !== 'movie' && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0) {
     return true;
   }
   if (Array.isArray(media.seasons) && media.seasons.length > 0) {
     return true;
   }
-  if (Array.isArray(media.episodes) && media.episodes.length > 1) {
+  if (Array.isArray(media.episodes) && media.episodes.length > 0) {
     return true;
   }
-  if (quickBarSeriesData && quickBarSeriesData.type !== 'movie' && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0) {
+  if ((parseInt(media.total_episodes, 10) || 0) > 1 || (parseInt(media.episode, 10) || 0) > 1 || (parseInt(media.season, 10) || 0) > 1) {
     return true;
+  }
+  if (media.source === 'anilibria' || media.source === 'anixart') {
+    return true;
+  }
+  // 2. Признаки сериала по категории, ссылке или заголовку
+  if (media.media_type === 'series' || 
+      media.media_type === 'tv' || 
+      media.media_type === 'cartoon-series' || 
+      media.media_type === 'anime-series' || 
+      media.category === 'Сериал' || 
+      media.category === 'сериал' ||
+      media.category === 'Аниме-сериал' || 
+      media.category === 'Мультсериал' ||
+      String(media.link || media.url || '').includes('serial') ||
+      String(media.link || media.url || '').includes('fan-serials') ||
+      /сезон\s*\d+/i.test(titleLower)) {
+    return true;
+  }
+  // 3. Явные признаки фильма
+  if (media.media_type === 'movie' || media.type === 'movie' || media.media_type === 'cartoon' || media.category === 'Фильм' || media.category === 'фильм' || media.category === 'Мультфильм') {
+    return false;
   }
   return false;
 }
@@ -4699,6 +4727,51 @@ export function playNextEpisode() {
   playInPlayerNextEpisode();
 }
 
+let inPlayerHideTimer = null;
+
+export function resetInPlayerHideTimer() {
+  clearTimeout(inPlayerHideTimer);
+  inPlayerHideTimer = setTimeout(() => {
+    hideInPlayerControls();
+  }, 3500);
+}
+
+export function showInPlayerControls() {
+  const modal = document.getElementById('cinema-modal');
+  const videoBox = document.querySelector('#cinema-player-wrapper .player-video-box') || document.querySelector('.player-video-box');
+  if (videoBox) videoBox.classList.add('controls-visible');
+  if (modal) modal.classList.add('controls-visible');
+  resetInPlayerHideTimer();
+}
+
+export function hideInPlayerControls(force = false) {
+  const modal = document.getElementById('cinema-modal');
+  const videoBox = document.querySelector('#cinema-player-wrapper .player-video-box') || document.querySelector('.player-video-box');
+  if (!force && videoBox) {
+    const vs = videoBox.querySelector('#player-inplayer-voice-sheet');
+    const jw = videoBox.querySelector('#inplayer-jog-dial-widget');
+    const es = videoBox.querySelector('#player-inplayer-episodes-sheet');
+    const isVoiceOpen = vs && vs.style.display !== 'none' && vs.classList.contains('is-open');
+    const isJogOpen = jw && jw.style.display !== 'none';
+    const isEpOpen = es && es.classList.contains('is-open');
+    if (isVoiceOpen || isJogOpen || isEpOpen) return;
+  }
+  if (videoBox) videoBox.classList.remove('controls-visible');
+  if (modal) modal.classList.remove('controls-visible');
+}
+
+if (typeof window !== 'undefined' && !window._stormGlobalControlsListenersAttached) {
+  window._stormGlobalControlsListenersAttached = true;
+  const onUserActivity = () => {
+    const modal = document.getElementById('cinema-modal');
+    if (modal && (modal.classList.contains('is-open') || modal.classList.contains('is-fullscreen'))) {
+      showInPlayerControls();
+    }
+  };
+  window.addEventListener('mousemove', onUserActivity, { passive: true });
+  window.addEventListener('pointermove', onUserActivity, { passive: true });
+}
+
 export function mountInPlayerOverlay(videoBox) {
   if (!videoBox) return;
   attachCinemaDblClick(videoBox);
@@ -4713,6 +4786,9 @@ export function mountInPlayerOverlay(videoBox) {
   overlay.id = 'storm-inplayer-overlay';
   attachCinemaDblClick(overlay);
   overlay.innerHTML = `
+    <!-- Прозрачная зона улавливания курсора мыши в верхней части плеера -->
+    <div class="inplayer-top-sensor" id="inplayer-top-sensor"></div>
+
     <!-- Верхняя полоса управления Progressive Disclosure HUD -->
     <div class="inplayer-top-bar">
       <div class="inplayer-title-info">
@@ -5175,50 +5251,33 @@ export function mountInPlayerOverlay(videoBox) {
     };
   }
 
-  // Таймер авто-скрытия элементов управления (Controls Hide Timer)
-  const modal = document.getElementById('cinema-modal');
-  let hideTimer = null;
-  const resetHideTimer = () => {
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => {
-      const vs = videoBox.querySelector('#player-inplayer-voice-sheet');
-      const jw = videoBox.querySelector('#inplayer-jog-dial-widget');
-      const es = videoBox.querySelector('#player-inplayer-episodes-sheet');
-      const isVoiceOpen = vs && vs.style.display !== 'none' && vs.classList.contains('is-open');
-      const isJogOpen = jw && jw.style.display !== 'none';
-      const isEpOpen = es && es.classList.contains('is-open');
-      if (!isVoiceOpen && !isJogOpen && !isEpOpen) {
-        videoBox.classList.remove('controls-visible');
-        if (modal) modal.classList.remove('controls-visible');
-      }
-    }, 3500);
-  };
+  // Сенсор верхней зоны для мгновенного отображения элементов управления
+  const topSensor = overlay.querySelector('#inplayer-top-sensor');
+  if (topSensor) {
+    topSensor.addEventListener('mousemove', showInPlayerControls);
+    topSensor.addEventListener('mouseenter', showInPlayerControls);
+    topSensor.addEventListener('pointermove', showInPlayerControls);
+  }
 
-  const showControls = () => {
-    videoBox.classList.add('controls-visible');
-    if (modal) modal.classList.add('controls-visible');
-    resetHideTimer();
-  };
+  videoBox.addEventListener('mousemove', showInPlayerControls);
+  videoBox.addEventListener('pointermove', showInPlayerControls);
+
+  const modal = document.getElementById('cinema-modal');
+  if (modal) {
+    modal.addEventListener('mousemove', showInPlayerControls);
+    modal.addEventListener('pointermove', showInPlayerControls);
+    const headerActions = modal.querySelector('.cinema-header-actions');
+    if (headerActions) {
+      headerActions.addEventListener('mouseenter', () => {
+        clearTimeout(inPlayerHideTimer);
+        showInPlayerControls();
+      });
+      headerActions.addEventListener('mouseleave', resetInPlayerHideTimer);
+    }
+  }
 
   if (!videoBox.dataset.hasInplayerListeners) {
     videoBox.dataset.hasInplayerListeners = 'true';
-
-    videoBox.addEventListener('mousemove', showControls);
-    videoBox.addEventListener('pointermove', showControls);
-
-    if (modal && !modal.dataset.hasInplayerControlsListeners) {
-      modal.dataset.hasInplayerControlsListeners = 'true';
-      modal.addEventListener('mousemove', showControls);
-      modal.addEventListener('pointermove', showControls);
-      const headerActions = modal.querySelector('.cinema-header-actions');
-      if (headerActions) {
-        headerActions.addEventListener('mouseenter', () => {
-          clearTimeout(hideTimer);
-          showControls();
-        });
-        headerActions.addEventListener('mouseleave', resetHideTimer);
-      }
-    }
 
     // Тап/клик по видео: закрытие шторок или переключение видимости оверлея
     videoBox.addEventListener('click', (e) => {
@@ -5234,7 +5293,7 @@ export function mountInPlayerOverlay(videoBox) {
           e.target.closest('.storm-modal-close') ||
           e.target.closest('.storm-modal-header') ||
           e.target.closest('.storm-skip-btn')) {
-        resetHideTimer();
+        resetInPlayerHideTimer();
         return;
       }
 
@@ -5252,11 +5311,9 @@ export function mountInPlayerOverlay(videoBox) {
 
       const isVis = videoBox.classList.contains('controls-visible');
       if (isVis) {
-        videoBox.classList.remove('controls-visible');
-        if (modal) modal.classList.remove('controls-visible');
-        clearTimeout(hideTimer);
+        hideInPlayerControls(true);
       } else {
-        showControls();
+        showInPlayerControls();
       }
     });
 
@@ -5274,12 +5331,12 @@ export function mountInPlayerOverlay(videoBox) {
           !e.target.closest('.player-inplayer-episodes-sheet') && 
           !e.target.closest('.player-inplayer-voice-sheet') && 
           !e.target.closest('.inplayer-jog-dial-widget')) {
-        resetHideTimer();
+        resetInPlayerHideTimer();
       }
     }, { passive: true });
   }
 
-  showControls();
+  showInPlayerControls();
 
   updateInPlayerEpisodeInfo();
   const savedSpeed = parseFloat(localStorage.getItem('storm_playback_speed') || '1');
@@ -8631,17 +8688,21 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   if (!container) return;
 
   const detType = detectClientMediaType(mediaDetails);
-  const isSeries = detType === 'series' ||
+  const isSeries = checkIfMediaIsSeries(mediaDetails) ||
+                   checkIfMediaIsSeries(currentMedia) ||
+                   detType === 'series' ||
                    detType === 'cartoon-series' ||
                    detType === 'anime-series' ||
                    mediaDetails.media_type === 'series' || 
                    mediaDetails.category === 'Сериал' || 
+                   mediaDetails.category === 'сериал' ||
                    mediaDetails.media_type === 'cartoon-series' || 
                    mediaDetails.media_type === 'anime-series' ||
                    mediaDetails.source === 'anilibria' ||
                    mediaDetails.source === 'anixart' ||
                    (mediaDetails.seasons && mediaDetails.seasons.length > 0) ||
-                   (mediaDetails.episodes && mediaDetails.episodes.length > 0);
+                   (mediaDetails.episodes && mediaDetails.episodes.length > 0) ||
+                   (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0);
   let seasons = mediaDetails.seasons || [];
 
   if (quickBarSeriesData?.seasons && quickBarSeriesData.seasons.length > seasons.length) {
