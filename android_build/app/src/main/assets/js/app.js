@@ -4392,22 +4392,82 @@ window.applyCountryFilter = applyCountryFilter;
 // МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (MODALS)
 // -------------------------------------------------------------
 function initModals() {
-  // Закрытие всех модалок и выпадающих списков по нажатию клавиши Escape (ESC)
+  // Иерархическое закрытие через Escape (ESC):
+  // 1. Кастомные выпадающие списки -> 2. Всплывающие поповеры/стикеры -> 3. Настройки Ambilight ->
+  // 4. Студийные панели (Pro Видео, Pro Звук) -> 5. Полноэкранный режим видео -> 6. Вторичные модалки -> 7. Плеер
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' || e.keyCode === 27) {
-      // Закрываем открытые кастомные выпадающие списки
-      document.querySelectorAll('.storm-custom-dropdown.is-open').forEach(dd => {
-        dd.classList.remove('is-open');
-      });
-      // Если открыт плеер - закрываем его через специальную функцию с очисткой потока
-      const cinemaModal = document.getElementById('cinema-modal');
-      if (cinemaModal && cinemaModal.classList.contains('is-open')) {
-        closePlayerModal();
+    if (e.key !== 'Escape' && e.keyCode !== 27) return;
+
+    // 1. Открытые кастомные выпадающие списки
+    const openDropdowns = document.querySelectorAll('.storm-custom-dropdown.is-open');
+    if (openDropdowns.length > 0) {
+      openDropdowns.forEach(dd => dd.classList.remove('is-open'));
+      e.stopPropagation();
+      return;
+    }
+
+    // 2. Всплывающие поповеры (стикеры, обои, превью карточек)
+    let closedPopover = false;
+    const stickerPopover = document.getElementById('chat-stickers-popover');
+    if (stickerPopover && stickerPopover.style.display !== 'none') {
+      stickerPopover.style.display = 'none';
+      closedPopover = true;
+    }
+    const wpPopover = document.getElementById('room-wallpapers-popover');
+    if (wpPopover && wpPopover.style.display !== 'none') {
+      wpPopover.style.display = 'none';
+      closedPopover = true;
+    }
+    if (typeof hideCardHoverPreview === 'function') {
+      hideCardHoverPreview();
+    }
+    if (closedPopover) {
+      e.stopPropagation();
+      return;
+    }
+
+    // 3. Панель настроек Ambilight
+    const ambHost = document.getElementById('ambilight-settings-panel-host');
+    if (ambHost && ambHost.children.length > 0) {
+      ambHost.innerHTML = '';
+      e.stopPropagation();
+      return;
+    }
+
+    // 4. Внутренняя студийная шторка плеера (Pro Видео, Pro Звук, Ambilight, Субтитры)
+    const studioBackdrop = document.getElementById('player-studio-modal-backdrop');
+    if (studioBackdrop && studioBackdrop.style.display !== 'none') {
+      studioBackdrop.style.display = 'none';
+      const drawerBody = studioBackdrop.querySelector('#studio-drawer-body');
+      if (drawerBody) drawerBody.style.display = 'block';
+      document.querySelectorAll('.studio-tab-btn').forEach(btn => btn.classList.remove('active'));
+      e.stopPropagation();
+      return;
+    }
+
+    // 5. Полноэкранный режим плеера
+    const cinemaModal = document.getElementById('cinema-modal');
+    if (cinemaModal && cinemaModal.classList.contains('is-fullscreen')) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
       }
-      // Закрываем любые другие открытые модальные окна
-      document.querySelectorAll('.storm-modal-backdrop.is-open').forEach(backdrop => {
-        backdrop.classList.remove('is-open');
-      });
+      cinemaModal.classList.remove('is-fullscreen');
+      e.stopPropagation();
+      return;
+    }
+
+    // 6. Любые открытые вторичные модальные окна (КРОМЕ видеоплеера cinema-modal)
+    const secondaryModals = Array.from(document.querySelectorAll('.storm-modal-backdrop.is-open')).filter(m => m.id !== 'cinema-modal');
+    if (secondaryModals.length > 0) {
+      const topModal = secondaryModals[secondaryModals.length - 1];
+      topModal.classList.remove('is-open');
+      e.stopPropagation();
+      return;
+    }
+
+    // 7. И только если открыт исключительно видеоплеер — закрываем его
+    if (cinemaModal && cinemaModal.classList.contains('is-open')) {
+      closePlayerModal();
     }
   });
 
@@ -4420,40 +4480,31 @@ function initModals() {
     }
   });
 
-  // Закрытие при клике по бэкдропу или крестику
+  // Закрытие при клике по затемненному бэкдропу
   document.querySelectorAll('.storm-modal-backdrop').forEach(backdrop => {
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) {
-        backdrop.classList.remove('is-open');
-        closePlayerModal();
+        if (backdrop.id === 'cinema-modal') {
+          closePlayerModal();
+        } else {
+          backdrop.classList.remove('is-open');
+        }
       }
     });
   });
 
+  // Закрытие по крестику
   document.querySelectorAll('.storm-modal-close').forEach(btn => {
     btn.addEventListener('click', () => {
       const modal = btn.closest('.storm-modal-backdrop');
-      if (modal) modal.classList.remove('is-open');
-      closePlayerModal();
-    });
-  });
-
-  // Закрытие всех модальных окон и поповеров через ESC
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const openModals = document.querySelectorAll('.storm-modal-backdrop.is-open');
-      if (openModals.length > 0) {
-        openModals.forEach(m => m.classList.remove('is-open'));
-        closePlayerModal();
+      if (modal) {
+        if (modal.id === 'cinema-modal') {
+          closePlayerModal();
+        } else {
+          modal.classList.remove('is-open');
+        }
       }
-      hideCardHoverPreview();
-      const popover = document.getElementById('chat-stickers-popover');
-      if (popover) popover.style.display = 'none';
-      const wpPopover = document.getElementById('room-wallpapers-popover');
-      if (wpPopover) wpPopover.style.display = 'none';
-      const ambHost = document.getElementById('ambilight-settings-panel-host');
-      if (ambHost) ambHost.innerHTML = '';
-    }
+    });
   });
 
   // Открытие модалки логина

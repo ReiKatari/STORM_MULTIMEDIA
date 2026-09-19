@@ -1120,6 +1120,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
   initFullscreenControls();
   initMobilePlayerControls();
 
+  // Автоматическое определение последней незаконченной серии для сериалов
+  if (!options.initialSeason || !options.initialEpisode) {
+    const resumeInfo = resolveLastUnfinishedEpisode(mediaItem);
+    if (resumeInfo) {
+      if (!options.initialSeason && resumeInfo.season) options.initialSeason = resumeInfo.season;
+      if (!options.initialEpisode && resumeInfo.episode) options.initialEpisode = resumeInfo.episode;
+    }
+  }
+
   // Обновляем URL для глубокого связывания (Deep Linking)
   updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
 
@@ -2840,14 +2849,36 @@ function setupVideoFeatures(video, wrapper) {
 export function toggleNightModeAudio(video = document.getElementById('storm-video-player')) {
   nightAudioModeEnabled = !getProAudioNightMode();
   setProAudioNightMode(nightAudioModeEnabled);
+  try {
+    localStorage.setItem('storm_night_audio', nightAudioModeEnabled ? 'true' : 'false');
+  } catch {}
   showToast(`🌙 Ночной режим звука: ${nightAudioModeEnabled ? 'Включен (диалоги четче, взрывы мягче)' : 'Выключен (стандартный звук)'}`, 'info');
 
   const btn = document.getElementById('toggle-night-audio-btn');
-  if (btn) btn.classList.toggle('active', nightAudioModeEnabled);
+  if (btn) {
+    btn.classList.toggle('active', nightAudioModeEnabled);
+    const badge = btn.querySelector('.night-audio-badge');
+    if (badge) {
+      badge.textContent = nightAudioModeEnabled ? 'ВКЛ' : 'ВЫКЛ';
+      badge.style.color = nightAudioModeEnabled ? 'var(--storm-accent-green, #10b981)' : 'var(--text-muted)';
+    }
+  }
 }
 
 export function applyNightModeAudio(video) {
+  const saved = localStorage.getItem('storm_night_audio') === 'true';
+  nightAudioModeEnabled = saved;
   setProAudioNightMode(nightAudioModeEnabled);
+
+  const btn = document.getElementById('toggle-night-audio-btn');
+  if (btn) {
+    btn.classList.toggle('active', nightAudioModeEnabled);
+    const badge = btn.querySelector('.night-audio-badge');
+    if (badge) {
+      badge.textContent = nightAudioModeEnabled ? 'ВКЛ' : 'ВЫКЛ';
+      badge.style.color = nightAudioModeEnabled ? 'var(--storm-accent-green, #10b981)' : 'var(--text-muted)';
+    }
+  }
 }
 
 // ==========================================
@@ -3358,6 +3389,14 @@ function renderAmbilightSettings(host) {
         <button type="button" class="storm-btn storm-btn-sm" id="close-ambilight-settings-btn" style="padding: 2px 8px;">✕</button>
       </div>
 
+      <!-- Главный переключатель состояния Ambilight -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid var(--border-subtle);">
+        <span style="font-size: 12px; font-weight: 700;">Состояние подсветки:</span>
+        <button type="button" class="storm-btn storm-btn-sm ${ambilightEnabled ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="ambilight-master-toggle-btn">
+          ${ambilightEnabled ? '🟢 Включен' : '⚪ Выключен'}
+        </button>
+      </div>
+
       <!-- Выбор режима свечения -->
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button type="button" class="storm-btn storm-btn-sm ${ambilightSettings.mode === 'auto' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="mode-auto-btn">
@@ -3405,6 +3444,12 @@ function renderAmbilightSettings(host) {
         </div>
       </div>
 
+      <!-- Кнопки сохранения и закрытия -->
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="ambilight-cancel-panel-btn">Отмена</button>
+        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="ambilight-save-close-btn">💾 Сохранить и закрыть</button>
+      </div>
+
       <!-- Секция умного дома (WLED / Hue) -->
       <div id="smart-lights-mount" style="margin-top: 14px; border-top: 1px solid var(--border-subtle); padding-top: 12px;"></div>
     </div>
@@ -3412,6 +3457,33 @@ function renderAmbilightSettings(host) {
 
   const closeBtn = host.querySelector('#close-ambilight-settings-btn');
   if (closeBtn) closeBtn.onclick = () => { host.innerHTML = ''; };
+
+  const masterToggleBtn = host.querySelector('#ambilight-master-toggle-btn');
+  if (masterToggleBtn) {
+    masterToggleBtn.onclick = () => {
+      toggleAmbilight();
+      masterToggleBtn.className = `storm-btn storm-btn-sm ${ambilightEnabled ? 'storm-btn-primary' : 'storm-btn-secondary'}`;
+      masterToggleBtn.textContent = ambilightEnabled ? '🟢 Включен' : '⚪ Выключен';
+      applyAmbilightInstantGlow();
+    };
+  }
+
+  const saveCloseBtn = host.querySelector('#ambilight-save-close-btn');
+  if (saveCloseBtn) {
+    saveCloseBtn.onclick = () => {
+      saveAmbilightSettings();
+      applyAmbilightInstantGlow();
+      host.innerHTML = '';
+      showToast('✨ Настройки Ambilight сохранены', 'success');
+    };
+  }
+
+  const cancelPanelBtn = host.querySelector('#ambilight-cancel-panel-btn');
+  if (cancelPanelBtn) {
+    cancelPanelBtn.onclick = () => {
+      host.innerHTML = '';
+    };
+  }
 
   // Монтируем панель умной подсветки
   const lightsMount = host.querySelector('#smart-lights-mount');
@@ -6133,6 +6205,7 @@ function renderPlayerUtilityButtons() {
             <button type="button" class="studio-tab-btn ${nightAudioModeEnabled ? 'active' : ''}" id="toggle-night-audio-btn" title="Ночной режим звука (компрессор динамического диапазона)">
               <span class="studio-tab-icon">🌙</span>
               <span class="studio-tab-text">Ночной звук</span>
+              <span class="studio-tab-badge night-audio-badge" style="font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-left: 4px; background: rgba(0,0,0,0.4); color: ${nightAudioModeEnabled ? 'var(--storm-accent-green, #10b981)' : 'var(--text-muted)'};">${nightAudioModeEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span>
             </button>
           </div>
         </div>
@@ -6144,10 +6217,6 @@ function renderPlayerUtilityButtons() {
             <button type="button" class="studio-tab-btn" id="studio-tab-cast" title="В главных ролях и съемочная группа">
               <span class="studio-tab-icon">🎭</span>
               <span class="studio-tab-text">В ролях</span>
-            </button>
-            <button type="button" class="studio-tab-btn" id="studio-tab-services" title="Интеллектуальные сервисы: Whisper AI, X-Ray, Офлайн, Торренты">
-              <span class="studio-tab-icon">⚡</span>
-              <span class="studio-tab-text">Сервисы и ИИ</span>
             </button>
             <button type="button" class="studio-tab-btn" id="studio-tab-subtitles" title="Внешние дорожки и пользовательские субтитры">
               <span class="studio-tab-icon">💬</span>
@@ -6258,9 +6327,10 @@ function renderPlayerUtilityButtons() {
   if (!backdrop._hasEscapeListener) {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && backdrop && backdrop.style.display !== 'none') {
+        e.stopImmediatePropagation();
         closeDrawer();
       }
-    });
+    }, true);
     backdrop._hasEscapeListener = true;
   }
 
@@ -6342,93 +6412,6 @@ function renderPlayerUtilityButtons() {
         }
 
         if (settingsHost) renderAmbilightSettings(settingsHost);
-      });
-    };
-  }
-
-  // 4. Сервисы и ИИ
-  const tabServices = container.querySelector('#studio-tab-services');
-  if (tabServices) {
-    tabServices.onclick = () => {
-      openDrawerTab('services', '⚡', 'Интеллектуальные сервисы и утилиты воспроизведения', (body) => {
-        body.innerHTML = `
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
-            <button type="button" class="storm-btn storm-btn-secondary ${document.getElementById('toggle-whisper-btn')?.classList.contains('active') ? 'active' : ''} storm-btn-sm" id="drawer-whisper-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
-              <span style="font-size: 16px;">🎙️</span>
-              <div style="text-align: left;">
-                <div style="font-weight: 800; font-size: 12px;">Whisper AI</div>
-                <div class="storm-btn-subtext">Распознавание речи на лету</div>
-              </div>
-            </button>
-
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-xray-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
-              <span style="font-size: 16px;">🔍</span>
-              <div style="text-align: left;">
-                <div style="font-weight: 800; font-size: 12px;">X-Ray Режим</div>
-                <div class="storm-btn-subtext">Актеры, саундтрек и факты</div>
-              </div>
-            </button>
-
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-offline-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
-              <span style="font-size: 16px;">💾</span>
-              <div style="text-align: left;">
-                <div style="font-weight: 800; font-size: 12px;">Офлайн релиз</div>
-                <div class="storm-btn-subtext">Сохранить в память PWA</div>
-              </div>
-            </button>
-
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-torr-btn" style="padding: 10px 14px; display: flex; align-items: center; justify-content: flex-start; gap: 10px;">
-              <span style="font-size: 16px;">🧲</span>
-              <div style="text-align: left;">
-                <div style="font-weight: 800; font-size: 12px;">Торренты и P2P</div>
-                <div class="storm-btn-subtext">TorrServer и AceStream</div>
-              </div>
-            </button>
-          </div>
-
-          <div id="drawer-torrserver-host" style="display: none; margin-top: 10px;"></div>
-        `;
-
-        const whisperBtn = body.querySelector('#drawer-whisper-btn');
-        if (whisperBtn) {
-          whisperBtn.onclick = () => {
-            toggleWhisperAiSubtitles();
-            whisperBtn.classList.toggle('active');
-          };
-        }
-
-        const xrayBtn = body.querySelector('#drawer-xray-btn');
-        if (xrayBtn) {
-          xrayBtn.onclick = () => {
-            activeTabName = 'xray';
-            if (drawerHeading) drawerHeading.textContent = 'STORM X-Ray (Актеры, саундтрек и факты)';
-            if (drawerIcon) drawerIcon.textContent = '🔍';
-            renderDrawerXRayView(body, () => {
-              activeTabName = null;
-              if (tabServices) tabServices.click();
-            });
-          };
-        }
-
-        const offlineBtn = body.querySelector('#drawer-offline-btn');
-        if (offlineBtn) {
-          offlineBtn.onclick = () => {
-            if (currentMedia) saveMediaForOffline(currentMedia);
-          };
-        }
-
-        const torrBtn = body.querySelector('#drawer-torr-btn');
-        const torrHost = body.querySelector('#drawer-torrserver-host');
-        if (torrBtn && torrHost) {
-          torrBtn.onclick = () => {
-            if (torrHost.style.display === 'none') {
-              torrHost.style.display = 'block';
-              renderTorrServerSettings(torrHost);
-            } else {
-              torrHost.style.display = 'none';
-            }
-          };
-        }
       });
     };
   }
@@ -6695,6 +6678,56 @@ function setSeasonExplicitStatus(mediaId, seasonNum = 1, status = null) {
       localStorage.removeItem(sKey);
     }
   } catch {}
+}
+
+export function resolveLastUnfinishedEpisode(mediaItem) {
+  if (!mediaItem) return null;
+  const mediaId = String(mediaItem.id || '');
+  const cleanTitle = (mediaItem.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+  try {
+    // 1. Проверяем список "Продолжить просмотр"
+    const rawCW = localStorage.getItem('storm_continue_watching');
+    if (rawCW) {
+      const list = JSON.parse(rawCW);
+      if (Array.isArray(list)) {
+        const item = list.find(it => {
+          if (mediaId && String(it.media_id) === mediaId) return true;
+          const itTitle = (it.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+          return cleanTitle && (itTitle === cleanTitle || itTitle.includes(cleanTitle) || cleanTitle.includes(itTitle));
+        });
+        if (item && (item.season || item.episode)) {
+          return {
+            season: parseInt(item.season, 10) || 1,
+            episode: parseInt(item.episode, 10) || 1
+          };
+        }
+      }
+    }
+
+    // 2. Проверяем сохраненные просмотренные серии по сезонам
+    for (let s = 1; s <= 30; s++) {
+      const sKey = `storm_watched_eps_${mediaId}_s${s}`;
+      const rawEps = localStorage.getItem(sKey) || (s === 1 ? localStorage.getItem(`storm_watched_eps_${mediaId}`) : null);
+      if (rawEps) {
+        const arr = JSON.parse(rawEps);
+        if (Array.isArray(arr) && arr.length > 0) {
+          const sorted = arr.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+          let firstMissing = 1;
+          for (let i = 1; i <= sorted[sorted.length - 1] + 1; i++) {
+            if (!sorted.includes(i)) {
+              firstMissing = i;
+              break;
+            }
+          }
+          return { season: s, episode: firstMissing };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error resolving unfinished episode:', e);
+  }
+  return null;
 }
 
 function getAllEpisodesForSeason(mediaId, seasonNum, passedList = []) {
@@ -7871,11 +7904,14 @@ function renderDetailedMediaInfo(mediaDetails) {
                    currentMedia?.media_type === 'anime-series' || currentMedia?.media_type === 'cartoon-series' ||
                    Boolean(mediaDetails.seasons?.length || currentMedia?.seasons?.length || quickBarSeriesData?.seasons?.length);
   const isAnime = (mediaDetails.media_type && mediaDetails.media_type.includes('anime')) || (currentMedia?.media_type && currentMedia.media_type.includes('anime'));
-  const defaultRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~50 мин / серия') : '';
+  const fallbackRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~45 мин / серия') : 'Не указана';
   
   // Проверяем, есть ли уже активный видеоплеер с точной длительностью потока
   const activeVideo = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
-  let rawDuration = mediaDetails.duration || mediaDetails.runtime_minutes || mediaDetails.runtime;
+  let rawDuration = mediaDetails.duration || mediaDetails.runtime_minutes || mediaDetails.runtime || mediaDetails.film_length || mediaDetails.movie_length;
+  if (!rawDuration && isSeries && (mediaDetails.episode_duration || (Array.isArray(mediaDetails.episode_run_time) ? mediaDetails.episode_run_time[0] : mediaDetails.episode_run_time))) {
+    rawDuration = mediaDetails.episode_duration || (Array.isArray(mediaDetails.episode_run_time) ? mediaDetails.episode_run_time[0] : mediaDetails.episode_run_time);
+  }
   if ((!rawDuration || rawDuration === '145 мин' || rawDuration === '2 ч 25 мин') && activeVideo && activeVideo.duration && isFinite(activeVideo.duration) && activeVideo.duration > 30) {
     rawDuration = activeVideo.duration;
   }
@@ -7883,7 +7919,7 @@ function renderDetailedMediaInfo(mediaDetails) {
     rawDuration = null;
   }
   const formattedDur = formatDurationDisplay(rawDuration);
-  const duration = formattedDur || defaultRuntime || 'Определение длительности...';
+  const duration = formattedDur || fallbackRuntime;
   const ratingKp = mediaDetails.rating_kp || mediaDetails.rating || '—';
   const ratingImdb = mediaDetails.rating_imdb || mediaDetails.rating_tmdb || mediaDetails.rating || '—';
   const ratingTmdb = mediaDetails.rating_tmdb || mediaDetails.rating || '—';
@@ -7934,6 +7970,58 @@ function renderDetailedMediaInfo(mediaDetails) {
       { id: 1564757, name: 'Сэди Синк', character: 'Роль держится в тайне', photo: 'https://image.tmdb.org/t/p/w500/i9YF0p92mF5xM61z7W2o6Z8tQ.jpg' },
       { id: 121544, name: 'Чарли Кокс', character: 'Мэтт Мёрдок / Сорвиголова', photo: 'https://image.tmdb.org/t/p/w500/p402a4r49E7fP1lD91k05y7VnN.jpg' }
     ];
+  }
+
+  // Фоновый дозапрос актерского состава, если он не был загружен сразу
+  if (cast.length === 0 && cleanTitle) {
+    const fetchCastAsync = async () => {
+      try {
+        const q = new URLSearchParams({
+          title: cleanTitle,
+          original_title: mediaDetails.original_title || '',
+          year: String(canonYr || mediaDetails.year || ''),
+          media_type: mediaDetails.media_type || '',
+          actors: mediaDetails.actors || ''
+        }).toString();
+        const res = await fetch(`/api/media/cast?${q}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.cast) && data.cast.length > 0) {
+            mediaDetails.cast = data.cast;
+            if (currentMedia) currentMedia.cast = data.cast;
+            if (data.directors?.length) {
+              mediaDetails.directors = data.directors;
+              if (currentMedia) currentMedia.directors = data.directors;
+            }
+            const castScroll = container.querySelector('#cinema-side-cast-scroll');
+            const castSubtitle = container.querySelector('#cinema-side-cast-subtitle');
+            if (castScroll) {
+              if (castSubtitle) castSubtitle.textContent = `В главных ролях (${data.cast.length})`;
+              castScroll.innerHTML = data.cast.map(actor => `
+                <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
+                  <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+                  <div class="cinema-actor-info">
+                    <div class="cinema-actor-name">${actor.name}</div>
+                    <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
+                  </div>
+                </div>
+              `).join('');
+              castScroll.querySelectorAll('.cinema-actor-chip').forEach(chip => {
+                chip.onclick = () => {
+                  openPersonModal(chip.dataset.actorId, chip.dataset.actorName);
+                };
+              });
+            }
+          } else {
+            const castScroll = container.querySelector('#cinema-side-cast-scroll');
+            if (castScroll && castScroll.querySelector('.cast-loading-indicator')) {
+              castScroll.innerHTML = `<div style="padding: 6px 12px; font-size: 12px; color: var(--text-muted);">Актерский состав не указан</div>`;
+            }
+          }
+        }
+      } catch (_) {}
+    };
+    fetchCastAsync();
   }
 
   container.innerHTML = `
@@ -8034,25 +8122,28 @@ function renderDetailedMediaInfo(mediaDetails) {
     ` : ''}
 
     <!-- Актерский состав -->
-    ${cast.length > 0 ? `
-      <div class="cinema-person-section">
-        <div class="cinema-section-subtitle">
-          <span>🎭</span>
-          <span style="font-weight: 800;">В главных ролях (${cast.length})</span>
-        </div>
-        <div class="cinema-cast-scroll">
-          ${cast.map(actor => `
-            <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
-              <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
-              <div class="cinema-actor-info">
-                <div class="cinema-actor-name">${actor.name}</div>
-                <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
+    <div class="cinema-person-section" id="cinema-side-cast-section">
+      <div class="cinema-section-subtitle">
+        <span>🎭</span>
+        <span style="font-weight: 800;" id="cinema-side-cast-subtitle">В главных ролях ${cast.length > 0 ? `(${cast.length})` : ''}</span>
       </div>
-    ` : ''}
+      <div class="cinema-cast-scroll" id="cinema-side-cast-scroll">
+        ${cast.length > 0 ? cast.map(actor => `
+          <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
+            <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+            <div class="cinema-actor-info">
+              <div class="cinema-actor-name">${actor.name}</div>
+              <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
+            </div>
+          </div>
+        `).join('') : `
+          <div class="cast-loading-indicator" style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; color: var(--text-muted);">
+            <div class="storm-spinner" style="width: 14px; height: 14px;"></div>
+            <span>Поиск актерского состава...</span>
+          </div>
+        `}
+      </div>
+    </div>
   `;
 
   // Клики по жанрам
@@ -8461,8 +8552,23 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
     }
   }
 
-  let activeSeasonNum = initialSeason ? parseInt(initialSeason, 10) : seasons[0].season_number;
-  let activeEpisodeNum = initialEpisode ? parseInt(initialEpisode, 10) : 1;
+  let activeSeasonNum = initialSeason ? parseInt(initialSeason, 10) : null;
+  let activeEpisodeNum = initialEpisode ? parseInt(initialEpisode, 10) : null;
+
+  if (!activeSeasonNum || !activeEpisodeNum) {
+    const resume = resolveLastUnfinishedEpisode(mediaDetails) || resolveLastUnfinishedEpisode(currentMedia);
+    if (resume) {
+      if (!activeSeasonNum && resume.season) activeSeasonNum = resume.season;
+      if (!activeEpisodeNum && resume.episode) activeEpisodeNum = resume.episode;
+    }
+  }
+
+  if (!activeSeasonNum) {
+    activeSeasonNum = seasons[0] ? seasons[0].season_number : 1;
+  }
+  if (!activeEpisodeNum) {
+    activeEpisodeNum = 1;
+  }
 
   function updateEpisodeSynopsis(ep) {
     const modalDesc = document.getElementById('cinema-modal-desc');
