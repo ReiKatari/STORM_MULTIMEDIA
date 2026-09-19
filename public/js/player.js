@@ -80,7 +80,7 @@ const AMBILIGHT_PRESETS = [
 
 // Skip Intro и Outro
 let skipIntervals = null;
-let autoSkipEnabled = localStorage.getItem('storm_auto_skip') === 'true';
+localStorage.removeItem('storm_auto_skip');
 let vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
 
 // WebTorrent
@@ -3717,13 +3717,8 @@ function stopAmbilight() {
 // ==========================================
 // ПРОПУСК ОПЕНИНГОВ И ЭНДИНГОВ (SKIP INTRO/OUTRO)
 // ==========================================
-let hasAutoSkippedOp = false;
-let hasAutoSkippedEd = false;
-
 async function loadSkipTimes(mediaId, episode) {
   skipIntervals = null;
-  hasAutoSkippedOp = false;
-  hasAutoSkippedEd = false;
   try {
     const title = currentMedia?.title || currentMedia?.original_title || '';
     const video = document.getElementById('storm-video-player');
@@ -3809,40 +3804,16 @@ function setupSkipLogic(video) {
 
     if (!skipIntervals) return;
 
-    // Сброс флага автопропуска, если зритель перемотал назад до заставки
-    if (skipIntervals.op && time < Math.max(0, skipIntervals.op.start - 3)) {
-      hasAutoSkippedOp = false;
-    }
-    if (skipIntervals.ed && time < Math.max(0, skipIntervals.ed.start - 3)) {
-      hasAutoSkippedEd = false;
-    }
-
-    // Пропуск заставки (только для проверенных интервалов, не обрезая диалоги)
+    // Отображение кнопки ручного пропуска заставки
     if (skipIntervals.op && time >= skipIntervals.op.start && time <= skipIntervals.op.end) {
-      if (autoSkipEnabled && skipIntervals.verified && !hasAutoSkippedOp) {
-        hasAutoSkippedOp = true;
-        video.currentTime = skipIntervals.op.end;
-        showToast('⏩ Заставка автоматически пропущена', 'info');
-      } else if (skipIntroBtn && !autoSkipEnabled) {
-        skipIntroBtn.style.display = 'block';
-      }
+      if (skipIntroBtn) skipIntroBtn.style.display = 'block';
     } else if (skipIntroBtn) {
       skipIntroBtn.style.display = 'none';
     }
 
-    // Пропуск титров (переход к сцене после титров без принудительного обрыва серии)
+    // Отображение кнопки ручного пропуска титров
     if (skipIntervals.ed && time >= skipIntervals.ed.start && time <= skipIntervals.ed.end) {
-      if (autoSkipEnabled && skipIntervals.verified && !hasAutoSkippedEd) {
-        hasAutoSkippedEd = true;
-        if (video.duration && skipIntervals.ed.end < video.duration - 12) {
-          video.currentTime = skipIntervals.ed.end;
-          showToast('⏩ Титры пропущены (сцена после титров)', 'info');
-        } else {
-          showToast('⏩ Финальные титры', 'info');
-        }
-      } else if (skipOutroBtn && !autoSkipEnabled) {
-        skipOutroBtn.style.display = 'block';
-      }
+      if (skipOutroBtn) skipOutroBtn.style.display = 'block';
     } else if (skipOutroBtn) {
       skipOutroBtn.style.display = 'none';
     }
@@ -6493,16 +6464,6 @@ function renderPlayerUtilityButtons() {
             <span class="player-automation-hint">Умное управление воспроизведением</span>
           </div>
           <div class="player-automation-grid">
-            <label class="automation-toggle-chip" title="Автоматический пропуск опенингов и титров">
-              <input type="checkbox" id="toggle-autoskip" ${autoSkipEnabled ? 'checked' : ''}>
-              <span class="automation-chip-box"></span>
-              <span class="automation-chip-icon">⏭️</span>
-              <div class="automation-chip-text">
-                <span class="automation-chip-title">Автопропуск заставок и титров</span>
-                <span class="automation-chip-sub">Интро и титры</span>
-              </div>
-            </label>
-
             <label class="automation-toggle-chip" title="Прямой поток без транскодирования через промежуточный прокси">
               <input type="checkbox" id="toggle-direct-stream" ${forceDirectStream ? 'checked' : ''}>
               <span class="automation-chip-box"></span>
@@ -6822,15 +6783,6 @@ function renderPlayerUtilityButtons() {
   const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
   if (nightAudioBtn) {
     nightAudioBtn.onclick = () => toggleNightModeAudio();
-  }
-
-  const autoSkipCheck = container.querySelector('#toggle-autoskip');
-  if (autoSkipCheck) {
-    autoSkipCheck.onchange = (e) => {
-      autoSkipEnabled = e.target.checked;
-      localStorage.setItem('storm_auto_skip', autoSkipEnabled ? 'true' : 'false');
-      showToast(`Автопропуск заставок: ${autoSkipEnabled ? 'Включен' : 'Выключен'}`, 'info');
-    };
   }
 
   const directStreamToggle = container.querySelector('#toggle-direct-stream');
