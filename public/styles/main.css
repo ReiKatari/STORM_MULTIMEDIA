@@ -3476,6 +3476,19 @@ body.drawer-open {
   transition: opacity 0.32s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.32s ease;
 }
 
+/* Прозрачная сенсорная зона улавливания курсора мыши в верхней части плеера */
+.inplayer-top-sensor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 90px;
+  z-index: 65;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  background: transparent;
+}
+
 /* Оверлей отображается ИСКЛЮЧИТЕЛЬНО при наличии класса активности controls-visible */
 .player-video-box.controls-visible .storm-inplayer-overlay {
   opacity: 1;

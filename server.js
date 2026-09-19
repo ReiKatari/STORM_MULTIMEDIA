@@ -3146,6 +3146,19 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }
             }, 400);
 
+            let _lastStormActivityNotice = 0;
+            function reportStormUserActivity() {
+              const now = Date.now();
+              if (now - _lastStormActivityNotice > 180) {
+                _lastStormActivityNotice = now;
+                try { window.parent.postMessage({ type: 'STORM_MOUSE_MOVE' }, '*'); } catch(_) {}
+              }
+            }
+            window.addEventListener('mousemove', reportStormUserActivity, { passive: true });
+            window.addEventListener('pointermove', reportStormUserActivity, { passive: true });
+            window.addEventListener('click', reportStormUserActivity, { passive: true });
+            window.addEventListener('touchstart', reportStormUserActivity, { passive: true });
+
             window.addEventListener('message', (e) => {
               let data = e.data;
               if (typeof data === 'string') {

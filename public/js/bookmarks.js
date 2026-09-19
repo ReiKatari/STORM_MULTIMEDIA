@@ -479,11 +479,11 @@ export function detectClientMediaType(item) {
   const ep = parseInt(item.episode, 10) || 0;
   const totalEp = parseInt(item.total_episodes, 10) || parseInt(item.episodes_total, 10) || 0;
   const season = parseInt(item.season, 10) || 0;
-  if (ep > 1 || totalEp > 1 || season > 1) {
+  if (ep > 0 || totalEp > 0 || season > 0 || (Array.isArray(item.seasons) && item.seasons.length > 0) || (Array.isArray(item.episodes) && item.episodes.length > 0)) {
     return 'series';
   }
 
-  if (link.includes('serial') || link.includes('fan-serials') || cat.includes('series') || t.includes('сериал') || t.includes('сезон') || /сезон\s*\d+/i.test(t)) {
+  if (link.includes('serial') || link.includes('fan-serials') || cat.includes('series') || cat.includes('сериал') || t.includes('сериал') || t.includes('сезон') || /сезон\s*\d+/i.test(t)) {
     return 'series';
   }
 
