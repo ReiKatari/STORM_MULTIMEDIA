@@ -299,6 +299,27 @@ function initFullscreenControls() {
           toggleAdvancedPiP();
         }
 
+        // Автопереключение серий от встроенных плееров (Kodik, Playerjs, Allplay, FanFilm)
+        const isEndedAction =
+          data === 'ended' || data === 'finish' || data === 'complete' ||
+          data?.event === 'ended' || data?.event === 'finish' || data?.event === 'complete' ||
+          data?.action === 'ended' || data?.action === 'finish' ||
+          data?.type === 'ended' || data?.type === 'STORM_EPISODE_ENDED' ||
+          data?.key === 'kodik_player_video_ended' ||
+          (data?.key === 'kodik_player_api' && (data.value?.event === 'video_ended' || data.value?.action === 'ended' || data.value?.event === 'ended'));
+
+        if (isEndedAction) {
+          if (checkIfMediaIsSeries(currentMedia) && !window._lastEndedAutoSwitchTime) {
+            window._lastEndedAutoSwitchTime = Date.now();
+            setTimeout(() => { window._lastEndedAutoSwitchTime = 0; }, 6000);
+            showToast('Серия завершена. Запуск следующей серии...', 'info');
+            setTimeout(() => {
+              playInPlayerNextEpisode();
+            }, 1000);
+            return;
+          }
+        }
+
         let streamDuration = data.duration ?? data.total ?? data.val ?? data.value?.duration ?? data.data?.duration ?? data.data?.total;
         if (data.key === 'kodik_player_time_update' || data.key === 'kodik_player_duration_update') {
           streamDuration = data.value?.duration || streamDuration;
@@ -308,6 +329,20 @@ function initFullscreenControls() {
             updateSidebarDuration(streamDuration);
           } else if (typeof streamDuration === 'string' && streamDuration.trim()) {
             updateSidebarDuration(streamDuration.trim());
+          }
+        }
+
+        const curTime = data.time ?? data.position ?? data.value?.time ?? data.data?.time;
+        if (curTime && streamDuration && typeof curTime === 'number' && typeof streamDuration === 'number') {
+          if (streamDuration > 60 && curTime >= streamDuration - 1.5 && !window._lastEndedAutoSwitchTime) {
+            if (checkIfMediaIsSeries(currentMedia)) {
+              window._lastEndedAutoSwitchTime = Date.now();
+              setTimeout(() => { window._lastEndedAutoSwitchTime = 0; }, 6000);
+              showToast('Серия завершена. Запуск следующей серии...', 'info');
+              setTimeout(() => {
+                playInPlayerNextEpisode();
+              }, 1000);
+            }
           }
         }
       }
@@ -2411,20 +2446,22 @@ async function selectQuickSeason(seasonNum) {
 }
 
 function selectQuickEpisode(episodeNum) {
-  if (quickBarActiveEpisode === episodeNum) return;
-  quickBarActiveEpisode = episodeNum;
+  const ep = Number(episodeNum);
+  if (!ep || isNaN(ep)) return;
+  quickBarActiveEpisode = ep;
+  currentEpisodeIndex = ep;
   renderQuickBarDropdowns();
   updateQuickIframeSrc();
 
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, quickBarActiveSeason, episodeNum, true);
+    markEpisodeWatched(currentMedia.id, quickBarActiveSeason, ep, true);
   }
 
-  showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${episodeNum}`, 'info');
-  trackClientAction('watch_series_episode', { season: quickBarActiveSeason, episode: episodeNum });
+  showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${ep}`, 'info');
+  trackClientAction('watch_series_episode', { season: quickBarActiveSeason, episode: ep });
 
   if (currentMedia?.id && quickBarSeriesData) {
-    const sObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason);
+    const sObj = quickBarSeriesData.seasons.find(s => Number(s.season) === Number(quickBarActiveSeason));
     if (sObj && sObj.episodes_count) {
       const watched = getWatchedEpisodes(currentMedia.id, quickBarActiveSeason);
       if (watched.size >= sObj.episodes_count) {
@@ -2433,7 +2470,8 @@ function selectQuickEpisode(episodeNum) {
     }
   }
 
-  highlightActiveEpisodeInGrid(episodeNum);
+  highlightActiveEpisodeInGrid(ep);
+  updateInPlayerEpisodeInfo();
 }
 
 async function switchAnixartVoiceover(voiceoverId) {
@@ -2826,15 +2864,25 @@ function setupVideoFeatures(video, wrapper) {
     }
   });
 
-  // 10. Автопросмотр следующей части франшизы при завершении видео
+  // 10. Автопереход к следующей серии сериала или следующей части франшизы
   video.addEventListener('ended', async () => {
-    if (currentMedia) {
-      const isSeries = currentMedia.media_type === 'series' || currentMedia.media_type === 'anime-series' || currentMedia.media_type === 'cartoon-series';
-      if (!isSeries && currentMedia.user_status !== 'completed') {
-        currentMedia.user_status = 'completed';
-        await saveBookmarkStatus(currentMedia, 'completed');
-        renderStatusButtons('completed');
-      }
+    const isSeries = checkIfMediaIsSeries(currentMedia);
+    if (isSeries) {
+      if (video.dataset.hasEndedTriggered) return;
+      video.dataset.hasEndedTriggered = 'true';
+      setTimeout(() => { delete video.dataset.hasEndedTriggered; }, 5000);
+
+      showToast('Воспроизведение завершено. Запуск следующей серии...', 'info');
+      setTimeout(() => {
+        playInPlayerNextEpisode();
+      }, 1000);
+      return;
+    }
+
+    if (currentMedia && currentMedia.user_status !== 'completed') {
+      currentMedia.user_status = 'completed';
+      await saveBookmarkStatus(currentMedia, 'completed');
+      renderStatusButtons('completed');
     }
     await autoAdvanceNextFranchiseItem();
   });
@@ -4390,22 +4438,110 @@ export function updateInPlayerEpisodeInfo() {
   }
 }
 
+export function playEpisodeByNumber(epNum, seasonNum = null) {
+  const ep = Number(epNum);
+  if (!ep || isNaN(ep)) return false;
+  const sNum = seasonNum !== null && seasonNum !== undefined ? Number(seasonNum) : Number(quickBarActiveSeason || currentMedia?.season || 1);
+
+  currentEpisodeIndex = ep;
+  quickBarActiveEpisode = ep;
+  quickBarActiveSeason = sNum;
+
+  if (currentMedia?.id) {
+    markEpisodeWatched(currentMedia.id, sNum, ep, true);
+  }
+
+  // 1. Быстрая панель серверов / FanFilm
+  if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
+    selectQuickSeason(sNum);
+    selectQuickEpisode(ep);
+    updateInPlayerEpisodeInfo();
+    highlightActiveEpisodeInGrid(ep);
+    return true;
+  }
+
+  // 2. AniLibria
+  if (currentMedia?.source === 'anilibria' && currentMedia.episodes && currentMedia.episodes.length > 0) {
+    const rawEp = (currentMedia.episodes || []).find(e => Number(e.ordinal || 1) === ep) || currentMedia.episodes[ep - 1];
+    if (rawEp) {
+      const streamUrl = rawEp.hls_1080 || rawEp.hls_720 || rawEp.hls_480;
+      if (streamUrl) playStreamUrl(streamUrl);
+      loadSkipTimes(currentMedia.id, ep);
+      updateInPlayerEpisodeInfo();
+      highlightActiveEpisodeInGrid(ep);
+      showToast(`🎬 Серия ${ep}`, 'info');
+      return true;
+    }
+  }
+
+  // 3. AniXart
+  if (currentMedia?.source === 'anixart' && currentEpisodes && currentEpisodes.length > 0) {
+    const rawEp = (currentEpisodes || []).find(e => Number(e.position || 1) === ep) || currentEpisodes[ep - 1];
+    if (rawEp) {
+      playAnixartEpisode(rawEp);
+      loadSkipTimes(currentMedia.id, ep);
+      updateInPlayerEpisodeInfo();
+      highlightActiveEpisodeInGrid(ep);
+      showToast(`🎬 Серия ${ep}`, 'info');
+      return true;
+    }
+  }
+
+  // 4. Iframe плеер (Kodik, HDRezka, LostFilm, Collaps, FanFilm и др.)
+  const iframe = document.querySelector('.cinema-player-iframe');
+  if (iframe) {
+    try {
+      let curSrc = iframe.src || (currentActivePlayer?.url || '');
+      if (curSrc) {
+        let newUrl = curSrc;
+        if (newUrl.includes('season=') || newUrl.includes('episode=')) {
+          newUrl = newUrl.replace(/([?&])season=\d+/g, `$1season=${sNum}`);
+          newUrl = newUrl.replace(/([?&])episode=\d+/g, `$1episode=${ep}`);
+        } else {
+          newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${sNum}&episode=${ep}`;
+        }
+        iframe.src = newUrl;
+        showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
+        updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
+        highlightActiveEpisodeInGrid(ep);
+        updateInPlayerEpisodeInfo();
+        return true;
+      }
+    } catch (_) {}
+  }
+
+  updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
+  highlightActiveEpisodeInGrid(ep);
+  updateInPlayerEpisodeInfo();
+  return false;
+}
+
 export function playInPlayerNextEpisode() {
+  if (!checkIfMediaIsSeries(currentMedia)) {
+    showToast('Это фильм, следующая серия недоступна', 'info');
+    return;
+  }
+
   // 1. Быстрая панель FanFilm / Kodik / серверов
   if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
-    const curSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
-    if (curSeasonObj?.episodes) {
-      const curEpIdx = curSeasonObj.episodes.findIndex(e => e.episode === quickBarActiveEpisode);
+    const curSeason = Number(quickBarActiveSeason) || 1;
+    const curEp = Number(quickBarActiveEpisode) || 1;
+    const curSeasonObj = quickBarSeriesData.seasons.find(s => Number(s.season) === curSeason) || quickBarSeriesData.seasons[0];
+    if (curSeasonObj?.episodes && curSeasonObj.episodes.length > 0) {
+      const curEpIdx = curSeasonObj.episodes.findIndex(e => Number(e.episode) === curEp);
       if (curEpIdx >= 0 && curEpIdx < curSeasonObj.episodes.length - 1) {
-        const nextEp = curSeasonObj.episodes[curEpIdx + 1].episode;
+        const nextEp = Number(curSeasonObj.episodes[curEpIdx + 1].episode);
         selectQuickEpisode(nextEp);
         updateInPlayerEpisodeInfo();
         return;
       } else {
-        const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => s.season === quickBarActiveSeason);
+        const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => Number(s.season) === curSeason);
         if (curSeasonIdx >= 0 && curSeasonIdx < quickBarSeriesData.seasons.length - 1) {
-          const nextSeason = quickBarSeriesData.seasons[curSeasonIdx + 1].season;
+          const nextSeasonObj = quickBarSeriesData.seasons[curSeasonIdx + 1];
+          const nextSeason = Number(nextSeasonObj.season);
+          const firstEp = Number(nextSeasonObj.episodes?.[0]?.episode || 1);
           selectQuickSeason(nextSeason);
+          selectQuickEpisode(firstEp);
           updateInPlayerEpisodeInfo();
           return;
         }
@@ -4413,63 +4549,89 @@ export function playInPlayerNextEpisode() {
     }
   }
 
-  // 2. Сетка серий TMDB
-  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
-  if (gridEl) {
-    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
-    if (activeCard && activeCard.nextElementSibling) {
-      activeCard.nextElementSibling.click();
-      updateInPlayerEpisodeInfo();
-      return;
-    }
-  }
-
-  // 3. AniXart
+  // 2. AniXart
   if (currentEpisodes && currentEpisodes.length > 0) {
-    const curIdx = currentEpisodes.findIndex(e => (e.position || 1) === currentEpisodeIndex);
+    const curEp = Number(currentEpisodeIndex) || 1;
+    const curIdx = currentEpisodes.findIndex(e => Number(e.position || e.ordinal || 1) === curEp);
     if (curIdx >= 0 && curIdx < currentEpisodes.length - 1) {
       const nextEp = currentEpisodes[curIdx + 1];
-      currentEpisodeIndex = nextEp.position || (curIdx + 2);
+      const nextEpNum = Number(nextEp.position || nextEp.ordinal || (curIdx + 2));
+      currentEpisodeIndex = nextEpNum;
       playAnixartEpisode(nextEp);
       updateInPlayerEpisodeInfo();
       return;
     }
   }
 
-  // 4. AniLibria
+  // 3. AniLibria
   if (currentMedia?.episodes && currentMedia.episodes.length > 0) {
-    const curIdx = currentMedia.episodes.findIndex(e => (e.ordinal || 1) === currentEpisodeIndex);
+    const curEp = Number(currentEpisodeIndex) || 1;
+    const curIdx = currentMedia.episodes.findIndex(e => Number(e.ordinal || 1) === curEp);
     if (curIdx >= 0 && curIdx < currentMedia.episodes.length - 1) {
       const nextEp = currentMedia.episodes[curIdx + 1];
-      currentEpisodeIndex = nextEp.ordinal || (curIdx + 2);
+      const nextEpNum = Number(nextEp.ordinal || (curIdx + 2));
+      currentEpisodeIndex = nextEpNum;
       const streamUrl = nextEp.hls_1080 || nextEp.hls_720 || nextEp.hls_480;
       if (streamUrl) playStreamUrl(streamUrl);
-      loadSkipTimes(currentMedia.id, currentEpisodeIndex);
+      loadSkipTimes(currentMedia.id, nextEpNum);
       updateInPlayerEpisodeInfo();
       return;
     }
   }
 
+  // 4. Сетка серий TMDB / базовых сериалов
+  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
+  if (gridEl) {
+    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
+    const nextCard = activeCard ? activeCard.nextElementSibling : gridEl.querySelector('.series-episode-card');
+    if (nextCard && nextCard.classList.contains('series-episode-card')) {
+      const nextEpNum = parseInt(nextCard.dataset.epNum, 10);
+      if (nextEpNum && !isNaN(nextEpNum)) {
+        playEpisodeByNumber(nextEpNum);
+        updateInPlayerEpisodeInfo();
+        return;
+      }
+    }
+  }
+
+  // 5. Общий переход по порядковому номеру
+  const curEpNum = Number(currentEpisodeIndex || quickBarActiveEpisode || 1);
+  const nextEpNum = curEpNum + 1;
+  const switched = playEpisodeByNumber(nextEpNum);
+  if (switched) {
+    updateInPlayerEpisodeInfo();
+    return;
+  }
+
   showToast('Это последняя серия сезона', 'info');
+  if (currentMedia && currentMedia.id) {
+    currentMedia.user_status = 'completed';
+    saveBookmarkStatus(currentMedia, 'completed');
+    renderStatusButtons('completed');
+  }
 }
 
 export function playInPlayerPrevEpisode() {
+  if (!checkIfMediaIsSeries(currentMedia)) return;
+
   // 1. Быстрая панель FanFilm / Kodik / серверов
   if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
-    const curSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
+    const curSeason = Number(quickBarActiveSeason) || 1;
+    const curEp = Number(quickBarActiveEpisode) || 1;
+    const curSeasonObj = quickBarSeriesData.seasons.find(s => Number(s.season) === curSeason) || quickBarSeriesData.seasons[0];
     if (curSeasonObj?.episodes) {
-      const curEpIdx = curSeasonObj.episodes.findIndex(e => e.episode === quickBarActiveEpisode);
+      const curEpIdx = curSeasonObj.episodes.findIndex(e => Number(e.episode) === curEp);
       if (curEpIdx > 0) {
-        const prevEp = curSeasonObj.episodes[curEpIdx - 1].episode;
+        const prevEp = Number(curSeasonObj.episodes[curEpIdx - 1].episode);
         selectQuickEpisode(prevEp);
         updateInPlayerEpisodeInfo();
         return;
       } else {
-        const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => s.season === quickBarActiveSeason);
+        const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => Number(s.season) === curSeason);
         if (curSeasonIdx > 0) {
           const prevSeasonObj = quickBarSeriesData.seasons[curSeasonIdx - 1];
-          const lastEp = prevSeasonObj.episodes?.[prevSeasonObj.episodes.length - 1]?.episode || 1;
-          selectQuickSeason(prevSeasonObj.season);
+          const lastEp = Number(prevSeasonObj.episodes?.[prevSeasonObj.episodes.length - 1]?.episode || 1);
+          selectQuickSeason(Number(prevSeasonObj.season));
           selectQuickEpisode(lastEp);
           updateInPlayerEpisodeInfo();
           return;
@@ -4478,41 +4640,56 @@ export function playInPlayerPrevEpisode() {
     }
   }
 
-  // 2. Сетка серий TMDB
-  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
-  if (gridEl) {
-    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
-    if (activeCard && activeCard.previousElementSibling) {
-      activeCard.previousElementSibling.click();
-      updateInPlayerEpisodeInfo();
-      return;
-    }
-  }
-
-  // 3. AniXart
+  // 2. AniXart
   if (currentEpisodes && currentEpisodes.length > 0) {
-    const curIdx = currentEpisodes.findIndex(e => (e.position || 1) === currentEpisodeIndex);
+    const curEp = Number(currentEpisodeIndex) || 1;
+    const curIdx = currentEpisodes.findIndex(e => Number(e.position || e.ordinal || 1) === curEp);
     if (curIdx > 0) {
       const prevEp = currentEpisodes[curIdx - 1];
-      currentEpisodeIndex = prevEp.position || curIdx;
+      const prevEpNum = Number(prevEp.position || prevEp.ordinal || curIdx);
+      currentEpisodeIndex = prevEpNum;
       playAnixartEpisode(prevEp);
       updateInPlayerEpisodeInfo();
       return;
     }
   }
 
-  // 4. AniLibria
+  // 3. AniLibria
   if (currentMedia?.episodes && currentMedia.episodes.length > 0) {
-    const curIdx = currentMedia.episodes.findIndex(e => (e.ordinal || 1) === currentEpisodeIndex);
+    const curEp = Number(currentEpisodeIndex) || 1;
+    const curIdx = currentMedia.episodes.findIndex(e => Number(e.ordinal || 1) === curEp);
     if (curIdx > 0) {
       const prevEp = currentMedia.episodes[curIdx - 1];
-      currentEpisodeIndex = prevEp.ordinal || curIdx;
+      const prevEpNum = Number(prevEp.ordinal || curIdx);
+      currentEpisodeIndex = prevEpNum;
       const streamUrl = prevEp.hls_1080 || prevEp.hls_720 || prevEp.hls_480;
       if (streamUrl) playStreamUrl(streamUrl);
-      loadSkipTimes(currentMedia.id, currentEpisodeIndex);
+      loadSkipTimes(currentMedia.id, prevEpNum);
       updateInPlayerEpisodeInfo();
       return;
     }
+  }
+
+  // 4. Сетка серий TMDB
+  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
+  if (gridEl) {
+    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
+    if (activeCard && activeCard.previousElementSibling && activeCard.previousElementSibling.classList.contains('series-episode-card')) {
+      const prevEpNum = parseInt(activeCard.previousElementSibling.dataset.epNum, 10);
+      if (prevEpNum && !isNaN(prevEpNum)) {
+        playEpisodeByNumber(prevEpNum);
+        updateInPlayerEpisodeInfo();
+        return;
+      }
+    }
+  }
+
+  // 5. Порядковый откат назад
+  const curEpNum = Number(currentEpisodeIndex || quickBarActiveEpisode || 1);
+  if (curEpNum > 1) {
+    playEpisodeByNumber(curEpNum - 1);
+    updateInPlayerEpisodeInfo();
+    return;
   }
 
   showToast('Это первая серия', 'info');
@@ -5029,6 +5206,20 @@ export function mountInPlayerOverlay(videoBox) {
     videoBox.addEventListener('mousemove', showControls);
     videoBox.addEventListener('pointermove', showControls);
 
+    if (modal && !modal.dataset.hasInplayerControlsListeners) {
+      modal.dataset.hasInplayerControlsListeners = 'true';
+      modal.addEventListener('mousemove', showControls);
+      modal.addEventListener('pointermove', showControls);
+      const headerActions = modal.querySelector('.cinema-header-actions');
+      if (headerActions) {
+        headerActions.addEventListener('mouseenter', () => {
+          clearTimeout(hideTimer);
+          showControls();
+        });
+        headerActions.addEventListener('mouseleave', resetHideTimer);
+      }
+    }
+
     // Тап/клик по видео: закрытие шторок или переключение видимости оверлея
     videoBox.addEventListener('click', (e) => {
       if (e.target.closest('.inplayer-top-bar') || 
@@ -5037,6 +5228,11 @@ export function mountInPlayerOverlay(videoBox) {
           e.target.closest('.player-inplayer-voice-sheet') || 
           e.target.closest('.inplayer-jog-dial-widget') ||
           e.target.closest('.inplayer-ctrl-btn') ||
+          e.target.closest('.cinema-header-actions') ||
+          e.target.closest('.storm-modal-tool-btn') ||
+          e.target.closest('.storm-modal-fullscreen-btn') ||
+          e.target.closest('.storm-modal-close') ||
+          e.target.closest('.storm-modal-header') ||
           e.target.closest('.storm-skip-btn')) {
         resetHideTimer();
         return;
@@ -5066,7 +5262,7 @@ export function mountInPlayerOverlay(videoBox) {
 
     // Двойной клик по области видео: переключение полноэкранного режима
     videoBox.addEventListener('dblclick', (e) => {
-      if (e.target.closest('button, input, select, a, .inplayer-ctrl-btn, .inplayer-top-bar, .inplayer-bottom-bar, .player-inplayer-episodes-sheet, .player-inplayer-voice-sheet, .inplayer-jog-dial-widget, .storm-skip-btn')) {
+      if (e.target.closest('button, input, select, a, .inplayer-ctrl-btn, .inplayer-top-bar, .inplayer-bottom-bar, .player-inplayer-episodes-sheet, .player-inplayer-voice-sheet, .inplayer-jog-dial-widget, .cinema-header-actions, .storm-modal-tool-btn, .storm-modal-fullscreen-btn, .storm-modal-close, .storm-skip-btn')) {
         return;
       }
       e.preventDefault();
@@ -8895,24 +9091,8 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           quickBarActiveEpisode = epNum;
           renderQuickBarDropdowns();
 
-          if (mediaDetails.source === 'anilibria') {
-            const rawEp = (mediaDetails.episodes || []).find(e => (e.ordinal || 1) === epNum) || mediaDetails.episodes?.[epNum - 1];
-            if (rawEp) {
-              currentEpisodeIndex = epNum;
-              const streamUrl = rawEp.hls_1080 || rawEp.hls_720 || rawEp.hls_480;
-              if (streamUrl) playStreamUrl(streamUrl);
-              loadSkipTimes(mediaDetails.id, epNum);
-            }
-          } else if (mediaDetails.source === 'anixart') {
-            const rawEp = (currentEpisodes || []).find(e => (e.position || 1) === epNum) || currentEpisodes?.[epNum - 1];
-            if (rawEp) {
-              currentEpisodeIndex = epNum;
-              playAnixartEpisode(rawEp);
-              loadSkipTimes(mediaDetails.id, epNum);
-            }
-          } else {
-            updatePlayerUrl(mediaDetails, seasonNum, epNum, currentActivePlayer);
-          }
+          if (!currentMedia) currentMedia = mediaDetails;
+          playEpisodeByNumber(epNum, seasonNum);
         };
       });
 

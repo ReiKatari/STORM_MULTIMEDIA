@@ -1320,28 +1320,171 @@ body.cinema-open {
   overflow: hidden !important;
 }
 
+/* В полноэкранном режиме шапка прозрачна для кликов (pointer-events: none),
+   чтобы кнопки оверлея плеера («Озвучка», «Серии», «Джог», «Фокус») в верхнем ряду
+   были на 100% доступны и мгновенно кликабельны без перекрытия */
 #cinema-modal.is-fullscreen .storm-modal-header,
-#cinema-modal:fullscreen .storm-modal-header {
+#cinema-modal:fullscreen .storm-modal-header,
+#cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-header {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
-  z-index: 1000 !important;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, transparent 100%) !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
   border-bottom: none !important;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: auto;
+  z-index: 1000 !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s ease !important;
 }
 
-#cinema-modal.is-fullscreen:hover .storm-modal-header,
-#cinema-modal:fullscreen:hover .storm-modal-header,
-#cinema-modal.is-fullscreen .storm-modal-header:hover,
-#cinema-modal:fullscreen .storm-modal-header:hover,
+/* Шапка и её действия отображаются ИСКЛЮЧИТЕЛЬНО при активных органах управления (controls-visible).
+   Запрещен :hover, из-за которого иконки застывали на экране навсегда во время просмотра */
 #cinema-modal.is-fullscreen.controls-visible .storm-modal-header,
-#cinema-modal:fullscreen.controls-visible .storm-modal-header {
+#cinema-modal:fullscreen.controls-visible .storm-modal-header,
+#cinema-modal.is-fullscreen:has(.player-video-box.controls-visible) .storm-modal-header,
+#cinema-modal:fullscreen:has(.player-video-box.controls-visible) .storm-modal-header {
   opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+
+/* В полноэкранном режиме название уже отображается в левом верхнем углу ин-плеер оверлея (.inplayer-title-info),
+   поэтому скрываем дублирующую группу заголовка из модальной шапки */
+#cinema-modal.is-fullscreen .cinema-header-title-group,
+#cinema-modal:fullscreen .cinema-header-title-group,
+#cinema-modal:has(.player-video-box.is-fullscreen) .cinema-header-title-group {
+  display: none !important;
+}
+
+/* Панель утилитных иконок (масштаб, PiP, таймер сна, замок, полный экран, крестик закрытия):
+   Передвинута СТРОГО НИЖЕ верхней панели оверлея плеера (top: 56px), чтобы никогда не накладываться
+   на кнопки «Озвучка», «Серии», «Джог» и «Фокус», и оформлена в виде премиальной парящей капсулы */
+#cinema-modal.is-fullscreen .cinema-header-actions,
+#cinema-modal:fullscreen .cinema-header-actions,
+#cinema-modal:has(.player-video-box.is-fullscreen) .cinema-header-actions {
+  position: absolute !important;
+  top: 56px !important;
+  right: 14px !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 6px !important;
+  background: rgba(10, 15, 26, 0.85) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65), 0 0 12px rgba(0, 210, 255, 0.12) !important;
   pointer-events: auto !important;
+  z-index: 1000 !important;
+  transition: opacity 0.25s ease, transform 0.25s ease !important;
+}
+
+/* Если открыта боковая шторка серий или студийной озвучки, парящая капсула плавно скрывается, устраняя любое визуальное наложение */
+#cinema-modal:has(.player-inplayer-voice-sheet.is-open) .cinema-header-actions,
+#cinema-modal:has(.player-inplayer-episodes-sheet.is-open) .cinema-header-actions {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-8px) scale(0.95) !important;
+}
+
+#cinema-modal.is-fullscreen .storm-modal-tool-btn,
+#cinema-modal:fullscreen .storm-modal-tool-btn,
+#cinema-modal.is-fullscreen .storm-modal-fullscreen-btn,
+#cinema-modal:fullscreen .storm-modal-fullscreen-btn,
+#cinema-modal.is-fullscreen .storm-modal-close,
+#cinema-modal:fullscreen .storm-modal-close,
+#cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-tool-btn,
+#cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-fullscreen-btn,
+#cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-close {
+  pointer-events: auto !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+}
+
+#cinema-modal.is-fullscreen .storm-modal-close,
+#cinema-modal:fullscreen .storm-modal-close,
+#cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-close {
+  background: rgba(239, 68, 68, 0.18) !important;
+  border-color: rgba(239, 68, 68, 0.38) !important;
+  color: #ef4444 !important;
+}
+
+#cinema-modal.is-fullscreen .storm-modal-close:hover,
+#cinema-modal:fullscreen .storm-modal-close:hover,
+#cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-close:hover {
+  background: rgba(239, 68, 68, 0.38) !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  transform: scale(1.05) !important;
+}
+
+@media (max-width: 768px) {
+  #cinema-modal.is-fullscreen .cinema-header-actions,
+  #cinema-modal:fullscreen .cinema-header-actions,
+  #cinema-modal:has(.player-video-box.is-fullscreen) .cinema-header-actions {
+    top: 44px !important;
+    right: 10px !important;
+    gap: 4px !important;
+    padding: 3px 5px !important;
+  }
+  #cinema-modal.is-fullscreen .storm-modal-tool-btn,
+  #cinema-modal:fullscreen .storm-modal-tool-btn,
+  #cinema-modal.is-fullscreen .storm-modal-fullscreen-btn,
+  #cinema-modal:fullscreen .storm-modal-fullscreen-btn,
+  #cinema-modal.is-fullscreen .storm-modal-close,
+  #cinema-modal:fullscreen .storm-modal-close,
+  #cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-tool-btn,
+  #cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-fullscreen-btn,
+  #cinema-modal:has(.player-video-box.is-fullscreen) .storm-modal-close {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px !important;
+    max-height: 28px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 540px) {
+  #cinema-modal.is-fullscreen .cinema-header-actions,
+  #cinema-modal:fullscreen .cinema-header-actions,
+  #cinema-modal:has(.player-video-box.is-fullscreen) .cinema-header-actions {
+    top: 40px !important;
+    right: 8px !important;
+  }
+}
+
+/* Автоматическое скрытие курсора мыши во время просмотра, когда элементы управления скрыты */
+#cinema-modal.is-fullscreen:not(.controls-visible),
+#cinema-modal:fullscreen:not(.controls-visible),
+#cinema-modal.is-fullscreen:not(.controls-visible) *,
+#cinema-modal:fullscreen:not(.controls-visible) * {
+  cursor: none !important;
 }
 
 #cinema-modal.is-fullscreen .cinema-layout-grid,
@@ -4036,9 +4179,52 @@ body.drawer-open {
     overflow: hidden !important;
   }
 
-  /* В альбомном режиме смартфона внешняя шапка скрывается: управление переходит в оверлей плеера */
+  /* В альбомном режиме смартфона внешняя шапка адаптируется: заголовок скрывается, а утилитные действия располагаются под верхней строкой */
   #cinema-modal .storm-modal-header {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border-bottom: none !important;
+    z-index: 1000 !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s ease !important;
+  }
+
+  #cinema-modal.controls-visible .storm-modal-header,
+  #cinema-modal:has(.player-video-box.controls-visible) .storm-modal-header {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: none !important;
+  }
+
+  #cinema-modal .storm-modal-header .cinema-header-title-group {
     display: none !important;
+  }
+
+  #cinema-modal .cinema-header-actions {
+    position: absolute !important;
+    top: 44px !important;
+    right: 10px !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 3px 5px !important;
+    background: rgba(10, 15, 26, 0.85) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    border-radius: 9px !important;
+    pointer-events: auto !important;
+    z-index: 1000 !important;
   }
 
   #cinema-modal .storm-modal-body {
