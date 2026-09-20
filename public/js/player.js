@@ -1109,6 +1109,70 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   return suite;
 }
 
+/**
+ * 🎯 ДИНАМИЧЕСКИЙ АВТОМАСШТАБ КИНОТЕАТРАЛЬНОГО ПЛЕЕРА
+ * Автоматически рассчитывает точные размеры экрана и доступную высоту,
+ * чтобы консоль плеера (Шапка + Серии + Видеоплеер + Аварийная полоса + Поле выбора плеера)
+ * на 100% умещалась в пределах одного экрана без вертикального скролла
+ * при любых разрешениях экрана (4K, 2K, 1080p, 720p), размерах окон и DPI-масштабах (100%-200%).
+ */
+export function adjustCinemaModalScale() {
+  const modal = document.getElementById('cinema-modal');
+  if (!modal || !modal.classList.contains('is-open')) return;
+  if (modal.classList.contains('is-fullscreen') || modal.classList.contains('is-mini-pip')) return;
+
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  const vw = window.innerWidth || document.documentElement.clientWidth;
+  if (!vh || vh <= 0) return;
+
+  const headerEl = modal.querySelector('.storm-modal-header');
+  const headerH = (headerEl && headerEl.offsetHeight > 0) ? headerEl.offsetHeight : 40;
+
+  const quickBar = document.getElementById('player-series-quick-bar');
+  const isQuickBarVisible = quickBar && quickBar.style.display !== 'none' && !quickBar.hidden && quickBar.offsetHeight > 0;
+  const quickBarH = isQuickBarVisible ? (quickBar.offsetHeight + 6) : 0;
+  modal.classList.toggle('has-series-bar', isQuickBarVisible);
+
+  const fallbackBar = document.getElementById('player-fallback-bar');
+  const fallbackH = (fallbackBar && fallbackBar.offsetHeight > 0) ? (fallbackBar.offsetHeight + 8) : 38;
+
+  const selectorWrap = document.getElementById('player-selector-dropdown-wrap');
+  const selectorH = (selectorWrap && selectorWrap.offsetHeight > 0) ? (selectorWrap.offsetHeight + 8) : 46;
+
+  // Отступы storm-modal-body (top: 8px, bottom: 14px) + буфер безопасности для теней/границ (14px)
+  const verticalPaddingAndBuffer = 36;
+
+  const totalNonPlayerH = headerH + quickBarH + fallbackH + selectorH + verticalPaddingAndBuffer;
+
+  // Рассчитываем доступную высоту для видеоплеера
+  const availablePlayerH = Math.max(200, Math.floor(vh - totalNonPlayerH));
+  const availablePlayerW = Math.round(availablePlayerH * (16 / 9));
+
+  // Высота постера и максимальная высота правой колонки
+  const posterH = Math.max(120, Math.min(240, Math.round(vh * 0.23)));
+  const sideColH = Math.max(240, Math.floor(vh - (headerH + 20)));
+
+  modal.style.setProperty('--cinema-player-max-h', `${availablePlayerH}px`);
+  modal.style.setProperty('--cinema-player-max-w', `${availablePlayerW}px`);
+  modal.style.setProperty('--cinema-poster-max-h', `${posterH}px`);
+  modal.style.setProperty('--cinema-side-max-h', `${sideColH}px`);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    const modal = document.getElementById('cinema-modal');
+    if (modal && modal.classList.contains('is-open')) {
+      adjustCinemaModalScale();
+    }
+  }, { passive: true });
+  window.addEventListener('orientationchange', () => {
+    const modal = document.getElementById('cinema-modal');
+    if (modal && modal.classList.contains('is-open')) {
+      setTimeout(adjustCinemaModalScale, 80);
+    }
+  }, { passive: true });
+}
+
 export async function openPlayerModal(mediaItem, options = {}) {
   const cleanTitle = cleanVideoTitle(mediaItem?.title || '');
   const detectedType = detectClientMediaType(mediaItem);
@@ -1192,6 +1256,13 @@ export async function openPlayerModal(mediaItem, options = {}) {
   requestAnimationFrame(resetCinemaScroll);
   setTimeout(resetCinemaScroll, 50);
   setTimeout(resetCinemaScroll, 200);
+
+  // Автомасштабирование плеера под точные размеры окна
+  adjustCinemaModalScale();
+  requestAnimationFrame(adjustCinemaModalScale);
+  setTimeout(adjustCinemaModalScale, 60);
+  setTimeout(adjustCinemaModalScale, 220);
+  setTimeout(adjustCinemaModalScale, 500);
 
   applyAmbientBackdropGlow(mediaItem);
 
@@ -1386,7 +1457,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 export function closePlayerModal() {
   const modal = document.getElementById('cinema-modal');
   if (modal) {
-    modal.classList.remove('is-open', 'is-mini-pip', 'is-focus-mode');
+    modal.classList.remove('is-open', 'is-mini-pip', 'is-focus-mode', 'has-series-bar');
     document.documentElement.classList.remove('cinema-focus-active');
     document.body.classList.remove('cinema-focus-active', 'cinema-open');
     const fBtn = document.getElementById('inplayer-focus-btn');
@@ -1615,6 +1686,8 @@ function renderPlayerSources(players) {
       }
     });
   }
+
+  adjustCinemaModalScale();
 }
 
 function updatePlayerTriggerInfo(player) {
@@ -1847,16 +1920,20 @@ async function initSeriesQuickBar(playerUrl) {
     const res = await fetch(`/api/player/series-options?url=${encodeURIComponent(playerUrl)}&title=${encodeURIComponent(mediaTitle)}&mediaId=${encodeURIComponent(curMediaId)}&tmdbId=${encodeURIComponent(mediaTmdbId)}`);
     if (!res.ok) {
       quickBar.style.display = 'none';
+      adjustCinemaModalScale();
       return;
     }
     const data = await res.json();
     if (!data.success || !data.seasons || data.seasons.length === 0) {
       quickBar.style.display = 'none';
+      adjustCinemaModalScale();
       return;
     }
 
     quickBarSeriesData = data;
     quickBar.style.display = 'flex';
+    adjustCinemaModalScale();
+    requestAnimationFrame(adjustCinemaModalScale);
 
     quickBarActiveSeason = (data.active?.season !== undefined && Number.isFinite(data.active.season)) ? data.active.season : (data.seasons[0].season || 1);
     quickBarActiveEpisode = (data.active?.episode !== undefined && Number.isFinite(data.active.episode)) ? data.active.episode : 1;
@@ -1916,6 +1993,7 @@ async function initSeriesQuickBar(playerUrl) {
   } catch (err) {
     console.warn('Ошибка быстрой панели серий:', err);
     quickBar.style.display = 'none';
+    adjustCinemaModalScale();
   }
 }
 
@@ -2639,6 +2717,7 @@ function playStreamUrl(url) {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar && (!quickBarSeriesData || !quickBarSeriesData.seasons || quickBarSeriesData.seasons.length === 0)) {
       quickBar.style.display = 'none';
+      adjustCinemaModalScale();
     }
 
     container.innerHTML = `
@@ -2710,6 +2789,7 @@ function playStreamUrl(url) {
   } else if (!quickBarSeriesData?.isAnime) {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
+    adjustCinemaModalScale();
   }
 
   if (typeof streamUrl === 'string') {
@@ -8401,6 +8481,8 @@ function renderDetailedMediaInfo(mediaDetails) {
       openPersonModal(chip.dataset.actorId, chip.dataset.actorName);
     };
   });
+
+  adjustCinemaModalScale();
 }
 
 // ==========================================
