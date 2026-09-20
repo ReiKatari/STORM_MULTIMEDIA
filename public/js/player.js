@@ -1240,6 +1240,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Открываем модальное окно
   modal.classList.add('is-open');
   document.body.classList.add('cinema-open');
+  if (typeof window.updateTvHudContext === 'function') {
+    window.updateTvHudContext('player');
+  }
 
   // Мгновенный сброс скролла на 0, чтобы плеер открывался на весь экран сверху без необходимости пролистывать
   const resetCinemaScroll = () => {
@@ -1460,6 +1463,9 @@ export function closePlayerModal() {
     modal.classList.remove('is-open', 'is-mini-pip', 'is-focus-mode', 'has-series-bar');
     document.documentElement.classList.remove('cinema-focus-active');
     document.body.classList.remove('cinema-focus-active', 'cinema-open');
+    if (typeof window.updateTvHudContext === 'function') {
+      window.updateTvHudContext();
+    }
     const fBtn = document.getElementById('inplayer-focus-btn');
     if (fBtn) fBtn.classList.remove('active');
     stopAmbilight();
