@@ -167,6 +167,36 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         url: `https://vidsrc.to/embed/${isTv ? 'tv' : 'movie'}/${imdb_id}`
       });
     }
+
+    // RuTube (Официальный плеер и лицензионный каталог)
+    const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+    players.push({
+      id: 'rutube_stream',
+      name: 'RuTube (Официальный поток FHD)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'RUTUBE',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный лицензионный каталог RuTube',
+      speed: '⚡ Российский CDN',
+      url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`
+    });
+
+    // VK Видео (Фильмы, сериалы и озвучки)
+    const vkSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+    players.push({
+      id: 'vk_video_stream',
+      name: 'VK Видео (Фильмы, сериалы и дубляж)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'VK ВИДЕО',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Студийные дубляжи (RHS, LostFilm) и официальные релизы',
+      speed: '⚡ Скоростной VK CDN',
+      url: `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`
+    });
   } else {
     // 4. Плееры специально для Аниме
     // AniXart Stream - проверенный скоростной плеер со всеми студиями озвучки

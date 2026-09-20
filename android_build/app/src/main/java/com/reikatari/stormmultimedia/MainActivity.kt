@@ -16,6 +16,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import java.io.ByteArrayInputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.ViewCompat
@@ -203,6 +204,42 @@ class MainActivity : ComponentActivity() {
                             else -> "application/octet-stream"
                         }
                         return createAssetResponse(mimeType, cleanPath) ?: super.shouldInterceptRequest(view, request)
+                    }
+                }
+
+                // STORM AD BLOCKER: аппаратная фильтрация и блокировка рекламы, VAST-роликов и трекеров казино
+                if (host != null) {
+                    val adHosts = arrayOf(
+                        "adsystem", "adriver", "doubleclick", "yandex.ru/ads", "an.yandex",
+                        "adservice", "googlesyndication", "adnxs", "adfox", "adkernel",
+                        "redclick", "marketgid", "begun", "target.my.com", "moevideo",
+                        "traff", "clicker", "bidding", "banner", "1xbet", "melbet",
+                        "betboom", "winline", "fonbet", "parimatch", "vulkan", "pin-up"
+                    )
+                    val urlStr = url.toString().lowercase()
+                    val isAd = adHosts.any { host.contains(it) } ||
+                               urlStr.contains("/vast/") ||
+                               urlStr.contains("/vpaid/") ||
+                               urlStr.contains("preroll") ||
+                               urlStr.contains("midroll")
+
+                    val isWhitelisted = host.contains("stormmultimedia.ru") ||
+                                       host.contains("tmdb.org") ||
+                                       host.contains("themoviedb.org") ||
+                                       host.contains("anilibria") ||
+                                       host.contains("rutube.ru") ||
+                                       host.contains("vkvideo.ru") ||
+                                       host.contains("vk.com")
+
+                    if (isAd && !isWhitelisted) {
+                        return WebResourceResponse(
+                            "text/plain",
+                            "UTF-8",
+                            200,
+                            "OK",
+                            emptyMap(),
+                            ByteArrayInputStream(ByteArray(0))
+                        )
                     }
                 }
 
