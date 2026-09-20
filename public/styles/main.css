@@ -5510,6 +5510,45 @@ body.tv-mode .storm-bottom-nav {
   margin-left: 4px;
 }
 
+/* Десктопная адаптация шторки фильтров: центрированное модальное окно вместо нижней шторки */
+@media (min-width: 768px) {
+  .filter-sheet-backdrop {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 24px !important;
+  }
+
+  .filter-sheet-container {
+    max-width: 680px !important;
+    max-height: 86vh !important;
+    max-height: 86dvh !important;
+    border-radius: 20px !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-top: 1px solid var(--accent) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 24px rgba(0, 210, 255, 0.16) !important;
+    animation: stormModalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  .filter-sheet-drag-handle {
+    display: none !important;
+  }
+
+  .filter-sheet-header {
+    padding: 14px 22px !important;
+  }
+
+  .filter-sheet-footer {
+    padding: 14px 22px !important;
+    border-radius: 0 0 20px 20px !important;
+    background: var(--bg-secondary) !important;
+  }
+}
+
+@keyframes stormModalPopIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 /* 6. CARD CONTEXT ACTION SHEET */
 .action-sheet-backdrop {
   position: fixed !important;
