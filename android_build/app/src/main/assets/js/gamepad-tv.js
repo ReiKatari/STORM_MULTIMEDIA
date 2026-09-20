@@ -1,6 +1,7 @@
 /* ==========================================================================
-   STORM MULTIMEDIA - SMART TV И НАВИГАЦИЯ ГЕЙМПАДОМ (10-FOOT CONSOLE UI)
-   Поддержка геймпадов Xbox, PlayStation, звуковых эффектов и управления плеером
+   STORM MULTIMEDIA - SMART TV И НАВИГАЦИЯ ГЕЙМПАДОМ (10-FOOT CONSOLE UI 2.0)
+   Поддержка пультов Android TV / Smart TV, геймпадов Xbox / PlayStation,
+   Leanback HUD 2.0 с динамическим авто-затуханием и полной навигацией во всех меню
    ========================================================================== */
 
 import { showToast } from './auth.js';
@@ -10,6 +11,9 @@ let isTvModeActive = false;
 let gamepadLoopId = null;
 let lastButtonPressTimes = {};
 let currentFocusedElement = null;
+let currentHudContext = 'catalog';
+let hudHideTimer = null;
+let modalObserver = null;
 
 // ==========================================
 // 1. АУДИО-ЭФФЕКТЫ КОНСОЛИ (WEB AUDIO SYNTHESIZER)
@@ -102,7 +106,7 @@ export function initGamepadAndTvMode() {
   }
 
   window.addEventListener('gamepadconnected', (e) => {
-    showToast(`🎮 Подключен геймпад: ${e.gamepad.id.split('(')[0].trim()}`, 'success');
+    showToast(`🎮 Подключен контроллер: ${e.gamepad.id.split('(')[0].trim()}`, 'success');
     trackClientAction('use_gamepad');
     if (!isTvModeActive) {
       toggleTvMode(true);
@@ -116,8 +120,15 @@ export function initGamepadAndTvMode() {
 
   startGamepadPolling();
 
-  // Клавиатурная навигация (Стрелки, Enter, Esc, Пробел, F11)
+  // Клавиатурная навигация и клавиши ТВ-пульта (Стрелки, Enter, Esc, MediaKeys, Цвета)
   window.addEventListener('keydown', handleSpatialKeyboard);
+
+  // Глобальное пробуждение панели HUD при действиях пользователя
+  window.addEventListener('mousemove', pokeTvHud, { passive: true });
+  window.addEventListener('touchstart', pokeTvHud, { passive: true });
+
+  // Автоматический трекер модальных окон для HUD и фокуса
+  setupModalFocusWatcher();
 }
 
 export function toggleTvMode(forceState = null) {
@@ -132,7 +143,7 @@ export function toggleTvMode(forceState = null) {
   }
 
   if (isTvModeActive) {
-    showToast('📺 Активирован режим Smart TV (10-Foot UI)', 'info');
+    showToast('📺 Активирован режим Smart TV (Leanback HUD 2.0)', 'info');
     renderTvHudBar();
     focusInitialElement();
     trackClientAction('use_gamepad');
@@ -159,35 +170,223 @@ export function toggleFullscreen() {
 }
 
 // ==========================================
-// 3. ПАНЕЛЬ ПОДСКАЗОК ГЕЙМПАДА (GAMEPAD HUD DOCK)
+// 3. ПАНЕЛЬ ПОДСКАЗОК LEANBACK HUD 2.0
 // ==========================================
+export function pokeTvHud() {
+  const hud = document.getElementById('storm-tv-hud-bar');
+  if (!hud) return;
+  hud.classList.remove('is-dimmed');
+
+  if (hudHideTimer) clearTimeout(hudHideTimer);
+  hudHideTimer = setTimeout(() => {
+    if (document.body.classList.contains('tv-mode')) {
+      hud.classList.add('is-dimmed');
+    }
+  }, 4000);
+}
+
+function detectTvHudContext() {
+  const cinemaModal = document.getElementById('cinema-modal');
+  if (cinemaModal && (cinemaModal.classList.contains('is-open') || document.body.classList.contains('cinema-open'))) {
+    return 'player';
+  }
+  const profileModal = document.getElementById('profile-modal');
+  if (profileModal && profileModal.classList.contains('is-open')) {
+    return 'profile';
+  }
+  const filterSheet = document.getElementById('filter-sheet-modal');
+  if (filterSheet && filterSheet.classList.contains('is-open')) {
+    return 'filter';
+  }
+  const actionSheet = document.getElementById('card-action-sheet-modal');
+  if (actionSheet && actionSheet.classList.contains('is-open')) {
+    return 'modal';
+  }
+  const anyModal = document.querySelector('.storm-modal-backdrop.is-open');
+  if (anyModal) {
+    return 'modal';
+  }
+  return 'catalog';
+}
+
+export function updateTvHudContext(forceContext = null) {
+  if (!isTvModeActive && !document.body.classList.contains('tv-mode')) return;
+
+  const context = forceContext || detectTvHudContext();
+  currentHudContext = context;
+
+  const hud = document.getElementById('storm-tv-hud-bar');
+  if (!hud) return;
+
+  let html = '';
+
+  if (context === 'player') {
+    html = `
+      <div class="tv-hud-inner">
+        <div class="tv-hud-item" id="tv-hud-btn-play"><span class="tv-key-badge btn-a">A / OK</span> <span class="tv-hud-label">Пауза / Плей</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-seek"><span class="tv-key-badge btn-dpad">◄ ►</span> <span class="tv-hud-label">Перемотка</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-vol"><span class="tv-key-badge btn-dpad">▲ ▼</span> <span class="tv-hud-label">Громкость</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-episodes"><span class="tv-key-badge btn-x">X</span> <span class="tv-hud-label">Серии</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-ambilight"><span class="tv-key-badge btn-y">Y</span> <span class="tv-hud-label">Ambilight</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-back"><span class="tv-key-badge btn-b">B</span> <span class="tv-hud-label">Закрыть</span></div>
+        <div class="tv-hud-item" id="tv-hud-fs-btn"><span class="tv-key-badge btn-menu">START</span> <span class="tv-hud-label">Экран</span></div>
+      </div>
+    `;
+  } else if (context === 'profile') {
+    html = `
+      <div class="tv-hud-inner">
+        <div class="tv-hud-item" id="tv-hud-btn-select"><span class="tv-key-badge btn-a">A / OK</span> <span class="tv-hud-label">Выбрать</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-ptabs"><span class="tv-key-badge btn-bumper">LB / RB</span> <span class="tv-hud-label">Вкладки профиля</span></div>
+        <div class="tv-hud-item"><span class="tv-key-badge btn-dpad">▲ ▼ ◄ ►</span> <span class="tv-hud-label">Навигация</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-back"><span class="tv-key-badge btn-b">B</span> <span class="tv-hud-label">Закрыть</span></div>
+      </div>
+    `;
+  } else if (context === 'filter') {
+    html = `
+      <div class="tv-hud-inner">
+        <div class="tv-hud-item" id="tv-hud-btn-select"><span class="tv-key-badge btn-a">A / OK</span> <span class="tv-hud-label">Применить</span></div>
+        <div class="tv-hud-item"><span class="tv-key-badge btn-dpad">▲ ▼ ◄ ►</span> <span class="tv-hud-label">Выбор фильтра</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-back"><span class="tv-key-badge btn-b">B</span> <span class="tv-hud-label">Закрыть</span></div>
+      </div>
+    `;
+  } else if (context === 'modal') {
+    html = `
+      <div class="tv-hud-inner">
+        <div class="tv-hud-item" id="tv-hud-btn-select"><span class="tv-key-badge btn-a">A / OK</span> <span class="tv-hud-label">Выбрать</span></div>
+        <div class="tv-hud-item"><span class="tv-key-badge btn-dpad">▲ ▼ ◄ ►</span> <span class="tv-hud-label">Навигация</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-back"><span class="tv-key-badge btn-b">B</span> <span class="tv-hud-label">Закрыть</span></div>
+      </div>
+    `;
+  } else {
+    // Каталог
+    html = `
+      <div class="tv-hud-inner">
+        <div class="tv-hud-item" id="tv-hud-btn-select"><span class="tv-key-badge btn-a">A / OK</span> <span class="tv-hud-label">Смотреть</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-back"><span class="tv-key-badge btn-b">B</span> <span class="tv-hud-label">Назад</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-bookmarks"><span class="tv-key-badge btn-x">X</span> <span class="tv-hud-label">Закладки</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-search"><span class="tv-key-badge btn-y">Y</span> <span class="tv-hud-label">Поиск</span></div>
+        <div class="tv-hud-item" id="tv-hud-btn-tabs"><span class="tv-key-badge btn-bumper">LB / RB</span> <span class="tv-hud-label">Вкладки</span></div>
+        <div class="tv-hud-item" id="tv-hud-fs-btn"><span class="tv-key-badge btn-menu">START</span> <span class="tv-hud-label">Экран</span></div>
+      </div>
+    `;
+  }
+
+  hud.innerHTML = html;
+  attachTvHudListeners(hud);
+  pokeTvHud();
+}
+
+function attachTvHudListeners(hud) {
+  hud.querySelector('#tv-hud-fs-btn')?.addEventListener('click', () => toggleFullscreen());
+  hud.querySelector('#tv-hud-btn-select')?.addEventListener('click', () => pressFocusedElement());
+  hud.querySelector('#tv-hud-btn-back')?.addEventListener('click', () => closeActiveModalOrBack());
+  hud.querySelector('#tv-hud-btn-bookmarks')?.addEventListener('click', () => {
+    window.switchTab?.('bookmarks');
+    playTvSelectSound();
+  });
+  hud.querySelector('#tv-hud-btn-search')?.addEventListener('click', () => {
+    const micBtn = document.getElementById('voice-search-btn');
+    if (micBtn) micBtn.click();
+    else document.getElementById('global-search-input')?.focus();
+    playTvSelectSound();
+  });
+  hud.querySelector('#tv-hud-btn-tabs')?.addEventListener('click', () => switchAdjacentTab(1));
+  hud.querySelector('#tv-hud-btn-ptabs')?.addEventListener('click', () => switchAdjacentProfileTab(1));
+  hud.querySelector('#tv-hud-btn-play')?.addEventListener('click', () => handlePlayerTvPlayPause());
+  hud.querySelector('#tv-hud-btn-episodes')?.addEventListener('click', () => focusPlayerEpisodes());
+  hud.querySelector('#tv-hud-btn-ambilight')?.addEventListener('click', () => {
+    document.getElementById('toggle-ambilight-btn')?.click();
+  });
+}
+
 function renderTvHudBar() {
   let hud = document.getElementById('storm-tv-hud-bar');
   if (!hud) {
     hud = document.createElement('div');
     hud.id = 'storm-tv-hud-bar';
     hud.className = 'storm-tv-hud-bar';
-    hud.innerHTML = `
-      <div class="tv-hud-inner">
-        <div class="tv-hud-item"><span class="tv-key-badge btn-a">A</span> <span class="tv-hud-label">Выбрать</span></div>
-        <div class="tv-hud-item"><span class="tv-key-badge btn-b">B</span> <span class="tv-hud-label">Назад</span></div>
-        <div class="tv-hud-item"><span class="tv-key-badge btn-x">X</span> <span class="tv-hud-label">Закладки</span></div>
-        <div class="tv-hud-item"><span class="tv-key-badge btn-y">Y</span> <span class="tv-hud-label">Поиск</span></div>
-        <div class="tv-hud-item"><span class="tv-key-badge btn-bumper">LB / RB</span> <span class="tv-hud-label">Вкладки</span></div>
-        <div class="tv-hud-item" id="tv-hud-fs-btn" style="cursor: pointer;"><span class="tv-key-badge btn-menu">START</span> <span class="tv-hud-label">Экран</span></div>
-      </div>
-    `;
     document.body.appendChild(hud);
-
-    hud.querySelector('#tv-hud-fs-btn')?.addEventListener('click', () => {
-      toggleFullscreen();
-    });
   }
+  updateTvHudContext();
+  pokeTvHud();
 }
 
 function removeTvHudBar() {
   const hud = document.getElementById('storm-tv-hud-bar');
   if (hud) hud.remove();
+  if (hudHideTimer) clearTimeout(hudHideTimer);
+}
+
+function setupModalFocusWatcher() {
+  if (modalObserver) return;
+  let lastState = '';
+
+  modalObserver = new MutationObserver(() => {
+    const openModal = document.querySelector('.storm-modal-backdrop.is-open');
+    const playerOpen = document.body.classList.contains('cinema-open') || Boolean(document.getElementById('cinema-modal')?.classList.contains('is-open'));
+    const currentState = (openModal ? openModal.id : '') + ':' + (playerOpen ? 'cinema' : '');
+
+    if (currentState !== lastState) {
+      lastState = currentState;
+      updateTvHudContext();
+
+      if (isTvModeActive) {
+        if (openModal) {
+          focusInitialElementInContainer(openModal);
+        } else if (!currentFocusedElement || !document.body.contains(currentFocusedElement)) {
+          focusInitialElement();
+        }
+      }
+    }
+  });
+
+  modalObserver.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class', 'style'] });
+}
+
+function focusInitialElementInContainer(container) {
+  if (!container) return;
+
+  // Если это окно профиля — фокусируем активную вкладку
+  if (container.id === 'profile-modal') {
+    const activeTab = container.querySelector('.profile-tab-link.active') || container.querySelector('.profile-tab-link');
+    if (activeTab) {
+      setFocusTo(activeTab);
+      return;
+    }
+  }
+
+  // Если это шторка фильтров — фокусируем активный чип или кнопку применить
+  if (container.id === 'filter-sheet-modal') {
+    const activeChip = container.querySelector('.filter-chip.is-active') || container.querySelector('.filter-chip') || document.getElementById('filter-sheet-apply-btn');
+    if (activeChip) {
+      setFocusTo(activeChip);
+      return;
+    }
+  }
+
+  // Если это карточка быстрых действий — фокусируем кнопку «Смотреть»
+  if (container.id === 'card-action-sheet-modal') {
+    const playBtn = container.querySelector('.action-sheet-btn') || container.querySelector('button');
+    if (playBtn) {
+      setFocusTo(playBtn);
+      return;
+    }
+  }
+
+  // Если это кинотеатр — фокусируем селектор плеера или контейнер видео
+  if (container.id === 'cinema-modal') {
+    const trigger = document.getElementById('player-source-trigger');
+    if (trigger) {
+      setFocusTo(trigger);
+      return;
+    }
+  }
+
+  const focusables = getFocusableElements();
+  const inside = focusables.filter(el => container.contains(el));
+  if (inside.length > 0) {
+    setFocusTo(inside[0]);
+  }
 }
 
 // ==========================================
@@ -239,6 +438,55 @@ function handlePlayerTvPlayPause() {
   }
 }
 
+function focusPlayerEpisodes() {
+  const episode = document.querySelector('.series-episode-card.active') ||
+                  document.querySelector('.series-episode-card') ||
+                  document.querySelector('.episode-pill.active') ||
+                  document.querySelector('.episode-pill');
+  if (episode) {
+    setFocusTo(episode);
+    playTvFocusSound();
+    return;
+  }
+  // Если блок свернут — разворачиваем его
+  const collapseBtn = document.getElementById('series-collapse-btn');
+  if (collapseBtn) {
+    collapseBtn.click();
+    setTimeout(() => {
+      const ep = document.querySelector('.series-episode-card');
+      if (ep) setFocusTo(ep);
+    }, 200);
+  }
+}
+
+function switchAdjacentPlayerEpisode(direction) {
+  const episodes = Array.from(document.querySelectorAll('.series-episode-card, .episode-pill'));
+  if (episodes.length === 0) return;
+
+  const activeIndex = episodes.findIndex(ep => ep.classList.contains('active') || ep.classList.contains('current'));
+  let newIndex = activeIndex >= 0 ? activeIndex + direction : 0;
+  if (newIndex < 0) newIndex = 0;
+  if (newIndex >= episodes.length) newIndex = episodes.length - 1;
+
+  episodes[newIndex].click();
+  setFocusTo(episodes[newIndex]);
+  playTvSelectSound();
+}
+
+function switchAdjacentProfileTab(direction) {
+  const tabs = Array.from(document.querySelectorAll('.profile-tab-link'));
+  if (tabs.length === 0) return;
+
+  const activeIndex = tabs.findIndex(t => t.classList.contains('active'));
+  let newIndex = activeIndex >= 0 ? activeIndex + direction : 0;
+  if (newIndex < 0) newIndex = tabs.length - 1;
+  if (newIndex >= tabs.length) newIndex = 0;
+
+  tabs[newIndex].click();
+  setFocusTo(tabs[newIndex]);
+  playTvSelectSound();
+}
+
 // ==========================================
 // 5. ЦИКЛ ОПРОСА ГЕЙМПАДА
 // ==========================================
@@ -278,44 +526,114 @@ function handleGamepadInput(gp) {
   const left = gp.buttons[14]?.pressed || gp.axes[0] < -deadzone;
   const right = gp.buttons[15]?.pressed || gp.axes[0] > deadzone;
 
-  const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
+  if (up || down || left || right || gp.buttons.some(b => b?.pressed)) {
+    pokeTvHud();
+  }
 
-  // Если открыт плеер — кнопки направлений и триггеры управляют видео
+  const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
+
+  // Проверяем, находится ли фокус прямо на видео или контейнере плеера
+  const isDirectVideoFocus = currentFocusedElement && (
+    currentFocusedElement.tagName === 'VIDEO' ||
+    currentFocusedElement.classList.contains('cinema-player-iframe') ||
+    currentFocusedElement.classList.contains('cinema-player-container') ||
+    currentFocusedElement.classList.contains('cinema-player-wrapper') ||
+    currentFocusedElement.classList.contains('player-video-box') ||
+    currentFocusedElement.id === 'cinema-modal'
+  );
+
+  // 1. Управление в открытом плеере
   if (isPlayerOpen) {
-    if (left && canTrigger('seek_left', 320)) {
+    // Аппаратные триггеры LT / RT (buttons 6 и 7) всегда перематывают видео
+    if (gp.buttons[6]?.pressed && canTrigger('lt_seek', 300)) {
       handlePlayerTvSeek(-10);
       return;
     }
-    if (right && canTrigger('seek_right', 320)) {
+    if (gp.buttons[7]?.pressed && canTrigger('rt_seek', 300)) {
       handlePlayerTvSeek(10);
       return;
     }
-    if (up && canTrigger('vol_up', 220)) {
-      handlePlayerTvVolume(0.1);
+
+    // Кнопка X (Серии)
+    if (gp.buttons[2]?.pressed && canTrigger(2, 350)) {
+      focusPlayerEpisodes();
       return;
     }
-    if (down && canTrigger('vol_down', 220)) {
-      handlePlayerTvVolume(-0.1);
-      return;
-    }
-    // Кнопка A (Пауза/Плей)
-    if (gp.buttons[0]?.pressed && canTrigger(0, 350)) {
-      handlePlayerTvPlayPause();
-      return;
-    }
-    // Кнопка B (Закрыть плеер)
-    if (gp.buttons[1]?.pressed && canTrigger(1, 350)) {
-      closeActiveModalOrBack();
-      return;
-    }
-    // Кнопка Y (Переключить Ambilight)
+
+    // Кнопка Y (Ambilight)
     if (gp.buttons[3]?.pressed && canTrigger(3, 350)) {
       document.getElementById('toggle-ambilight-btn')?.click();
       return;
     }
+
+    // LB / RB: Переключение серий
+    if (gp.buttons[4]?.pressed && canTrigger(4, 280)) {
+      switchAdjacentPlayerEpisode(-1);
+      return;
+    }
+    if (gp.buttons[5]?.pressed && canTrigger(5, 280)) {
+      switchAdjacentPlayerEpisode(1);
+      return;
+    }
+
+    // Кнопка B: Закрыть плеер
+    if (gp.buttons[1]?.pressed && canTrigger(1, 350)) {
+      closeActiveModalOrBack();
+      return;
+    }
+
+    // Если фокус на видео: стрелки управляют перемоткой и громкостью
+    if (isDirectVideoFocus) {
+      if (left && canTrigger('seek_left', 300)) {
+        handlePlayerTvSeek(-10);
+        return;
+      }
+      if (right && canTrigger('seek_right', 300)) {
+        handlePlayerTvSeek(10);
+        return;
+      }
+      if (up && canTrigger('vol_up', 200)) {
+        handlePlayerTvVolume(0.1);
+        return;
+      }
+      if (down && canTrigger('dpad_down', 250)) {
+        // Смещение фокуса с видео на кнопки управления ниже
+        moveFocus('down');
+        return;
+      }
+      // Кнопка A на видео — Плей/Пауза
+      if (gp.buttons[0]?.pressed && canTrigger(0, 350)) {
+        handlePlayerTvPlayPause();
+        return;
+      }
+    } else {
+      // Фокус на органах управления плеера (серии, озвучка, селектор плеера, закладки)
+      if (up && canTrigger('dpad_up')) moveFocus('up');
+      if (down && canTrigger('dpad_down')) moveFocus('down');
+      if (left && canTrigger('dpad_left')) moveFocus('left');
+      if (right && canTrigger('dpad_right')) moveFocus('right');
+
+      if (gp.buttons[0]?.pressed && canTrigger(0, 300)) {
+        pressFocusedElement();
+        return;
+      }
+    }
   }
 
-  // Обычная пространственная навигация по каталогу и модальным окнам
+  // 2. Управление в окне профиля пользователя
+  const isProfileOpen = Boolean(document.getElementById('profile-modal')?.classList.contains('is-open'));
+  if (isProfileOpen) {
+    if (gp.buttons[4]?.pressed && canTrigger(4, 250)) {
+      switchAdjacentProfileTab(-1);
+      return;
+    }
+    if (gp.buttons[5]?.pressed && canTrigger(5, 250)) {
+      switchAdjacentProfileTab(1);
+      return;
+    }
+  }
+
+  // 3. Стандартная пространственная навигация
   if (up && canTrigger('dpad_up')) moveFocus('up');
   if (down && canTrigger('dpad_down')) moveFocus('down');
   if (left && canTrigger('dpad_left')) moveFocus('left');
@@ -331,14 +649,14 @@ function handleGamepadInput(gp) {
     closeActiveModalOrBack();
   }
 
-  // Кнопка X (Закладки)
-  if (gp.buttons[2]?.pressed && canTrigger(2, 300)) {
+  // Кнопка X (Закладки) — только если нет открытого модального окна
+  if (gp.buttons[2]?.pressed && canTrigger(2, 300) && !document.querySelector('.storm-modal-backdrop.is-open')) {
     window.switchTab?.('bookmarks');
     playTvSelectSound();
   }
 
-  // Кнопка Y (Голосовой поиск / Поиск)
-  if (gp.buttons[3]?.pressed && canTrigger(3, 300)) {
+  // Кнопка Y (Поиск) — только если нет открытого модального окна
+  if (gp.buttons[3]?.pressed && canTrigger(3, 300) && !document.querySelector('.storm-modal-backdrop.is-open')) {
     const micBtn = document.getElementById('voice-search-btn');
     if (micBtn) {
       micBtn.click();
@@ -348,13 +666,13 @@ function handleGamepadInput(gp) {
     playTvSelectSound();
   }
 
-  // LB (Предыдущая вкладка)
-  if (gp.buttons[4]?.pressed && canTrigger(4, 250)) {
+  // LB (Предыдущая вкладка) — только в каталоге
+  if (gp.buttons[4]?.pressed && canTrigger(4, 250) && !document.querySelector('.storm-modal-backdrop.is-open')) {
     switchAdjacentTab(-1);
   }
 
-  // RB (Следующая вкладка)
-  if (gp.buttons[5]?.pressed && canTrigger(5, 250)) {
+  // RB (Следующая вкладка) — только в каталоге
+  if (gp.buttons[5]?.pressed && canTrigger(5, 250) && !document.querySelector('.storm-modal-backdrop.is-open')) {
     switchAdjacentTab(1);
   }
 
@@ -365,103 +683,233 @@ function handleGamepadInput(gp) {
 }
 
 // ==========================================
-// 6. КЛАВИАТУРНАЯ ПРОСТРАНСТВЕННАЯ НАВИГАЦИЯ
+// 6. КЛАВИАТУРНАЯ И ДИСТАНЦИОННАЯ НАВИГАЦИЯ (SMART TV ПУЛЬТ)
 // ==========================================
 function handleSpatialKeyboard(e) {
+  pokeTvHud();
+
+  const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
+  const isProfileOpen = Boolean(document.getElementById('profile-modal')?.classList.contains('is-open'));
+
+  // Проверяем, находится ли фокус прямо на текстовом поле ввода
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+    // Разрешаем закрытие по Escape/Back
+    if (e.key === 'Escape' || e.keyCode === 4 || e.keyCode === 27) {
+      e.target.blur();
+      closeActiveModalOrBack();
+    }
+    return;
+  }
+
   if (!isTvModeActive && !document.querySelector('.storm-modal-backdrop.is-open')) return;
 
-  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
-
-  const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
-
-  // Проверяем, находится ли фокус конкретно на области видео/плеера
   const isDirectVideoFocus = currentFocusedElement && (
     currentFocusedElement.tagName === 'VIDEO' ||
     currentFocusedElement.classList.contains('cinema-player-iframe') ||
     currentFocusedElement.classList.contains('cinema-player-container') ||
     currentFocusedElement.classList.contains('cinema-player-wrapper') ||
-    currentFocusedElement.classList.contains('player-video-box')
+    currentFocusedElement.classList.contains('player-video-box') ||
+    currentFocusedElement.id === 'cinema-modal'
   );
 
-  switch (e.key) {
-    // Выделенные мультимедийные клавиши ТВ-пультов
-    case 'AudioVolumeUp':
-      e.preventDefault();
-      handlePlayerTvVolume(0.1);
-      break;
-    case 'AudioVolumeDown':
-      e.preventDefault();
-      handlePlayerTvVolume(-0.1);
-      break;
-    case 'MediaPlayPause':
-    case 'MediaPlay':
-    case 'MediaPause':
+  const k = e.key;
+  const c = e.keyCode;
+
+  // 1. Выделенные аппаратные мультимедийные клавиши ТВ-пультов
+  if (k === 'AudioVolumeUp') {
+    e.preventDefault();
+    handlePlayerTvVolume(0.1);
+    return;
+  }
+  if (k === 'AudioVolumeDown') {
+    e.preventDefault();
+    handlePlayerTvVolume(-0.1);
+    return;
+  }
+  if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause' || c === 179 || c === 126 || c === 127) {
+    e.preventDefault();
+    handlePlayerTvPlayPause();
+    return;
+  }
+  if (k === 'MediaFastForward' || k === 'MediaTrackNext' || c === 228 || c === 176) {
+    e.preventDefault();
+    if (isPlayerOpen) handlePlayerTvSeek(10);
+    return;
+  }
+  if (k === 'MediaRewind' || k === 'MediaTrackPrevious' || c === 227 || c === 177) {
+    e.preventDefault();
+    if (isPlayerOpen) handlePlayerTvSeek(-10);
+    return;
+  }
+
+  // 2. Цветные функциональные кнопки пульта Smart TV
+  // Красная кнопка (Red, 403): Закладки
+  if (k === 'ColorF0Red' || c === 403) {
+    e.preventDefault();
+    window.switchTab?.('bookmarks');
+    playTvSelectSound();
+    return;
+  }
+  // Зеленая кнопка (Green, 404): Шторка фильтров
+  if (k === 'ColorF1Green' || c === 404) {
+    e.preventDefault();
+    const filterTrigger = document.getElementById('mobile-filter-sheet-trigger');
+    if (filterTrigger) filterTrigger.click();
+    else if (typeof window.toggleFiltersCollapsible === 'function') window.toggleFiltersCollapsible();
+    playTvSelectSound();
+    return;
+  }
+  // Желтая кнопка (Yellow, 405): Озвучка / Плеер / Ambilight
+  if (k === 'ColorF2Yellow' || c === 405) {
+    e.preventDefault();
+    if (isPlayerOpen) {
+      document.getElementById('toggle-ambilight-btn')?.click();
+    } else {
+      const micBtn = document.getElementById('voice-search-btn');
+      if (micBtn) micBtn.click();
+    }
+    playTvSelectSound();
+    return;
+  }
+  // Синяя кнопка (Blue, 406): Поиск
+  if (k === 'ColorF3Blue' || c === 406) {
+    e.preventDefault();
+    document.getElementById('global-search-input')?.focus();
+    playTvSelectSound();
+    return;
+  }
+
+  // 3. Клавиши каналов (ChannelUp / ChannelDown) и PageUp / PageDown
+  if (k === 'ChannelUp' || k === 'PageUp' || c === 33) {
+    e.preventDefault();
+    if (isProfileOpen) switchAdjacentProfileTab(1);
+    else if (isPlayerOpen) switchAdjacentPlayerEpisode(1);
+    else switchAdjacentTab(1);
+    return;
+  }
+  if (k === 'ChannelDown' || k === 'PageDown' || c === 34) {
+    e.preventDefault();
+    if (isProfileOpen) switchAdjacentProfileTab(-1);
+    else if (isPlayerOpen) switchAdjacentPlayerEpisode(-1);
+    else switchAdjacentTab(-1);
+    return;
+  }
+
+  // 4. Кнопка меню ТВ-пульта (Menu / ContextMenu)
+  if (k === 'ContextMenu' || k === 'Menu' || c === 93 || c === 18) {
+    e.preventDefault();
+    if (isPlayerOpen) {
+      document.getElementById('player-source-trigger')?.click();
+    } else {
+      document.getElementById('mobile-filter-sheet-trigger')?.click();
+    }
+    playTvSelectSound();
+    return;
+  }
+
+  // 5. Навигационные стрелки пульта и D-Pad
+  if (k === 'ArrowUp' || k === 'Up' || c === 19 || c === 38) {
+    e.preventDefault();
+    if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(0.1);
+    else moveFocus('up');
+    return;
+  }
+  if (k === 'ArrowDown' || k === 'Down' || c === 20 || c === 40) {
+    e.preventDefault();
+    if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(-0.1);
+    else moveFocus('down');
+    return;
+  }
+  if (k === 'ArrowLeft' || k === 'Left' || c === 21 || c === 37) {
+    e.preventDefault();
+    if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvSeek(-10);
+    else moveFocus('left');
+    return;
+  }
+  if (k === 'ArrowRight' || k === 'Right' || c === 22 || c === 39) {
+    e.preventDefault();
+    if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvSeek(10);
+    else moveFocus('right');
+    return;
+  }
+
+  // 6. Пробел (Пауза в плеере)
+  if (k === ' ' || c === 32) {
+    if (isPlayerOpen) {
       e.preventDefault();
       handlePlayerTvPlayPause();
-      break;
-    case 'MediaFastForward':
-    case 'MediaTrackNext':
-      e.preventDefault();
-      handlePlayerTvSeek(10);
-      break;
-    case 'MediaRewind':
-    case 'MediaTrackPrevious':
-      e.preventDefault();
-      handlePlayerTvSeek(-10);
-      break;
+      return;
+    }
+  }
 
-    // Навигационные стрелки пульта и геймпада
-    case 'ArrowUp':
+  // 7. Подтверждение / Клик (Enter, Select, DPAD_CENTER)
+  if (k === 'Enter' || k === 'Select' || c === 13 || c === 23 || c === 66) {
+    e.preventDefault();
+    pressFocusedElement();
+    return;
+  }
+
+  // 8. Назад (Escape, Backspace, GoBack, Android Key 4)
+  if (k === 'Escape' || k === 'Backspace' || k === 'GoBack' || c === 27 || c === 8 || c === 4 || c === 10009) {
+    e.preventDefault();
+    closeActiveModalOrBack();
+    return;
+  }
+
+  // 9. Полноэкранный режим
+  if (k === 'f' || k === 'F') {
+    if (isTvModeActive) {
       e.preventDefault();
-      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(0.1);
-      else moveFocus('up');
-      break;
-    case 'ArrowDown':
-      e.preventDefault();
-      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(-0.1);
-      else moveFocus('down');
-      break;
-    case 'ArrowLeft':
-      e.preventDefault();
-      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvSeek(-10);
-      else moveFocus('left');
-      break;
-    case 'ArrowRight':
-      e.preventDefault();
-      if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvSeek(10);
-      else moveFocus('right');
-      break;
-    case ' ':
-      if (isPlayerOpen) {
-        e.preventDefault();
-        handlePlayerTvPlayPause();
-      }
-      break;
-    case 'Enter':
-      e.preventDefault();
-      pressFocusedElement();
-      break;
-    case 'Escape':
-    case 'Backspace':
-      e.preventDefault();
-      closeActiveModalOrBack();
-      break;
-    case 'f':
-    case 'F':
-      if (isTvModeActive) {
-        e.preventDefault();
-        toggleFullscreen();
-      }
-      break;
-    default:
-      break;
+      toggleFullscreen();
+      return;
+    }
   }
 }
 
+// ==========================================
+// 7. ДВИЖОК ПРОСТРАНСТВЕННОГО ФОКУСА (SPATIAL ENGINE)
+// ==========================================
 function getFocusableElements() {
   const activeModal = document.querySelector('.storm-modal-backdrop.is-open');
   const root = activeModal || document;
-  const selector = 'button:not([disabled]), [tabindex="0"], .media-card, .media-detailed-card, .media-table-table tbody tr, .series-episode-card, .series-season-tab, .cal-card, .rail-card, .hero-slide, .storm-tab-btn, .storm-filters-toggle-btn, .quick-dropdown-trigger, .storm-modal-tool-btn, .storm-modal-fullscreen-btn, .storm-modal-close, .storm-focusable, select:not([disabled]), input:not([disabled])';
+
+  // Если открыто выпадающее меню выбора плеера — ограничиваем фокус его элементами
+  const playerMenu = document.getElementById('player-source-menu');
+  if (playerMenu && playerMenu.style.display === 'block') {
+    const menuItems = Array.from(playerMenu.querySelectorAll('.player-dropdown-item'));
+    if (menuItems.length > 0) return menuItems;
+  }
+
+  const selector = `
+    button:not([disabled]),
+    [tabindex="0"],
+    .media-card,
+    .media-detailed-card,
+    .media-table-table tbody tr,
+    .series-episode-card,
+    .series-season-tab,
+    .episode-pill,
+    .voiceover-pill,
+    .filter-chip,
+    .profile-tab-link,
+    .profile-avatar-preset-item,
+    .action-sheet-btn,
+    .cal-card,
+    .rail-card,
+    .hero-slide,
+    .storm-tab-btn,
+    .storm-filters-toggle-btn,
+    .quick-dropdown-trigger,
+    .player-dropdown-trigger,
+    .player-dropdown-item,
+    .storm-modal-tool-btn,
+    .storm-modal-fullscreen-btn,
+    .storm-modal-close,
+    .storm-focusable,
+    select:not([disabled]),
+    input:not([disabled])
+  `;
+
   return Array.from(root.querySelectorAll(selector)).filter(el => {
     return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
   });
@@ -471,7 +919,7 @@ function moveFocus(direction) {
   const focusables = getFocusableElements();
   if (focusables.length === 0) return;
 
-  const isPlayerOpen = Boolean((document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
+  const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
 
   if (!currentFocusedElement || !document.body.contains(currentFocusedElement)) {
     focusInitialElement();
@@ -509,22 +957,20 @@ function moveFocus(direction) {
     }
   });
 
-  // Умный запасной переход между панелями (Header/Toolbar <-> Content Container)
+  // Умный запасной переход между зонами экрана (Header/Toolbar <-> Content Container)
   if (!bestCandidate && direction === 'down') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
     const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container');
-    
+
     if (mainArea && isTopArea) {
       const candidates = focusables.filter(el => mainArea.contains(el));
       if (candidates.length > 0) {
         bestCandidate = candidates[0];
-        // Если перешли в контент в TV режиме — автоматически сворачиваем фильтры, освобождая 100% экрана
         if (typeof window.toggleFiltersCollapsible === 'function' && document.body.classList.contains('tv-mode')) {
           window.toggleFiltersCollapsible(true);
         }
       }
     } else if (mainArea && mainArea.contains(currentFocusedElement)) {
-      // Ищем карточки или элементы ниже текущего
       const belowCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().top > currentRect.top + 15);
       if (belowCandidates.length > 0) {
         bestCandidate = belowCandidates[0];
@@ -592,6 +1038,11 @@ function setFocusTo(element) {
 }
 
 function focusInitialElement() {
+  const openModal = document.querySelector('.storm-modal-backdrop.is-open');
+  if (openModal) {
+    focusInitialElementInContainer(openModal);
+    return;
+  }
   const focusables = getFocusableElements();
   if (focusables.length > 0) {
     setFocusTo(focusables[0]);
@@ -611,12 +1062,24 @@ function pressFocusedElement() {
 
 function closeActiveModalOrBack() {
   playTvBackSound();
+
+  // Используем единый обработчик навигации назад приложения
+  if (typeof window.handleStormBackNavigation === 'function') {
+    const handled = window.handleStormBackNavigation();
+    if (handled) return;
+  }
+
   const openModal = document.querySelector('.storm-modal-backdrop.is-open');
   if (openModal) {
-    const closeBtn = openModal.querySelector('.storm-modal-close');
-    if (closeBtn) closeBtn.click();
+    const closeBtn = openModal.querySelector('.storm-modal-close, #filter-sheet-close-btn');
+    if (closeBtn) {
+      closeBtn.click();
+      return;
+    }
+    openModal.classList.remove('is-open');
     return;
   }
+
   window.history.back();
 }
 
@@ -634,3 +1097,8 @@ function switchAdjacentTab(direction) {
   setFocusTo(tabs[newIndex]);
 }
 
+if (typeof window !== 'undefined') {
+  window.toggleTvMode = toggleTvMode;
+  window.updateTvHudContext = updateTvHudContext;
+  window.pokeTvHud = pokeTvHud;
+}

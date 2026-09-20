@@ -6,6 +6,8 @@ body.tv-mode {
   font-size: 18px !important;
   user-select: none;
   overflow-x: hidden;
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
 }
 
 body.tv-mode .storm-sticky-header-container {
@@ -14,7 +16,21 @@ body.tv-mode .storm-sticky-header-container {
 }
 
 body.tv-mode .storm-navbar {
-  padding: 14px 28px;
+  padding: 16px clamp(28px, 4vw, 56px) !important;
+}
+
+body.tv-mode .storm-tabs-bar {
+  padding: 12px clamp(28px, 4vw, 56px) 8px !important;
+}
+
+body.tv-mode .storm-toolbar {
+  padding: 10px clamp(28px, 4vw, 56px) 14px !important;
+}
+
+body.tv-mode .storm-main-container,
+body.tv-mode .media-container {
+  padding-left: clamp(24px, 3.5vw, 48px) !important;
+  padding-right: clamp(24px, 3.5vw, 48px) !important;
 }
 
 body.tv-mode .storm-navbar-inner {
@@ -264,65 +280,91 @@ body.tv-mode .cinema-player-wrapper {
 }
 
 /* ==========================================================================
-   ПАНЕЛЬ ПОДСКАЗОК ГЕЙМПАДА (GAMEPAD HUD DOCK)
+   ПАНЕЛЬ ПОДСКАЗОК ГЕЙМПАДА И ПУЛЬТА LEANBACK HUD 2.0
    ========================================================================== */
 .storm-tv-hud-bar {
   position: fixed;
-  bottom: 18px;
+  bottom: 22px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 999999;
-  background: rgba(10, 11, 16, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 210, 255, 0.35);
-  border-radius: 36px;
-  padding: 8px 24px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 210, 255, 0.25);
+  background: rgba(10, 13, 20, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1.5px solid rgba(0, 210, 255, 0.4);
+  border-radius: 999px;
+  padding: 8px 26px;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.85), 0 0 28px rgba(0, 210, 255, 0.28);
   animation: stormFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+
+.storm-tv-hud-bar.is-dimmed {
+  opacity: 0 !important;
+  transform: translate(-50%, 22px) !important;
+  pointer-events: none !important;
+}
+
+.storm-tv-hud-bar:hover {
+  opacity: 1 !important;
+  transform: translateX(-50%) !important;
+  pointer-events: auto !important;
 }
 
 .tv-hud-inner {
   display: flex;
   align-items: center;
   gap: 20px;
+  flex-wrap: nowrap;
 }
 
 .tv-hud-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 700;
   color: var(--text-primary);
   user-select: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.tv-hud-item:hover {
+  transform: translateY(-1.5px) scale(1.05);
+  color: var(--accent);
 }
 
 .tv-hud-label {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .tv-key-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
+  min-width: 22px;
   height: 22px;
   border-radius: 50%;
   font-size: 11px;
   font-weight: 900;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
 }
 
-.tv-key-badge.btn-a {
+.tv-key-badge.btn-a,
+.tv-key-badge.btn-ok {
   background: linear-gradient(135deg, #10b981, #059669);
   color: #ffffff;
 }
 
-.tv-key-badge.btn-b {
+.tv-key-badge.btn-b,
+.tv-key-badge.btn-back {
   background: linear-gradient(135deg, #ef4444, #dc2626);
   color: #ffffff;
 }
@@ -337,22 +379,351 @@ body.tv-mode .cinema-player-wrapper {
   color: #000000;
 }
 
-.tv-key-badge.btn-bumper {
+.tv-key-badge.btn-bumper,
+.tv-key-badge.btn-dpad {
   width: auto;
   height: auto;
-  border-radius: 6px;
-  padding: 2px 7px;
-  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.14);
   color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 11px;
+  letter-spacing: 0.5px;
 }
 
 .tv-key-badge.btn-menu {
   width: auto;
   height: auto;
-  border-radius: 6px;
-  padding: 2px 7px;
+  border-radius: 8px;
+  padding: 2px 8px;
   background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
   color: #05070a;
+  font-weight: 900;
 }
+
+.tv-key-badge.btn-color-red {
+  background: #ef4444;
+  color: #fff;
+}
+
+.tv-key-badge.btn-color-green {
+  background: #10b981;
+  color: #fff;
+}
+
+.tv-key-badge.btn-color-yellow {
+  background: #f59e0b;
+  color: #000;
+}
+
+.tv-key-badge.btn-color-blue {
+  background: #0284c7;
+  color: #fff;
+}
+
+/* ==========================================================================
+   10-FOOT UI: МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (PROFILE, FILTERS, AUTH, ROOMS)
+   ========================================================================== */
+
+/* 1. Профиль пользователя и настройки (#profile-modal) */
+body.tv-mode .profile-modal-dialog {
+  max-width: 90vw !important;
+  width: 90vw !important;
+  max-height: 88vh !important;
+  border-radius: 24px !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9), 0 0 35px var(--accent-glow) !important;
+  border: 1.5px solid var(--border-color);
+  padding: 10px 16px;
+}
+
+body.tv-mode .profile-tab-links {
+  display: flex !important;
+  gap: 14px !important;
+  padding: 4px 6px 16px !important;
+  margin-bottom: 22px !important;
+  border-bottom: 2px solid var(--border-subtle) !important;
+}
+
+body.tv-mode .profile-tab-link {
+  padding: 12px 26px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  border-radius: 999px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1.5px solid transparent !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+body.tv-mode .profile-tab-link.active,
+body.tv-mode .profile-tab-link:focus,
+body.tv-mode .profile-tab-link.tv-focused {
+  background: var(--accent-gradient) !important;
+  color: #05070a !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 24px var(--accent-glow), 0 6px 16px rgba(0, 0, 0, 0.7) !important;
+  transform: scale(1.06) translateY(-2px) !important;
+  outline: none !important;
+}
+
+body.tv-mode .profile-stats-grid {
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 16px !important;
+  margin-bottom: 22px !important;
+}
+
+body.tv-mode .profile-stats-grid > div,
+body.tv-mode .profile-stats-grid-dual > div {
+  padding: 18px 14px !important;
+  border-radius: 14px !important;
+  border: 1.5px solid var(--border-subtle) !important;
+  background: var(--bg-tertiary) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45) !important;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+body.tv-mode .profile-stats-grid > div:hover,
+body.tv-mode .profile-stats-grid-dual > div:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+body.tv-mode .profile-stats-grid [id^="profile-stat-"],
+body.tv-mode .profile-stats-grid-dual [id^="profile-stat-"] {
+  font-size: 28px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+  margin-bottom: 4px !important;
+}
+
+body.tv-mode .profile-stats-grid-dual {
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 16px !important;
+  margin-bottom: 22px !important;
+}
+
+body.tv-mode #profile-avatar {
+  width: 86px !important;
+  height: 86px !important;
+  border-width: 3px !important;
+}
+
+body.tv-mode #profile-username {
+  font-size: 24px !important;
+  letter-spacing: 0.5px !important;
+}
+
+body.tv-mode #profile-email {
+  font-size: 15px !important;
+}
+
+body.tv-mode select.storm-select {
+  font-size: 16px !important;
+  height: 50px !important;
+  padding: 10px 20px !important;
+  border-radius: 12px !important;
+  min-width: 220px !important;
+  border: 1.5px solid var(--border-subtle) !important;
+  background: var(--bg-primary) !important;
+}
+
+body.tv-mode select.storm-select:focus,
+body.tv-mode select.storm-select.tv-focused {
+  outline: 3px solid var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 22px var(--accent-glow) !important;
+}
+
+body.tv-mode .profile-avatar-presets {
+  gap: 14px !important;
+}
+
+body.tv-mode .profile-avatar-preset-item {
+  width: 58px !important;
+  height: 58px !important;
+  border-width: 3px !important;
+}
+
+/* 2. Шторка фильтров каталога (#filter-sheet-modal) */
+body.tv-mode .filter-sheet-container {
+  max-width: 880px !important;
+  width: 88vw !important;
+  max-height: 86vh !important;
+  border-radius: 24px !important;
+  padding: 24px 32px !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9), 0 0 35px var(--accent-glow) !important;
+}
+
+body.tv-mode .filter-chip {
+  padding: 11px 22px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border-radius: 999px !important;
+  margin: 5px !important;
+  transition: all 0.2s ease !important;
+}
+
+body.tv-mode .filter-chip:focus,
+body.tv-mode .filter-chip.tv-focused {
+  outline: 3.5px solid var(--accent) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 24px var(--accent-glow) !important;
+  transform: scale(1.08) translateY(-2px) !important;
+  z-index: 100 !important;
+}
+
+body.tv-mode .filter-sheet-actions {
+  padding-top: 18px !important;
+  margin-top: 18px !important;
+  gap: 16px !important;
+}
+
+body.tv-mode .filter-sheet-actions button {
+  padding: 14px 28px !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  border-radius: 14px !important;
+}
+
+/* 3. Меню быстрых действий карточки (#card-action-sheet-modal) */
+body.tv-mode .action-sheet-container {
+  max-width: 680px !important;
+  width: 85vw !important;
+  border-radius: 24px !important;
+  padding: 26px 32px !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9), 0 0 35px var(--accent-glow) !important;
+}
+
+body.tv-mode .action-sheet-header {
+  gap: 20px !important;
+  margin-bottom: 20px !important;
+}
+
+body.tv-mode #action-sheet-poster {
+  width: 130px !important;
+  height: 195px !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
+}
+
+body.tv-mode #action-sheet-title {
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+}
+
+body.tv-mode #action-sheet-sub {
+  font-size: 15px !important;
+}
+
+body.tv-mode .action-sheet-btn {
+  padding: 16px 24px !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  border-radius: 14px !important;
+  margin-bottom: 12px !important;
+}
+
+/* 4. Окна авторизации, синхронизации и кинокомнат */
+body.tv-mode .auth-modal-dialog,
+body.tv-mode .sync-modal-dialog,
+body.tv-mode .rooms-modal-dialog,
+body.tv-mode .person-modal-dialog {
+  max-width: 680px !important;
+  width: 85vw !important;
+  max-height: 88vh !important;
+  border-radius: 24px !important;
+  padding: 24px 32px !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.9), 0 0 35px var(--accent-glow) !important;
+}
+
+body.tv-mode .storm-input {
+  height: 52px !important;
+  font-size: 16px !important;
+  border-radius: 12px !important;
+  padding: 12px 20px !important;
+}
+
+body.tv-mode .storm-input:focus,
+body.tv-mode .storm-input.tv-focused {
+  outline: 3px solid var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 24px var(--accent-glow) !important;
+}
+
+/* 5. Органы управления плеера (#cinema-modal) в ТВ-режиме */
+body.tv-mode .player-selector-dropdown-wrap {
+  margin: 14px 0 10px !important;
+}
+
+body.tv-mode .player-dropdown-trigger {
+  height: 54px !important;
+  border-radius: 14px !important;
+  padding: 10px 20px !important;
+  font-size: 16px !important;
+}
+
+body.tv-mode .player-dropdown-trigger:focus,
+body.tv-mode .player-dropdown-trigger.tv-focused {
+  outline: 3.5px solid var(--accent) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 28px var(--accent-glow) !important;
+  transform: scale(1.02) !important;
+}
+
+body.tv-mode .player-dropdown-menu {
+  border-radius: 16px !important;
+  max-height: 380px !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.9) !important;
+}
+
+body.tv-mode .player-dropdown-item {
+  padding: 14px 20px !important;
+  font-size: 15px !important;
+  border-radius: 10px !important;
+  margin: 4px 8px !important;
+}
+
+body.tv-mode .player-dropdown-item:focus,
+body.tv-mode .player-dropdown-item.tv-focused {
+  background: var(--accent-gradient) !important;
+  color: #05070a !important;
+  outline: none !important;
+  box-shadow: 0 0 20px var(--accent-glow) !important;
+}
+
+body.tv-mode .series-season-tab {
+  padding: 11px 24px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border-radius: 999px !important;
+}
+
+body.tv-mode .series-episode-card,
+body.tv-mode .episode-pill {
+  padding: 12px 20px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+}
+
+body.tv-mode .voiceover-pill {
+  padding: 10px 20px !important;
+  font-size: 14.5px !important;
+  border-radius: 999px !important;
+}
+
+body.tv-mode .player-fallback-bar {
+  padding: 12px 20px !important;
+  border-radius: 14px !important;
+}
+
+body.tv-mode .player-fallback-btn {
+  padding: 10px 20px !important;
+  font-size: 15px !important;
+  border-radius: 10px !important;
+}
+
 
