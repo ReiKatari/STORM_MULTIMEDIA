@@ -108,7 +108,9 @@ function getSourceName(item) {
     rutor: 'Rutor',
     lostfilm: 'LostFilm',
     redheadsound: 'Red Head Sound',
-    animevost: 'Animevost'
+    animevost: 'Animevost',
+    rutube: 'RuTube',
+    vkvideo: 'VK Видео'
   };
   return map[item?.source] || (item?.source || 'STORM').toUpperCase();
 }
@@ -6481,6 +6483,16 @@ function renderPlayerUtilityButtons() {
               <div class="automation-chip-text">
                 <span class="automation-chip-title">Обход VPN</span>
                 <span class="automation-chip-sub">Защищенный шлюз</span>
+              </div>
+            </label>
+
+            <label class="automation-toggle-chip is-locked-active" title="STORM AdBlock Engine: блокировка VAST видеорекламы, прероллов, баннеров и казино">
+              <input type="checkbox" id="toggle-adblock" checked disabled>
+              <span class="automation-chip-box"></span>
+              <span class="automation-chip-icon">🚫</span>
+              <div class="automation-chip-text">
+                <span class="automation-chip-title">Блокировка рекламы</span>
+                <span class="automation-chip-sub">Активна (Zero Ads)</span>
               </div>
             </label>
           </div>

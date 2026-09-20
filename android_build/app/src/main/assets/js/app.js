@@ -3756,6 +3756,8 @@ function initSourceFilterDropdown() {
 
   const sources = [
     { id: 'all', badge: '🌐', name: 'Все источники', desc: 'Объединенная база релизов' },
+    { id: 'rutube', badge: '🔴', name: 'RuTube (Официальный каталог)', desc: 'Лицензионные фильмы, сериалы и шоу в Full HD' },
+    { id: 'vkvideo', badge: '🔵', name: 'VK Видео (Фильмы и дубляж)', desc: 'Студийные переводы, новинки и сериалы' },
     { id: 'fanfilm4k', badge: '🎬', name: 'FanFilm4K (4K Ultra HD)', desc: 'Фильмы и сериалы в 4K UHD' },
     { id: 'tmdb', badge: '⭐', name: 'TMDB (Мировое кино)', desc: 'Мировая база кинопроката' },
     { id: 'anixart', badge: '🌸', name: 'AniXart (Аниме и озвучки)', desc: 'Тысячи тайтлов с сотнями озвучек' },

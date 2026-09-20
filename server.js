@@ -117,6 +117,18 @@ import {
   resolveCanonicalGenres
 } from './services/canonical-media-intel.js';
 
+import {
+  searchRuTube,
+  getRuTubePlayOptions,
+  getRuTubeCatalog
+} from './services/rutube-service.js';
+
+import {
+  searchVkVideo,
+  getVkVideoCatalog,
+  getVkVideoPlayer
+} from './services/vkvideo-service.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1215,7 +1227,17 @@ app.get('/api/media/catalog', async (req, res) => {
           fetchedItems = shikiRes.items;
           fetchedTotal = shikiRes.items.length;
         }
-        // 7. Сводный каталог всех источников ('all')
+        // 7. Прямой источник: RuTube
+        else if (source === 'rutube') {
+          fetchedItems = await getRuTubeCatalog(category, page);
+          fetchedTotal = Math.max(fetchedItems.length, 100);
+        }
+        // 8. Прямой источник: VK Видео
+        else if (source === 'vkvideo') {
+          fetchedItems = await getVkVideoCatalog(category, page);
+          fetchedTotal = Math.max(fetchedItems.length, 100);
+        }
+        // 9. Сводный каталог всех источников ('all')
         else {
           if (category === 'anime-movies') {
             const [anixRes, shikiRes, libRes, tmdbRes, ffRes] = await Promise.allSettled([
@@ -1542,6 +1564,14 @@ app.get('/api/media/search', async (req, res) => {
       tasks.push(withTimeout(searchShikimori(query)).catch(() => []));
     }
 
+    if (source === 'all' || source === 'rutube') {
+      tasks.push(withTimeout(searchRuTube(query)).catch(() => []));
+    }
+
+    if (source === 'all' || source === 'vkvideo') {
+      tasks.push(withTimeout(searchVkVideo(query)).catch(() => []));
+    }
+
     const settled = await Promise.all(tasks);
     let rawItems = [];
     settled.forEach(arr => {
@@ -1712,6 +1742,62 @@ app.get('/api/media/item', async (req, res) => {
           ]
         };
       }
+    } else if (source === 'rutube' || String(id || '').startsWith('rutube_')) {
+      const cleanRuId = String(id || '').replace('rutube_', '');
+      const playOpts = await getRuTubePlayOptions(cleanRuId);
+      const videoTitle = req.query.title || playOpts?.title || 'Видео RuTube';
+      mediaDetails = {
+        id: `rutube_${cleanRuId}`,
+        source: 'rutube',
+        title: videoTitle,
+        original_title: videoTitle,
+        poster: playOpts?.thumbnail || req.query.poster || 'assets/favicon.svg',
+        year: req.query.year || new Date().getFullYear().toString(),
+        rating: 8.0,
+        description: req.query.description || 'Официальный лицензионный релиз на платформе RuTube.',
+        media_type: req.query.media_type || 'movie',
+        category: 'Видео',
+        players: [
+          ...(playOpts?.m3u8 ? [{
+            id: 'rutube_direct_hls',
+            name: 'RuTube HLS (Прямой поток без рекламы)',
+            url: playOpts.m3u8,
+            quality: '1080p FHD',
+            badge: 'RUTUBE HLS',
+            status: 'working',
+            status_label: '🟢 Онлайн',
+            is_recommended: true,
+            recommended_badge: '🔥 Рекомендуемый'
+          }] : []),
+          {
+            id: 'rutube_embed',
+            name: 'RuTube Плеер (Официальный)',
+            type: 'iframe',
+            url: `https://rutube.ru/play/embed/${cleanRuId}`,
+            quality: '1080p FHD',
+            badge: 'RUTUBE',
+            status: 'working',
+            status_label: '🟢 Онлайн',
+            is_recommended: !playOpts?.m3u8
+          }
+        ]
+      };
+    } else if (source === 'vkvideo' || String(id || '').startsWith('vk_')) {
+      const videoTitle = req.query.title || 'VK Видео';
+      const playerObj = getVkVideoPlayer(videoTitle, req.query.year);
+      mediaDetails = {
+        id: String(id || 'vk_' + Date.now()),
+        source: 'vkvideo',
+        title: videoTitle,
+        original_title: videoTitle,
+        poster: req.query.poster || 'assets/favicon.svg',
+        year: req.query.year || new Date().getFullYear().toString(),
+        rating: 8.0,
+        description: req.query.description || 'Медиатека VK Видео: фильмы, сериалы и озвучки.',
+        media_type: req.query.media_type || 'movie',
+        category: 'Видео',
+        players: [playerObj]
+      };
     } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
       const rawId = String(id || '').replace('tmdb_', '');
       const cleanTmdbId = /^\d+$/.test(rawId) ? rawId : '';
@@ -2920,7 +3006,15 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           `);
         }
 
-        // Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
+        // 1. STORM AdBlock Engine: вырезание полей конфигурации рекламы Playerjs и VAST
+        html = html
+          .replace(/(["']?(?:preroll|midroll|postroll|vast|vast_url|banner|brand|adv|advert)["']?\s*:\s*)(?:\[[^\]]*\]|"[^"]*"|'[^']*'|\{[^\}]*\}|true)/gi, '$1null')
+          .replace(/\b(?:preroll|midroll|vast|vast_url)\s*=\s*[^;,\n]+/gi, '/* storm ad removed */');
+
+        // 2. STORM AdBlock Engine: вырезание внешних скриптов тизеров, трекеров и казино
+        html = html.replace(/<script[^>]*src=["'][^"']*(?:yandex|adfox|googleads|doubleclick|adsystem|adkernel|redclick|marketgid|casino|1xbet|betting|traff|banner|adv)[^"']*["'][^>]*><\/script>/gi, '');
+
+        // 3. Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
         html = html.replace(/if\s*\(\s*!isFramed\s*\)\s*\{/g, 'if (false && !isFramed) {');
 
         const baseOrigin = new URL(finalUrl).origin;
@@ -2929,6 +3023,52 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           <script>
             window.isFramed = true;
             try { window.top = window.self; } catch(e) {}
+            try { window.open = function() { return null; }; } catch(e) {}
+            try { window.alert = function() {}; } catch(e) {}
+
+            // STORM AdBlock Engine: автоматический пропуск, уничтожение и глушение рекламы
+            (function() {
+              function sterilizeAds() {
+                try {
+                  var skipSelectors = [
+                    '.skip-ad', '.ad-skip', '.vast-skip-button', '.playerjs-ad-skip',
+                    '[class*="skip"][class*="ad"]', 'button[class*="skip"]',
+                    '.close-ad', '.ad-close', '.video-ad-skip', '.skip-button',
+                    '#skip-button', '[id*="skip"]', '.ytp-ad-skip-button',
+                    '.videoAdUiSkipButton', '.ad-banner-close', '.closeBtn'
+                  ];
+                  var btns = document.querySelectorAll(skipSelectors.join(','));
+                  for (var i = 0; i < btns.length; i++) {
+                    if (btns[i].offsetParent !== null) btns[i].click();
+                  }
+
+                  var adNodes = document.querySelectorAll('[id*="ad-"], [class*="ad-container"], [class*="player-ad"], .vast-container, [id*="banner"], [class*="teaser"], iframe[src*="ad"]');
+                  for (var j = 0; j < adNodes.length; j++) {
+                    adNodes[j].style.setProperty('display', 'none', 'important');
+                    adNodes[j].style.setProperty('pointer-events', 'none', 'important');
+                  }
+
+                  var vids = document.querySelectorAll('video');
+                  for (var k = 0; k < vids.length; k++) {
+                    var v = vids[k];
+                    var isAd = v.closest('.ad-container') || v.closest('[class*="vast"]') || v.classList.contains('vpaid-video') || (v.src && (v.src.indexOf('/ad') !== -1 || v.src.indexOf('preroll') !== -1));
+                    if (isAd) {
+                      v.muted = true;
+                      if (v.duration && isFinite(v.duration) && v.currentTime < v.duration) {
+                        v.currentTime = v.duration;
+                      }
+                    }
+                  }
+                } catch(e) {}
+              }
+
+              setInterval(sterilizeAds, 200);
+              if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sterilizeAds);
+              } else {
+                sterilizeAds();
+              }
+            })();
           </script>
           <script>
           (function() {
@@ -3588,9 +3728,68 @@ app.get('/api/player/vpn-proxy', async (req, res) => {
         `);
       }
 
+      // STORM AdBlock Engine: вырезание полей конфигурации рекламы и внешних скриптов
+      html = html
+        .replace(/(["']?(?:preroll|midroll|postroll|vast|vast_url|banner|brand|adv|advert)["']?\s*:\s*)(?:\[[^\]]*\]|"[^"]*"|'[^']*'|\{[^\}]*\}|true)/gi, '$1null')
+        .replace(/\b(?:preroll|midroll|vast|vast_url)\s*=\s*[^;,\n]+/gi, '/* storm ad removed */')
+        .replace(/<script[^>]*src=["'][^"']*(?:yandex|adfox|googleads|doubleclick|adsystem|adkernel|redclick|marketgid|casino|1xbet|betting|traff|banner|adv)[^"']*["'][^>]*><\/script>/gi, '');
+
       const finalOrigin = new URL(proxyRes.url || cleanUrl).origin;
       const injection = `
         <base href="${finalOrigin}/">
+        <script>
+        (function() {
+          try {
+            window.open = function() { return null; };
+            window.alert = function() {};
+            function sterilizeAds() {
+              try {
+                var skipSelectors = [
+                  '.skip-ad', '.ad-skip', '.vast-skip-button', '.playerjs-ad-skip',
+                  '[class*="skip"][class*="ad"]', 'button[class*="skip"]',
+                  '.close-ad', '.ad-close', '.video-ad-skip', '.skip-button',
+                  '#skip-button', '[id*="skip"]', '.ytp-ad-skip-button',
+                  '.videoAdUiSkipButton', '.ad-banner-close', '.closeBtn'
+                ];
+                var btns = document.querySelectorAll(skipSelectors.join(','));
+                for (var i = 0; i < btns.length; i++) {
+                  if (btns[i].offsetParent !== null) btns[i].click();
+                }
+
+                var adNodes = document.querySelectorAll('[id*="ad-"], [class*="ad-container"], [class*="player-ad"], .vast-container, [id*="banner"], [class*="teaser"], iframe[src*="ad"]');
+                for (var j = 0; j < adNodes.length; j++) {
+                  adNodes[j].style.setProperty('display', 'none', 'important');
+                  adNodes[j].style.setProperty('pointer-events', 'none', 'important');
+                }
+
+                var vids = document.querySelectorAll('video');
+                for (var k = 0; k < vids.length; k++) {
+                  var v = vids[k];
+                  var isAd = v.closest('.ad-container') || v.closest('[class*="vast"]') || v.classList.contains('vpaid-video') || (v.src && (v.src.indexOf('/ad') !== -1 || v.src.indexOf('preroll') !== -1));
+                  if (isAd) {
+                    v.muted = true;
+                    if (v.duration && isFinite(v.duration) && v.currentTime < v.duration) {
+                      v.currentTime = v.duration;
+                    }
+                  }
+                }
+              } catch(e) {}
+            }
+            setInterval(sterilizeAds, 200);
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', sterilizeAds);
+            } else {
+              sterilizeAds();
+            }
+          } catch (_) {}
+        })();
+        </script>
+        <style>
+          [class*="ad-"], [id*="ad-"], .vast-container, [class*="teaser"], [id*="banner"] {
+            display: none !important;
+            pointer-events: none !important;
+          }
+        </style>
         <script>
         (function() {
           try {
