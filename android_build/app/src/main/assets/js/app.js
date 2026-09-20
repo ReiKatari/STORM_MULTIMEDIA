@@ -776,12 +776,30 @@ function populateFilterSheet() {
   const sourcesContainer = document.getElementById('filter-sheet-sources');
   if (sourcesContainer) {
     const sources = [
-      { id: 'all', label: 'Все источники' },
-      { id: 'fanfilm4k', label: 'FanFilm4K' },
-      { id: 'anixart', label: 'AniXart' },
-      { id: 'shikimori', label: 'Shikimori' },
-      { id: 'collaps', label: 'Collaps' },
-      { id: 'alloha', label: 'Alloha' }
+      { id: 'all', label: '🌐 Все источники' },
+      { id: 'rutube', label: '🔴 RuTube' },
+      { id: 'vkvideo', label: '🔵 VK Видео' },
+      { id: 'fanfilm4k', label: '🎬 FanFilm4K' },
+      { id: 'tmdb', label: '⭐ TMDB' },
+      { id: 'anixart', label: '🌸 AniXart' },
+      { id: 'anilibria', label: '⚡ AniLibria' },
+      { id: 'shikimori', label: '🎌 Shikimori' },
+      { id: 'kodik', label: '🎥 Kodik' },
+      { id: 'hdrezka', label: '🍿 HDRezka' },
+      { id: 'collaps', label: '🎞️ Collaps' },
+      { id: 'alloha', label: '📺 Alloha' },
+      { id: 'videocdn', label: '📽️ VideoCDN' },
+      { id: 'ashdi', label: '💎 Ashdi' },
+      { id: 'vidsrc', label: '🌍 VidSrc' },
+      { id: 'kinobaza', label: '🔥 Kinobaza' },
+      { id: 'kinogo', label: '🎪 Kinogo' },
+      { id: 'lostfilm', label: '🎬 LostFilm' },
+      { id: 'redheadsound', label: '🎙️ RHS' },
+      { id: 'animevost', label: '🌸 AnimeVost' },
+      { id: 'webtorrent', label: '🧲 WebTorrent' },
+      { id: 'rutracker', label: '🏴‍☠️ RuTracker' },
+      { id: 'nnmclub', label: '⚡ NNM-Club' },
+      { id: 'rutor', label: '🧲 Rutor' }
     ];
     sourcesContainer.innerHTML = sources.map(s => `
       <button type="button" class="filter-chip ${currentFilterSheetSource === s.id ? 'is-active' : ''}" data-source="${s.id}">${s.label}</button>
@@ -874,7 +892,7 @@ function syncDesktopFilterLabels() {
     el.classList.toggle('is-active', el.dataset.value === currentYear);
   });
   document.querySelectorAll('#filter-rating-list .storm-dropdown-item').forEach(el => {
-    el.classList.toggle('is-active', el.dataset.value === String(currentRating));
+    el.classList.toggle('is-active', Math.abs((parseFloat(el.dataset.value) || 0) - currentRating) < 0.01);
   });
   document.querySelectorAll('#filter-sort-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === currentSort);
@@ -3981,10 +3999,12 @@ export function initFilterDropdowns() {
     { id: '2022', name: '2022 год', icon: '🔹' },
     { id: '2021', name: '2021 год', icon: '🔹' },
     { id: '2020', name: '2020 год', icon: '🔹' },
-    { id: '2015_2019', name: '2015 — 2019', icon: '⏳' },
-    { id: '2010_2014', name: '2010 — 2014', icon: '⏳' },
-    { id: '2000_2009', name: '2000 — 2009', icon: '⏳' },
-    { id: '2000_down', name: 'До 2000 года', icon: '🏛️' }
+    { id: '2015-2019', name: '2015 — 2019', icon: '⏳' },
+    { id: '2010-2014', name: '2010 — 2014', icon: '⏳' },
+    { id: '2000-2009', name: '2000 — 2009', icon: '⏳' },
+    { id: '1990-1999', name: '1990 — 1999', icon: '⏳' },
+    { id: '1980-1989', name: '1980 — 1989', icon: '⏳' },
+    { id: '1980_down', name: 'До 1980 года', icon: '🏛️' }
   ];
 
   setupFilterDropdown({
@@ -4004,10 +4024,15 @@ export function initFilterDropdowns() {
   // 3. Рейтинг
   const ratings = [
     { id: '0', name: 'Любой рейтинг', icon: '🌐' },
-    { id: '8', name: '★ 8.0+ Шедевры', icon: '🏆' },
-    { id: '7', name: '★ 7.0+ Отличные', icon: '⭐' },
-    { id: '6', name: '★ 6.0+ Хорошие', icon: '👍' },
-    { id: '5', name: '★ 5.0+ Средние', icon: '👌' }
+    { id: '9.0', name: '★ 9.0+ Шедевры', icon: '🏆' },
+    { id: '8.5', name: '★ 8.5+ Выдающиеся', icon: '💎' },
+    { id: '8.0', name: '★ 8.0+ Отличные', icon: '⭐' },
+    { id: '7.5', name: '★ 7.5+ Очень хорошие', icon: '✨' },
+    { id: '7.0', name: '★ 7.0+ Хорошие', icon: '👍' },
+    { id: '6.5', name: '★ 6.5+ Достойные', icon: '👌' },
+    { id: '6.0', name: '★ 6.0+ Средние', icon: '🔹' },
+    { id: '5.5', name: '★ 5.5+ Приемлемые', icon: '🔸' },
+    { id: '5.0', name: '★ 5.0+ На любителя', icon: '▫️' }
   ];
 
   setupFilterDropdown({
@@ -4219,11 +4244,14 @@ export function renderFilteredCatalog() {
       const yrStr = getMediaYear(item) || item.year;
       const year = parseInt(yrStr, 10);
       if (isNaN(year)) return false;
+      if (currentYear === '1980_down' || currentYear === 'pre_1980') return year < 1980;
+      if (currentYear === '1980-1989' || currentYear === '1980_1989') return year >= 1980 && year <= 1989;
+      if (currentYear === '1990-1999' || currentYear === '1990_1999') return year >= 1990 && year <= 1999;
       if (currentYear === '2000_down') return year < 2000;
       if (currentYear === '2000-2009' || currentYear === '2000_2009') return year >= 2000 && year <= 2009;
       if (currentYear === '2010-2019' || currentYear === '2010_2019') return year >= 2010 && year <= 2019;
-      if (currentYear === '2010_2014') return year >= 2010 && year <= 2014;
-      if (currentYear === '2015_2019') return year >= 2015 && year <= 2019;
+      if (currentYear === '2010-2014' || currentYear === '2010_2014') return year >= 2010 && year <= 2014;
+      if (currentYear === '2015-2019' || currentYear === '2015_2019') return year >= 2015 && year <= 2019;
       if (currentYear === '2020-2023' || currentYear === '2020_2023') return year >= 2020 && year <= 2023;
       return String(year) === currentYear;
     });

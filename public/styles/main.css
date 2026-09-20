@@ -1258,6 +1258,213 @@ body {
   -webkit-overflow-scrolling: touch !important;
 }
 
+#cinema-modal {
+  --cinema-player-max-h: calc(100dvh - 208px);
+  --cinema-player-max-w: calc((100dvh - 208px) * 16 / 9);
+  --cinema-poster-max-h: clamp(130px, 24vh, 230px);
+  --cinema-side-max-h: calc(100dvh - 60px);
+}
+
+#cinema-modal:not(.has-series-bar) {
+  --cinema-player-max-h: calc(100dvh - 162px);
+  --cinema-player-max-w: calc((100dvh - 162px) * 16 / 9);
+}
+
+/* Компактная шапка кинотеатрального модального окна */
+#cinema-modal .storm-modal-header {
+  padding: 6px 16px !important;
+  min-height: 40px !important;
+  max-height: 44px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-shrink: 0 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  background: var(--bg-secondary) !important;
+  box-sizing: border-box !important;
+  z-index: 100 !important;
+}
+
+#cinema-modal .storm-modal-title {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+/* Компактное тело модального окна: без пустот, предотвращает выталкивание консоли плеера */
+#cinema-modal .storm-modal-body {
+  padding: 8px 16px 14px !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Сетка плеера и боковой колонки с адаптивной пропорцией */
+#cinema-modal .cinema-layout-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) clamp(250px, 20vw, 340px) !important;
+  gap: 14px !important;
+  align-items: start !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@container cinema-grid (max-width: 980px) {
+  #cinema-modal .cinema-layout-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  #cinema-modal .cinema-layout-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* 🎯 АВТОМАСШТАБИРОВАНИЕ ПЛЕЕРА: гарантирует, что вся консоль до поля выбора плеера умещается в экран */
+#cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-container {
+  width: 100% !important;
+  max-height: var(--cinema-player-max-h, calc(100dvh - 208px)) !important;
+  max-width: var(--cinema-player-max-w, calc((100dvh - 208px) * 16 / 9)) !important;
+  aspect-ratio: 16 / 9 !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: 12px !important;
+}
+
+#cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 12px !important;
+  position: relative !important;
+}
+
+#cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-wrapper iframe,
+#cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-wrapper video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  border-radius: 12px !important;
+  object-fit: contain !important;
+}
+
+/* Компактная панель быстрой смены серии и озвучки */
+#cinema-modal .player-series-quick-bar {
+  margin-bottom: 6px !important;
+  padding: 4px 10px !important;
+  gap: 6px !important;
+  border-radius: 9px !important;
+  min-height: 40px !important;
+  box-sizing: border-box !important;
+}
+
+#cinema-modal .quick-dropdown-trigger {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  border-radius: 8px !important;
+}
+
+/* Компактная аварийная полоса переключения */
+#cinema-modal .player-fallback-bar {
+  margin-top: 5px !important;
+  margin-bottom: 5px !important;
+  padding: 5px 12px !important;
+  min-height: 32px !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+
+#cinema-modal .player-fallback-text {
+  font-size: 11.5px !important;
+}
+
+#cinema-modal .player-fallback-btn {
+  padding: 4px 12px !important;
+  font-size: 11px !important;
+  border-radius: 6px !important;
+}
+
+/* Выпадающий список выбора плеера: четко на виду, всегда в границах первого экрана */
+#cinema-modal #player-selector-dropdown-wrap {
+  margin-top: 5px !important;
+  width: 100% !important;
+  position: relative !important;
+}
+
+#cinema-modal .player-dropdown-trigger {
+  padding: 7px 14px !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+}
+
+#cinema-modal .player-trigger-info {
+  gap: 8px !important;
+}
+
+/* Правая колонка подробной информации: автономная прокрутка, масштабируемый постер */
+#cinema-modal .cinema-side-column {
+  max-height: var(--cinema-side-max-h, calc(100dvh - 60px)) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin !important;
+  padding: 12px 14px !important;
+  gap: 10px !important;
+  border-radius: 12px !important;
+}
+
+#cinema-modal .cinema-side-poster-wrap {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  position: relative !important;
+  width: 100% !important;
+}
+
+#cinema-modal .cinema-side-poster {
+  max-height: var(--cinema-poster-max-h, clamp(130px, 24vh, 230px)) !important;
+  width: auto !important;
+  aspect-ratio: 2 / 3 !important;
+  object-fit: cover !important;
+  border-radius: 10px !important;
+  display: block !important;
+  margin: 0 auto !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+#cinema-modal .cinema-ratings-strip {
+  gap: 5px !important;
+  margin: 4px 0 !important;
+}
+
+#cinema-modal .cinema-rating-pill {
+  padding: 3px 6px !important;
+  font-size: 11px !important;
+}
+
+#cinema-modal .cinema-info-table-wrap {
+  margin: 6px 0 10px 0 !important;
+}
+
+#cinema-modal .info-table-label {
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+}
+
+#cinema-modal .cinema-info-table td {
+  padding: 5px 8px !important;
+  font-size: 11.5px !important;
+}
+
 #cinema-modal.is-focus-mode .cinema-modal-dialog,
 #cinema-modal.is-focus-mode .storm-modal-body {
   overflow: hidden !important;
@@ -6240,10 +6447,13 @@ body.tv-mode .storm-bottom-nav {
 .cinema-player-container {
   position: relative;
   width: 100%;
+  max-height: var(--cinema-player-max-h, calc(100dvh - 208px));
+  max-width: var(--cinema-player-max-w, calc((100dvh - 208px) * 16 / 9));
   aspect-ratio: 16 / 9;
   background: #000000;
   border-radius: 12px;
   overflow: hidden;
+  margin: 0 auto;
 }
 
 /* Режимы масштабирования (Aspect Ratio) */

@@ -1538,7 +1538,7 @@ app.get('/api/media/search', async (req, res) => {
     }
 
     const tasks = [];
-    const withTimeout = (promise, ms = 3500) =>
+    const withTimeout = (promise, ms = 6000) =>
       Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
@@ -1583,6 +1583,7 @@ app.get('/api/media/search', async (req, res) => {
       if (!t) return '';
       return String(t)
         .toLowerCase()
+        .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф)\)?\s*[:\-–—]?\s*/gi, '')
         .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
         .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
         .replace(/\s*\(?(?:фильм|сериал)\)?\s*$/i, '')
@@ -1784,7 +1785,26 @@ app.get('/api/media/item', async (req, res) => {
       };
     } else if (source === 'vkvideo' || String(id || '').startsWith('vk_')) {
       const videoTitle = req.query.title || 'VK Видео';
-      const playerObj = getVkVideoPlayer(videoTitle, req.query.year);
+      const vkMatch = String(id || '').match(/vk_(-?\d+)_(\d+)/);
+      const players = [];
+      if (vkMatch) {
+        const [, oid, vid] = vkMatch;
+        players.push({
+          id: 'vk_direct_embed',
+          name: 'VK Видео (Официальный плеер)',
+          type: 'iframe',
+          quality: '1080p FHD / 4K',
+          badge: 'VK ВИДЕО',
+          status: 'working',
+          status_label: '🟢 Онлайн',
+          is_recommended: true,
+          recommended_badge: '🔥 Рекомендуемый',
+          url: `https://vkvideo.ru/video_ext.php?oid=${oid}&id=${vid}&autoplay=1`
+        });
+      }
+      const searchPlayer = getVkVideoPlayer(videoTitle, req.query.year);
+      if (searchPlayer) players.push(searchPlayer);
+
       mediaDetails = {
         id: String(id || 'vk_' + Date.now()),
         source: 'vkvideo',
@@ -1793,10 +1813,10 @@ app.get('/api/media/item', async (req, res) => {
         poster: req.query.poster || 'assets/favicon.svg',
         year: req.query.year || new Date().getFullYear().toString(),
         rating: 8.0,
-        description: req.query.description || 'Медиатека VK Видео: фильмы, сериалы и озвучки.',
+        description: req.query.description || 'Медиатека VK Видео: официальные студии озвучки, фильмы и сериалы.',
         media_type: req.query.media_type || 'movie',
         category: 'Видео',
-        players: [playerObj]
+        players: players.length > 0 ? players : [searchPlayer]
       };
     } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
       const rawId = String(id || '').replace('tmdb_', '');

@@ -205,6 +205,7 @@ export async function searchTmdb(query, page = 1) {
 /**
  * Получение подробной информации о релизе (актеры, режиссеры, жанры, рейтинги, сезоны)
  */
+export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '', yearHint = '') {
   let cleanId = id ? String(id).replace('tmdb_', '').trim() : '';
   if (!/^\d+$/.test(cleanId)) {
     cleanId = '';
