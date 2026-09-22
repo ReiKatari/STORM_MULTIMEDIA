@@ -79,9 +79,46 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
     });
   }
 
+  // Проверка отечественного контента (Россия, СССР, RuTube, VK Видео)
+  const isDomestic = source === 'rutube' || source === 'vkvideo' ||
+    (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) ||
+    (!imdb_id && /[\u0400-\u04FF]/.test(cleanTitle || rawTitle));
+
   // 3. Плееры для кино и сериалов
   if (!isAnime) {
-    // Kodik Плеер (проверенный, работает и по ID, и по названию)
+    // RuTube (Официальный плеер и лицензионный каталог Wink / RuTube)
+    const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+    players.push({
+      id: 'rutube_stream',
+      name: 'RuTube (Официальный поток / Wink)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'RUTUBE',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+      speed: '⚡ Российский CDN',
+      url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`,
+      is_recommended: isDomestic && !fanfilm_4k_url,
+      recommended_badge: (isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
+    });
+
+    // VK Видео (Фильмы, сериалы и озвучки)
+    const vkSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+    players.push({
+      id: 'vk_video_stream',
+      name: 'VK Видео (Фильмы, сериалы и дубляж)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'VK ВИДЕО',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальные релизы и студийные переводы VK Видео',
+      speed: '⚡ Скоростной VK CDN',
+      url: `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`
+    });
+
+    // Kodik Плеер (проверенный балансер)
     const baseKodikUrl = kp_id
       ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
       : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
@@ -96,25 +133,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       audio_info: 'Большой выбор студийных озвучек',
       speed: '⚡ Быстрый поток',
       url: baseKodikUrl,
-      is_recommended: !fanfilm_4k_url,
-      recommended_badge: !fanfilm_4k_url ? '🔥 Рекомендуемый' : undefined
-    });
-
-    // Red Head Sound (Дубляж RHS)
-    const rhsUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rhs${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
-    players.push({
-      id: 'rhs_player',
-      name: 'Red Head Sound (Дубляж RHS)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'RHS',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальные голоса дубляжа студии RHS',
-      speed: '⚡ Премиум дубляж',
-      url: rhsUrl
+      is_recommended: !isDomestic && !fanfilm_4k_url,
+      recommended_badge: (!isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
     });
 
     // HDRezka Cinema (FHD и 4K) - официальные переводы HDRezka Studio
@@ -134,22 +154,42 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       url: rezkaUrl
     });
 
-    // LostFilm TV (Официальный дубляж и релизы)
-    const lostfilmUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=lostfilm${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
-    players.push({
-      id: 'lostfilm_player',
-      name: 'LostFilm TV (Студийный перевод)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'LOSTFILM',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Фирменная многоголосая озвучка LostFilm',
-      speed: '⚡ Быстрый CDN',
-      url: lostfilmUrl
-    });
+    // Студии зарубежного дубляжа (LostFilm TV и Red Head Sound) - ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
+    if (!isDomestic) {
+      // Red Head Sound (Дубляж RHS)
+      const rhsUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rhs${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
+      players.push({
+        id: 'rhs_player',
+        name: 'Red Head Sound (Дубляж RHS)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'RHS',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальные голоса дубляжа студии RHS',
+        speed: '⚡ Премиум дубляж',
+        url: rhsUrl
+      });
+
+      // LostFilm TV (Официальный дубляж и релизы)
+      const lostfilmUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=lostfilm${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
+      players.push({
+        id: 'lostfilm_player',
+        name: 'LostFilm TV (Студийный перевод)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'LOSTFILM',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Фирменная многоголосая озвучка LostFilm',
+        speed: '⚡ Быстрый CDN',
+        url: lostfilmUrl
+      });
+    }
 
     // Vidsrc Cinema (Original)
     if (imdb_id) {
@@ -167,36 +207,6 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         url: `https://vidsrc.to/embed/${isTv ? 'tv' : 'movie'}/${imdb_id}`
       });
     }
-
-    // RuTube (Официальный плеер и лицензионный каталог)
-    const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
-    players.push({
-      id: 'rutube_stream',
-      name: 'RuTube (Официальный поток FHD)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'RUTUBE',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальный лицензионный каталог RuTube',
-      speed: '⚡ Российский CDN',
-      url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`
-    });
-
-    // VK Видео (Фильмы, сериалы и озвучки)
-    const vkSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
-    players.push({
-      id: 'vk_video_stream',
-      name: 'VK Видео (Фильмы, сериалы и дубляж)',
-      type: 'iframe',
-      quality: '1080p FHD / 4K',
-      badge: 'VK ВИДЕО',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Студийные дубляжи (RHS, LostFilm) и официальные релизы',
-      speed: '⚡ Скоростной VK CDN',
-      url: `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`
-    });
   } else {
     // 4. Плееры специально для Аниме
     // AniXart Stream - проверенный скоростной плеер со всеми студиями озвучки

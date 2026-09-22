@@ -1884,9 +1884,82 @@ app.get('/api/media/item', async (req, res) => {
         };
       }
     } else if (source === 'rutube' || String(id || '').startsWith('rutube_')) {
-      const cleanRuId = String(id || '').replace('rutube_', '');
+      let cleanRuId = String(id || '').replace('rutube_', '');
+      
+      // Если ID не является 32-значным hex-хешем (например, slug 'landyshi'):
+      if (!/^[a-f0-9]{32}$/i.test(cleanRuId)) {
+        if (req.query.rutube_id && /^[a-f0-9]{32}$/i.test(req.query.rutube_id)) {
+          cleanRuId = req.query.rutube_id;
+        } else if (req.query.embed_url || req.query.url) {
+          const m = String(req.query.embed_url || req.query.url).match(/([a-f0-9]{32})/i);
+          if (m) cleanRuId = m[1];
+        } else {
+          // Ищем в RuTube по названию
+          const q = req.query.title || cleanRuId;
+          const searchItems = await searchRuTube(q);
+          if (searchItems && searchItems.length > 0) {
+            const best = searchItems.find(s => s.source_id && /^[a-f0-9]{32}$/i.test(s.source_id)) || searchItems[0];
+            cleanRuId = best.source_id || best.id.replace('rutube_', '');
+          }
+        }
+      }
+
       const playOpts = await getRuTubePlayOptions(cleanRuId);
       const videoTitle = req.query.title || playOpts?.title || 'Видео RuTube';
+      const isSeries = req.query.media_type === 'series' || String(videoTitle).toLowerCase().includes('сериал') || String(videoTitle).toLowerCase().includes('серия');
+
+      // Для сериалов RuTube: собираем все эпизоды и сезоны из результатов поиска RuTube
+      let seasonsData = [];
+      let episodesList = [];
+      if (isSeries) {
+        try {
+          const ruEpisodes = await searchRuTube(req.query.title || videoTitle);
+          if (ruEpisodes && ruEpisodes.length > 0) {
+            const seasonMap = new Map();
+            ruEpisodes.forEach(it => {
+              const mEp = it.title.match(/(\d+)\s*сери[яие]/i);
+              if (mEp) {
+                const epNum = parseInt(mEp[1], 10);
+                const mSeas = it.title.match(/(\d+)\s*сезон/i) || (it.title.toLowerCase().includes('вторая весна') ? [, 2] : [, 1]);
+                const sNum = parseInt(mSeas[1], 10);
+                if (!seasonMap.has(sNum)) {
+                  seasonMap.set(sNum, new Map());
+                }
+                const epMap = seasonMap.get(sNum);
+                if (!epMap.has(epNum)) {
+                  epMap.set(epNum, {
+                    season_number: sNum,
+                    episode_number: epNum,
+                    name: it.title,
+                    embed_url: it.embed_url,
+                    video_url: it.video_url,
+                    still: it.poster,
+                    duration: it.duration || '48 мин.',
+                    overview: it.description || ''
+                  });
+                }
+              }
+            });
+
+            seasonMap.forEach((epsMap, sNum) => {
+              const eps = Array.from(epsMap.values()).sort((a, b) => a.episode_number - b.episode_number);
+              seasonsData.push({
+                season_number: sNum,
+                name: `Сезон ${sNum}`,
+                episode_count: eps.length,
+                episodes: eps
+              });
+              episodesList.push(...eps);
+            });
+            seasonsData.sort((a, b) => a.season_number - b.season_number);
+          }
+        } catch (e) {
+          console.warn('[RuTube Series Parsing Error]:', e.message);
+        }
+      }
+
+      const vkSearchPlayer = getVkVideoPlayer(videoTitle, req.query.year);
+
       mediaDetails = {
         id: `rutube_${cleanRuId}`,
         source: 'rutube',
@@ -1896,8 +1969,10 @@ app.get('/api/media/item', async (req, res) => {
         year: req.query.year || new Date().getFullYear().toString(),
         rating: 8.0,
         description: req.query.description || 'Официальный лицензионный релиз на платформе RuTube.',
-        media_type: req.query.media_type || 'movie',
-        category: 'Видео',
+        media_type: isSeries ? 'series' : (req.query.media_type || 'movie'),
+        category: isSeries ? 'Сериал' : 'Видео',
+        seasons: seasonsData.length > 0 ? seasonsData : undefined,
+        episodes: episodesList.length > 0 ? episodesList : undefined,
         players: [
           ...(playOpts?.m3u8 ? [{
             id: 'rutube_direct_hls',
@@ -1920,7 +1995,8 @@ app.get('/api/media/item', async (req, res) => {
             status: 'working',
             status_label: '🟢 Онлайн',
             is_recommended: !playOpts?.m3u8
-          }
+          },
+          ...(vkSearchPlayer ? [vkSearchPlayer] : [])
         ]
       };
     } else if (source === 'vkvideo' || String(id || '').startsWith('vk_')) {
@@ -1944,6 +2020,21 @@ app.get('/api/media/item', async (req, res) => {
       }
       const searchPlayer = getVkVideoPlayer(videoTitle, req.query.year);
       if (searchPlayer) players.push(searchPlayer);
+
+      // Добавляем также поиск в RuTube для отказоустойчивости
+      const ruSearchQ = encodeURIComponent(`${videoTitle} ${req.query.year || ''}`.trim());
+      players.push({
+        id: 'rutube_backup_stream',
+        name: 'RuTube (Официальный поток / Wink)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'RUTUBE',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+        speed: '⚡ Российский CDN',
+        url: `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=1`
+      });
 
       mediaDetails = {
         id: String(id || 'vk_' + Date.now()),
@@ -2430,6 +2521,38 @@ app.get('/api/media/series-episodes', async (req, res) => {
       overview: `Серия ${i + 1}. Смотрите ${i + 1}-ю серию проекта «${cleanTitle}» в высоком разрешении.`
     }));
     res.json({ episodes: fallbackEpisodes, overview: `Сезон 1 • ${fallbackCount} серий.` });
+  }
+});
+
+// Точечное получение ссылки на серию для плеера RuTube
+app.get('/api/media/rutube-episode', async (req, res) => {
+  try {
+    const { title, season, episode } = req.query;
+    if (!title) return res.status(400).json({ error: 'Параметр title обязателен' });
+    const sNum = parseInt(season, 10) || 1;
+    const epNum = parseInt(episode, 10) || 1;
+
+    const query = `${title} ${epNum} серия`;
+    const results = await searchRuTube(query);
+    if (results && results.length > 0) {
+      // Ищем точное совпадение серии
+      const match = results.find(it => {
+        const m = it.title.match(/(\d+)\s*сери[яие]/i);
+        return m && parseInt(m[1], 10) === epNum;
+      }) || results[0];
+
+      const cleanId = match.source_id || match.id.replace('rutube_', '');
+      const playOpts = await getRuTubePlayOptions(cleanId);
+      return res.json({
+        id: cleanId,
+        embed_url: match.embed_url || `https://rutube.ru/play/embed/${cleanId}`,
+        m3u8: playOpts?.m3u8 || null,
+        title: match.title
+      });
+    }
+    return res.status(404).json({ error: 'Серия RuTube не найдена' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

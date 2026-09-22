@@ -950,6 +950,31 @@ function initMobilePlayerControls() {
   });
 }
 
+/**
+ * 🇷🇺 Определение отечественного контента (Россия, СССР, RuTube, VK Видео)
+ */
+export function isDomesticContent(item = {}, cleanTitle = '') {
+  const t = (cleanTitle || item.title || '').toLowerCase();
+  const ot = (item.original_title || '').toLowerCase();
+  const c = Array.isArray(item.countries) ? item.countries.join(' ').toLowerCase() : String(item.countries || '').toLowerCase();
+  const g = Array.isArray(item.genres) ? item.genres.join(' ').toLowerCase() : String(item.genres || '').toLowerCase();
+  const cat = String(item.category || '').toLowerCase();
+  const src = String(item.source || '').toLowerCase();
+  const id = String(item.id || '').toLowerCase();
+
+  if (src === 'rutube' || src === 'vkvideo' || id.startsWith('rutube_') || id.startsWith('vk_')) return true;
+  if (c.includes('росси') || c.includes('ссср') || c.includes('russia') || c.includes('рф')) return true;
+  if (cat.includes('российск') || g.includes('российск')) return true;
+
+  // Если в названии кириллица и нет зарубежного англоязычного оригинального названия
+  const hasCyrillic = /[\u0400-\u04FF]/.test(t);
+  const hasLatinOriginal = /[a-zA-Z]{3,}/.test(ot);
+  if (hasCyrillic && !hasLatinOriginal && (!ot || ot === t)) {
+    return true;
+  }
+  return false;
+}
+
 export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const title = cleanTitle || cleanVideoTitle(mediaItem.title || 'Видео');
   const safeTitle = encodeURIComponent(title);
@@ -961,6 +986,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const isAnime = mediaType.includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
   const typeFilter = isSeries ? '&types=foreign-serial,russian-serial,anime-serial' : '&types=foreign-movie,russian-movie,anime';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
+  const isDomestic = isDomesticContent(mediaItem, title);
 
   const suite = [];
 
@@ -984,7 +1010,71 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 2. HDRezka Cinema (FHD и 4K)
+  // 2. RuTube (Официальный поток / Wink)
+  let rutubeEmbed = mediaItem.embed_url || '';
+  if (!rutubeEmbed && mediaItem.rutube_id) {
+    rutubeEmbed = `https://rutube.ru/play/embed/${mediaItem.rutube_id}`;
+  } else if (!rutubeEmbed && String(mediaItem.id || '').startsWith('rutube_')) {
+    const ruId = String(mediaItem.id).replace('rutube_', '');
+    if (/^[a-f0-9]{32}$/i.test(ruId)) {
+      rutubeEmbed = `https://rutube.ru/play/embed/${ruId}`;
+    }
+  }
+  if (!rutubeEmbed) {
+    const ruSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
+    rutubeEmbed = `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=1`;
+  }
+  const isRuTubeSource = mediaItem.source === 'rutube' || String(mediaItem.id || '').startsWith('rutube_');
+  const isRuTubeRecommended = (isRuTubeSource || isDomestic) && !effective4kUrl && !isAnime;
+
+  suite.push({
+    id: 'rutube_stream',
+    name: 'RuTube (Официальный поток / Wink)',
+    type: 'iframe',
+    quality: '1080p FHD',
+    badge: 'RUTUBE',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+    speed: '⚡ Быстрый российский CDN',
+    url: rutubeEmbed,
+    is_recommended: isRuTubeRecommended,
+    recommended_badge: isRuTubeRecommended ? '🔥 Рекомендуемый' : ''
+  });
+
+  // 3. VK Видео (Фильмы, сериалы и дубляж)
+  let vkEmbed = '';
+  if (mediaItem.owner_id && mediaItem.video_id) {
+    vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${mediaItem.owner_id}&id=${mediaItem.video_id}&autoplay=1`;
+  } else if (String(mediaItem.id || '').startsWith('vk_')) {
+    const vkM = String(mediaItem.id).match(/vk_(-?\d+)_(\d+)/);
+    if (vkM) {
+      vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&autoplay=1`;
+    }
+  }
+  if (!vkEmbed) {
+    const vkSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
+    vkEmbed = `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`;
+  }
+  const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_');
+  const isVkRecommended = isVkSource && !effective4kUrl && !isAnime;
+
+  suite.push({
+    id: 'vk_video_stream',
+    name: 'VK Видео (Фильмы, сериалы и дубляж)',
+    type: 'iframe',
+    quality: '1080p FHD / 4K',
+    badge: 'VK ВИДЕО',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Официальные релизы и студийные переводы VK Видео',
+    speed: '⚡ Скоростной VK CDN',
+    url: vkEmbed,
+    is_recommended: isVkRecommended,
+    recommended_badge: isVkRecommended ? '🔥 Рекомендуемый' : ''
+  });
+
+  // 4. HDRezka Cinema (FHD и 4K)
   const rezkaUrl = kpId
     ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka${typeFilter}${episodeParam}`
     : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
@@ -999,44 +1089,45 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     audio_info: 'Студийный перевод HDRezka Studio',
     speed: '⚡ Высокая скорость',
     url: rezkaUrl,
-    is_recommended: !effective4kUrl && !isAnime
+    is_recommended: !isDomestic && !effective4kUrl && !isAnime
   });
 
-  // 3. LostFilm TV (Студийный перевод)
-  const lostfilmUrl = kpId
-    ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm${typeFilter}${episodeParam}`
-    : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
-  suite.push({
-    id: 'lostfilm_player',
-    name: 'LostFilm TV (Студийный перевод)',
-    type: 'iframe',
-    quality: '1080p FHD',
-    badge: 'LOSTFILM',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Фирменная многоголосая озвучка LostFilm',
-    speed: '⚡ Быстрый CDN',
-    url: lostfilmUrl
-  });
+  // 5. LostFilm TV и Red Head Sound - СТРОГО ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
+  if (!isDomestic) {
+    const lostfilmUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
+    suite.push({
+      id: 'lostfilm_player',
+      name: 'LostFilm TV (Студийный перевод)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'LOSTFILM',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Фирменная многоголосая озвучка LostFilm',
+      speed: '⚡ Быстрый CDN',
+      url: lostfilmUrl
+    });
 
-  // 4. Red Head Sound (Дубляж RHS)
-  const rhsUrl = kpId
-    ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs${typeFilter}${episodeParam}`
-    : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
-  suite.push({
-    id: 'rhs_player',
-    name: 'Red Head Sound (Дубляж RHS)',
-    type: 'iframe',
-    quality: '1080p FHD',
-    badge: 'RHS',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Официальные голоса дубляжа студии RHS',
-    speed: '⚡ Премиум дубляж',
-    url: rhsUrl
-  });
+    const rhsUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
+    suite.push({
+      id: 'rhs_player',
+      name: 'Red Head Sound (Дубляж RHS)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'RHS',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальные голоса дубляжа студии RHS',
+      speed: '⚡ Премиум дубляж',
+      url: rhsUrl
+    });
+  }
 
-  // 5. Kodik Плеер
+  // 6. Kodik Плеер
   const kodikUrl = kpId
     ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
     : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
@@ -1293,6 +1384,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   renderPlayerSources(currentPlayers);
 
   // Определяем стартовый рекомендуемый плеер с защитой от удаленных 4K архивов
+  const isDomestic = isDomesticContent(mediaItem, cleanTitle);
   const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
   const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
   const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
@@ -1300,7 +1392,13 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
-    if (preferStableKodik) {
+    if (isDomestic) {
+      initialChoice = currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+        || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+        || currentPlayers.find(p => p.is_recommended && isWorking(p))
+        || currentPlayers.find(isWorking)
+        || currentPlayers[0];
+    } else if (preferStableKodik) {
       initialChoice = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
         || currentPlayers.find(p => p.is_recommended && isStable(p))
         || currentPlayers.find(isStable)
@@ -1330,7 +1428,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
     const mediaType = detectClientMediaType(mediaItem) || mediaItem.media_type || mediaItem.type || '';
     const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
-    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(currentMedia?.year || detectClientYear(mediaItem) || mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}`;
+    const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(currentMedia?.year || detectClientYear(mediaItem) || mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}&rutube_id=${encodeURIComponent(mediaItem.rutube_id || '')}&embed_url=${encodeURIComponent(mediaItem.embed_url || '')}`;
     
     let details = null;
     try {
@@ -1357,17 +1455,21 @@ export async function openPlayerModal(mediaItem, options = {}) {
     currentMedia = { ...mediaItem, ...details, title: cleanVideoTitle(details?.title || mediaItem?.title || '') };
 
     // 🛡️ ОБЪЕДИНЕНИЕ СЕРВЕРНЫХ И УНИВЕРСАЛЬНЫХ ПЛЕЕРОВ:
-    // Ни один онлайн источник не теряется
+    // Для отечественного контента жестко фильтруем LostFilm и RHS
     const mergedPlayers = [];
     if (Array.isArray(details.players) && details.players.length > 0) {
       details.players.forEach(dp => {
-        if (dp && dp.url && !mergedPlayers.some(mp => mp.id === dp.id || mp.url === dp.url)) {
+        if (!dp || !dp.url) return;
+        if (isDomestic && (dp.id === 'lostfilm_player' || dp.id === 'rhs_player')) return;
+        if (!mergedPlayers.some(mp => mp.id === dp.id || mp.url === dp.url)) {
           mergedPlayers.push(dp);
         }
       });
     }
     fallbackSuite.forEach(fp => {
-      if (fp && fp.url && !mergedPlayers.some(mp => mp.id === fp.id || mp.url === fp.url)) {
+      if (!fp || !fp.url) return;
+      if (isDomestic && (fp.id === 'lostfilm_player' || fp.id === 'rhs_player')) return;
+      if (!mergedPlayers.some(mp => mp.id === fp.id || mp.url === fp.url)) {
         mergedPlayers.push(fp);
       }
     });
@@ -1419,7 +1521,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
           const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
           const preferStableKodik = itemYr < 2020;
 
-          if (preferStableKodik) {
+          const isDomesticItem = isDomesticContent(currentMedia, cleanTitle);
+          if (isDomesticItem) {
+            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+              || currentPlayers.find(p => p.is_recommended && isWorking(p))
+              || currentPlayers.find(isWorking)
+              || currentPlayers[0];
+          } else if (preferStableKodik) {
             defaultPlayer = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
               || currentPlayers.find(p => p.is_recommended && isStable(p))
               || currentPlayers.find(isStable)
@@ -1766,12 +1875,23 @@ export function switchToNextSource(preferWorking = true) {
   let nextPlayer = null;
   if (preferWorking) {
     const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-    // Приоритет: 4K Ultra HD (FanFilm), затем Kodik, затем HDRezka / LostFilm / RHS, затем любой другой рабочий
-    nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
-      || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
-      || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player'))
-      || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
-      || null;
+    const isDom = isDomesticContent(currentMedia, currentMedia?.title || '');
+    if (isDom) {
+      nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'rutube_stream')
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'vk_video_stream')
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
+        || null;
+    } else {
+      // Приоритет: 4K Ultra HD (FanFilm), затем Kodik, затем HDRezka / LostFilm / RHS, затем любой другой рабочий
+      nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player'))
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rutube_stream' || p.id === 'vk_video_stream'))
+        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
+        || null;
+    }
   }
   if (!nextPlayer) {
     const curIdx = currentPlayers.findIndex(p => p.id === currentActivePlayer?.id);
@@ -4616,10 +4736,53 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
     }
   }
 
-  // 4. Iframe плеер (Kodik, HDRezka, LostFilm, Collaps, FanFilm и др.)
+  // 4. Iframe плеер (RuTube, VK Видео, Kodik, HDRezka, Collaps, FanFilm и др.)
   const iframe = document.querySelector('.cinema-player-iframe');
   if (iframe) {
     try {
+      const activeId = currentActivePlayer?.id || '';
+      if (activeId.startsWith('rutube')) {
+        // Проверяем, есть ли готовый embed для этой серии в currentMedia.episodes или seasons
+        const allEps = currentMedia?.episodes || [];
+        const epData = allEps.find(e => Number(e.episode_number || e.ordinal || e.episode) === ep);
+        if (epData && epData.embed_url) {
+          iframe.src = epData.embed_url;
+          showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
+          updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
+          highlightActiveEpisodeInGrid(ep);
+          updateInPlayerEpisodeInfo();
+          return true;
+        }
+
+        // Динамический поиск серии в RuTube
+        const cleanT = cleanVideoTitle(currentMedia?.title || '');
+        fetch(`/api/media/rutube-episode?title=${encodeURIComponent(cleanT)}&season=${sNum}&episode=${ep}`)
+          .then(r => r.json())
+          .then(d => {
+            if (d && d.embed_url) {
+              iframe.src = d.embed_url;
+            }
+          })
+          .catch(() => {});
+
+        showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
+        updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
+        highlightActiveEpisodeInGrid(ep);
+        updateInPlayerEpisodeInfo();
+        return true;
+      }
+
+      if (activeId.startsWith('vk')) {
+        const cleanT = cleanVideoTitle(currentMedia?.title || '');
+        const vkSearchQ = encodeURIComponent(`${cleanT} ${sNum} сезон ${ep} серия`.trim());
+        iframe.src = `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`;
+        showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
+        updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
+        highlightActiveEpisodeInGrid(ep);
+        updateInPlayerEpisodeInfo();
+        return true;
+      }
+
       let curSrc = iframe.src || (currentActivePlayer?.url || '');
       if (curSrc) {
         let newUrl = curSrc;
