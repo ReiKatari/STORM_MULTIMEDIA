@@ -80,79 +80,117 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   }
 
   // Проверка отечественного контента (Россия, СССР, RuTube, VK Видео)
-  const isDomestic = source === 'rutube' || source === 'vkvideo' ||
+  const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
+  const isDomestic = isLandyshi || source === 'rutube' || source === 'vkvideo' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) ||
     (!imdb_id && /[\u0400-\u04FF]/.test(cleanTitle || rawTitle));
+  const isDomesticExclusive = (isDomestic && !kp_id) || isLandyshi;
 
   // 3. Плееры для кино и сериалов
   if (!isAnime) {
-    // RuTube (Официальный плеер и лицензионный каталог Wink / RuTube)
-    const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
-    players.push({
-      id: 'rutube_stream',
-      name: 'RuTube (Официальный поток / Wink)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'RUTUBE',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальный лицензионный каталог RuTube и Wink',
-      speed: '⚡ Российский CDN',
-      url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`,
-      is_recommended: isDomestic && !fanfilm_4k_url,
-      recommended_badge: (isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
-    });
+    if (isLandyshi) {
+      // 1. VK Видео для Ландыши (Приоритет #1 со звуком)
+      players.push({
+        id: 'vk_video_stream',
+        name: 'VK Видео (Официальный плеер)',
+        type: 'iframe',
+        quality: '1080p FHD / 4K',
+        badge: 'VK ВИДЕО',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный сериал Ландыши на VK Видео со звуком',
+        speed: '⚡ Скоростной VK CDN',
+        url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1&js_api=1&muted=0&mute=0',
+        is_recommended: true,
+        recommended_badge: '🔥 Рекомендуемый'
+      });
 
-    // VK Видео (Фильмы, сериалы и озвучки)
-    const vkSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
-    players.push({
-      id: 'vk_video_stream',
-      name: 'VK Видео (Фильмы, сериалы и дубляж)',
-      type: 'iframe',
-      quality: '1080p FHD / 4K',
-      badge: 'VK ВИДЕО',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальные релизы и студийные переводы VK Видео',
-      speed: '⚡ Скоростной VK CDN',
-      url: `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`
-    });
+      // 2. RuTube для Ландыши (Приоритет #2)
+      players.push({
+        id: 'rutube_stream',
+        name: 'RuTube (Официальный поток / Wink)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'RUTUBE',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+        speed: '⚡ Российский CDN',
+        url: 'https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=1',
+        is_recommended: false
+      });
+    } else {
+      // RuTube (Официальный плеер и лицензионный каталог Wink / RuTube)
+      const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+      players.push({
+        id: 'rutube_stream',
+        name: 'RuTube (Официальный поток / Wink)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'RUTUBE',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+        speed: '⚡ Российский CDN',
+        url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`,
+        is_recommended: isDomestic && !fanfilm_4k_url,
+        recommended_badge: (isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
+      });
 
-    // Kodik Плеер (проверенный балансер)
-    const baseKodikUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
-    players.push({
-      id: 'kodik_direct',
-      name: 'Kodik Плеер (сериалы и озвучки)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'KODIK',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Большой выбор студийных озвучек',
-      speed: '⚡ Быстрый поток',
-      url: baseKodikUrl,
-      is_recommended: !isDomestic && !fanfilm_4k_url,
-      recommended_badge: (!isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
-    });
+      // VK Видео (Фильмы, сериалы и озвучки)
+      const vkSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+      players.push({
+        id: 'vk_video_stream',
+        name: 'VK Видео (Фильмы, сериалы и дубляж)',
+        type: 'iframe',
+        quality: '1080p FHD / 4K',
+        badge: 'VK ВИДЕО',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальные релизы и студийные переводы VK Видео',
+        speed: '⚡ Скоростной VK CDN',
+        url: `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1&js_api=1&muted=0&mute=0`
+      });
+    }
 
-    // HDRezka Cinema (FHD и 4K) - официальные переводы HDRezka Studio
-    const rezkaUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=hdrezka${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
-    players.push({
-      id: 'rezka_cinema',
-      name: 'HDRezka Cinema (FHD и 4K)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'HDREZKA',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Студийный перевод HDRezka Studio',
-      speed: '⚡ Высокая скорость',
-      url: rezkaUrl
-    });
+    // Kodik и HDRezka — строго исключаем для отечественных эксклюзивов без Kinopoisk ID
+    if (!isDomesticExclusive) {
+      // Kodik Плеер (проверенный балансер)
+      const baseKodikUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+      players.push({
+        id: 'kodik_direct',
+        name: 'Kodik Плеер (сериалы и озвучки)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'KODIK',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Большой выбор студийных озвучек',
+        speed: '⚡ Быстрый поток',
+        url: baseKodikUrl,
+        is_recommended: !isDomestic && !fanfilm_4k_url,
+        recommended_badge: (!isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
+      });
+
+      // HDRezka Cinema (FHD и 4K) - официальные переводы HDRezka Studio
+      const rezkaUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=hdrezka${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
+      players.push({
+        id: 'rezka_cinema',
+        name: 'HDRezka Cinema (FHD и 4K)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'HDREZKA',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Студийный перевод HDRezka Studio',
+        speed: '⚡ Высокая скорость',
+        url: rezkaUrl
+      });
+    }
 
     // Студии зарубежного дубляжа (LostFilm TV и Red Head Sound) - ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
     if (!isDomestic) {
