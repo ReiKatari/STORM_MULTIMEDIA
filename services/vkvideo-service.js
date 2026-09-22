@@ -85,8 +85,7 @@ export async function searchVkVideo(query, page = 1) {
           'Content-Type': 'application/x-www-form-urlencoded',
           'X-Requested-With': 'XMLHttpRequest',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-          'Referer': 'https://vkvideo.ru/',
-          'Origin': 'https://vkvideo.ru'
+          'Referer': 'https://vk.com/'
         },
         body: `al=1&q=${encodeURIComponent(queryText)}&offset=${(pageNum - 1) * 20}`,
         signal: AbortSignal.timeout(9000)
@@ -141,7 +140,7 @@ export async function searchVkVideo(query, page = 1) {
             duration_seconds: durationSec,
             genres,
             description: `Официальное видео из медиатеки VK Видео${views > 0 ? ` (просмотров: ${views.toLocaleString('ru-RU')})` : ''}.`,
-            embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&autoplay=1`,
+            embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&hd=2&autoplay=1`,
             web_url: `https://vkvideo.ru/video${ownerId}_${videoId}`,
             views
           });
@@ -157,58 +156,76 @@ export async function searchVkVideo(query, page = 1) {
     await executeVkQuery('сериал ' + cleanQuery);
   }
 
-  // Если список пуст, создаем интерактивный поисковый плеер
-  if (items.length === 0) {
-    const safeQ = encodeURIComponent(cleanQuery);
-    const lowerQ = cleanQuery.toLowerCase();
-    const isSeriesQ = lowerQ.includes('сериал') || lowerQ.includes('сезон') || lowerQ.includes('ландыши') || lowerQ.includes('эпизод');
-    items.push({
-      id: `vk_search_${Date.now()}`,
-      source: 'vkvideo',
-      title: `${cleanQuery} (VK Видео)`,
-      original_title: cleanQuery,
-      poster: lowerQ.includes('ландыши') ? 'https://pic.rtbcdn.ru/video/2025-01-13/bc/9f/bc9fda6d31c72a8002c8999542e877ab.jpg' : 'assets/favicon.svg',
-      year: new Date().getFullYear().toString(),
-      rating: 8.0,
-      media_type: isSeriesQ ? 'series' : 'movie',
-      category: isSeriesQ ? 'Сериал' : 'Видео',
-      quality: '1080p FHD / 4K',
-      genres: isSeriesQ ? ['Сериал', 'Мелодрама', 'Драма'] : ['Фильм', 'Сериал', 'Видео'],
-      description: `Медиатека VK Видео: официальные студии озвучки (RHS, LostFilm), фильмы и сериалы по запросу «${cleanQuery}».`,
-      embed_url: `https://vkvideo.ru/video_ext.php?q=${safeQ}`,
-      web_url: `https://vkvideo.ru/search?q=${safeQ}`
-    });
+  if (items.length > 0) {
+    setCache('vkvideo', cacheKey, items, 30 * 60);
   }
-
-  setCache('vkvideo', cacheKey, items, 30 * 60);
   return items;
 }
 
 /**
- * Получение плеера VK Видео по названию фильма/сериала
+ * Получение валидного плеера VK Видео по названию и метаданным фильма/сериала
  */
-export function getVkVideoPlayer(title, year = '') {
+export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
   if (!title) return null;
-  const cleanTitle = title
-    .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
-    .replace(/\s*\(\d{4}\)\s*$/i, '')
-    .trim();
+  if (knownItem?.owner_id && knownItem?.video_id) {
+    return {
+      id: 'vk_video_stream',
+      name: 'VK Видео (Официальный плеер)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'VK ВИДЕО',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный лицензионный каталог VK Видео',
+      speed: '⚡ Скоростной VK CDN',
+      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1`
+    };
+  }
 
-  const query = `${cleanTitle} ${year || ''}`.trim();
-  const safeQ = encodeURIComponent(query);
+  try {
+    const cleanTitle = title
+      .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
+      .replace(/\s*\(\d{4}\)\s*$/i, '')
+      .trim();
+    const query = `${cleanTitle} ${year || ''}`.trim();
+    const results = await searchVkVideo(query);
+    if (results && results.length > 0) {
+      const top = results[0];
+      return {
+        id: 'vk_video_stream',
+        name: 'VK Видео (Официальный плеер)',
+        type: 'iframe',
+        quality: '1080p FHD / 4K',
+        badge: 'VK ВИДЕО',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный лицензионный каталог VK Видео',
+        speed: '⚡ Скоростной VK CDN',
+        url: top.embed_url
+      };
+    }
+  } catch (err) {
+    console.warn('[VK Video Service] Ошибка поиска плеера:', err.message);
+  }
+  return null;
+}
 
-  return {
-    id: 'vk_video_stream',
-    name: 'VK Видео (Фильмы, сериалы и дубляж)',
-    type: 'iframe',
-    quality: '1080p FHD / 4K',
-    badge: 'VK ВИДЕО',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Большая база студийных и авторских переводов',
-    speed: '⚡ Быстрый VK CDN',
-    url: `https://vkvideo.ru/video_ext.php?q=${safeQ}&autoplay=1`
-  };
+export function getVkVideoPlayer(title, year = '', knownItem = null) {
+  if (knownItem?.owner_id && knownItem?.video_id) {
+    return {
+      id: 'vk_video_stream',
+      name: 'VK Видео (Официальный плеер)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'VK ВИДЕО',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный лицензионный каталог VK Видео',
+      speed: '⚡ Скоростной VK CDN',
+      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1`
+    };
+  }
+  return null;
 }
 
 /**

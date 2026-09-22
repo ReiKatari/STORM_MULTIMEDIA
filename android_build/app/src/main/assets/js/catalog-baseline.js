@@ -24,7 +24,39 @@ export const VERIFIED_CATALOG_BASELINE = {
       "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf",
       "video_url": "https://rutube.ru/video/564f31c881b83373bfe0cb26979d44cf/",
       "total_episodes": 16,
-      "seasons": 2,
+      "seasons_count": 2,
+      "seasons": [
+        {
+          "season_number": 1,
+          "name": "Сезон 1",
+          "episode_count": 8,
+          "episodes": [
+            { "season_number": 1, "episode_number": 1, "name": "1 серия", "rutube_id": "564f31c881b83373bfe0cb26979d44cf", "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf" },
+            { "season_number": 1, "episode_number": 2, "name": "2 серия" },
+            { "season_number": 1, "episode_number": 3, "name": "3 серия" },
+            { "season_number": 1, "episode_number": 4, "name": "4 серия" },
+            { "season_number": 1, "episode_number": 5, "name": "5 серия" },
+            { "season_number": 1, "episode_number": 6, "name": "6 серия" },
+            { "season_number": 1, "episode_number": 7, "name": "7 серия" },
+            { "season_number": 1, "episode_number": 8, "name": "8 серия" }
+          ]
+        },
+        {
+          "season_number": 2,
+          "name": "Сезон 2 (Вторая весна)",
+          "episode_count": 8,
+          "episodes": [
+            { "season_number": 2, "episode_number": 1, "name": "1 серия (9)" },
+            { "season_number": 2, "episode_number": 2, "name": "2 серия (10)" },
+            { "season_number": 2, "episode_number": 3, "name": "3 серия (11)" },
+            { "season_number": 2, "episode_number": 4, "name": "4 серия (12)" },
+            { "season_number": 2, "episode_number": 5, "name": "5 серия (13)" },
+            { "season_number": 2, "episode_number": 6, "name": "6 серия (14)" },
+            { "season_number": 2, "episode_number": 7, "name": "7 серия (15)" },
+            { "season_number": 2, "episode_number": 8, "name": "8 серия (16)" }
+          ]
+        }
+      ],
       "description": "Популярная музыкальная мелодрама Wink о Кате Орловой и Лехе Данилине: любовь, распад группы, интриги и борьба за наследство."
     },
     {

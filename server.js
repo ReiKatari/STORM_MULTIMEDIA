@@ -126,7 +126,8 @@ import {
 import {
   searchVkVideo,
   getVkVideoCatalog,
-  getVkVideoPlayer
+  getVkVideoPlayer,
+  resolveVkVideoPlayer
 } from './services/vkvideo-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1958,7 +1959,10 @@ app.get('/api/media/item', async (req, res) => {
         }
       }
 
-      const vkSearchPlayer = getVkVideoPlayer(videoTitle, req.query.year);
+      let vkSearchPlayer = null;
+      try {
+        vkSearchPlayer = await resolveVkVideoPlayer(videoTitle, req.query.year);
+      } catch (_) {}
 
       mediaDetails = {
         id: `rutube_${cleanRuId}`,
@@ -2015,11 +2019,12 @@ app.get('/api/media/item', async (req, res) => {
           status_label: '🟢 Онлайн',
           is_recommended: true,
           recommended_badge: '🔥 Рекомендуемый',
-          url: `https://vkvideo.ru/video_ext.php?oid=${oid}&id=${vid}&autoplay=1`
+          url: `https://vkvideo.ru/video_ext.php?oid=${oid}&id=${vid}&hd=2&autoplay=1`
         });
+      } else {
+        const resolved = await resolveVkVideoPlayer(videoTitle, req.query.year);
+        if (resolved) players.push(resolved);
       }
-      const searchPlayer = getVkVideoPlayer(videoTitle, req.query.year);
-      if (searchPlayer) players.push(searchPlayer);
 
       // Добавляем также поиск в RuTube для отказоустойчивости
       const ruSearchQ = encodeURIComponent(`${videoTitle} ${req.query.year || ''}`.trim());
@@ -2527,16 +2532,37 @@ app.get('/api/media/series-episodes', async (req, res) => {
 // Точечное получение ссылки на серию для плеера RuTube
 app.get('/api/media/rutube-episode', async (req, res) => {
   try {
-    const { title, season, episode } = req.query;
-    if (!title) return res.status(400).json({ error: 'Параметр title обязателен' });
+    const { title, season, episode, rutube_id, embed_url } = req.query;
+    if (!title && !rutube_id) return res.status(400).json({ error: 'Параметр title или rutube_id обязателен' });
     const sNum = parseInt(season, 10) || 1;
     const epNum = parseInt(episode, 10) || 1;
 
-    const query = `${title} ${epNum} серия`;
+    // Если передан прямой rutube_id для конкретной серии
+    if (rutube_id && /^[a-f0-9]{32}$/i.test(rutube_id)) {
+      const playOpts = await getRuTubePlayOptions(rutube_id);
+      return res.json({
+        id: rutube_id,
+        embed_url: embed_url || `https://rutube.ru/play/embed/${rutube_id}`,
+        m3u8: playOpts?.m3u8 || null,
+        hls_url: playOpts?.m3u8 || null,
+        title: playOpts?.title || title
+      });
+    }
+
+    const query = `${title || ''} ${sNum > 1 ? sNum + ' сезон ' : ''}${epNum} серия`.trim();
     const results = await searchRuTube(query);
     if (results && results.length > 0) {
-      // Ищем точное совпадение серии
+      // Ищем точное совпадение серии и сезона
       const match = results.find(it => {
+        const m = it.title.match(/(\d+)\s*сери[яие]/i);
+        const s = it.title.match(/(\d+)\s*сезон/i);
+        const epMatches = m && parseInt(m[1], 10) === epNum;
+        if (!epMatches) return false;
+        if (sNum > 1 && s) {
+          return parseInt(s[1], 10) === sNum;
+        }
+        return true;
+      }) || results.find(it => {
         const m = it.title.match(/(\d+)\s*сери[яие]/i);
         return m && parseInt(m[1], 10) === epNum;
       }) || results[0];
@@ -2547,10 +2573,50 @@ app.get('/api/media/rutube-episode', async (req, res) => {
         id: cleanId,
         embed_url: match.embed_url || `https://rutube.ru/play/embed/${cleanId}`,
         m3u8: playOpts?.m3u8 || null,
+        hls_url: playOpts?.m3u8 || null,
         title: match.title
       });
     }
     return res.status(404).json({ error: 'Серия RuTube не найдена' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Точечное получение ссылки на серию для плеера VK Видео
+app.get('/api/media/vk-episode', async (req, res) => {
+  try {
+    const { title, season, episode } = req.query;
+    if (!title) return res.status(400).json({ error: 'Параметр title обязателен' });
+    const sNum = parseInt(season, 10) || 1;
+    const epNum = parseInt(episode, 10) || 1;
+
+    const query = `${title} ${sNum > 1 ? sNum + ' сезон ' : ''}${epNum} серия`;
+    const results = await searchVkVideo(query);
+    if (results && results.length > 0) {
+      const match = results.find(it => {
+        const m = it.title.match(/(\d+)\s*сери[яие]/i);
+        const s = it.title.match(/(\d+)\s*сезон/i);
+        const epMatches = m && parseInt(m[1], 10) === epNum;
+        if (!epMatches) return false;
+        if (sNum > 1 && s) {
+          return parseInt(s[1], 10) === sNum;
+        }
+        return true;
+      }) || results.find(it => {
+        const m = it.title.match(/(\d+)\s*сери[яие]/i);
+        return m && parseInt(m[1], 10) === epNum;
+      }) || results[0];
+
+      return res.json({
+        id: match.id,
+        owner_id: match.owner_id,
+        video_id: match.video_id,
+        embed_url: match.embed_url || `https://vkvideo.ru/video_ext.php?oid=${match.owner_id}&id=${match.video_id}&hd=2&autoplay=1`,
+        title: match.title
+      });
+    }
+    return res.status(404).json({ error: 'Серия VK Видео не найдена' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
