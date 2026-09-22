@@ -1011,7 +1011,11 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   }
 
   // 1.5. RuTube HLS (Прямой поток без рекламы и рекомендаций)
-  const rutubeDirectM3u8 = mediaItem.m3u8 || mediaItem.rutube_m3u8 || mediaItem.video_balancer?.m3u8 || mediaItem.video_balancer?.default || null;
+  let rutubeDirectM3u8 = mediaItem.m3u8 || mediaItem.rutube_m3u8 || mediaItem.video_balancer?.m3u8 || mediaItem.video_balancer?.default || null;
+  const rawRuId = mediaItem.rutube_id || (String(mediaItem.id || '').startsWith('rutube_') ? String(mediaItem.id).replace('rutube_', '') : null);
+  if (!rutubeDirectM3u8 && rawRuId && /^[a-f0-9]{32}$/i.test(rawRuId)) {
+    rutubeDirectM3u8 = `/api/media/rutube-m3u8?id=${rawRuId}`;
+  }
   if (rutubeDirectM3u8) {
     suite.push({
       id: 'rutube_direct_hls',
@@ -1028,15 +1032,15 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 2. RuTube (Официальный плеер Wink / RuTube)
+  // 2. RuTube (Официальный плеер со скрытием промо-кнопок)
   let rutubeEmbed = mediaItem.embed_url || '';
-  if (!rutubeEmbed && mediaItem.rutube_id) {
-    rutubeEmbed = `https://rutube.ru/play/embed/${mediaItem.rutube_id}?skinColor=00d2ff&autoPlay=1`;
-  } else if (!rutubeEmbed && String(mediaItem.id || '').startsWith('rutube_')) {
-    const ruId = String(mediaItem.id).replace('rutube_', '');
-    if (/^[a-f0-9]{32}$/i.test(ruId)) {
-      rutubeEmbed = `https://rutube.ru/play/embed/${ruId}?skinColor=00d2ff&autoPlay=1`;
-    }
+  if (rawRuId && /^[a-f0-9]{32}$/i.test(rawRuId)) {
+    rutubeEmbed = `/api/player/rutube-embed/${rawRuId}`;
+  } else if (rutubeEmbed && rutubeEmbed.includes('rutube.ru/play/embed/')) {
+    const mId = rutubeEmbed.match(/\/embed\/([a-f0-9]{32})/i);
+    if (mId) rutubeEmbed = `/api/player/rutube-embed/${mId[1]}`;
+  } else if (!rutubeEmbed && mediaItem.rutube_id) {
+    rutubeEmbed = `/api/player/rutube-embed/${mediaItem.rutube_id}`;
   }
   if (!rutubeEmbed && mediaItem.source === 'rutube') {
     const ruSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
@@ -1054,7 +1058,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       badge: 'RUTUBE',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+      audio_info: 'Официальный лицензионный каталог RuTube и Wink без кнопки Смотреть на RUTUBE',
       speed: '⚡ Быстрый российский CDN',
       url: rutubeEmbed,
       is_recommended: isRuTubeRecommended,
@@ -1064,10 +1068,20 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 
   // 3. VK Видео (Фильмы, сериалы и дубляж) - СТРОГО с подтвержденными oid и id
   let vkEmbed = '';
-  if (mediaItem.owner_id && mediaItem.video_id) {
+  const isLandyshiItem = mediaItem.id === 'rutube_landyshi' || title.toLowerCase().includes('ландыши');
+  if (isLandyshiItem) {
+    vkEmbed = 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1';
+  } else if (mediaItem.vk_embed_url) {
+    vkEmbed = mediaItem.vk_embed_url;
+  } else if (mediaItem.owner_id && mediaItem.video_id) {
     vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${mediaItem.owner_id}&id=${mediaItem.video_id}&hd=2&autoplay=1`;
   } else if (String(mediaItem.id || '').startsWith('vk_')) {
     const vkM = String(mediaItem.id).match(/vk_(-?\d+)_(\d+)/);
+    if (vkM) {
+      vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=1`;
+    }
+  } else if (mediaItem.vk_url) {
+    const vkM = mediaItem.vk_url.match(/video(-?\d+)_(\d+)/);
     if (vkM) {
       vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=1`;
     }
@@ -1076,8 +1090,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   }
   // ВАЖНО: Никогда не добавляем video_ext.php?q=, чтобы не вызывать интерфейс сайта и черный экран!
   if (vkEmbed) {
-    const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_');
-    const isVkRecommended = isVkSource && !effective4kUrl && !isAnime;
+    const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_') || isLandyshiItem;
+    const isVkRecommended = isVkSource && !effective4kUrl && !isAnime && !rutubeDirectM3u8;
 
     suite.push({
       id: 'vk_video_stream',
@@ -1087,7 +1101,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       badge: 'VK ВИДЕО',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Официальные релизы и студийные переводы VK Видео',
+      audio_info: isLandyshiItem ? 'Официальный сериал Ландыши на платформе VK Видео' : 'Официальные релизы и студийные переводы VK Видео',
       speed: '⚡ Скоростной VK CDN',
       url: vkEmbed,
       is_recommended: isVkRecommended,
