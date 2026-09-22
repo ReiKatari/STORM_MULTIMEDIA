@@ -140,7 +140,7 @@ export async function searchVkVideo(query, page = 1) {
             duration_seconds: durationSec,
             genres,
             description: `Официальное видео из медиатеки VK Видео${views > 0 ? ` (просмотров: ${views.toLocaleString('ru-RU')})` : ''}.`,
-            embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&hd=2&autoplay=1`,
+            embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`,
             web_url: `https://vkvideo.ru/video${ownerId}_${videoId}`,
             views
           });
@@ -178,7 +178,7 @@ export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
       status_label: '🟢 Онлайн',
       audio_info: 'Официальный лицензионный каталог VK Видео',
       speed: '⚡ Скоростной VK CDN',
-      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1`
+      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`
     };
   }
 
@@ -191,6 +191,10 @@ export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
     const results = await searchVkVideo(query);
     if (results && results.length > 0) {
       const top = results[0];
+      let embed = top.embed_url;
+      if (embed && !embed.includes('muted=')) {
+        embed += (embed.includes('?') ? '&' : '?') + 'js_api=1&muted=0&mute=0';
+      }
       return {
         id: 'vk_video_stream',
         name: 'VK Видео (Официальный плеер)',
@@ -201,7 +205,7 @@ export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
         status_label: '🟢 Онлайн',
         audio_info: 'Официальный лицензионный каталог VK Видео',
         speed: '⚡ Скоростной VK CDN',
-        url: top.embed_url
+        url: embed
       };
     }
   } catch (err) {
@@ -222,7 +226,7 @@ export function getVkVideoPlayer(title, year = '', knownItem = null) {
       status_label: '🟢 Онлайн',
       audio_info: 'Официальный лицензионный каталог VK Видео',
       speed: '⚡ Скоростной VK CDN',
-      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1`
+      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`
     };
   }
   return null;

@@ -2065,21 +2065,41 @@ app.get('/api/media/item', async (req, res) => {
         id: 'vk_video_stream',
         name: 'VK Видео (Официальный плеер)',
         type: 'iframe',
-        url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1',
+        url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1&js_api=1&muted=0&mute=0',
         quality: '1080p FHD / 4K',
         badge: 'VK ВИДЕО',
         status: 'working',
         status_label: '🟢 Онлайн',
-        audio_info: 'Официальный релиз сериала Ландыши на VK Видео',
-        speed: '⚡ Скоростной VK CDN'
+        audio_info: 'Официальный сериал Ландыши на VK Видео со звуком',
+        speed: '⚡ Скоростной VK CDN',
+        is_recommended: true,
+        recommended_badge: '🔥 Рекомендуемый'
       } : null;
 
       let vkSearchPlayer = null;
       if (!isLandyshi) {
         try {
           vkSearchPlayer = await resolveVkVideoPlayer(videoTitle, req.query.year);
+          if (vkSearchPlayer && vkSearchPlayer.url && !vkSearchPlayer.url.includes('muted=')) {
+            vkSearchPlayer.url += '&js_api=1&muted=0&mute=0';
+          }
         } catch (_) {}
       }
+
+      const rutubeOfficialPlayer = {
+        id: 'rutube_stream',
+        name: 'RuTube (Официальный поток / Wink)',
+        type: 'iframe',
+        url: `https://rutube.ru/play/embed/${cleanRuId}?skinColor=00d2ff&autoPlay=1`,
+        quality: '1080p FHD',
+        badge: 'RUTUBE',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+        speed: '⚡ Быстрый российский CDN',
+        is_recommended: !isLandyshi,
+        recommended_badge: !isLandyshi ? '🔥 Рекомендуемый' : ''
+      };
 
       mediaDetails = {
         id: `rutube_${cleanRuId}`,
@@ -2094,32 +2114,9 @@ app.get('/api/media/item', async (req, res) => {
         category: isSeries ? 'Сериал' : 'Видео',
         seasons: seasonsData.length > 0 ? seasonsData : undefined,
         episodes: episodesList.length > 0 ? episodesList : undefined,
-        players: [
-          {
-            id: 'rutube_direct_hls',
-            name: 'RuTube HLS (Прямой поток без рекламы)',
-            url: playOpts?.m3u8 || `/api/media/rutube-m3u8?id=${cleanRuId}`,
-            quality: '1080p FHD',
-            badge: 'RUTUBE HLS',
-            status: 'working',
-            status_label: '🟢 Онлайн',
-            is_recommended: true,
-            recommended_badge: '🔥 Рекомендуемый'
-          },
-          ...(vkLandyshiPlayer ? [vkLandyshiPlayer] : []),
-          ...(vkSearchPlayer ? [vkSearchPlayer] : []),
-          {
-            id: 'rutube_embed',
-            name: 'RuTube Плеер (Официальный)',
-            type: 'iframe',
-            url: `/api/player/rutube-embed/${cleanRuId}`,
-            quality: '1080p FHD',
-            badge: 'RUTUBE',
-            status: 'working',
-            status_label: '🟢 Онлайн',
-            is_recommended: false
-          }
-        ]
+        players: isLandyshi
+          ? [vkLandyshiPlayer, rutubeOfficialPlayer]
+          : [rutubeOfficialPlayer, ...(vkSearchPlayer ? [vkSearchPlayer] : [])]
       };
     } else if (source === 'vkvideo' || String(id || '').startsWith('vk_')) {
       const videoTitle = req.query.title || 'VK Видео';
@@ -2137,11 +2134,16 @@ app.get('/api/media/item', async (req, res) => {
           status_label: '🟢 Онлайн',
           is_recommended: true,
           recommended_badge: '🔥 Рекомендуемый',
-          url: `https://vkvideo.ru/video_ext.php?oid=${oid}&id=${vid}&hd=2&autoplay=1`
+          url: `https://vkvideo.ru/video_ext.php?oid=${oid}&id=${vid}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`
         });
       } else {
         const resolved = await resolveVkVideoPlayer(videoTitle, req.query.year);
-        if (resolved) players.push(resolved);
+        if (resolved) {
+          if (resolved.url && !resolved.url.includes('muted=')) {
+            resolved.url += '&js_api=1&muted=0&mute=0';
+          }
+          players.push(resolved);
+        }
       }
 
       // Добавляем также поиск в RuTube для отказоустойчивости
@@ -2496,9 +2498,14 @@ app.get('/api/media/item', async (req, res) => {
     if (mediaDetails.players && mediaDetails.players.length > 0) {
       allPlayers.push(...mediaDetails.players);
     }
+    const isLandyshiItem = String(mediaDetails.id || '').includes('landyshi') || String(mediaDetails.title || '').toLowerCase().includes('ландыши') || mediaDetails.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
+    const isDomesticItem = isLandyshiItem || mediaDetails.source === 'rutube' || mediaDetails.source === 'vkvideo' || (!mediaDetails.kp_id && /[\u0400-\u04FF]/.test(mediaDetails.title || ''));
+
     kinoboxPlayers.forEach(p => {
       // Исключаем дубли FanFilm, если fanfilm4k_uhd уже добавлен
       if (p.id === 'fanfilm_4k' && allPlayers.some(ap => ap.id === 'fanfilm4k_uhd')) return;
+      if (isLandyshiItem && (p.id === 'kodik_direct' || p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player')) return;
+      if (isDomesticItem && !mediaDetails.kp_id && (p.id === 'kodik_direct' || p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player')) return;
       if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
         allPlayers.push(p);
       }
