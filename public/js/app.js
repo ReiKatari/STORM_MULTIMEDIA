@@ -251,12 +251,48 @@ async function initDeepLinking() {
     const season = params.get('season');
     const episode = params.get('episode');
     const player = params.get('player');
+    const paramTitle = params.get('title');
+    const paramYear = params.get('year');
+
+    // 1. Проверяем сохраненный снимок открытого медиа в sessionStorage
+    let cachedItem = null;
+    try {
+      const raw = sessionStorage.getItem('storm_active_cinema_media');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && (parsed.id === mediaId || String(parsed.id).includes(mediaId) || String(mediaId).includes(parsed.id))) {
+          cachedItem = parsed;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Проверяем базовый проверенный каталог
+    if (!cachedItem && window.STORM_BASELINE_CATALOG) {
+      for (const catList of Object.values(window.STORM_BASELINE_CATALOG)) {
+        if (Array.isArray(catList)) {
+          const found = catList.find(it => it.id === mediaId || String(it.id).includes(mediaId));
+          if (found) {
+            cachedItem = found;
+            break;
+          }
+        }
+      }
+    }
+
+    if (cachedItem) {
+      openPlayerModal(cachedItem, { initialSeason: season, initialEpisode: episode, initialPlayer: player });
+      return;
+    }
 
     const headers = {};
     const token = localStorage.getItem('storm_token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`/api/media/item?id=${encodeURIComponent(mediaId)}&source=${encodeURIComponent(source)}`, { headers });
+    let itemUrl = `/api/media/item?id=${encodeURIComponent(mediaId)}&source=${encodeURIComponent(source)}`;
+    if (paramTitle) itemUrl += `&title=${encodeURIComponent(paramTitle)}`;
+    if (paramYear) itemUrl += `&year=${encodeURIComponent(paramYear)}`;
+
+    const res = await fetch(itemUrl, { headers });
     if (res.ok) {
       const item = await res.json();
       if (item && item.id) {
@@ -2673,8 +2709,38 @@ function renderHomeView(items) {
            (Array.isArray(i.genres) && i.genres.some(g => String(g).toLowerCase().includes('аниме')));
   }).slice(0, 16);
 
-  // Рейл 6: Шедевры мирового кино (СТРОГО полнометражные художественные фильмы мирового кинематографа, без аниме и сериалов)
+  // Рейл 6: Шедевры мирового кино (Культовые фильмы и сериалы мирового кинематографа)
   const WORLD_CINEMA_LEGENDS = [
+    {
+      id: 'legend_shawshank',
+      title: 'Побег из Шоушенка',
+      original_title: 'The Shawshank Redemption',
+      poster: 'https://image.tmdb.org/t/p/w500/9cqNxx0GxF0bflZmeSMuL5tnGzr.jpg',
+      year: '1994',
+      rating: 9.3,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Криминал',
+      source: 'tmdb',
+      description: 'Бухгалтер Энди Дюфрейн несправедливо осужден на пожизненное заключение в мрачной тюрьме Шоушенк.'
+    },
+    {
+      id: 'legend_green_mile',
+      title: 'Зеленая миля',
+      original_title: 'The Green Mile',
+      poster: 'https://image.tmdb.org/t/p/w500/8VG8fDNiy50H4Fed0LSVemQI47G.jpg',
+      year: '1999',
+      rating: 9.1,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Фэнтези, Криминал',
+      source: 'tmdb',
+      description: 'Надзиратель Пол Эджкомб в блоке смертников сталкивается с гигантом Джоном Коффи, обладающим даром исцеления.'
+    },
     {
       id: 'legend_interstellar',
       title: 'Интерстеллар',
@@ -2689,6 +2755,327 @@ function renderHomeView(items) {
       genres: 'Фантастика, Драма, Приключения',
       source: 'tmdb',
       description: 'Команда исследователей отправляется сквозь червоточину в поисках нового дома для человечества.'
+    },
+    {
+      id: 'legend_dark_knight',
+      title: 'Тёмный рыцарь',
+      original_title: 'The Dark Knight',
+      poster: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
+      year: '2008',
+      rating: 9.0,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Боевик, Криминал, Драма',
+      source: 'tmdb',
+      description: 'Бэтмен сталкивается с гением хаоса Джокером, погружающим Готэм в пучину анархии.'
+    },
+    {
+      id: 'legend_pulp_fiction',
+      title: 'Криминальное чтиво',
+      original_title: 'Pulp Fiction',
+      poster: 'https://image.tmdb.org/t/p/w500/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg',
+      year: '1994',
+      rating: 8.9,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Триллер, Криминал',
+      source: 'tmdb',
+      description: 'Культовые философские беседы двух гангстеров Винсента Веги и Джулса Виннфилда на фоне криминального Лос-Анджелеса.'
+    },
+    {
+      id: 'legend_fight_club',
+      title: 'Бойцовский клуб',
+      original_title: 'Fight Club',
+      poster: 'https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg',
+      year: '1999',
+      rating: 8.8,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Триллер',
+      source: 'tmdb',
+      description: 'Терзаемый бессонницей клерк встречает харизматичного торговца мылом Тайлера Дёрдена с извращенной философией.'
+    },
+    {
+      id: 'legend_inception',
+      title: 'Начало',
+      original_title: 'Inception',
+      poster: 'https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
+      year: '2010',
+      rating: 8.8,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Боевик, Триллер',
+      source: 'tmdb',
+      description: 'Искусный похититель тайн из подсознания получает задачу не украсть, а внедрить мысль.'
+    },
+    {
+      id: 'legend_matrix',
+      title: 'Матрица',
+      original_title: 'The Matrix',
+      poster: 'https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
+      year: '1999',
+      rating: 8.7,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фантастика, Боевик',
+      source: 'tmdb',
+      description: 'Хакер Нео узнает шокирующую правду: весь привычный мир — иллюзия, созданная машинами.'
+    },
+    {
+      id: 'legend_lotr_1',
+      title: 'Властелин колец: Братство Кольца',
+      original_title: 'The Lord of the Rings: The Fellowship of the Ring',
+      poster: 'https://image.tmdb.org/t/p/w500/6oom5QYQ2yQTMJIbnvbkBL9cHo6.jpg',
+      year: '2001',
+      rating: 8.9,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фэнтези, Приключения, Драма',
+      source: 'tmdb',
+      description: 'Хоббит Фродо отправляется в опаснейший поход к Роковой горе, чтобы уничтожить Кольцо Всевластья.'
+    },
+    {
+      id: 'legend_lotr_3',
+      title: 'Властелин колец: Возвращение короля',
+      original_title: 'The Lord of the Rings: The Return of the King',
+      poster: 'https://image.tmdb.org/t/p/w500/rCzpDGLbOoPwLjy3OAm5NUPOTrC.jpg',
+      year: '2003',
+      rating: 9.0,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Фэнтези, Приключения, Драма',
+      source: 'tmdb',
+      description: 'Решающая битва за Средиземье у стен Минас Тирита и кульминация пути Фродо и Сэма к Ородруину.'
+    },
+    {
+      id: 'legend_forrest_gump',
+      title: 'Форрест Гамп',
+      original_title: 'Forrest Gump',
+      poster: 'https://image.tmdb.org/t/p/w500/arw2VCBveWOVZr6pxd9XTd1TdQa.jpg',
+      year: '1994',
+      rating: 8.8,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Комедия, Драма, Мелодрама',
+      source: 'tmdb',
+      description: 'История добродушного парня с благородным сердцем, невольно ставшего свидетелем и творцом ключевых вех эпохи.'
+    },
+    {
+      id: 'legend_schindler',
+      title: 'Список Шиндлера',
+      original_title: "Schindler's List",
+      poster: 'https://image.tmdb.org/t/p/w500/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg',
+      year: '1993',
+      rating: 9.0,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, История, Военный',
+      source: 'tmdb',
+      description: 'Немецкий промышленник Оскар Шиндлер спасает более тысячи жизней во время Второй мировой войны.'
+    },
+    {
+      id: 'legend_intouchables',
+      title: '1+1',
+      original_title: 'Intouchables',
+      poster: 'https://image.tmdb.org/t/p/w500/4mFsNQwbKaP5X20vd92L57B0o4C.jpg',
+      year: '2011',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Комедия, Биография',
+      source: 'tmdb',
+      description: 'Богатый аристократ Филипп, прикованный к инвалидному креслу, нанимает в сиделки парня с улицы Дрисса.'
+    },
+    {
+      id: 'legend_godfather',
+      title: 'Крёстный отец',
+      original_title: 'The Godfather',
+      poster: 'https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg',
+      year: '1972',
+      rating: 9.2,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Криминал',
+      source: 'tmdb',
+      description: 'Эпопея о мафиозном клане Корлеоне в Нью-Йорке под предводительством дона Вито и его сына Майкла.'
+    },
+    {
+      id: 'legend_gladiator',
+      title: 'Гладиатор',
+      original_title: 'Gladiator',
+      poster: 'https://image.tmdb.org/t/p/w500/ty8TGRuvJLPUmAR1H1nRIsgwvim.jpg',
+      year: '2000',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Боевик, Драма, История',
+      source: 'tmdb',
+      description: 'Преданный полководец Максимус становится гладиатором на арене римского Колизея.'
+    },
+    {
+      id: 'legend_prestige',
+      title: 'Престиж',
+      original_title: 'The Prestige',
+      poster: 'https://image.tmdb.org/t/p/w500/bdN3gXu4Iu54qHytJzgK9iN6BqE.jpg',
+      year: '2006',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Триллер, Детектив',
+      source: 'tmdb',
+      description: 'Два выдающихся викторианских фокусника вступают в смертельную схватку за секрет идеального фокуса.'
+    },
+    {
+      id: 'legend_departed',
+      title: 'Отступники',
+      original_title: 'The Departed',
+      poster: 'https://image.tmdb.org/t/p/w500/nT97ifL2A4o9n9n8b9Cms9A2Q5U.jpg',
+      year: '2006',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Триллер, Криминал',
+      source: 'tmdb',
+      description: 'Полицейский под прикрытием в мафии и «крот» мафии в полиции ведут отчаянную гонку на разоблачение.'
+    },
+    {
+      id: 'legend_leon',
+      title: 'Леон',
+      original_title: 'Léon',
+      poster: 'https://image.tmdb.org/t/p/w500/w7RDIgQMZSZZgHn7jZfP0s0fSGe.jpg',
+      year: '1994',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Триллер, Боевик, Драма',
+      source: 'tmdb',
+      description: 'Профессиональный киллер Леон берет под опеку 12-летнюю Матильду после расправы над ее семьей.'
+    },
+    {
+      id: 'legend_breaking_bad',
+      title: 'Во все тяжкие',
+      original_title: 'Breaking Bad',
+      poster: 'https://image.tmdb.org/t/p/w500/ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg',
+      year: '2008–2013',
+      rating: 9.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Драма, Криминал, Триллер',
+      source: 'tmdb',
+      seasons: 5,
+      description: 'Скромный учитель химии Уолтер Уайт, узнав о диагнозе, вступает на темный путь наркобарона Гейзенберга.'
+    },
+    {
+      id: 'legend_sopranos',
+      title: 'Клан Сопрано',
+      original_title: 'The Sopranos',
+      poster: 'https://image.tmdb.org/t/p/w500/rweIrveL43TaxUN0akQEaAXL6x0.jpg',
+      year: '1999–2007',
+      rating: 9.2,
+      quality: '1080p FHD',
+      is4K: false,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Драма, Криминал',
+      source: 'tmdb',
+      seasons: 6,
+      description: 'Глава мафиозной семьи Нью-Джерси Тони Сопрано балансирует между криминальными разборками и сеансами у психотерапевта.'
+    },
+    {
+      id: 'legend_chernobyl',
+      title: 'Чернобыль',
+      original_title: 'Chernobyl',
+      poster: 'https://image.tmdb.org/t/p/w500/hlLXt2tOPT6RRnjiUmoxyG1LTFi.jpg',
+      year: '2019',
+      rating: 9.4,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Драма, История, Триллер',
+      source: 'tmdb',
+      seasons: 1,
+      description: 'Хроника катастрофы на Чернобыльской АЭС в апреле 1986 года и беспрецедентного подвига ликвидаторов аварии.'
+    },
+    {
+      id: 'legend_game_of_thrones',
+      title: 'Игра престолов',
+      original_title: 'Game of Thrones',
+      poster: 'https://image.tmdb.org/t/p/w500/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg',
+      year: '2011–2019',
+      rating: 9.2,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Фэнтези, Драма, Приключения',
+      source: 'tmdb',
+      seasons: 8,
+      description: 'Борьба великих домов Вестероса за Железный трон, пока с Севера надвигается древнее ледяное зло.'
+    },
+    {
+      id: 'legend_peaky_blinders',
+      title: 'Острые козырьки',
+      original_title: 'Peaky Blinders',
+      poster: 'https://image.tmdb.org/t/p/w500/vUUqzWa2LnHIVqkaKVlVGkVcZIW.jpg',
+      year: '2013–2022',
+      rating: 8.8,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Криминал, Драма',
+      source: 'tmdb',
+      seasons: 6,
+      description: 'Криминальный клан Шелби в Бирмингеме 1920-х годов под хладнокровным руководством Томаса Шелби.'
+    },
+    {
+      id: 'legend_sherlock',
+      title: 'Шерлок',
+      original_title: 'Sherlock',
+      poster: 'https://image.tmdb.org/t/p/w500/7WTsnDMwkUIoJVY8BPgu4Ay8i5U.jpg',
+      year: '2010–2017',
+      rating: 9.1,
+      quality: '1080p FHD',
+      is4K: false,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Детектив, Драма, Криминал',
+      source: 'tmdb',
+      seasons: 4,
+      description: 'Современный гений дедукции Шерлок Холмс и доктор Джон Ватсон расследуют сложнейшие загадки Лондона.'
     },
     {
       id: 'legend_oppenheimer',
@@ -2736,90 +3123,155 @@ function renderHomeView(items) {
       description: 'Офицер Кей раскрывает тайну, способную погрузить остатки цивилизации в необратимый хаос.'
     },
     {
-      id: 'legend_dark_knight',
-      title: 'Тёмный рыцарь',
-      original_title: 'The Dark Knight',
-      poster: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-      year: '2008',
-      rating: 9.0,
-      quality: '4K Ultra HD',
-      is4K: true,
-      media_type: 'movie',
-      category: 'Фильм',
-      genres: 'Боевик, Криминал, Драма',
-      source: 'tmdb',
-      description: 'Бэтмен сталкивается с гением хаоса Джокером, погружающим Готэм в пучину анархии.'
-    },
-    {
-      id: 'legend_inception',
-      title: 'Начало',
-      original_title: 'Inception',
-      poster: 'https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
+      id: 'legend_shutter_island',
+      title: 'Остров проклятых',
+      original_title: 'Shutter Island',
+      poster: 'https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg',
       year: '2010',
-      rating: 8.8,
+      rating: 8.4,
       quality: '4K Ultra HD',
       is4K: true,
       media_type: 'movie',
       category: 'Фильм',
-      genres: 'Фантастика, Боевик, Триллер',
+      genres: 'Драма, Триллер, Детектив',
       source: 'tmdb',
-      description: 'Искусный похититель тайн из подсознания получает задачу не украсть, а внедрить мысль.'
+      description: 'Два судебных пристава расследуют исчезновение пациентки из клиники для умалишенных преступников.'
     },
     {
-      id: 'legend_matrix',
-      title: 'Матрица',
-      original_title: 'The Matrix',
-      poster: 'https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
-      year: '1999',
-      rating: 8.7,
+      id: 'legend_se7en',
+      title: 'Семь',
+      original_title: 'Se7en',
+      poster: 'https://image.tmdb.org/t/p/w500/6yoghtyTpznpBik8EngEmJskVUO.jpg',
+      year: '1995',
+      rating: 8.6,
       quality: '4K Ultra HD',
       is4K: true,
       media_type: 'movie',
       category: 'Фильм',
-      genres: 'Фантастика, Боевик',
+      genres: 'Криминал, Детектив, Триллер',
       source: 'tmdb',
-      description: 'Хакер Нео узнает шокирующую правду: весь привычный мир — иллюзия, созданная машинами.'
+      description: 'Детективы Уильям Сомерсет и Дэвид Миллс охотятся на изощренного маньяка, карающего за смертные грехи.'
     },
     {
-      id: 'legend_gladiator',
-      title: 'Гладиатор',
-      original_title: 'Gladiator',
-      poster: 'https://image.tmdb.org/t/p/w500/ty8TGRuvJLPUmAR1H1nRIsgwvim.jpg',
-      year: '2000',
+      id: 'legend_django',
+      title: 'Джанго освобожденный',
+      original_title: 'Django Unchained',
+      poster: 'https://image.tmdb.org/t/p/w500/7oWY8vdWW7thTzWh3OKYRkWUlD5.jpg',
+      year: '2012',
       rating: 8.5,
       quality: '4K Ultra HD',
       is4K: true,
       media_type: 'movie',
       category: 'Фильм',
-      genres: 'Боевик, Драма, История',
+      genres: 'Вестерн, Драма',
       source: 'tmdb',
-      description: 'Преданный полководец Максимус становится гладиатором на арене римского Колизея.'
+      description: 'Охотник за головами доктор Шульц освобождает раба Джанго для совместной охоты на опасных преступников.'
+    },
+    {
+      id: 'legend_pirates',
+      title: 'Пираты Карибского моря: Проклятие Чёрной жемчужины',
+      original_title: 'Pirates of the Caribbean: The Curse of the Black Pearl',
+      poster: 'https://image.tmdb.org/t/p/w500/z8onk7LV9Mlh6zcreLPY9qY9sRi.jpg',
+      year: '2003',
+      rating: 8.1,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Приключения, Фэнтези, Боевик',
+      source: 'tmdb',
+      description: 'Харизматичный капитан Джек Воробей и кузнец Уилл Тёрнер бросают вызов проклятой команде Барбоссы.'
+    },
+    {
+      id: 'legend_titanic',
+      title: 'Титаник',
+      original_title: 'Titanic',
+      poster: 'https://image.tmdb.org/t/p/w500/9xjZS2rlVxm8SFx8kPC3aIGCOYQ.jpg',
+      year: '1997',
+      rating: 8.0,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Драма, Мелодрама',
+      source: 'tmdb',
+      description: 'Трогательная история любви Джека и Розы на борту легендарного трансатлантического лайнера.'
+    },
+    {
+      id: 'legend_avatar',
+      title: 'Аватар',
+      original_title: 'Avatar',
+      poster: 'https://image.tmdb.org/t/p/w500/jRXYjXNq0Cs2TcJjLkki24MLewe.jpg',
+      year: '2009',
+      rating: 8.0,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Боевик, Приключения, Фантастика',
+      source: 'tmdb',
+      description: 'Бывший морпех Джейк Салли отправляется на планету Пандора и делает судьбоносный выбор.'
+    },
+    {
+      id: 'legend_parasite',
+      title: 'Паразиты',
+      original_title: 'Gisaengchung',
+      poster: 'https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg',
+      year: '2019',
+      rating: 8.5,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'movie',
+      category: 'Фильм',
+      genres: 'Комедия, Триллер, Драма',
+      source: 'tmdb',
+      description: 'Семья безработных хитроумно внедряется в роскошный дом богатого семейства Пак.'
+    },
+    {
+      id: 'legend_true_detective',
+      title: 'Настоящий детектив',
+      original_title: 'True Detective',
+      poster: 'https://image.tmdb.org/t/p/w500/aowrBEovUb7bB89G4Ts45yVnfxP.jpg',
+      year: '2014',
+      rating: 8.9,
+      quality: '4K Ultra HD',
+      is4K: true,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Детектив, Драма, Криминал',
+      source: 'tmdb',
+      seasons: 4,
+      description: 'Два детектива из Луизианы Раст Коул и Марти Харт расследуют серию оккультных убийств на протяжении 17 лет.'
+    },
+    {
+      id: 'legend_fargo',
+      title: 'Фарго',
+      original_title: 'Fargo',
+      poster: 'https://image.tmdb.org/t/p/w500/6jVvdh5e0VvJkIknr73j1cO93gM.jpg',
+      year: '2014',
+      rating: 8.9,
+      quality: '1080p FHD',
+      is4K: false,
+      media_type: 'series',
+      category: 'Сериал',
+      genres: 'Криминал, Драма, Триллер',
+      source: 'tmdb',
+      seasons: 5,
+      description: 'Череда кровавых и абсурдных криминальных событий в заснеженной Миннесоте под влиянием социопата Лорна Малво.'
     }
   ];
 
   const candidateMovies = items.filter(i => {
     if (!i) return false;
     if (isAnimeItemClient(i)) return false;
-    const mType = detectClientMediaType(i);
-    if (mType !== 'movie' && i.media_type !== 'movie') return false;
     if (['anixart', 'shikimori', 'anilibria', 'animevost'].includes(i.source)) return false;
-    const norm = String(i.title || '').toLowerCase();
-    if (norm.includes('сериал') || norm.includes('сезон') || norm.includes('серия')) return false;
-    if (i.seasons || i.episodes || i.total_episodes > 1) return false;
-    return (parseFloat(i.rating) || 0) >= 7.2;
+    return (parseFloat(i.rating) || 0) >= 7.5;
   });
 
   const sortedCandidateMovies = candidateMovies.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
 
   const topRatedItems = [];
   const addedMovieTitles = new Set();
-  for (const m of sortedCandidateMovies) {
-    const k = (m.title || '').toLowerCase().trim();
-    if (k && !addedMovieTitles.has(k)) {
-      addedMovieTitles.add(k);
-      topRatedItems.push(m);
-    }
-  }
   for (const leg of WORLD_CINEMA_LEGENDS) {
     const k = leg.title.toLowerCase().trim();
     if (!addedMovieTitles.has(k)) {
@@ -2827,7 +3279,14 @@ function renderHomeView(items) {
       topRatedItems.push(leg);
     }
   }
-  topRatedItems.splice(16);
+  for (const m of sortedCandidateMovies) {
+    const k = (m.title || '').toLowerCase().trim();
+    if (k && !addedMovieTitles.has(k)) {
+      addedMovieTitles.add(k);
+      topRatedItems.push(m);
+    }
+  }
+  topRatedItems.splice(36);
 
   const rails = [];
 

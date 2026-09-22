@@ -1010,87 +1010,110 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 2. RuTube (Официальный поток / Wink)
+  // 1.5. RuTube HLS (Прямой поток без рекламы и рекомендаций)
+  const rutubeDirectM3u8 = mediaItem.m3u8 || mediaItem.rutube_m3u8 || mediaItem.video_balancer?.m3u8 || mediaItem.video_balancer?.default || null;
+  if (rutubeDirectM3u8) {
+    suite.push({
+      id: 'rutube_direct_hls',
+      name: 'RuTube HLS (Прямой поток без рекламы)',
+      url: rutubeDirectM3u8,
+      quality: '1080p FHD',
+      badge: 'RUTUBE HLS',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный лицензионный поток RuTube без рекламы и рекомендаций',
+      speed: '⚡ Быстрый прямой CDN',
+      is_recommended: isDomestic || mediaItem.source === 'rutube',
+      recommended_badge: '🔥 Рекомендуемый'
+    });
+  }
+
+  // 2. RuTube (Официальный плеер Wink / RuTube)
   let rutubeEmbed = mediaItem.embed_url || '';
   if (!rutubeEmbed && mediaItem.rutube_id) {
-    rutubeEmbed = `https://rutube.ru/play/embed/${mediaItem.rutube_id}`;
+    rutubeEmbed = `https://rutube.ru/play/embed/${mediaItem.rutube_id}?skinColor=00d2ff&autoPlay=1`;
   } else if (!rutubeEmbed && String(mediaItem.id || '').startsWith('rutube_')) {
     const ruId = String(mediaItem.id).replace('rutube_', '');
     if (/^[a-f0-9]{32}$/i.test(ruId)) {
-      rutubeEmbed = `https://rutube.ru/play/embed/${ruId}`;
+      rutubeEmbed = `https://rutube.ru/play/embed/${ruId}?skinColor=00d2ff&autoPlay=1`;
     }
   }
-  if (!rutubeEmbed) {
+  if (!rutubeEmbed && mediaItem.source === 'rutube') {
     const ruSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
     rutubeEmbed = `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=1`;
   }
-  const isRuTubeSource = mediaItem.source === 'rutube' || String(mediaItem.id || '').startsWith('rutube_');
-  const isRuTubeRecommended = (isRuTubeSource || isDomestic) && !effective4kUrl && !isAnime;
+  if (rutubeEmbed) {
+    const isRuTubeSource = mediaItem.source === 'rutube' || String(mediaItem.id || '').startsWith('rutube_');
+    const isRuTubeRecommended = !rutubeDirectM3u8 && (isRuTubeSource || isDomestic) && !effective4kUrl && !isAnime;
 
-  suite.push({
-    id: 'rutube_stream',
-    name: 'RuTube (Официальный поток / Wink)',
-    type: 'iframe',
-    quality: '1080p FHD',
-    badge: 'RUTUBE',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Официальный лицензионный каталог RuTube и Wink',
-    speed: '⚡ Быстрый российский CDN',
-    url: rutubeEmbed,
-    is_recommended: isRuTubeRecommended,
-    recommended_badge: isRuTubeRecommended ? '🔥 Рекомендуемый' : ''
-  });
+    suite.push({
+      id: 'rutube_stream',
+      name: 'RuTube (Официальный поток / Wink)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'RUTUBE',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный лицензионный каталог RuTube и Wink',
+      speed: '⚡ Быстрый российский CDN',
+      url: rutubeEmbed,
+      is_recommended: isRuTubeRecommended,
+      recommended_badge: isRuTubeRecommended ? '🔥 Рекомендуемый' : ''
+    });
+  }
 
-  // 3. VK Видео (Фильмы, сериалы и дубляж)
+  // 3. VK Видео (Фильмы, сериалы и дубляж) - СТРОГО с подтвержденными oid и id
   let vkEmbed = '';
   if (mediaItem.owner_id && mediaItem.video_id) {
-    vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${mediaItem.owner_id}&id=${mediaItem.video_id}&autoplay=1`;
+    vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${mediaItem.owner_id}&id=${mediaItem.video_id}&hd=2&autoplay=1`;
   } else if (String(mediaItem.id || '').startsWith('vk_')) {
     const vkM = String(mediaItem.id).match(/vk_(-?\d+)_(\d+)/);
     if (vkM) {
-      vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&autoplay=1`;
+      vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=1`;
     }
+  } else if (mediaItem.embed_url && (mediaItem.embed_url.includes('oid=') || mediaItem.embed_url.includes('video-'))) {
+    vkEmbed = mediaItem.embed_url;
   }
-  if (!vkEmbed) {
-    const vkSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
-    vkEmbed = `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`;
+  // ВАЖНО: Никогда не добавляем video_ext.php?q=, чтобы не вызывать интерфейс сайта и черный экран!
+  if (vkEmbed) {
+    const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_');
+    const isVkRecommended = isVkSource && !effective4kUrl && !isAnime;
+
+    suite.push({
+      id: 'vk_video_stream',
+      name: 'VK Видео (Официальный плеер)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'VK ВИДЕО',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальные релизы и студийные переводы VK Видео',
+      speed: '⚡ Скоростной VK CDN',
+      url: vkEmbed,
+      is_recommended: isVkRecommended,
+      recommended_badge: isVkRecommended ? '🔥 Рекомендуемый' : ''
+    });
   }
-  const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_');
-  const isVkRecommended = isVkSource && !effective4kUrl && !isAnime;
 
-  suite.push({
-    id: 'vk_video_stream',
-    name: 'VK Видео (Фильмы, сериалы и дубляж)',
-    type: 'iframe',
-    quality: '1080p FHD / 4K',
-    badge: 'VK ВИДЕО',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Официальные релизы и студийные переводы VK Видео',
-    speed: '⚡ Скоростной VK CDN',
-    url: vkEmbed,
-    is_recommended: isVkRecommended,
-    recommended_badge: isVkRecommended ? '🔥 Рекомендуемый' : ''
-  });
-
-  // 4. HDRezka Cinema (FHD и 4K)
-  const rezkaUrl = kpId
-    ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka${typeFilter}${episodeParam}`
-    : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
-  suite.push({
-    id: 'rezka_cinema',
-    name: 'HDRezka Cinema (FHD и 4K)',
-    type: 'iframe',
-    quality: '1080p FHD',
-    badge: 'HDREZKA',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Студийный перевод HDRezka Studio',
-    speed: '⚡ Высокая скорость',
-    url: rezkaUrl,
-    is_recommended: !isDomestic && !effective4kUrl && !isAnime
-  });
+  // 4. HDRezka Cinema (FHD и 4K) - исключаем для отечественного контента без Kinopoisk ID
+  if (!isDomestic || kpId) {
+    const rezkaUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
+    suite.push({
+      id: 'rezka_cinema',
+      name: 'HDRezka Cinema (FHD и 4K)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'HDREZKA',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Студийный перевод HDRezka Studio',
+      speed: '⚡ Высокая скорость',
+      url: rezkaUrl,
+      is_recommended: !isDomestic && !effective4kUrl && !isAnime
+    });
+  }
 
   // 5. LostFilm TV и Red Head Sound - СТРОГО ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
   if (!isDomestic) {
@@ -1127,23 +1150,25 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 6. Kodik Плеер
-  const kodikUrl = kpId
-    ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
-    : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
-  suite.push({
-    id: 'kodik_direct',
-    name: isAnime ? 'Kodik Аниме Плеер' : 'Kodik Плеер (сериалы и озвучки)',
-    type: 'iframe',
-    quality: '1080p FHD',
-    badge: 'KODIK',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Большой выбор студийных озвучек',
-    speed: '⚡ Быстрый поток',
-    url: kodikUrl,
-    is_recommended: isAnime && !effective4kUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
-  });
+  // 6. Kodik Плеер - исключаем для отечественных релизов без Kinopoisk ID, чтобы избежать заглушки «Плеер не найден»
+  if (!isDomestic || kpId) {
+    const kodikUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+    suite.push({
+      id: 'kodik_direct',
+      name: isAnime ? 'Kodik Аниме Плеер' : 'Kodik Плеер (сериалы и озвучки)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'KODIK',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Большой выбор студийных озвучек',
+      speed: '⚡ Быстрый поток',
+      url: kodikUrl,
+      is_recommended: isAnime && !effective4kUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
+    });
+  }
 
   // 6. AniXart Stream (для аниме)
   if (isAnime) {
@@ -1278,6 +1303,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
   }
   currentMedia = { ...mediaItem, title: cleanTitle, media_type: detectedType || mediaItem?.media_type || 'movie', year: initialYr || mediaItem?.year || '' };
+  try {
+    sessionStorage.setItem('storm_active_cinema_media', JSON.stringify(currentMedia));
+  } catch (e) {}
   quickBarSeriesData = null;
   currentEpisodes = [];
   currentEpisodeIndex = 1;
@@ -1333,6 +1361,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
   document.body.classList.add('cinema-open');
   if (typeof window.updateTvHudContext === 'function') {
     window.updateTvHudContext('player');
+  }
+
+  // Инициализируем универсальную панель серий для сериалов сразу
+  if (checkIfMediaIsSeries(currentMedia)) {
+    initUniversalSeriesQuickBar(options.initialSeason || 1, options.initialEpisode || 1);
   }
 
   // Мгновенный сброс скролла на 0, чтобы плеер открывался на весь экран сверху без необходимости пролистывать
@@ -1393,7 +1426,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
     if (isDomestic) {
-      initialChoice = currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+      initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+        || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.is_recommended && isWorking(p))
         || currentPlayers.find(isWorking)
@@ -1453,6 +1487,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
 
     currentMedia = { ...mediaItem, ...details, title: cleanVideoTitle(details?.title || mediaItem?.title || '') };
+    try {
+      sessionStorage.setItem('storm_active_cinema_media', JSON.stringify(currentMedia));
+    } catch (e) {}
+
+    // Инициализируем универсальную панель серий с обновленными метаданными
+    if (checkIfMediaIsSeries(currentMedia)) {
+      initUniversalSeriesQuickBar(options.initialSeason || 1, options.initialEpisode || 1);
+    }
 
     // 🛡️ ОБЪЕДИНЕНИЕ СЕРВЕРНЫХ И УНИВЕРСАЛЬНЫХ ПЛЕЕРОВ:
     // Для отечественного контента жестко фильтруем LostFilm и RHS
@@ -1523,7 +1565,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
           const isDomesticItem = isDomesticContent(currentMedia, cleanTitle);
           if (isDomesticItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+              || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
               || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
               || currentPlayers.find(p => p.is_recommended && isWorking(p))
               || currentPlayers.find(isWorking)
@@ -1579,6 +1622,9 @@ export function closePlayerModal() {
     if (fBtn) fBtn.classList.remove('active');
     stopAmbilight();
     clearPlayerUrl();
+    try {
+      sessionStorage.removeItem('storm_active_cinema_media');
+    } catch (e) {}
     dismissUpNextCountdownCard(false);
     if (statsForNerdsInterval) {
       clearInterval(statsForNerdsInterval);
@@ -2045,12 +2091,20 @@ async function initSeriesQuickBar(playerUrl) {
     const mediaTmdbId = currentMedia?.tmdb_id || '';
     const res = await fetch(`/api/player/series-options?url=${encodeURIComponent(playerUrl)}&title=${encodeURIComponent(mediaTitle)}&mediaId=${encodeURIComponent(curMediaId)}&tmdbId=${encodeURIComponent(mediaTmdbId)}`);
     if (!res.ok) {
+      if (checkIfMediaIsSeries(currentMedia)) {
+        initUniversalSeriesQuickBar(quickBarActiveSeason, quickBarActiveEpisode);
+        return;
+      }
       quickBar.style.display = 'none';
       adjustCinemaModalScale();
       return;
     }
     const data = await res.json();
     if (!data.success || !data.seasons || data.seasons.length === 0) {
+      if (checkIfMediaIsSeries(currentMedia)) {
+        initUniversalSeriesQuickBar(quickBarActiveSeason, quickBarActiveEpisode);
+        return;
+      }
       quickBar.style.display = 'none';
       adjustCinemaModalScale();
       return;
@@ -2058,6 +2112,8 @@ async function initSeriesQuickBar(playerUrl) {
 
     quickBarSeriesData = data;
     quickBar.style.display = 'flex';
+    const modal = document.getElementById('cinema-modal');
+    if (modal) modal.classList.add('has-series-bar');
     adjustCinemaModalScale();
     requestAnimationFrame(adjustCinemaModalScale);
 
@@ -2118,9 +2174,137 @@ async function initSeriesQuickBar(playerUrl) {
     }
   } catch (err) {
     console.warn('Ошибка быстрой панели серий:', err);
+    if (checkIfMediaIsSeries(currentMedia)) {
+      initUniversalSeriesQuickBar(quickBarActiveSeason, quickBarActiveEpisode);
+      return;
+    }
     quickBar.style.display = 'none';
     adjustCinemaModalScale();
   }
+}
+
+export function initUniversalSeriesQuickBar(initialSeason = 1, initialEpisode = 1) {
+  const quickBar = document.getElementById('player-series-quick-bar');
+  if (!quickBar) return;
+
+  if (!checkIfMediaIsSeries(currentMedia)) {
+    quickBar.style.display = 'none';
+    adjustCinemaModalScale();
+    return;
+  }
+
+  // Нормализуем seasons если это число (например, seasons: 2)
+  if (typeof currentMedia?.seasons === 'number') {
+    const numSeasons = currentMedia.seasons;
+    currentMedia.seasons = Array.from({ length: numSeasons }, (_, i) => ({
+      season_number: i + 1,
+      name: `Сезон ${i + 1}`,
+      episode_count: 8,
+      overview: ''
+    }));
+  }
+
+  let seasonsList = [];
+  if (Array.isArray(currentMedia?.seasons) && currentMedia.seasons.length > 0) {
+    seasonsList = currentMedia.seasons.map(s => {
+      const sNum = Number(s.season_number || s.season || 1);
+      const epCount = Number(s.episode_count || s.episodes_count || (Array.isArray(s.episodes) ? s.episodes.length : 8));
+      let eps = [];
+      if (Array.isArray(s.episodes) && s.episodes.length > 0) {
+        eps = s.episodes.map(e => ({
+          episode: Number(e.episode_number || e.ordinal || e.episode || 1),
+          name: e.name || e.title || `${e.episode_number || e.ordinal || e.episode || 1} серия`,
+          overview: e.overview || '',
+          embed_url: e.embed_url || '',
+          rutube_id: e.rutube_id || '',
+          translations: []
+        }));
+      } else {
+        eps = Array.from({ length: epCount }, (_, i) => ({
+          episode: i + 1,
+          name: `${i + 1} серия`,
+          overview: '',
+          translations: []
+        }));
+      }
+      return {
+        season: sNum,
+        name: s.name || `Сезон ${sNum}`,
+        episodes_count: eps.length,
+        episodes: eps
+      };
+    });
+  } else if (Array.isArray(currentMedia?.episodes) && currentMedia.episodes.length > 0) {
+    const eps = currentMedia.episodes.map(e => ({
+      episode: Number(e.episode_number || e.ordinal || e.episode || 1),
+      name: e.name || e.title || `${e.episode_number || e.ordinal || e.episode || 1} серия`,
+      overview: e.overview || '',
+      embed_url: e.embed_url || '',
+      rutube_id: e.rutube_id || '',
+      translations: []
+    }));
+    seasonsList = [{
+      season: 1,
+      name: 'Сезон 1',
+      episodes_count: eps.length,
+      episodes: eps
+    }];
+  } else {
+    // Дефолтный сезон с 8 сериями для любого сериала
+    seasonsList = [{
+      season: 1,
+      name: 'Сезон 1',
+      episodes_count: 8,
+      episodes: Array.from({ length: 8 }, (_, i) => ({
+        episode: i + 1,
+        name: `${i + 1} серия`,
+        overview: '',
+        translations: []
+      }))
+    }];
+  }
+
+  const sVal = Number(initialSeason) || 1;
+  const epVal = Number(initialEpisode) || 1;
+
+  quickBarSeriesData = {
+    success: true,
+    type: 'series',
+    seasons: seasonsList,
+    active: {
+      season: sVal,
+      episode: epVal,
+      id_translation: null
+    }
+  };
+
+  quickBarActiveSeason = sVal;
+  quickBarActiveEpisode = epVal;
+  quickBarActiveTranslationId = null;
+
+  quickBar.style.display = 'flex';
+  const modal = document.getElementById('cinema-modal');
+  if (modal) modal.classList.add('has-series-bar');
+  adjustCinemaModalScale();
+  requestAnimationFrame(adjustCinemaModalScale);
+
+  renderQuickBarDropdowns();
+  setupQuickBarOutsideListeners();
+
+  // Обновляем оверлей плеера и делаем кнопки выбора серий и сезонов доступными
+  const overlay = document.getElementById('storm-inplayer-overlay');
+  if (overlay) {
+    const epBtn = overlay.querySelector('#inplayer-episodes-btn');
+    const bottomBar = overlay.querySelector('#inplayer-bottom-bar');
+    const epSheet = overlay.querySelector('#player-inplayer-episodes-sheet');
+    if (epBtn) epBtn.style.display = '';
+    if (bottomBar) bottomBar.style.display = '';
+    if (epSheet) epSheet.style.display = '';
+    updateInPlayerEpisodeInfo();
+  }
+
+  // Обновляем нижнюю сетку сезонов и серий
+  renderSeriesSeasons(currentMedia, quickBarActiveSeason, quickBarActiveEpisode);
 }
 
 function getOrCreateQuickStatusPortal() {
@@ -2606,7 +2790,7 @@ function setupQuickBarOutsideListeners() {
   });
 }
 
-function updateQuickIframeSrc() {
+async function updateQuickIframeSrc() {
   if (quickBarSeriesData?.isAnime) {
     if (quickBarSeriesData.animeSource === 'anilibria') {
       const eps = currentMedia?.episodes || [];
@@ -2628,14 +2812,120 @@ function updateQuickIframeSrc() {
     return;
   }
 
-  const iframe = document.querySelector('.cinema-player-iframe');
-  if (!iframe || !quickBarBaseUrl) return;
+  const activePlayerId = currentActivePlayer?.id || '';
+  const cleanT = cleanVideoTitle(currentMedia?.title || '');
+  const curSeasonObj = quickBarSeriesData?.seasons?.find(s => s.season === quickBarActiveSeason);
+  const curEpObj = curSeasonObj?.episodes?.find(e => e.episode === quickBarActiveEpisode);
+  const isVideoElementActive = !!document.getElementById('storm-video-player');
 
-  let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation`;
-  if (quickBarSeriesData?.type !== 'movie') {
-    url += `&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
+  // 1. RuTube HLS (Прямой поток без рекламы и рекомендаций)
+  if (activePlayerId === 'rutube_direct_hls' || (isVideoElementActive && (activePlayerId.includes('rutube') || currentMedia?.rutube_id))) {
+    try {
+      const epRutubeId = curEpObj?.rutube_id || '';
+      const epEmbedUrl = curEpObj?.embed_url || '';
+      const res = await fetch(`/api/media/rutube-episode?title=${encodeURIComponent(cleanT)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}&rutube_id=${encodeURIComponent(epRutubeId)}&embed_url=${encodeURIComponent(epEmbedUrl)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.hls_url) {
+          playStreamUrl(data.hls_url);
+          showToast(`🎬 ${cleanT}: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+          updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
+          highlightActiveEpisodeInGrid(quickBarActiveEpisode);
+          updateInPlayerEpisodeInfo();
+          return;
+        } else if (data && data.embed_url) {
+          playStreamUrl(data.embed_url);
+          showToast(`🎬 ${cleanT}: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+          updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
+          highlightActiveEpisodeInGrid(quickBarActiveEpisode);
+          updateInPlayerEpisodeInfo();
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('RuTube HLS episode switch error:', err);
+    }
   }
-  iframe.src = url;
+
+  // 2. RuTube Stream (Iframe)
+  if (activePlayerId === 'rutube_stream' || activePlayerId.includes('rutube')) {
+    const iframe = document.querySelector('.cinema-player-iframe');
+    if (iframe) {
+      try {
+        const epRutubeId = curEpObj?.rutube_id || '';
+        const epEmbedUrl = curEpObj?.embed_url || '';
+        if (epEmbedUrl) {
+          iframe.src = epEmbedUrl;
+          showToast(`🎬 RuTube: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+          updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
+          highlightActiveEpisodeInGrid(quickBarActiveEpisode);
+          updateInPlayerEpisodeInfo();
+          return;
+        }
+        const res = await fetch(`/api/media/rutube-episode?title=${encodeURIComponent(cleanT)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}&rutube_id=${encodeURIComponent(epRutubeId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.embed_url) {
+            iframe.src = data.embed_url;
+            showToast(`🎬 RuTube: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+            updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
+            highlightActiveEpisodeInGrid(quickBarActiveEpisode);
+            updateInPlayerEpisodeInfo();
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // 3. VK Видео
+  if (activePlayerId.startsWith('vk')) {
+    const iframe = document.querySelector('.cinema-player-iframe');
+    if (iframe) {
+      try {
+        const res = await fetch(`/api/media/vk-episode?title=${encodeURIComponent(cleanT)}&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.embed_url) {
+            iframe.src = data.embed_url;
+            showToast(`🎬 VK Видео: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+            updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
+            highlightActiveEpisodeInGrid(quickBarActiveEpisode);
+            updateInPlayerEpisodeInfo();
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // 4. Kodik / FanFilm Iframe
+  const iframe = document.querySelector('.cinema-player-iframe');
+  if (iframe) {
+    if (quickBarBaseUrl && (quickBarBaseUrl.includes('fanfilm') || quickBarBaseUrl.includes('stravers'))) {
+      let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation`;
+      if (quickBarSeriesData?.type !== 'movie') {
+        url += `&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
+      }
+      iframe.src = url;
+    } else {
+      let curSrc = iframe.src || (currentActivePlayer?.url || '');
+      if (curSrc) {
+        let newUrl = curSrc;
+        if (newUrl.includes('season=') || newUrl.includes('episode=')) {
+          newUrl = newUrl.replace(/([?&])season=\d+/g, `$1season=${quickBarActiveSeason}`);
+          newUrl = newUrl.replace(/([?&])episode=\d+/g, `$1episode=${quickBarActiveEpisode}`);
+        } else {
+          newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
+        }
+        iframe.src = newUrl;
+      }
+    }
+    showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+    updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
+    highlightActiveEpisodeInGrid(quickBarActiveEpisode);
+    updateInPlayerEpisodeInfo();
+  }
 }
 
 function highlightActiveEpisodeInGrid(episodeNum) {
@@ -2841,9 +3131,15 @@ function playStreamUrl(url) {
 
   if (url.includes('.m3u8')) {
     const quickBar = document.getElementById('player-series-quick-bar');
-    if (quickBar && (!quickBarSeriesData || !quickBarSeriesData.seasons || quickBarSeriesData.seasons.length === 0)) {
-      quickBar.style.display = 'none';
-      adjustCinemaModalScale();
+    if (quickBar) {
+      if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
+        quickBar.style.display = 'flex';
+      } else if (checkIfMediaIsSeries(currentMedia)) {
+        initUniversalSeriesQuickBar(quickBarActiveSeason, quickBarActiveEpisode);
+      } else {
+        quickBar.style.display = 'none';
+        adjustCinemaModalScale();
+      }
     }
 
     container.innerHTML = `
@@ -2912,10 +3208,17 @@ function playStreamUrl(url) {
     streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation`;
     initSeriesQuickBar(url);
     checkAndAutoFallbackStream(url);
-  } else if (!quickBarSeriesData?.isAnime) {
+  } else if (!quickBarSeriesData?.seasons?.length && !quickBarSeriesData?.isAnime) {
+    if (checkIfMediaIsSeries(currentMedia)) {
+      initUniversalSeriesQuickBar(quickBarActiveSeason, quickBarActiveEpisode);
+    } else {
+      const quickBar = document.getElementById('player-series-quick-bar');
+      if (quickBar) quickBar.style.display = 'none';
+      adjustCinemaModalScale();
+    }
+  } else if (quickBarSeriesData?.seasons?.length > 0) {
     const quickBar = document.getElementById('player-series-quick-bar');
-    if (quickBar) quickBar.style.display = 'none';
-    adjustCinemaModalScale();
+    if (quickBar) quickBar.style.display = 'flex';
   }
 
   if (typeof streamUrl === 'string') {
@@ -4588,10 +4891,16 @@ export function checkIfMediaIsSeries(media) {
   if (quickBarSeriesData && quickBarSeriesData.type !== 'movie' && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0) {
     return true;
   }
+  if (typeof media.seasons === 'number' && media.seasons > 0) {
+    return true;
+  }
   if (Array.isArray(media.seasons) && media.seasons.length > 0) {
     return true;
   }
   if (Array.isArray(media.episodes) && media.episodes.length > 0) {
+    return true;
+  }
+  if (media.rutube_id && (media.seasons || media.episodes)) {
     return true;
   }
   if ((parseInt(media.total_episodes, 10) || 0) > 1 || (parseInt(media.episode, 10) || 0) > 1 || (parseInt(media.season, 10) || 0) > 1) {
@@ -4700,9 +5009,18 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
     markEpisodeWatched(currentMedia.id, sNum, ep, true);
   }
 
-  // 1. Быстрая панель серверов / FanFilm
+  // 1. Универсальная быстрая панель серверов / FanFilm / RuTube / VK / Kodik
   if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
     selectQuickSeason(sNum);
+    selectQuickEpisode(ep);
+    updateInPlayerEpisodeInfo();
+    highlightActiveEpisodeInGrid(ep);
+    return true;
+  }
+
+  // Если панель еще не инициализирована, но медиа является сериалом
+  if (checkIfMediaIsSeries(currentMedia)) {
+    initUniversalSeriesQuickBar(sNum, ep);
     selectQuickEpisode(ep);
     updateInPlayerEpisodeInfo();
     highlightActiveEpisodeInGrid(ep);
@@ -4736,13 +5054,33 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
     }
   }
 
-  // 4. Iframe плеер (RuTube, VK Видео, Kodik, HDRezka, Collaps, FanFilm и др.)
+  // 4. Прямой HLS видео-плеер (RuTube HLS без рекламы)
+  const video = document.getElementById('storm-video-player');
+  const activeId = currentActivePlayer?.id || '';
+  if (video && (activeId.includes('rutube') || currentMedia?.rutube_id)) {
+    const cleanT = cleanVideoTitle(currentMedia?.title || '');
+    fetch(`/api/media/rutube-episode?title=${encodeURIComponent(cleanT)}&season=${sNum}&episode=${ep}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.hls_url) {
+          playStreamUrl(d.hls_url);
+        } else if (d && d.embed_url) {
+          playStreamUrl(d.embed_url);
+        }
+      })
+      .catch(() => {});
+    showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
+    updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
+    highlightActiveEpisodeInGrid(ep);
+    updateInPlayerEpisodeInfo();
+    return true;
+  }
+
+  // 5. Iframe плеер (RuTube, VK Видео, Kodik, HDRezka, Collaps, FanFilm и др.)
   const iframe = document.querySelector('.cinema-player-iframe');
   if (iframe) {
     try {
-      const activeId = currentActivePlayer?.id || '';
       if (activeId.startsWith('rutube')) {
-        // Проверяем, есть ли готовый embed для этой серии в currentMedia.episodes или seasons
         const allEps = currentMedia?.episodes || [];
         const epData = allEps.find(e => Number(e.episode_number || e.ordinal || e.episode) === ep);
         if (epData && epData.embed_url) {
@@ -4754,7 +5092,6 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
           return true;
         }
 
-        // Динамический поиск серии в RuTube
         const cleanT = cleanVideoTitle(currentMedia?.title || '');
         fetch(`/api/media/rutube-episode?title=${encodeURIComponent(cleanT)}&season=${sNum}&episode=${ep}`)
           .then(r => r.json())
@@ -4774,8 +5111,15 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
 
       if (activeId.startsWith('vk')) {
         const cleanT = cleanVideoTitle(currentMedia?.title || '');
-        const vkSearchQ = encodeURIComponent(`${cleanT} ${sNum} сезон ${ep} серия`.trim());
-        iframe.src = `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1`;
+        fetch(`/api/media/vk-episode?title=${encodeURIComponent(cleanT)}&season=${sNum}&episode=${ep}`)
+          .then(r => r.json())
+          .then(d => {
+            if (d && d.embed_url) {
+              iframe.src = d.embed_url;
+            }
+          })
+          .catch(() => {});
+
         showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
         updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
         highlightActiveEpisodeInGrid(ep);
@@ -8394,6 +8738,10 @@ export function updatePlayerUrl(mediaItem, season = null, episode = null, player
     const url = new URL(window.location.href);
     url.searchParams.set('media', mediaItem.id);
     url.searchParams.set('source', mediaItem.source || 'fanfilm4k');
+    const cleanT = cleanVideoTitle(mediaItem.title || '');
+    if (cleanT) url.searchParams.set('title', cleanT);
+    const yr = mediaItem.year || '';
+    if (yr) url.searchParams.set('year', yr);
     if (season !== null && season !== undefined) url.searchParams.set('season', season);
     else url.searchParams.delete('season');
     if (episode !== null && episode !== undefined) url.searchParams.set('episode', episode);
@@ -8410,6 +8758,8 @@ export function clearPlayerUrl() {
     const url = new URL(window.location.href);
     url.searchParams.delete('media');
     url.searchParams.delete('source');
+    url.searchParams.delete('title');
+    url.searchParams.delete('year');
     url.searchParams.delete('season');
     url.searchParams.delete('episode');
     url.searchParams.delete('player');
@@ -9029,6 +9379,15 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
                    (mediaDetails.seasons && mediaDetails.seasons.length > 0) ||
                    (mediaDetails.episodes && mediaDetails.episodes.length > 0) ||
                    (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0);
+  if (typeof mediaDetails.seasons === 'number' && mediaDetails.seasons > 0) {
+    mediaDetails.seasons = Array.from({ length: mediaDetails.seasons }, (_, i) => ({
+      season_number: i + 1,
+      name: `Сезон ${i + 1}`,
+      episode_count: 8,
+      overview: ''
+    }));
+  }
+
   let seasons = mediaDetails.seasons || [];
 
   if (quickBarSeriesData?.seasons && quickBarSeriesData.seasons.length > seasons.length) {
