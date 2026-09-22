@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v2.8';
+const CACHE_NAME = 'storm-multimedia-v3.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
