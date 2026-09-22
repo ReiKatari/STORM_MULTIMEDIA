@@ -85,12 +85,16 @@ let aimOverlayElement = null;
 export function loadCleanViewSettings() {
   try {
     const raw = localStorage.getItem('storm_cleanview_settings');
+    const adblockGlobal = localStorage.getItem('storm_adblock_enabled');
     if (raw) {
       const parsed = JSON.parse(raw);
       currentSettings = { ...DEFAULT_SETTINGS, ...parsed, isCustomizing: false, isAiming: false };
       if (typeof currentSettings.maskOpacity !== 'number') {
         currentSettings.maskOpacity = 0.55;
       }
+    }
+    if (adblockGlobal !== null) {
+      currentSettings.adSkipperEnabled = adblockGlobal !== 'false';
     }
   } catch (e) {
     currentSettings = { ...DEFAULT_SETTINGS };
@@ -104,6 +108,7 @@ export function loadCleanViewSettings() {
 export function saveCleanViewSettings(settings = {}) {
   try {
     currentSettings = { ...currentSettings, ...settings };
+    localStorage.setItem('storm_adblock_enabled', currentSettings.adSkipperEnabled ? 'true' : 'false');
     localStorage.setItem('storm_cleanview_settings', JSON.stringify({
       adSkipperEnabled: currentSettings.adSkipperEnabled,
       watermarkMaskEnabled: currentSettings.watermarkMaskEnabled,

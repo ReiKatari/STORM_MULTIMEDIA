@@ -1840,44 +1840,133 @@ app.get('/api/vkvideo/search', async (req, res) => {
   }
 });
 
-// Прямой HLS поток для RuTube (.m3u8) с 302 редиректом
+// Прямой HLS поток для RuTube (.m3u8) с CORS проксированием и перезаписью URL
 app.get('/api/media/rutube-m3u8', async (req, res) => {
   try {
     const id = (req.query.id || req.query.rutube_id || '').trim();
     if (!id) return res.status(400).send('Missing id');
     const opts = await getRuTubePlayOptions(id);
-    if (opts && opts.m3u8) {
-      return res.redirect(302, opts.m3u8);
+    if (!opts || !opts.m3u8) {
+      return res.status(404).send('HLS stream not found');
     }
-    return res.status(404).send('HLS stream not found');
+
+    const mRes = await fetch(opts.m3u8, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': 'https://rutube.ru/'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!mRes.ok) {
+      return res.status(mRes.status).send('Failed to fetch master playlist');
+    }
+
+    let text = await mRes.text();
+    // Перезаписываем все URL подпотоков через наш быстрый стриминг-прокси
+    const lines = text.split('\n').map(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('http')) {
+        return `/api/media/rutube-proxy?url=${encodeURIComponent(trimmed)}`;
+      }
+      return line;
+    });
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.send(lines.join('\n'));
   } catch (e) {
     res.status(500).send(e.message);
   }
 });
 
-// Проксированный RuTube плеер со скрытием кнопки «Смотреть на RUTUBE», рекламы и водяных знаков
+// Стриминг-прокси сегментов и под-плейлистов RuTube с поддержкой CORS
+app.get('/api/media/rutube-proxy', async (req, res) => {
+  try {
+    const targetUrl = (req.query.url || '').trim();
+    if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
+      return res.status(400).send('Missing or invalid url');
+    }
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+
+    const pRes = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': 'https://rutube.ru/'
+      },
+      signal: AbortSignal.timeout(12000)
+    });
+
+    if (!pRes.ok) {
+      return res.status(pRes.status).send('Proxy upstream error');
+    }
+
+    const cType = pRes.headers.get('content-type') || 'video/MP2T';
+
+    // Если это m3u8 плейлист качества, перезаписываем сегменты
+    if (cType.includes('mpegurl') || targetUrl.includes('.m3u8')) {
+      const subText = await pRes.text();
+      const lines = subText.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const abs = trimmed.startsWith('http') ? trimmed : new URL(trimmed, targetUrl).href;
+          return `/api/media/rutube-proxy?url=${encodeURIComponent(abs)}`;
+        }
+        return line;
+      });
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      return res.send(lines.join('\n'));
+    }
+
+    // Стриминг видеосегмента (.ts или .mp4) с пробросом заголовков
+    res.setHeader('Content-Type', cType);
+    const cLen = pRes.headers.get('content-length');
+    if (cLen) res.setHeader('Content-Length', cLen);
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+
+    const reader = pRes.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    return res.end();
+  } catch (e) {
+    if (!res.headersSent) {
+      res.status(500).send(e.message);
+    }
+  }
+});
+
+// Проксированный RuTube плеер с тотальной блокировкой рекламы, VAST и скрытием кнопки «Смотреть на RUTUBE»
 app.get('/api/player/rutube-embed/:id', async (req, res) => {
   try {
     const id = (req.params.id || '').trim();
     if (!id) return res.status(400).send('Missing id');
-    const response = await fetch(`https://rutube.ru/play/embed/${id}`, {
+    const response = await fetch(`https://rutube.ru/play/embed/${id}?skinColor=00d2ff&autoPlay=1`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://rutube.ru/'
       }
     });
     if (!response.ok) {
-      return res.redirect(302, `https://rutube.ru/play/embed/${id}`);
+      return res.redirect(302, `https://rutube.ru/play/embed/${id}?skinColor=00d2ff&autoPlay=1`);
     }
     let html = await response.text();
 
-    const antiButtonInjection = `
+    const antiAdAndBrandingInjection = `
       <style id="storm-rutube-cleaner">
         [class*="watch-on-rutube"], [class*="watchOnRutube"], [class*="watch_on_rutube"],
         [class*="openInApp"], [class*="open-in-app"], [class*="watermark"], [class*="logoContainer"],
         [class*="rutube-logo"], a[href*="rutube.ru"], button[aria-label*="RUTUBE"],
         button[aria-label*="Rutube"], div[class*="branding"], a[class*="Button"],
-        div[class*="watchButton"], button[class*="watchButton"] {
+        div[class*="watchButton"], button[class*="watchButton"], [class*="ad-"], [class*="adv-"],
+        .vast-container, [id*="banner"], [class*="banner"] {
           display: none !important;
           opacity: 0 !important;
           visibility: hidden !important;
@@ -1888,38 +1977,110 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
       </style>
       <script>
         (function() {
-          function purgeRutubeButtons() {
-            var all = document.querySelectorAll('button, a, span, div, p');
-            for (var i = 0; i < all.length; i++) {
-              var el = all[i];
-              var txt = (el.innerText || el.textContent || '').trim();
-              if (txt === 'Смотреть на RUTUBE' || txt === 'Смотреть на Rutube' || txt.indexOf('Смотреть на RUTUBE') !== -1) {
-                var btn = el.closest('button, a, [role="button"], div[class*="button"]') || el;
-                btn.style.setProperty('display', 'none', 'important');
-                btn.style.setProperty('visibility', 'hidden', 'important');
-                btn.style.setProperty('pointer-events', 'none', 'important');
+          // STORM VAST & Video Ad Neutralizer
+          try {
+            var emptyVast = '<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"></VAST>';
+            var origFetch = window.fetch;
+            window.fetch = function(input, init) {
+              var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+              var low = String(url || '').toLowerCase();
+              if (low.includes('/api/v1/ad') || low.includes('/gowast/') || low.includes('ssp.rutube.ru') ||
+                  low.includes('yast.rutube.ru') || low.includes('goya.rutube.ru') || low.includes('/adonline/') ||
+                  low.includes('/banner/') || low.includes('preroll') || low.includes('vast') || low.includes('adsystem')) {
+                return Promise.resolve(new Response(emptyVast, {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/xml; charset=utf-8' }
+                }));
               }
-            }
+              return origFetch.apply(this, arguments);
+            };
+
+            var origOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url) {
+              var low = String(url || '').toLowerCase();
+              if (low.includes('/api/v1/ad') || low.includes('/gowast/') || low.includes('ssp.rutube.ru') ||
+                  low.includes('yast.rutube.ru') || low.includes('goya.rutube.ru') || low.includes('/adonline/') ||
+                  low.includes('/banner/') || low.includes('preroll') || low.includes('vast') || low.includes('adsystem')) {
+                this._isBlockedAd = true;
+              }
+              return origOpen.apply(this, arguments);
+            };
+
+            var origSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.send = function() {
+              if (this._isBlockedAd) {
+                var self = this;
+                setTimeout(function() {
+                  Object.defineProperty(self, 'readyState', { value: 4, writable: false });
+                  Object.defineProperty(self, 'status', { value: 200, writable: false });
+                  Object.defineProperty(self, 'statusText', { value: 'OK', writable: false });
+                  Object.defineProperty(self, 'responseText', { value: emptyVast, writable: false });
+                  Object.defineProperty(self, 'response', { value: emptyVast, writable: false });
+                  if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                  if (typeof self.onload === 'function') self.onload();
+                }, 5);
+                return;
+              }
+              return origSend.apply(this, arguments);
+            };
+
+            window.open = function() { return null; };
+          } catch(e) {}
+
+          function purgeRutubeArtifacts() {
+            try {
+              var all = document.querySelectorAll('button, a, span, div, p');
+              for (var i = 0; i < all.length; i++) {
+                var el = all[i];
+                var txt = (el.innerText || el.textContent || '').trim();
+                if (txt === 'Смотреть на RUTUBE' || txt === 'Смотреть на Rutube' || txt.indexOf('Смотреть на RUTUBE') !== -1) {
+                  var btn = el.closest('button, a, [role="button"], div[class*="button"]') || el;
+                  btn.style.setProperty('display', 'none', 'important');
+                  btn.style.setProperty('visibility', 'hidden', 'important');
+                  btn.style.setProperty('pointer-events', 'none', 'important');
+                }
+              }
+
+              // Авто-пропуск любого короткого рекламного ролика
+              var vids = document.querySelectorAll('video');
+              for (var k = 0; k < vids.length; k++) {
+                var v = vids[k];
+                if (v && v.duration && v.duration < 65 && v.duration > 2) {
+                  v.muted = true;
+                  if (v.playbackRate < 10) v.playbackRate = 16;
+                  if (v.currentTime < v.duration - 0.2) v.currentTime = v.duration;
+                }
+              }
+
+              // Авто-клик по кнопкам пропуска
+              var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, button[class*="skip"], [class*="skip"][class*="ad"]');
+              for (var s = 0; s < skipBtns.length; s++) {
+                if (skipBtns[s].offsetParent !== null) skipBtns[s].click();
+              }
+            } catch (_) {}
           }
-          var obs = new MutationObserver(purgeRutubeButtons);
-          obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-          setInterval(purgeRutubeButtons, 200);
-          window.addEventListener('DOMContentLoaded', purgeRutubeButtons);
-          window.addEventListener('load', purgeRutubeButtons);
+
+          var obs = new MutationObserver(purgeRutubeArtifacts);
+          obs.observe(document.documentElement, { childList: true, subtree: true });
+          setInterval(purgeRutubeArtifacts, 200);
+          window.addEventListener('DOMContentLoaded', purgeRutubeArtifacts);
+          window.addEventListener('load', purgeRutubeArtifacts);
         })();
       </script>
     `;
 
     if (html.includes('</head>')) {
-      html = html.replace('</head>', `${antiButtonInjection}</head>`);
+      html = html.replace('</head>', `${antiAdAndBrandingInjection}</head>`);
     } else {
-      html = antiButtonInjection + html;
+      html = antiAdAndBrandingInjection + html;
     }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
     res.send(html);
   } catch (e) {
-    res.redirect(302, `https://rutube.ru/play/embed/${req.params.id}`);
+    res.redirect(302, `https://rutube.ru/play/embed/${req.params.id}?skinColor=00d2ff&autoPlay=1`);
   }
 });
 
@@ -2667,9 +2828,9 @@ app.get('/api/media/rutube-episode', async (req, res) => {
       const playOpts = await getRuTubePlayOptions(rutube_id);
       return res.json({
         id: rutube_id,
-        embed_url: embed_url || `https://rutube.ru/play/embed/${rutube_id}`,
-        m3u8: playOpts?.m3u8 || null,
-        hls_url: playOpts?.m3u8 || null,
+        embed_url: `/api/player/rutube-embed/${rutube_id}`,
+        m3u8: `/api/media/rutube-m3u8?id=${rutube_id}`,
+        hls_url: `/api/media/rutube-m3u8?id=${rutube_id}`,
         title: playOpts?.title || title
       });
     }
@@ -2696,9 +2857,9 @@ app.get('/api/media/rutube-episode', async (req, res) => {
       const playOpts = await getRuTubePlayOptions(cleanId);
       return res.json({
         id: cleanId,
-        embed_url: match.embed_url || `https://rutube.ru/play/embed/${cleanId}`,
-        m3u8: playOpts?.m3u8 || null,
-        hls_url: playOpts?.m3u8 || null,
+        embed_url: `/api/player/rutube-embed/${cleanId}`,
+        m3u8: `/api/media/rutube-m3u8?id=${cleanId}`,
+        hls_url: `/api/media/rutube-m3u8?id=${cleanId}`,
         title: match.title
       });
     }
@@ -4100,27 +4261,8 @@ app.get(['/seria/*', '/video/*', '/uv/*', '/episode/*', '/serial/*', '/season/*'
   return res.redirect(target);
 });
 
-// Прямое безопасное перенаправление на поток Kodik / AniXart
-app.get('/api/player/kodik-embed', (req, res) => {
-  try {
-    const { url: targetUrl } = req.query;
-    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.trim() || targetUrl === 'undefined') {
-      return res.status(400).type('text/plain; charset=utf-8').send('URL не указан');
-    }
-
-    const cleanUrl = targetUrl.startsWith('//') ? 'https:' + targetUrl : targetUrl;
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      return res.status(400).type('text/plain; charset=utf-8').send('Некорректный URL');
-    }
-
-    return res.redirect(cleanUrl);
-  } catch (err) {
-    return res.status(500).type('text/plain; charset=utf-8').send('Ошибка перенаправления');
-  }
-});
-
-// Проксирование сторонних плееров и потоков для надежного обхода зарубежных блокировок VPN
-app.get('/api/player/vpn-proxy', async (req, res) => {
+// STORM AdBlock & VPN Proxy: комплексное проксирование и очистка плееров (Kodik, HDRezka, LostFilm и др.) от рекламы
+app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adblock-proxy'], async (req, res) => {
   try {
     const { url: rawUrl } = req.query;
     if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl === 'undefined') {
