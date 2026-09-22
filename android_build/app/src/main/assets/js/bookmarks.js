@@ -17,6 +17,222 @@ export function getMemoryBookmarksCache() {
   return memoryBookmarksCache;
 }
 
+export function getSeriesCompletedMeta(mediaId) {
+  try {
+    const raw = localStorage.getItem(`storm_series_completed_meta_${mediaId}`);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+export function saveSeriesCompletedMeta(mediaId, meta = {}) {
+  try {
+    const toSave = {
+      maxSeason: Number(meta.maxSeason) || 1,
+      maxEpisode: Number(meta.maxEpisode) || 1,
+      totalEpisodes: Number(meta.totalEpisodes) || 0,
+      completedAt: meta.completedAt || Date.now()
+    };
+    localStorage.setItem(`storm_series_completed_meta_${mediaId}`, JSON.stringify(toSave));
+  } catch {}
+}
+
+export function getWatchedEpisodesSummary(mediaId) {
+  let highestSeason = 1;
+  let highestEpisode = 0;
+  let totalWatchedCount = 0;
+  const watchedMap = new Map();
+
+  try {
+    for (let s = 1; s <= 30; s++) {
+      let raw = localStorage.getItem(`storm_watched_eps_${mediaId}_s${s}`);
+      if (!raw && s === 1) {
+        raw = localStorage.getItem(`storm_watched_eps_${mediaId}`);
+      }
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length > 0) {
+          const numArr = arr.map(Number).filter(n => !isNaN(n) && n > 0);
+          if (numArr.length > 0) {
+            highestSeason = Math.max(highestSeason, s);
+            const maxEp = Math.max(...numArr);
+            if (s >= highestSeason) {
+              highestEpisode = Math.max(highestEpisode, maxEp);
+            }
+            totalWatchedCount += numArr.length;
+            watchedMap.set(s, new Set(numArr));
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return { highestSeason, highestEpisode, totalWatchedCount, watchedMap };
+}
+
+export function checkSeriesHasNewEpisodes(item) {
+  if (!item) return null;
+  const mediaId = String(item.id || item.media_id || '');
+  if (!mediaId) return null;
+
+  const mType = (typeof detectClientMediaType === 'function' ? detectClientMediaType(item) : null) || item.media_type || '';
+  const isSeries = mType === 'series' || mType === 'anime-series' || mType === 'cartoon-series' ||
+                   (Array.isArray(item.seasons) && item.seasons.length > 0) ||
+                   Boolean(item.season || item.episode) ||
+                   (item.title && /(?:сериал|сезон|серия)/i.test(item.title));
+
+  if (!isSeries) return null;
+
+  const summary = getWatchedEpisodesSummary(mediaId);
+  const meta = getSeriesCompletedMeta(mediaId);
+
+  const baselineSeason = Math.max(summary.highestSeason, meta?.maxSeason || 1);
+  const baselineEpisode = meta?.maxSeason && meta.maxSeason > summary.highestSeason
+    ? (meta.maxEpisode || 1)
+    : Math.max(summary.highestEpisode, meta?.maxEpisode || 0);
+
+  // 1. Проверка по массиву сезонов в item.seasons
+  if (Array.isArray(item.seasons) && item.seasons.length > 0) {
+    for (const s of item.seasons) {
+      const sNum = Number(s.season || s.season_number || 0);
+      const epCount = Number(s.episode_count || s.episodes_count || (Array.isArray(s.episodes) ? s.episodes.length : 0));
+      if (sNum > baselineSeason && (epCount > 0 || !s.episode_count)) {
+        return {
+          hasNew: true,
+          nextSeason: sNum,
+          nextEpisode: 1,
+          reason: 'new_season'
+        };
+      }
+      if (sNum === baselineSeason && epCount > baselineEpisode && baselineEpisode > 0) {
+        return {
+          hasNew: true,
+          nextSeason: sNum,
+          nextEpisode: baselineEpisode + 1,
+          reason: 'new_episode'
+        };
+      }
+    }
+  }
+
+  // 2. Проверка по общему количеству серий
+  const totalInItem = Number(item.total_episodes || item.episodes_count || 0);
+  const metaTotal = Number(meta?.totalEpisodes || 0);
+  if (totalInItem > 0) {
+    if (metaTotal > 0 && totalInItem > metaTotal) {
+      return {
+        hasNew: true,
+        nextSeason: baselineSeason,
+        nextEpisode: baselineEpisode + 1,
+        reason: 'total_increased'
+      };
+    }
+    if (summary.totalWatchedCount > 0 && totalInItem > summary.totalWatchedCount) {
+      return {
+        hasNew: true,
+        nextSeason: baselineSeason,
+        nextEpisode: baselineEpisode + 1,
+        reason: 'total_increased'
+      };
+    }
+  }
+
+  // 3. Проверка по номеру последней известной серии
+  const lastEp = Number(item.last_episode || 0);
+  if (lastEp > 0 && baselineEpisode > 0 && lastEp > baselineEpisode) {
+    return {
+      hasNew: true,
+      nextSeason: baselineSeason,
+      nextEpisode: baselineEpisode + 1,
+      reason: 'last_episode_increased'
+    };
+  }
+
+  return null;
+}
+
+export function autoTransitionSeriesToWatching(item, nextSeason = 1, nextEpisode = 1) {
+  if (!item) return;
+  const mediaId = String(item.id || item.media_id || '');
+  if (!mediaId) return;
+  const rawTitle = String(item.title || item.original_title || '').trim();
+  const normTitle = rawTitle.toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
+
+  try {
+    localStorage.setItem(`storm_status_${mediaId}`, 'watching');
+    if (normTitle) {
+      localStorage.setItem(`storm_status_title_${normTitle}`, 'watching');
+    }
+    syncLocalBookmarkItem(item, 'watching');
+  } catch {}
+
+  // Добавляем или обновляем карточку в Continue Watching со следующей непросмотренной серией
+  try {
+    const list = getLocalContinueWatching();
+    const existingIdx = list.findIndex(it =>
+      (it.media_id === mediaId && it.source === (item.source || 'all')) ||
+      (it.title && item.title && it.title.trim().toLowerCase() === item.title.trim().toLowerCase())
+    );
+
+    const mType = (typeof detectClientMediaType === 'function' ? detectClientMediaType(item) : null) || item.media_type || 'series';
+    const entry = {
+      media_id: mediaId,
+      source: item.source || 'all',
+      title: item.title || '',
+      poster: item.poster || item.poster_url || '',
+      poster_url: item.poster || item.poster_url || '',
+      media_type: mType,
+      year: item.year || '',
+      season: nextSeason,
+      episode: nextEpisode,
+      total_episodes: item.total_episodes || item.episodes_count || 10,
+      duration_seconds: 2700,
+      time_seconds: 0,
+      progress_percent: 0,
+      status: 'watching',
+      user_status: 'watching',
+      next_up: `С${nextSeason} • Э${nextEpisode}`,
+      has_new_episodes: true,
+      updated_at: Date.now()
+    };
+
+    if (existingIdx >= 0) {
+      list[existingIdx] = { ...list[existingIdx], ...entry };
+    } else {
+      list.unshift(entry);
+    }
+    localStorage.setItem('storm_continue_watching', JSON.stringify(list.slice(0, 30)));
+  } catch {}
+
+  const token = getToken();
+  if (token) {
+    fetch('/api/bookmarks/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        media_id: mediaId,
+        source: item.source || 'all',
+        title: item.title,
+        original_title: item.original_title || '',
+        poster_url: item.poster || item.poster_url || '',
+        media_type: item.media_type || 'series',
+        year: item.year || '',
+        status: 'watching'
+      })
+    }).catch(() => {});
+  }
+
+  window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+    detail: { mediaId, status: 'watching', nextSeason, nextEpisode, hasNewEpisodes: true }
+  }));
+  window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', {
+    detail: { mediaId, hasNewEpisodes: true }
+  }));
+}
+
 export function resolveMediaUserStatus(item) {
   if (!item) return null;
   const directStatus = item.user_status || item.bookmark_status;
@@ -26,19 +242,21 @@ export function resolveMediaUserStatus(item) {
   }
 
   const id = String(item.id || item.media_id || '');
+  let resolved = null;
+
   if (id) {
     const s = localStorage.getItem(`storm_status_${id}`);
-    if (s && s !== 'none') return s;
+    if (s && s !== 'none') resolved = s;
   }
 
   const rawTitle = String(item.title || item.original_title || '').trim();
   const normTitle = rawTitle.toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
-  if (normTitle) {
+  if (!resolved && normTitle) {
     const s = localStorage.getItem(`storm_status_title_${normTitle}`) || localStorage.getItem(`storm_status_title_${rawTitle.toLowerCase()}`);
-    if (s && s !== 'none') return s;
+    if (s && s !== 'none') resolved = s;
   }
 
-  if (memoryBookmarksCache.length > 0) {
+  if (!resolved && memoryBookmarksCache.length > 0) {
     const match = memoryBookmarksCache.find(b => {
       const bId = String(b.id || b.media_id || '');
       if (id && bId === id) return true;
@@ -46,11 +264,22 @@ export function resolveMediaUserStatus(item) {
       return bTitle && (bTitle === normTitle || normTitle.includes(bTitle) || bTitle.includes(normTitle));
     });
     if (match?.status && match.status !== 'none') {
-      return match.status;
+      resolved = match.status;
     }
   }
 
-  return null;
+  // Модель Emby и Plex:
+  // Если статус сериала был «Просмотрено» (completed), но у релиза обнаружен новый сезон или новая серия —
+  // статус АВТОМАТИЧЕСКИ переключается на «Смотрю» (watching)
+  if (resolved === 'completed') {
+    const newEpInfo = checkSeriesHasNewEpisodes(item);
+    if (newEpInfo && newEpInfo.hasNew) {
+      autoTransitionSeriesToWatching(item, newEpInfo.nextSeason, newEpInfo.nextEpisode);
+      return 'watching';
+    }
+  }
+
+  return resolved;
 }
 
 export function getLocalBookmarksList() {
@@ -216,9 +445,16 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
     ? media.seasons
     : Array.from({ length: 3 }, (_, i) => ({ season_number: i + 1, episode_count: defaultCount }));
 
+  let maxSeasonNum = 1;
+  let maxEpisodeNum = 1;
+  let totalEpCount = 0;
+
   seasons.forEach(s => {
     const sNum = Number(s.season || s.season_number) || 1;
     const count = Number(s.episode_count || s.episodes_count || (s.episodes ? s.episodes.length : defaultCount)) || defaultCount;
+    maxSeasonNum = Math.max(maxSeasonNum, sNum);
+    maxEpisodeNum = Math.max(maxEpisodeNum, count);
+    totalEpCount += count;
     const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
     const statusKey = `storm_season_status_${mediaId}_s${sNum}`;
 
@@ -237,6 +473,15 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
       }
     } catch {}
   });
+
+  if (newStatus === 'completed') {
+    saveSeriesCompletedMeta(mediaId, {
+      maxSeason: maxSeasonNum,
+      maxEpisode: maxEpisodeNum,
+      totalEpisodes: totalEpCount,
+      completedAt: Date.now()
+    });
+  }
 
   if (newStatus === 'completed' || newStatus === 'dropped' || newStatus === 'wont_watch') {
     removeFromLocalContinueWatching(mediaId, media.title);

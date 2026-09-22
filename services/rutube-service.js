@@ -9,14 +9,17 @@ import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType
 const RUTUBE_API = 'https://rutube.ru/api';
 
 async function rutubeFetch(url, options = {}) {
-  const timeoutMs = options.timeout || 5000;
+  const timeoutMs = options.timeout || 9000;
   return await fetch(url, {
     ...options,
     signal: AbortSignal.timeout(timeoutMs),
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Referer': 'https://rutube.ru/',
+      'Origin': 'https://rutube.ru',
+      'Connection': 'keep-alive',
       ...(options.headers || {})
     }
   });
@@ -39,7 +42,7 @@ function formatRuTubeItem(item) {
 
   // Определение типа контента
   const lowerTitle = title.toLowerCase();
-  const isSeries = lowerTitle.includes('серия') || lowerTitle.includes('сезон') || lowerTitle.includes('эпизод') || lowerTitle.includes('выпуск');
+  const isSeries = lowerTitle.includes('серия') || lowerTitle.includes('сезон') || lowerTitle.includes('эпизод') || lowerTitle.includes('выпуск') || lowerTitle.includes('сериал');
   const mediaType = isSeries ? 'series' : resolveCanonicalMediaType(title, item.video_url || '', 'movie', []);
 
   const genres = resolveCanonicalGenres(title, item.category?.name || 'Видео', item.description || '', [item.category?.name].filter(Boolean));
@@ -68,7 +71,7 @@ function formatRuTubeItem(item) {
 }
 
 /**
- * Поиск по RuTube
+ * Поиск по RuTube с расширенной поддержкой сериалов и передач
  */
 export async function searchRuTube(query, page = 1) {
   if (!query || !query.trim()) return [];
@@ -77,21 +80,41 @@ export async function searchRuTube(query, page = 1) {
   const pageNum = parseInt(page, 10) || 1;
   const cacheKey = `search_${cleanQuery}_p${pageNum}`;
   const cached = getCache('rutube', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
     const url = `${RUTUBE_API}/search/video/?query=${encodeURIComponent(cleanQuery)}&page=${pageNum}&format=json`;
-    const res = await rutubeFetch(url);
-    if (!res.ok) return [];
+    const res = await rutubeFetch(url, { timeout: 9000 });
+    let formatted = [];
 
-    const data = await res.json();
-    const results = data.results || [];
-    const formatted = results
-      .filter(it => it && !it.is_deleted && !it.is_hidden && !it.is_locked)
-      .map(formatRuTubeItem)
-      .filter(Boolean);
+    if (res.ok) {
+      const data = await res.json();
+      const results = data.results || [];
+      formatted = results
+        .filter(it => it && !it.is_deleted && !it.is_hidden && !it.is_locked)
+        .map(formatRuTubeItem)
+        .filter(Boolean);
+    }
 
-    setCache('rutube', cacheKey, formatted, 60 * 60); // 1 час
+    // Если по точечному слову мало результатов, пробуем семантическое уточнение "сериал {запрос}"
+    if (formatted.length === 0 && !cleanQuery.toLowerCase().includes('сериал')) {
+      try {
+        const altUrl = `${RUTUBE_API}/search/video/?query=${encodeURIComponent('сериал ' + cleanQuery)}&page=${pageNum}&format=json`;
+        const altRes = await rutubeFetch(altUrl, { timeout: 6000 });
+        if (altRes.ok) {
+          const altData = await altRes.json();
+          const altResults = altData.results || [];
+          formatted = altResults
+            .filter(it => it && !it.is_deleted && !it.is_hidden && !it.is_locked)
+            .map(formatRuTubeItem)
+            .filter(Boolean);
+        }
+      } catch (_) {}
+    }
+
+    if (formatted.length > 0) {
+      setCache('rutube', cacheKey, formatted, 60 * 60); // 1 час
+    }
     return formatted;
   } catch (err) {
     console.warn('[RuTube Service] Ошибка поиска:', err.message);

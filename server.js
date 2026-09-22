@@ -1579,6 +1579,149 @@ app.get('/api/media/calendar', async (req, res) => {
   }
 });
 
+const memorySearchCache = new Map();
+const SEARCH_CACHE_FRESH_TTL = 15 * 60 * 1000; // 15 минут
+const SEARCH_CACHE_MAX_TTL = 12 * 60 * 60 * 1000; // 12 часов
+
+async function executeUnifiedSearch(query, source = 'all') {
+  const tasks = [];
+  const withTimeout = (promise, ms = 9000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+    ]);
+
+  if (source === 'all' || source === 'fanfilm4k') {
+    tasks.push(withTimeout(searchFanFilm(query), 9000).catch(() => []));
+  }
+
+  if (source === 'all' || source === 'tmdb' || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+    tasks.push(withTimeout(searchTmdb(query), 9000).then(r => r?.items || []).catch(() => []));
+  }
+
+  if (source === 'all' || source === 'anixart') {
+    tasks.push(withTimeout(searchAnixart(query, 0), 9000).then(r => r?.items || []).catch(() => []));
+  }
+
+  if (source === 'all' || source === 'anilibria') {
+    tasks.push(withTimeout(searchAniLibria(query), 9000).then(r => r?.items || []).catch(() => []));
+  }
+
+  if (source === 'all' || source === 'shikimori') {
+    tasks.push(withTimeout(searchShikimori(query), 9000).catch(() => []));
+  }
+
+  if (source === 'all' || source === 'rutube') {
+    tasks.push(withTimeout(searchRuTube(query), 9000).catch(() => []));
+  }
+
+  if (source === 'all' || source === 'vkvideo') {
+    tasks.push(withTimeout(searchVkVideo(query), 9000).catch(() => []));
+  }
+
+  const settled = await Promise.all(tasks);
+  let rawItems = [];
+  settled.forEach(arr => {
+    if (Array.isArray(arr)) rawItems.push(...arr);
+  });
+
+  const normalizeMediaKey = (t) => {
+    if (!t) return '';
+    return String(t)
+      .toLowerCase()
+      .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф)\)?\s*[:\-–—]?\s*/gi, '')
+      .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
+      .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
+      .replace(/\s*\(?(?:фильм|сериал)\)?\s*$/i, '')
+      .replace(/\s*\(\d{4}\)\s*$/i, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  };
+
+  const queryWords = query
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 2);
+
+  if (queryWords.length > 0) {
+    rawItems = rawItems.filter(item => {
+      const itemTitle = `${item.title || ''}`.toLowerCase();
+      const itemAll = `${item.title || ''} ${item.original_title || ''} ${item.description || ''}`.toLowerCase();
+
+      if (queryWords.length >= 3) {
+        const matchedWords = queryWords.filter(w => itemTitle.includes(w));
+        return matchedWords.length >= 2 || itemTitle.includes(query.toLowerCase());
+      }
+
+      if (queryWords.length === 2) {
+        return queryWords.some(w => itemTitle.includes(w));
+      }
+
+      return queryWords.some(w => itemAll.includes(w));
+    });
+  }
+
+  const mergedMap = new Map();
+  for (const item of rawItems) {
+    const normKey = normalizeMediaKey(item.title);
+    if (!normKey) continue;
+
+    if (!mergedMap.has(normKey)) {
+      mergedMap.set(normKey, { ...item });
+    } else {
+      const existing = mergedMap.get(normKey);
+      if (item.source === 'tmdb' && existing.source !== 'tmdb') {
+        existing.title = item.title;
+        existing.original_title = item.original_title || existing.original_title;
+        existing.poster = item.poster || existing.poster;
+        existing.year = item.year || existing.year;
+        existing.rating = item.rating || existing.rating;
+        existing.description = item.description || existing.description;
+        if (existing.source === 'fanfilm4k') {
+          existing.fanfilm_4k_url = existing.link || existing.url;
+        }
+        existing.id = item.id;
+        existing.source = 'tmdb';
+        existing.is4K = true;
+        existing.quality = '4K Ultra HD';
+      } else if (item.source === 'fanfilm4k') {
+        existing.is4K = true;
+        existing.quality = '4K Ultra HD';
+        existing.fanfilm_4k_url = item.link || item.url;
+      }
+    }
+  }
+
+  let items = Array.from(mergedMap.values());
+
+  const normQuery = normalizeMediaKey(query);
+  items.sort((a, b) => {
+    const aNorm = normalizeMediaKey(a.title);
+    const bNorm = normalizeMediaKey(b.title);
+    if (aNorm === normQuery && bNorm !== normQuery) return -1;
+    if (bNorm === normQuery && aNorm !== normQuery) return 1;
+
+    const aStarts = aNorm.startsWith(normQuery);
+    const bStarts = bNorm.startsWith(normQuery);
+    if (aStarts && !bStarts) return -1;
+    if (bStarts && !aStarts) return 1;
+
+    const aContains = aNorm.includes(normQuery);
+    const bContains = bNorm.includes(normQuery);
+    if (aContains && !bContains) return -1;
+    if (bContains && !aContains) return 1;
+
+    const aWordsCount = queryWords.filter(w => aNorm.includes(w)).length;
+    const bWordsCount = queryWords.filter(w => bNorm.includes(w)).length;
+    if (aWordsCount !== bWordsCount) return bWordsCount - aWordsCount;
+
+    return (b.rating || 0) - (a.rating || 0);
+  });
+
+  return items;
+}
+
 app.get('/api/media/search', async (req, res) => {
   try {
     const query = (req.query.q || '').trim();
@@ -1614,150 +1757,46 @@ app.get('/api/media/search', async (req, res) => {
       }
     }
 
-    const tasks = [];
-    const withTimeout = (promise, ms = 6000) =>
-      Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
-      ]);
+    const cacheKey = `${query.toLowerCase()}_${source}`;
+    const cached = memorySearchCache.get(cacheKey);
+    const now = Date.now();
 
-    if (source === 'all' || source === 'fanfilm4k') {
-      tasks.push(withTimeout(searchFanFilm(query)).catch(() => []));
-    }
+    // Stale-While-Revalidate отдаем моментально
+    if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
+      if (now - cached.timestamp > SEARCH_CACHE_FRESH_TTL) {
+        executeUnifiedSearch(query, source)
+          .then(freshItems => {
+            if (freshItems.length > 0) {
+              memorySearchCache.set(cacheKey, { items: freshItems, timestamp: Date.now() });
+            }
+          })
+          .catch(() => {});
+      }
 
-    if (source === 'all' || source === 'tmdb' || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-      tasks.push(withTimeout(searchTmdb(query)).then(r => r?.items || []).catch(() => []));
-    }
+      const searchUserId = req.user?.id || null;
+      const mapped = cached.items.map(item => {
+        const bookmark = searchUserId ? getBookmark(searchUserId, item.id, item.source, item.title, item.original_title) : null;
+        return {
+          ...item,
+          user_status: bookmark?.status || item.user_status || null,
+          progress_percent: bookmark?.progress_percent || item.progress_percent || 0.0
+        };
+      });
 
-    if (source === 'all' || source === 'anixart') {
-      tasks.push(withTimeout(searchAnixart(query, 0)).then(r => r?.items || []).catch(() => []));
-    }
-
-    if (source === 'all' || source === 'anilibria') {
-      tasks.push(withTimeout(searchAniLibria(query)).then(r => r?.items || []).catch(() => []));
-    }
-
-    if (source === 'all' || source === 'shikimori') {
-      tasks.push(withTimeout(searchShikimori(query)).catch(() => []));
-    }
-
-    if (source === 'all' || source === 'rutube') {
-      tasks.push(withTimeout(searchRuTube(query)).catch(() => []));
-    }
-
-    if (source === 'all' || source === 'vkvideo') {
-      tasks.push(withTimeout(searchVkVideo(query)).catch(() => []));
-    }
-
-    const settled = await Promise.all(tasks);
-    let rawItems = [];
-    settled.forEach(arr => {
-      if (Array.isArray(arr)) rawItems.push(...arr);
-    });
-
-    // Вспомогательная нормализация для сравнения и объединения одинаковых релизов
-    const normalizeMediaKey = (t) => {
-      if (!t) return '';
-      return String(t)
-        .toLowerCase()
-        .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф)\)?\s*[:\-–—]?\s*/gi, '')
-        .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
-        .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
-        .replace(/\s*\(?(?:фильм|сериал)\)?\s*$/i, '')
-        .replace(/\s*\(\d{4}\)\s*$/i, '')
-        .replace(/[^\p{L}\p{N}]+/gu, ' ')
-        .trim();
-    };
-
-    // 1. Фильтрация нерелевантных результатов: проверяем вхождение поискового запроса в название
-    const queryWords = query
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 2);
-
-    if (queryWords.length > 0) {
-      rawItems = rawItems.filter(item => {
-        const itemTitle = `${item.title || ''}`.toLowerCase();
-        const itemAll = `${item.title || ''} ${item.original_title || ''} ${item.description || ''}`.toLowerCase();
-
-        // Если запрос длинный (из 3+ слов), в названии должно быть хотя бы 2 ключевых слова
-        if (queryWords.length >= 3) {
-          const matchedWords = queryWords.filter(w => itemTitle.includes(w));
-          return matchedWords.length >= 2 || itemTitle.includes(query.toLowerCase());
-        }
-
-        // Для запроса из 2 слов — хотя бы 1 слово в названии
-        if (queryWords.length === 2) {
-          return queryWords.some(w => itemTitle.includes(w));
-        }
-
-        return queryWords.some(w => itemAll.includes(w));
+      return res.json({
+        query,
+        total: mapped.length,
+        items: mapped
       });
     }
 
-    // 2. Умное объединение дубликатов (например, "Морские паразиты постер 4К" из FanFilm и "Морские паразиты (2020)" из TMDB)
-    const mergedMap = new Map();
-    for (const item of rawItems) {
-      const normKey = normalizeMediaKey(item.title);
-      if (!normKey) continue;
-
-      if (!mergedMap.has(normKey)) {
-        mergedMap.set(normKey, { ...item });
-      } else {
-        const existing = mergedMap.get(normKey);
-        // Если текущий элемент из TMDB, а существующий из FanFilm4K — обновляем каноничное название и метаданные
-        if (item.source === 'tmdb' && existing.source !== 'tmdb') {
-          existing.title = item.title;
-          existing.original_title = item.original_title || existing.original_title;
-          existing.poster = item.poster || existing.poster;
-          existing.year = item.year || existing.year;
-          existing.rating = item.rating || existing.rating;
-          existing.description = item.description || existing.description;
-          if (existing.source === 'fanfilm4k') {
-            existing.fanfilm_4k_url = existing.link || existing.url;
-          }
-          existing.id = item.id;
-          existing.source = 'tmdb';
-          existing.is4K = true;
-          existing.quality = '4K Ultra HD';
-        } else if (item.source === 'fanfilm4k') {
-          existing.is4K = true;
-          existing.quality = '4K Ultra HD';
-          existing.fanfilm_4k_url = item.link || item.url;
-        }
-      }
+    const items = await executeUnifiedSearch(query, source);
+    if (items.length > 0) {
+      memorySearchCache.set(cacheKey, { items, timestamp: now });
     }
 
-    let items = Array.from(mergedMap.values());
-
-    // 3. Ранжирование по релевантности: сначала точные совпадения с поисковым запросом
-    const normQuery = normalizeMediaKey(query);
-    items.sort((a, b) => {
-      const aNorm = normalizeMediaKey(a.title);
-      const bNorm = normalizeMediaKey(b.title);
-      if (aNorm === normQuery && bNorm !== normQuery) return -1;
-      if (bNorm === normQuery && aNorm !== normQuery) return 1;
-
-      const aStarts = aNorm.startsWith(normQuery);
-      const bStarts = bNorm.startsWith(normQuery);
-      if (aStarts && !bStarts) return -1;
-      if (bStarts && !aStarts) return 1;
-
-      const aContains = aNorm.includes(normQuery);
-      const bContains = bNorm.includes(normQuery);
-      if (aContains && !bContains) return -1;
-      if (bContains && !aContains) return 1;
-
-      const aWordsCount = queryWords.filter(w => aNorm.includes(w)).length;
-      const bWordsCount = queryWords.filter(w => bNorm.includes(w)).length;
-      if (aWordsCount !== bWordsCount) return bWordsCount - aWordsCount;
-
-      return (b.rating || 0) - (a.rating || 0);
-    });
-
     const searchUserId = req.user?.id || null;
-    items = items.map(item => {
+    const finalItems = items.map(item => {
       const bookmark = searchUserId ? getBookmark(searchUserId, item.id, item.source, item.title, item.original_title) : null;
       return {
         ...item,
@@ -1768,11 +1807,35 @@ app.get('/api/media/search', async (req, res) => {
 
     res.json({
       query,
-      total: items.length,
-      items
+      total: finalItems.length,
+      items: finalItems
     });
   } catch (err) {
     res.status(500).json({ error: err.message, items: [] });
+  }
+});
+
+// Прямой поиск по RuTube
+app.get('/api/rutube/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ total: 0, items: [] });
+    const items = await searchRuTube(q, parseInt(req.query.page, 10) || 1);
+    res.json({ total: items.length, items });
+  } catch (e) {
+    res.status(500).json({ error: e.message, items: [] });
+  }
+});
+
+// Прямой поиск по VK Видео
+app.get('/api/vkvideo/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ total: 0, items: [] });
+    const items = await searchVkVideo(q, parseInt(req.query.page, 10) || 1);
+    res.json({ total: items.length, items });
+  } catch (e) {
+    res.status(500).json({ error: e.message, items: [] });
   }
 });
 

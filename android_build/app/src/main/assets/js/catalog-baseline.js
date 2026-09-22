@@ -4,6 +4,30 @@
 export const VERIFIED_CATALOG_BASELINE = {
   "popular": [
     {
+      "id": "rutube_landyshi",
+      "title": "Ландыши",
+      "original_title": "Ландыши. Такая нежная любовь",
+      "poster": "https://pic.rtbcdn.ru/video/2025-01-13/bc/9f/bc9fda6d31c72a8002c8999542e877ab.jpg",
+      "year": "2025–2026",
+      "rating": 8.5,
+      "quality": "1080p FHD",
+      "is4K": false,
+      "media_type": "series",
+      "category": "Сериал",
+      "genres": [
+        "Мелодрама",
+        "Драма",
+        "Музыка"
+      ],
+      "source": "rutube",
+      "rutube_id": "564f31c881b83373bfe0cb26979d44cf",
+      "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf",
+      "video_url": "https://rutube.ru/video/564f31c881b83373bfe0cb26979d44cf/",
+      "total_episodes": 16,
+      "seasons": 2,
+      "description": "Популярная музыкальная мелодрама Wink о Кате Орловой и Лехе Данилине: любовь, распад группы, интриги и борьба за наследство."
+    },
+    {
       "id": "82529",
       "title": "Человек-паук: Новый день",
       "original_title": "Spider-Man: Brand New Day",
@@ -1372,6 +1396,30 @@ export const VERIFIED_CATALOG_BASELINE = {
     }
   ],
   "series": [
+    {
+      "id": "rutube_landyshi",
+      "title": "Ландыши",
+      "original_title": "Ландыши. Такая нежная любовь",
+      "poster": "https://pic.rtbcdn.ru/video/2025-01-13/bc/9f/bc9fda6d31c72a8002c8999542e877ab.jpg",
+      "year": "2025–2026",
+      "rating": 8.5,
+      "quality": "1080p FHD",
+      "is4K": false,
+      "media_type": "series",
+      "category": "Сериал",
+      "genres": [
+        "Мелодрама",
+        "Драма",
+        "Музыка"
+      ],
+      "source": "rutube",
+      "rutube_id": "564f31c881b83373bfe0cb26979d44cf",
+      "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf",
+      "video_url": "https://rutube.ru/video/564f31c881b83373bfe0cb26979d44cf/",
+      "total_episodes": 16,
+      "seasons": 2,
+      "description": "Популярная музыкальная мелодрама Wink о Кате Орловой и Лехе Данилине: любовь, распад группы, интриги и борьба за наследство."
+    },
     {
       "id": "lostfilm_gentlemen",
       "title": "Джентльмены",

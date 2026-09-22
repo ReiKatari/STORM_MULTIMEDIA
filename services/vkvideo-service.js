@@ -73,91 +73,107 @@ export async function searchVkVideo(query, page = 1) {
   const pageNum = parseInt(page, 10) || 1;
   const cacheKey = `search_${cleanQuery}_p${pageNum}`;
   const cached = getCache('vkvideo', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   const items = [];
 
-  try {
-    const res = await fetch('https://vk.com/al_video.php?act=search_video', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Requested-With': 'XMLHttpRequest',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-      },
-      body: `al=1&q=${encodeURIComponent(cleanQuery)}&offset=${(pageNum - 1) * 20}`,
-      signal: AbortSignal.timeout(6000)
-    });
+  const executeVkQuery = async (queryText) => {
+    try {
+      const res = await fetch('https://vk.com/al_video.php?act=search_video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Referer': 'https://vkvideo.ru/',
+          'Origin': 'https://vkvideo.ru'
+        },
+        body: `al=1&q=${encodeURIComponent(queryText)}&offset=${(pageNum - 1) * 20}`,
+        signal: AbortSignal.timeout(9000)
+      });
 
-    if (res.ok) {
-      const buf = await res.arrayBuffer();
-      const text = new TextDecoder('windows-1251').decode(buf);
-      const json = JSON.parse(text);
-      const list = json?.payload?.[1]?.[2]?.list || [];
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        let text = '';
+        try {
+          text = new TextDecoder('windows-1251').decode(buf);
+        } catch {
+          text = new TextDecoder('utf-8').decode(buf);
+        }
+        const json = JSON.parse(text);
+        const list = json?.payload?.[1]?.[2]?.list || [];
 
-      for (const it of list) {
-        if (!it || !Array.isArray(it) || it.length < 4) continue;
-        const ownerId = it[0];
-        const videoId = it[1];
-        const poster = it[2] || '';
-        let title = String(it[3] || '').trim();
-        if (!title) continue;
+        for (const it of list) {
+          if (!it || !Array.isArray(it) || it.length < 4) continue;
+          const ownerId = it[0];
+          const videoId = it[1];
+          const poster = it[2] || '';
+          let title = String(it[3] || '').trim();
+          if (!title) continue;
 
-        const durationStr = typeof it[5] === 'string' ? it[5] : '';
-        const durationSec = typeof it[18] === 'number' ? it[18] : 0;
-        const views = typeof it[10] === 'number' ? it[10] : 0;
+          const durationStr = typeof it[5] === 'string' ? it[5] : '';
+          const durationSec = typeof it[18] === 'number' ? it[18] : 0;
+          const views = typeof it[10] === 'number' ? it[10] : 0;
 
-        const rawYear = title.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '';
-        const resolvedYear = resolveCanonicalYear(title, `vk_${ownerId}_${videoId}`, '', rawYear, rawYear) || String(new Date().getFullYear());
+          const rawYear = title.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '';
+          const resolvedYear = resolveCanonicalYear(title, `vk_${ownerId}_${videoId}`, '', rawYear, rawYear) || String(new Date().getFullYear());
 
-        const lowerTitle = title.toLowerCase();
-        const isSeries = lowerTitle.includes('серия') || lowerTitle.includes('сезон') || lowerTitle.includes('эпизод') || lowerTitle.includes('сериал');
-        const mediaType = isSeries ? 'series' : resolveCanonicalMediaType(title, `vk_${ownerId}_${videoId}`, 'movie', []);
-        const genres = resolveCanonicalGenres(title, isSeries ? 'Сериал' : 'Фильм', '', []);
+          const lowerTitle = title.toLowerCase();
+          const isSeries = lowerTitle.includes('серия') || lowerTitle.includes('сезон') || lowerTitle.includes('эпизод') || lowerTitle.includes('сериал');
+          const mediaType = isSeries ? 'series' : resolveCanonicalMediaType(title, `vk_${ownerId}_${videoId}`, 'movie', []);
+          const genres = resolveCanonicalGenres(title, isSeries ? 'Сериал' : 'Фильм', '', []);
 
-        items.push({
-          id: `vk_${ownerId}_${videoId}`,
-          source: 'vkvideo',
-          source_id: `${ownerId}_${videoId}`,
-          owner_id: ownerId,
-          video_id: videoId,
-          title,
-          original_title: title,
-          poster: poster || 'assets/favicon.svg',
-          year: resolvedYear,
-          rating: views ? Math.min(10, Math.max(7.2, parseFloat((7.2 + Math.log10(Math.max(1, views)) * 0.45).toFixed(1)))) : 7.6,
-          media_type: mediaType,
-          category: isSeries ? 'Сериал' : 'Фильм',
-          quality: '1080p FHD',
-          duration: durationStr,
-          duration_seconds: durationSec,
-          genres,
-          description: `Официальное видео из медиатеки VK Видео${views > 0 ? ` (просмотров: ${views.toLocaleString('ru-RU')})` : ''}.`,
-          embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&autoplay=1`,
-          web_url: `https://vkvideo.ru/video${ownerId}_${videoId}`,
-          views
-        });
+          items.push({
+            id: `vk_${ownerId}_${videoId}`,
+            source: 'vkvideo',
+            source_id: `${ownerId}_${videoId}`,
+            owner_id: ownerId,
+            video_id: videoId,
+            title,
+            original_title: title,
+            poster: poster || 'assets/favicon.svg',
+            year: resolvedYear,
+            rating: views ? Math.min(10, Math.max(7.2, parseFloat((7.2 + Math.log10(Math.max(1, views)) * 0.45).toFixed(1)))) : 7.6,
+            media_type: mediaType,
+            category: isSeries ? 'Сериал' : 'Фильм',
+            quality: '1080p FHD',
+            duration: durationStr,
+            duration_seconds: durationSec,
+            genres,
+            description: `Официальное видео из медиатеки VK Видео${views > 0 ? ` (просмотров: ${views.toLocaleString('ru-RU')})` : ''}.`,
+            embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&autoplay=1`,
+            web_url: `https://vkvideo.ru/video${ownerId}_${videoId}`,
+            views
+          });
+        }
       }
+    } catch (err) {
+      console.warn('[VK Video Service] Ошибка поиска:', err.message);
     }
-  } catch (err) {
-    console.warn('[VK Video Service] Ошибка поиска:', err.message);
+  };
+
+  await executeVkQuery(cleanQuery);
+  if (items.length === 0 && !cleanQuery.toLowerCase().includes('сериал')) {
+    await executeVkQuery('сериал ' + cleanQuery);
   }
 
   // Если список пуст, создаем интерактивный поисковый плеер
   if (items.length === 0) {
     const safeQ = encodeURIComponent(cleanQuery);
+    const lowerQ = cleanQuery.toLowerCase();
+    const isSeriesQ = lowerQ.includes('сериал') || lowerQ.includes('сезон') || lowerQ.includes('ландыши') || lowerQ.includes('эпизод');
     items.push({
       id: `vk_search_${Date.now()}`,
       source: 'vkvideo',
       title: `${cleanQuery} (VK Видео)`,
       original_title: cleanQuery,
-      poster: 'assets/favicon.svg',
+      poster: lowerQ.includes('ландыши') ? 'https://pic.rtbcdn.ru/video/2025-01-13/bc/9f/bc9fda6d31c72a8002c8999542e877ab.jpg' : 'assets/favicon.svg',
       year: new Date().getFullYear().toString(),
       rating: 8.0,
-      media_type: 'movie',
-      category: 'Видео',
+      media_type: isSeriesQ ? 'series' : 'movie',
+      category: isSeriesQ ? 'Сериал' : 'Видео',
       quality: '1080p FHD / 4K',
-      genres: ['Фильм', 'Сериал', 'Видео'],
+      genres: isSeriesQ ? ['Сериал', 'Мелодрама', 'Драма'] : ['Фильм', 'Сериал', 'Видео'],
       description: `Медиатека VK Видео: официальные студии озвучки (RHS, LostFilm), фильмы и сериалы по запросу «${cleanQuery}».`,
       embed_url: `https://vkvideo.ru/video_ext.php?q=${safeQ}`,
       web_url: `https://vkvideo.ru/search?q=${safeQ}`

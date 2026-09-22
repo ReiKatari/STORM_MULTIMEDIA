@@ -203,6 +203,23 @@ async function startStormApp() {
     }
   });
 
+  // Автоматическое обновление статусов сериалов (Emby / Plex модель)
+  window.addEventListener('storm:series-status-changed', (e) => {
+    const { mediaId, status } = e.detail || {};
+    if (!mediaId || !status) return;
+    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+    rawCatalogItems.forEach(x => {
+      if (String(x.id) === String(mediaId)) {
+        x.user_status = status;
+      }
+    });
+    if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
+      loadCurrentTab();
+    } else {
+      renderFilteredCatalog();
+    }
+  });
+
   // Живое обновление продолжения просмотра при начале или прогрессе фильма
   window.addEventListener('storm:continue-watching-updated', async () => {
     await refreshContinueWatchingCache();
@@ -2624,7 +2641,8 @@ function renderHomeView(items) {
     'голяк', 'brassic', 'рыцарь семи королевств', 'a knight of the seven kingdoms', 'сорвиголова', 'daredevil',
     'гангстерленд', 'mobland', 'медленные лошади', 'slow horses', 'йеллоустоун', 'yellowstone',
     'мэр кингстауна', 'mayor of kingstown', 'извне', 'from', 'ричер', 'reacher', 'пацаны', 'the boys',
-    'белый лотос', 'the white lotus', 'дом дракона', 'house of the dragon', 'фоллаут', 'fallout', 'уэнсдэй', 'уэнсдей'
+    'белый лотос', 'the white lotus', 'дом дракона', 'house of the dragon', 'фоллаут', 'fallout', 'уэнсдэй', 'уэнсдей',
+    'ландыши', 'ландыши. такая нежная любовь', 'ландыши. вторая весна'
   ];
 
   // Рейл 3: Популярные фильмы (строго исключаем сериалы и аниме)
@@ -3595,16 +3613,28 @@ export async function executeSearch(query = null) {
       const data = await res.json();
       let items = data.items || [];
 
-      // Семантический поиск по смыслу и синопсису если обычный поиск не нашел совпадений
-      if (items.length === 0 && q.length >= 3) {
+      // Семантический и мультипровайдерный фолбэк поиск по RuTube и VK Видео
+      if (items.length === 0 && q.length >= 2) {
         try {
-          const semRes = await fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`);
-          if (semRes.ok) {
-            const semData = await semRes.json();
-            if (semData?.items?.length > 0) {
-              items = semData.items;
-              showToast('💡 Показаны результаты семантического поиска по смыслу и сюжету', 'info');
+          const fallbackTasks = [
+            fetch(`/api/rutube/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+            fetch(`/api/vkvideo/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))
+          ];
+          if (q.length >= 3) {
+            fallbackTasks.push(
+              fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))
+            );
+          }
+
+          const fallbackResults = await Promise.all(fallbackTasks);
+          for (const resObj of fallbackResults) {
+            if (Array.isArray(resObj?.items) && resObj.items.length > 0) {
+              items.push(...resObj.items);
             }
+          }
+
+          if (items.length > 0) {
+            showToast(`✨ Найдено в RuTube и VK Видео: ${items.length} релизов`, 'info');
           }
         } catch (_) {}
       }
