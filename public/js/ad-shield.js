@@ -444,32 +444,49 @@ export function initAdSkipper(container) {
     adWatchInterval = null;
   }
 
-  // Защита от кликандеров на уровне окна
+  // Защита от кликандеров и нежелательных внешних редиректов на уровне окна
   try {
     const origOpen = window.open;
     window.open = function(url, target, features) {
       if (typeof url === 'string' && isAdOrBettingUrl(url)) {
-        console.warn('🛡️ STORM CleanView заблокировал открытие рекламной ссылки:', url);
+        console.warn('🛡️ STORM CleanView заблокировал открытие нежелательной ссылки:', url);
         return null;
       }
       return origOpen.apply(this, arguments);
     };
   } catch (e) {}
 
+  // Слушатель событий плееров для мгновенного реагирования на рекламные врезки
+  if (typeof window !== 'undefined' && !window._stormAdMessageListenerAttached) {
+    window._stormAdMessageListenerAttached = true;
+    window.addEventListener('message', (event) => {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (!data) return;
+        const typeStr = String(data.type || data.event || data.action || '').toLowerCase();
+        if (typeStr.includes('ad') || typeStr.includes('roll') || typeStr.includes('preroll') || typeStr.includes('vast')) {
+          scanAndSkipAds(currentContainer || document);
+        }
+      } catch (_) {}
+    });
+  }
+
   adWatchInterval = setInterval(() => {
     if (!currentSettings.adSkipperEnabled) return;
-    scanAndSkipAds(container);
-  }, 450);
+    scanAndSkipAds(container || currentContainer || document);
+  }, 400);
 }
 
 /**
- * Проверка URL на признаки рекламы или букмекеров
+ * Проверка URL на признаки рекламы, букмекеров или внешних редиректов плееров
  */
 function isAdOrBettingUrl(url) {
   const adPatterns = [
     '1xbet', 'melbet', 'winline', 'fonbet', 'betwinner', 'vavada', 'pin-up',
     'adcash', 'propellerads', 'popunder', 'clickunder', 'partner', 'track',
-    'mostbet', 'leon', 'joycasino', 'slot', 'cpa'
+    'mostbet', 'leon', 'joycasino', 'slot', 'cpa', 'clickadu', 'popcash',
+    'adsterra', 'exoclick', 'trafficjunky', 'hilltopads', 'evadav',
+    'rutube.ru/video', 'rutube.ru/channel', 'rutube.ru/?'
   ];
   const low = String(url || '').toLowerCase();
   return adPatterns.some(p => low.includes(p));
@@ -503,7 +520,10 @@ function scanAndSkipAds(container) {
   const skipSelectors = [
     '.skip-ad', '.ad-skip', '.vast-skip-button', '.playerjs-ad-skip',
     '.ad-btn-skip', '.video-ad-skip', 'button[class*="skip"]',
-    'div[class*="skipAd"]', '.close-ad', '.ad-close'
+    'div[class*="skipAd"]', '.close-ad', '.ad-close',
+    'button[aria-label*="Пропустить"]', 'div[aria-label*="Пропустить"]',
+    '.rutube-ad-skip', '.rutube-player-skip-ad', '[data-role="skip-ad"]',
+    '.vjs-skip-button', '.ytp-ad-skip-button', '.skip-button'
   ];
 
   skipSelectors.forEach(selector => {
@@ -517,13 +537,30 @@ function scanAndSkipAds(container) {
     });
   });
 
-  // 3. Отправка сигналов внутрь iframe плееров
+  // 3. Отправка сигналов внутрь iframe плееров (RuTube, Kodik, PlayerJS и др.)
   const iframes = container.querySelectorAll('iframe');
+  const skipMsgs = [
+    { type: 'STORM_SKIP_AD', action: 'skip_ad' },
+    'skip_ad',
+    { type: 'player:skipAd' },
+    { type: 'player:rollAdSkip' },
+    { key: 'kodik_player_api', value: { action: 'skip_ad' } },
+    { key: 'rutube_api', value: { action: 'skip_ad' } },
+    { api: 'ad_skip' },
+    { event: 'ad_skip' },
+    { type: 'skipAd' },
+    { command: 'skip' }
+  ];
+
   iframes.forEach(iframe => {
-    try {
-      iframe.contentWindow?.postMessage({ type: 'STORM_SKIP_AD', action: 'skip_ad' }, '*');
-      iframe.contentWindow?.postMessage('skip_ad', '*');
-    } catch (e) {}
+    skipMsgs.forEach(msg => {
+      try {
+        iframe.contentWindow?.postMessage(typeof msg === 'string' ? msg : JSON.stringify(msg), '*');
+        if (typeof msg !== 'string') {
+          iframe.contentWindow?.postMessage(msg, '*');
+        }
+      } catch (_) {}
+    });
   });
 }
 

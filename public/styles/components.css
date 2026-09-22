@@ -7354,6 +7354,113 @@ body.player-dropdown-active .cinema-player-iframe {
   opacity: 0 !important;
 }
 
+/* ==========================================================================
+   STORM RuTube Shield: Полное скрытие кнопки «Смотреть на RUTUBE» и внешних ссылок
+   ========================================================================== */
+
+.storm-rutube-shield {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+  border-radius: 12px;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.storm-rutube-shield.controls-idle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rutube-shield-bottom-pill {
+  position: absolute;
+  bottom: 38px;
+  right: 60px;
+  width: 176px;
+  height: 38px;
+  border-radius: 19px;
+  background: rgba(10, 13, 20, 0.98);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), 0 2px 8px rgba(0, 210, 255, 0.2);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.rutube-shield-bottom-pill:hover {
+  transform: translateY(-1.5px);
+  border-color: rgba(0, 210, 255, 0.5);
+  box-shadow: 0 6px 24px rgba(0, 210, 255, 0.35), 0 4px 16px rgba(0, 0, 0, 0.9);
+}
+
+.rutube-shield-bottom-pill:active {
+  transform: translateY(1.5px) scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 210, 255, 0.2), 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.rutube-shield-center-pill {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 228px;
+  height: 42px;
+  border-radius: 21px;
+  background: rgba(10, 13, 20, 0.98);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), 0 2px 8px rgba(0, 210, 255, 0.2);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.rutube-shield-center-pill:hover {
+  transform: translateX(-50%) translateY(-1.5px);
+  border-color: rgba(0, 210, 255, 0.5);
+  box-shadow: 0 6px 24px rgba(0, 210, 255, 0.35), 0 4px 16px rgba(0, 0, 0, 0.9);
+}
+
+.rutube-shield-center-pill:active {
+  transform: translateX(-50%) translateY(1.5px) scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 210, 255, 0.2), 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.rutube-shield-badge-text {
+  font-size: 11px;
+  font-weight: 800;
+  color: #00d2ff;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .rutube-shield-bottom-pill {
+    bottom: 34px;
+    right: 48px;
+    width: 152px;
+    height: 34px;
+  }
+  .rutube-shield-center-pill {
+    bottom: 8px;
+    width: 196px;
+    height: 38px;
+  }
+}
+
 /* Модальная панель настроек CleanView */
 .storm-cleanview-panel {
   display: none;
