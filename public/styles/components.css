@@ -7409,12 +7409,12 @@ body.player-dropdown-active .cinema-player-iframe {
 
 .rutube-shield-center-pill {
   position: absolute;
-  bottom: 10px;
+  bottom: 34px;
   left: 50%;
   transform: translateX(-50%);
-  width: 228px;
-  height: 42px;
-  border-radius: 21px;
+  width: 250px;
+  height: 44px;
+  border-radius: 22px;
   background: rgba(10, 13, 20, 0.98);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), 0 2px 8px rgba(0, 210, 255, 0.2);
   border: 1px solid rgba(0, 210, 255, 0.25);
@@ -7455,9 +7455,9 @@ body.player-dropdown-active .cinema-player-iframe {
     height: 34px;
   }
   .rutube-shield-center-pill {
-    bottom: 8px;
-    width: 196px;
-    height: 38px;
+    bottom: 32px;
+    width: 210px;
+    height: 40px;
   }
 }
 

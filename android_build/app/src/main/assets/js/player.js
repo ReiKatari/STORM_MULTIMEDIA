@@ -80,8 +80,17 @@ const AMBILIGHT_PRESETS = [
 
 // Skip Intro и Outro
 let skipIntervals = null;
-localStorage.removeItem('storm_auto_skip');
 let vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
+export let adblockEnabled = localStorage.getItem('storm_adblock_enabled') !== 'false';
+
+export function isAdblockEnabled() {
+  return adblockEnabled;
+}
+
+export function setAdblockEnabled(val) {
+  adblockEnabled = Boolean(val);
+  localStorage.setItem('storm_adblock_enabled', adblockEnabled ? 'true' : 'false');
+}
 
 // WebTorrent
 let torrentClient = null;
@@ -1061,28 +1070,45 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 3. RuTube (Официальный поток / Wink) — чистый embed без рекурсивного открытия сайта
+  // 2.5. RuTube HLS и RuTube Embed (Официальный лицензионный поток)
+  const effectiveRuId = (rawRuId && /^[a-f0-9]{32}$/i.test(rawRuId))
+    ? rawRuId
+    : (mediaItem.rutube_id && /^[a-f0-9]{32}$/i.test(mediaItem.rutube_id)
+      ? mediaItem.rutube_id
+      : (mediaItem.embed_url ? (mediaItem.embed_url.match(/\/embed\/([a-f0-9]{32})/i)?.[1] || '') : ''));
+
+  const isRuTubeSource = mediaItem.source === 'rutube' || String(mediaItem.id || '').startsWith('rutube_');
+  const isRuTubeRecommended = !isLandyshiItem && (isRuTubeSource || isDomestic) && !effective4kUrl && !isAnime;
+
+  if (effectiveRuId) {
+    suite.push({
+      id: 'rutube_direct_hls',
+      name: 'RuTube HLS (Прямой поток без рекламы)',
+      type: 'hls',
+      quality: '1080p FHD',
+      badge: 'RUTUBE HLS',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Официальный прямой поток STORM: без рекламы и плашек',
+      speed: '⚡ Быстрый российский CDN',
+      url: `/api/media/rutube-m3u8?id=${effectiveRuId}`,
+      is_recommended: isRuTubeRecommended,
+      recommended_badge: isRuTubeRecommended ? '🔥 Рекомендуемый' : ''
+    });
+  }
+
   let rutubeEmbed = '';
-  if (rawRuId && /^[a-f0-9]{32}$/i.test(rawRuId)) {
-    rutubeEmbed = `https://rutube.ru/play/embed/${rawRuId}?skinColor=00d2ff&autoPlay=1`;
+  if (effectiveRuId) {
+    rutubeEmbed = `/api/player/rutube-embed/${effectiveRuId}`;
   } else if (mediaItem.embed_url && mediaItem.embed_url.includes('rutube.ru/play/embed/')) {
     const mId = mediaItem.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
-    if (mId) {
-      rutubeEmbed = `https://rutube.ru/play/embed/${mId[1]}?skinColor=00d2ff&autoPlay=1`;
-    } else {
-      rutubeEmbed = mediaItem.embed_url;
-    }
-  } else if (mediaItem.rutube_id && /^[a-f0-9]{32}$/i.test(mediaItem.rutube_id)) {
-    rutubeEmbed = `https://rutube.ru/play/embed/${mediaItem.rutube_id}?skinColor=00d2ff&autoPlay=1`;
+    rutubeEmbed = mId ? `/api/player/rutube-embed/${mId[1]}` : mediaItem.embed_url;
   } else if (mediaItem.source === 'rutube') {
     const ruSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
     rutubeEmbed = `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=1`;
   }
 
   if (rutubeEmbed) {
-    const isRuTubeSource = mediaItem.source === 'rutube' || String(mediaItem.id || '').startsWith('rutube_');
-    const isRuTubeRecommended = !isLandyshiItem && (isRuTubeSource || isDomestic) && !effective4kUrl && !isAnime;
-
     suite.push({
       id: 'rutube_stream',
       name: 'RuTube (Официальный поток / Wink)',
@@ -1094,8 +1120,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       audio_info: 'Официальный лицензионный каталог RuTube и Wink без кнопки Смотреть на RUTUBE',
       speed: '⚡ Быстрый российский CDN',
       url: rutubeEmbed,
-      is_recommended: isRuTubeRecommended,
-      recommended_badge: isRuTubeRecommended ? '🔥 Рекомендуемый' : ''
+      is_recommended: !effectiveRuId && isRuTubeRecommended,
+      recommended_badge: (!effectiveRuId && isRuTubeRecommended) ? '🔥 Рекомендуемый' : ''
     });
   }
 
@@ -1431,12 +1457,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
     if (isLandyshiMedia) {
-      initialChoice = currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+      initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+        || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
         || currentPlayers.find(isWorking)
         || currentPlayers[0];
     } else if (isDomestic) {
-      initialChoice = currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
+      initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+        || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
         || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.is_recommended && isWorking(p))
@@ -1576,12 +1604,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
           const isLandyshiItem = currentMedia?.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || currentMedia?.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
           const isDomesticItem = isDomesticContent(currentMedia, cleanTitle);
           if (isLandyshiItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
               || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
               || currentPlayers.find(isWorking)
               || currentPlayers[0];
           } else if (isDomesticItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
+            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
               || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
               || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
               || currentPlayers.find(p => p.is_recommended && isWorking(p))
@@ -1906,6 +1936,7 @@ export function updateFallbackButton(player = currentActivePlayer) {
     if (nextCandidate) {
       let shortName = nextCandidate.name || 'Резерв';
       if (nextCandidate.id === 'vk_video_stream') shortName = 'VK Видео';
+      else if (nextCandidate.id === 'rutube_direct_hls') shortName = 'RuTube HLS';
       else if (nextCandidate.id === 'rutube_stream') shortName = 'RuTube';
       else if (nextCandidate.id === 'fanfilm4k_uhd') shortName = '4K Ultra HD';
       else if (nextCandidate.id === 'kodik_direct') shortName = 'Kodik';
@@ -3300,18 +3331,36 @@ function playStreamUrl(url) {
 
   if (typeof streamUrl === 'string') {
     streamUrl = streamUrl.trim();
-    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
-      try {
-        const parsed = new URL(streamUrl, window.location.origin);
-        const inner = parsed.searchParams.get('url');
-        if (inner) streamUrl = inner;
-      } catch {}
-    }
     if (streamUrl.startsWith('//')) {
       streamUrl = 'https:' + streamUrl;
     }
-    if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
-      streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
+
+    if (adblockEnabled) {
+      if (!streamUrl.startsWith('/api/') && !streamUrl.includes('.m3u8')) {
+        if (streamUrl.includes('kodik') || streamUrl.includes('rezka') || streamUrl.includes('lostfilm') || streamUrl.includes('anixart')) {
+          streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
+        } else if (streamUrl.includes('rutube.ru')) {
+          const ruIdMatch = streamUrl.match(/\/embed\/([a-f0-9]{32})/i);
+          if (ruIdMatch) {
+            streamUrl = `/api/player/rutube-embed/${ruIdMatch[1]}`;
+          } else {
+            streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
+          }
+        } else if (!streamUrl.includes('vkvideo.ru') && !streamUrl.includes('vk.com') && !streamUrl.includes('youtube')) {
+          streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
+        }
+      }
+    } else {
+      if (streamUrl.includes('/api/player/kodik-embed?url=')) {
+        try {
+          const parsed = new URL(streamUrl, window.location.origin);
+          const inner = parsed.searchParams.get('url');
+          if (inner) streamUrl = inner;
+        } catch {}
+      }
+      if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
+        streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
+      }
     }
   }
 
@@ -5230,7 +5279,8 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
         const allEps = currentMedia?.episodes || [];
         const epData = allEps.find(e => Number(e.episode_number || e.ordinal || e.episode) === ep);
         if (epData && epData.embed_url) {
-          iframe.src = epData.embed_url;
+          const ruIdMatch = epData.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
+          iframe.src = (adblockEnabled && ruIdMatch) ? `/api/player/rutube-embed/${ruIdMatch[1]}` : epData.embed_url;
           showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
           updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
           highlightActiveEpisodeInGrid(ep);
@@ -5243,7 +5293,8 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
           .then(r => r.json())
           .then(d => {
             if (d && d.embed_url) {
-              iframe.src = d.embed_url;
+              const ruIdMatch = d.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
+              iframe.src = (adblockEnabled && ruIdMatch) ? `/api/player/rutube-embed/${ruIdMatch[1]}` : d.embed_url;
             }
           })
           .catch(() => {});
@@ -7369,13 +7420,13 @@ function renderPlayerUtilityButtons() {
               </div>
             </label>
 
-            <label class="automation-toggle-chip is-locked-active" title="STORM AdBlock Engine: блокировка VAST видеорекламы, прероллов, баннеров и казино">
-              <input type="checkbox" id="toggle-adblock" checked disabled>
+            <label class="automation-toggle-chip" title="STORM AdBlock Engine: блокировка VAST видеорекламы, прероллов, баннеров и казино">
+              <input type="checkbox" id="toggle-adblock" ${adblockEnabled ? 'checked' : ''}>
               <span class="automation-chip-box"></span>
               <span class="automation-chip-icon">🚫</span>
               <div class="automation-chip-text">
                 <span class="automation-chip-title">Блокировка рекламы</span>
-                <span class="automation-chip-sub">Активна (Zero Ads)</span>
+                <span class="automation-chip-sub" id="adblock-chip-sub">${adblockEnabled ? 'Активна (Zero Ads)' : 'Выключена'}</span>
               </div>
             </label>
           </div>
@@ -7693,6 +7744,19 @@ function renderPlayerUtilityButtons() {
       vpnBypassEnabled = e.target.checked;
       localStorage.setItem('storm_vpn_bypass', vpnBypassEnabled ? 'true' : 'false');
       showToast(`Обход VPN: ${vpnBypassEnabled ? 'Включен' : 'Выключен'}`, 'info');
+      if (currentActivePlayer) {
+        selectPlayer(currentActivePlayer);
+      }
+    };
+  }
+
+  const adblockToggle = container.querySelector('#toggle-adblock');
+  if (adblockToggle) {
+    adblockToggle.onchange = (e) => {
+      setAdblockEnabled(e.target.checked);
+      const sub = container.querySelector('#adblock-chip-sub');
+      if (sub) sub.textContent = adblockEnabled ? 'Активна (Zero Ads)' : 'Выключена';
+      showToast(`Блокировка рекламы: ${adblockEnabled ? 'Включена' : 'Выключена'}`, 'info');
       if (currentActivePlayer) {
         selectPlayer(currentActivePlayer);
       }
