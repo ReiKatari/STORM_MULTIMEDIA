@@ -1912,10 +1912,10 @@ export function updateFallbackButton(player = currentActivePlayer) {
       else if (nextCandidate.id === 'rezka_cinema') shortName = 'HDRezka';
       else if (nextCandidate.id === 'lostfilm_player') shortName = 'LostFilm';
       else if (nextCandidate.id === 'rhs_player') shortName = 'Red Head Sound';
-      labelEl.textContent = `⚡ Переключить на ${shortName}`;
+      labelEl.textContent = `Переключить на ${shortName}`;
       fallbackBtn.title = `Переключить на резервный плеер: ${nextCandidate.name}`;
     } else {
-      labelEl.textContent = '⚡ Резервный плеер';
+      labelEl.textContent = 'Резервный плеер';
       fallbackBtn.title = 'Переключить на резервный плеер';
     }
   }
@@ -3316,6 +3316,7 @@ function playStreamUrl(url) {
   }
 
     const isVkPlayer = typeof streamUrl === 'string' && (streamUrl.includes('vkvideo.ru') || streamUrl.includes('vk.com'));
+    const isRuTubePlayer = typeof streamUrl === 'string' && (streamUrl.includes('rutube.ru') || currentActivePlayer?.id === 'rutube_stream');
 
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
@@ -3331,12 +3332,14 @@ function playStreamUrl(url) {
     `;
 
   const iframeBox = container.querySelector('.player-video-box');
+  const iframeEl = container.querySelector('.cinema-player-iframe');
   if (iframeBox) {
     mountInPlayerOverlay(iframeBox);
     mountCleanViewOverlay(iframeBox);
+    if (isRuTubePlayer) {
+      mountRuTubeShield(iframeBox, iframeEl);
+    }
   }
-
-  const iframeEl = container.querySelector('.cinema-player-iframe');
   if (iframeEl) {
     if (isVkPlayer) {
       const unmuteAll = () => {
@@ -5521,6 +5524,108 @@ if (typeof window !== 'undefined' && !window._stormGlobalControlsListenersAttach
   };
   window.addEventListener('mousemove', onUserActivity, { passive: true });
   window.addEventListener('pointermove', onUserActivity, { passive: true });
+}
+
+/**
+ * 🛡️ STORM RuTube Shield: Полное скрытие кнопки «Смотреть на RUTUBE» и внешних ссылок
+ * Перекрывает всплывающее облачко при воспроизведении и плашку на заставке/паузе,
+ * блокируя внешние редиректы и возвращая нативное управление воспроизведением.
+ */
+export function mountRuTubeShield(videoBox, iframeEl) {
+  if (!videoBox) return;
+  const oldShield = videoBox.querySelector('#storm-rutube-shield');
+  if (oldShield) oldShield.remove();
+
+  const shield = document.createElement('div');
+  shield.className = 'storm-rutube-shield';
+  shield.id = 'storm-rutube-shield';
+  shield.innerHTML = `
+    <!-- 1. Маска всплывающего облачка «Смотреть на RUTUBE» в правом нижнем углу при воспроизведении -->
+    <div class="rutube-shield-bottom-pill" id="rutube-shield-bottom-pill" title="STORM Player">
+      <span class="rutube-shield-badge-text">⚡ STORM CINEMA</span>
+    </div>
+
+    <!-- 2. Маска плашки «Смотреть на RUTUBE» внизу по центру на паузе / сплэш-скрине -->
+    <div class="rutube-shield-center-pill" id="rutube-shield-center-pill" title="Воспроизвести">
+      <span class="rutube-shield-badge-text">▶ Нажмите для просмотра</span>
+    </div>
+  `;
+
+  videoBox.appendChild(shield);
+
+  const bottomPill = shield.querySelector('#rutube-shield-bottom-pill');
+  const centerPill = shield.querySelector('#rutube-shield-center-pill');
+
+  let isPlaying = false;
+
+  const togglePlayback = (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    try {
+      const cmd = isPlaying ? { type: 'player:pause' } : { type: 'player:play' };
+      iframeEl?.contentWindow?.postMessage(JSON.stringify(cmd), '*');
+      iframeEl?.contentWindow?.postMessage(cmd, '*');
+    } catch (_) {}
+  };
+
+  if (bottomPill) {
+    bottomPill.addEventListener('click', togglePlayback);
+    bottomPill.addEventListener('touchend', togglePlayback);
+  }
+
+  if (centerPill) {
+    centerPill.addEventListener('click', (e) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      try {
+        iframeEl?.contentWindow?.postMessage(JSON.stringify({ type: 'player:play' }), '*');
+        iframeEl?.contentWindow?.postMessage({ type: 'player:play' }, '*');
+      } catch (_) {}
+    });
+    centerPill.addEventListener('touchend', (e) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      try {
+        iframeEl?.contentWindow?.postMessage(JSON.stringify({ type: 'player:play' }), '*');
+        iframeEl?.contentWindow?.postMessage({ type: 'player:play' }, '*');
+      } catch (_) {}
+    });
+  }
+
+  // Отслеживаем активность курсора для синхронного авто-скрытия с элементами управления плеера
+  let idleTimer = null;
+  const onActivity = () => {
+    shield.classList.remove('controls-idle');
+    if (idleTimer) clearTimeout(idleTimer);
+    if (isPlaying) {
+      idleTimer = setTimeout(() => {
+        shield.classList.add('controls-idle');
+      }, 3200);
+    }
+  };
+
+  videoBox.addEventListener('mousemove', onActivity, { passive: true });
+  videoBox.addEventListener('touchstart', onActivity, { passive: true });
+
+  // Слушаем события от RuTube плеера для актуализации статуса воспроизведения
+  const onMessage = (event) => {
+    try {
+      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      if (!data) return;
+      if (data.type === 'player:changeState') {
+        if (data.data?.state === 'playing') {
+          isPlaying = true;
+          if (centerPill) centerPill.style.display = 'none';
+        } else if (data.data?.state === 'paused' || data.data?.state === 'stopped') {
+          isPlaying = false;
+          shield.classList.remove('controls-idle');
+          if (centerPill) centerPill.style.display = 'flex';
+        }
+      }
+    } catch (_) {}
+  };
+
+  window.addEventListener('message', onMessage);
 }
 
 export function mountInPlayerOverlay(videoBox) {

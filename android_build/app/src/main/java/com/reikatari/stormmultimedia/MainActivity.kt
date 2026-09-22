@@ -151,12 +151,26 @@ class MainActivity : ComponentActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
+                val urlLower = url.lowercase()
                 if (url.endsWith(".apk") || url.contains("/releases/download/")) {
                     try {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
                         startActivity(intent)
                         return true
                     } catch (_: Exception) {}
+                }
+                // Блокируем внешние редиректы на сайт RuTube и рекламу казино
+                if (urlLower.contains("rutube.ru/video/") ||
+                    urlLower.contains("rutube.ru/channel/") ||
+                    urlLower.contains("rutube.ru/?") ||
+                    urlLower == "https://rutube.ru/" ||
+                    urlLower == "https://rutube.ru" ||
+                    urlLower.contains("1xbet") ||
+                    urlLower.contains("melbet") ||
+                    urlLower.contains("winline") ||
+                    urlLower.contains("fonbet") ||
+                    urlLower.contains("vavada")) {
+                    return true
                 }
                 return false
             }
@@ -209,14 +223,48 @@ class MainActivity : ComponentActivity() {
 
                 // STORM AD BLOCKER: аппаратная фильтрация и блокировка рекламы, VAST-роликов и трекеров казино
                 if (host != null) {
+                    val urlStr = url.toString().lowercase()
+
+                    // Перехват рекламных запросов RuTube и подмена на пустой VAST документ для мгновенного старта
+                    val isRutubeAd = host.startsWith("a.rutube.ru") ||
+                                     host.startsWith("yast.rutube.ru") ||
+                                     host.startsWith("ssp.rutube.ru") ||
+                                     host.startsWith("goya.rutube.ru") ||
+                                     (host.contains("rutube.ru") && (
+                                         urlStr.contains("/api/v1/ad") ||
+                                         urlStr.contains("/gowast/") ||
+                                         urlStr.contains("/adonline/") ||
+                                         urlStr.contains("/banner/") ||
+                                         urlStr.contains("/ssp/")
+                                     ))
+
+                    if (isRutubeAd) {
+                        val emptyVast = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><VAST version=\"2.0\"></VAST>"
+                        val headers = mapOf(
+                            "Access-Control-Allow-Origin" to "*",
+                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS, HEAD",
+                            "Access-Control-Allow-Headers" to "*",
+                            "Content-Type" to "application/xml; charset=UTF-8"
+                        )
+                        return WebResourceResponse(
+                            "application/xml",
+                            "UTF-8",
+                            200,
+                            "OK",
+                            headers,
+                            ByteArrayInputStream(emptyVast.toByteArray())
+                        )
+                    }
+
                     val adHosts = arrayOf(
                         "adsystem", "adriver", "doubleclick", "yandex.ru/ads", "an.yandex",
                         "adservice", "googlesyndication", "adnxs", "adfox", "adkernel",
                         "redclick", "marketgid", "begun", "target.my.com", "moevideo",
                         "traff", "clicker", "bidding", "banner", "1xbet", "melbet",
-                        "betboom", "winline", "fonbet", "parimatch", "vulkan", "pin-up"
+                        "betboom", "winline", "fonbet", "parimatch", "vulkan", "pin-up",
+                        "vavada", "mostbet", "propellerads", "clickadu", "popcash",
+                        "adsterra", "exoclick", "trafficjunky", "hilltopads", "evadav"
                     )
-                    val urlStr = url.toString().lowercase()
                     val isAd = adHosts.any { host.contains(it) } ||
                                urlStr.contains("/vast/") ||
                                urlStr.contains("/vpaid/") ||
@@ -227,7 +275,7 @@ class MainActivity : ComponentActivity() {
                                        host.contains("tmdb.org") ||
                                        host.contains("themoviedb.org") ||
                                        host.contains("anilibria") ||
-                                       host.contains("rutube.ru") ||
+                                       (host == "rutube.ru" || host == "www.rutube.ru" || host == "bl.rutube.ru") ||
                                        host.contains("vkvideo.ru") ||
                                        host.contains("vk.com")
 
