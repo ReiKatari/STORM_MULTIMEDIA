@@ -1686,12 +1686,18 @@ body.cinema-open {
   }
 }
 
-/* Автоматическое скрытие курсора мыши во время просмотра, когда элементы управления скрыты */
+/* Автоматическое скрытие курсора мыши во время просмотра, когда элементы управления скрыты (без тяжелого селектора *) */
 #cinema-modal.is-fullscreen:not(.controls-visible),
-#cinema-modal:fullscreen:not(.controls-visible),
-#cinema-modal.is-fullscreen:not(.controls-visible) *,
-#cinema-modal:fullscreen:not(.controls-visible) * {
+#cinema-modal:fullscreen:not(.controls-visible) {
   cursor: none !important;
+}
+
+/* В полноэкранном режиме полностью отключаем ауру Ambilight для исключения GPU fill-rate перегрузки */
+#cinema-modal.is-fullscreen .ambilight-aura,
+#cinema-modal:fullscreen .ambilight-aura,
+.player-video-box.is-fullscreen .ambilight-aura,
+.player-video-box:fullscreen .ambilight-aura {
+  display: none !important;
 }
 
 #cinema-modal.is-fullscreen .cinema-layout-grid,
@@ -1794,6 +1800,9 @@ body.cinema-open {
   box-shadow: none !important;
   object-fit: contain !important;
   background: #000000 !important;
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .cinema-layout-grid {

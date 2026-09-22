@@ -537,32 +537,47 @@ export function applyProVideoSettings(target = null) {
     hueRotate = ((s.colorTemp - 6500) / 2800) * -12;
   }
 
-  // Формируем цепочку фильтров
-  const filterParts = [
-    `brightness(${brightness.toFixed(3)})`,
-    `contrast(${contrast.toFixed(3)})`,
-    `saturate(${saturation.toFixed(3)})`
-  ];
+  const isDefaultFilters = (
+    Math.abs(brightness - 1) < 0.005 &&
+    Math.abs(contrast - 1) < 0.005 &&
+    Math.abs(saturation - 1) < 0.005 &&
+    sepia === 0 &&
+    hueRotate === 0 &&
+    (!s.casSharpness || s.casSharpness === 'off') &&
+    (!s.filmGrain || s.filmGrain === 'off')
+  );
 
-  if (sepia > 0) filterParts.push(`sepia(${sepia.toFixed(3)})`);
-  if (hueRotate !== 0) filterParts.push(`hue-rotate(${hueRotate.toFixed(1)}deg)`);
+  if (isDefaultFilters) {
+    // Сохраняем нативный аппаратный оверлей Zero-Copy (DirectComposition) для гладкого Fullscreen
+    activeTarget.style.filter = 'none';
+  } else {
+    // Формируем цепочку фильтров при активных пользовательских настройках
+    const filterParts = [
+      `brightness(${brightness.toFixed(3)})`,
+      `contrast(${contrast.toFixed(3)})`,
+      `saturate(${saturation.toFixed(3)})`
+    ];
 
-  // Добавляем SVG фильтр резкости FSR CAS или 35мм зерна
-  if (s.casSharpness === 'soft') {
-    filterParts.push('url(#storm-cas-soft)');
-  } else if (s.casSharpness === 'standard') {
-    filterParts.push('url(#storm-cas-std)');
-  } else if (s.casSharpness === 'ultra') {
-    filterParts.push('url(#storm-cas-ultra)');
+    if (sepia > 0) filterParts.push(`sepia(${sepia.toFixed(3)})`);
+    if (hueRotate !== 0) filterParts.push(`hue-rotate(${hueRotate.toFixed(1)}deg)`);
+
+    // Добавляем SVG фильтр резкости FSR CAS или 35мм зерна
+    if (s.casSharpness === 'soft') {
+      filterParts.push('url(#storm-cas-soft)');
+    } else if (s.casSharpness === 'standard') {
+      filterParts.push('url(#storm-cas-std)');
+    } else if (s.casSharpness === 'ultra') {
+      filterParts.push('url(#storm-cas-ultra)');
+    }
+
+    if (s.filmGrain === 'subtle') {
+      filterParts.push('url(#storm-film-grain-subtle)');
+    } else if (s.filmGrain === 'cinema_35mm') {
+      filterParts.push('url(#storm-film-grain-cinema)');
+    }
+
+    activeTarget.style.filter = filterParts.join(' ');
   }
-
-  if (s.filmGrain === 'subtle') {
-    filterParts.push('url(#storm-film-grain-subtle)');
-  } else if (s.filmGrain === 'cinema_35mm') {
-    filterParts.push('url(#storm-film-grain-cinema)');
-  }
-
-  activeTarget.style.filter = filterParts.join(' ');
   activeTarget.style.transition = 'filter 0.2s ease, transform 0.2s ease';
 
   // 2. Соотношение сторон и кадрирование (Aspect Ratio / 21:9 Cinemascope)
