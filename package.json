@@ -1,6 +1,6 @@
 {
   "name": "storm-multimedia",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "STORM MULTIMEDIA - Премиальный мультимедийный кинотеатр, агрегатор и медиакомбайн",
   "main": "server.js",
   "type": "module",

@@ -3701,7 +3701,42 @@ export function getBaselineCatalog(category = 'popular') {
   return [...list];
 }
 
+export function searchBaselineCatalog(query) {
+  if (!query || typeof query !== 'string') return [];
+  const qNorm = query.toLowerCase().trim();
+  if (qNorm.length < 2) return [];
+
+  const qWords = qNorm.split(/\s+/).filter(w => w.length >= 2);
+  const matched = [];
+  const seenIds = new Set();
+
+  const allCategories = Object.keys(VERIFIED_CATALOG_BASELINE);
+  for (const cat of allCategories) {
+    const list = VERIFIED_CATALOG_BASELINE[cat];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!item || seenIds.has(item.id)) continue;
+      const title = String(item.title || '').toLowerCase();
+      const origTitle = String(item.original_title || '').toLowerCase();
+      const desc = String(item.description || '').toLowerCase();
+      const genres = Array.isArray(item.genres) ? item.genres.join(' ').toLowerCase() : String(item.genres || '').toLowerCase();
+
+      let isMatch = title.includes(qNorm) || origTitle.includes(qNorm);
+      if (!isMatch && qWords.length > 0) {
+        isMatch = qWords.every(w => title.includes(w) || origTitle.includes(w) || desc.includes(w) || genres.includes(w));
+      }
+
+      if (isMatch) {
+        seenIds.add(item.id);
+        matched.push({ ...item });
+      }
+    }
+  }
+  return matched;
+}
+
 if (typeof window !== 'undefined') {
   window.STORM_CATALOG_BASELINE = VERIFIED_CATALOG_BASELINE;
   window.getBaselineCatalog = getBaselineCatalog;
+  window.searchBaselineCatalog = searchBaselineCatalog;
 }
