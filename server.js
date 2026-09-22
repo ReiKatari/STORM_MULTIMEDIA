@@ -1840,6 +1840,107 @@ app.get('/api/vkvideo/search', async (req, res) => {
   }
 });
 
+// Прямой HLS поток для RuTube (.m3u8) с 302 редиректом
+app.get('/api/media/rutube-m3u8', async (req, res) => {
+  try {
+    const id = (req.query.id || req.query.rutube_id || '').trim();
+    if (!id) return res.status(400).send('Missing id');
+    const opts = await getRuTubePlayOptions(id);
+    if (opts && opts.m3u8) {
+      return res.redirect(302, opts.m3u8);
+    }
+    return res.status(404).send('HLS stream not found');
+  } catch (e) {
+    res.status(500).send(e.message);
+  }
+});
+
+// Проксированный RuTube плеер со скрытием кнопки «Смотреть на RUTUBE», рекламы и водяных знаков
+app.get('/api/player/rutube-embed/:id', async (req, res) => {
+  try {
+    const id = (req.params.id || '').trim();
+    if (!id) return res.status(400).send('Missing id');
+    const response = await fetch(`https://rutube.ru/play/embed/${id}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    if (!response.ok) {
+      return res.redirect(302, `https://rutube.ru/play/embed/${id}`);
+    }
+    let html = await response.text();
+
+    const antiButtonInjection = `
+      <style id="storm-rutube-cleaner">
+        [class*="watch-on-rutube"], [class*="watchOnRutube"], [class*="watch_on_rutube"],
+        [class*="openInApp"], [class*="open-in-app"], [class*="watermark"], [class*="logoContainer"],
+        [class*="rutube-logo"], a[href*="rutube.ru"], button[aria-label*="RUTUBE"],
+        button[aria-label*="Rutube"], div[class*="branding"], a[class*="Button"],
+        div[class*="watchButton"], button[class*="watchButton"] {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+      </style>
+      <script>
+        (function() {
+          function purgeRutubeButtons() {
+            var all = document.querySelectorAll('button, a, span, div, p');
+            for (var i = 0; i < all.length; i++) {
+              var el = all[i];
+              var txt = (el.innerText || el.textContent || '').trim();
+              if (txt === 'Смотреть на RUTUBE' || txt === 'Смотреть на Rutube' || txt.indexOf('Смотреть на RUTUBE') !== -1) {
+                var btn = el.closest('button, a, [role="button"], div[class*="button"]') || el;
+                btn.style.setProperty('display', 'none', 'important');
+                btn.style.setProperty('visibility', 'hidden', 'important');
+                btn.style.setProperty('pointer-events', 'none', 'important');
+              }
+            }
+          }
+          var obs = new MutationObserver(purgeRutubeButtons);
+          obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+          setInterval(purgeRutubeButtons, 200);
+          window.addEventListener('DOMContentLoaded', purgeRutubeButtons);
+          window.addEventListener('load', purgeRutubeButtons);
+        })();
+      </script>
+    `;
+
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', `${antiButtonInjection}</head>`);
+    } else {
+      html = antiButtonInjection + html;
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (e) {
+    res.redirect(302, `https://rutube.ru/play/embed/${req.params.id}`);
+  }
+});
+
+// Прокси опций плеера RuTube для встроенного плеера
+app.get('/api/play/options/:id/', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const query = new URLSearchParams(req.query).toString();
+    const ruUrl = `https://rutube.ru/api/play/options/${id}/?${query}`;
+    const r = await fetch(ruUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    const data = await r.json();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const itemDetailsCache = new Map();
 
 app.get('/api/media/item', async (req, res) => {
@@ -1959,10 +2060,26 @@ app.get('/api/media/item', async (req, res) => {
         }
       }
 
+      const isLandyshi = cleanRuId === '564f31c881b83373bfe0cb26979d44cf' || String(id || '').includes('landyshi') || String(videoTitle || '').toLowerCase().includes('ландыши');
+      const vkLandyshiPlayer = isLandyshi ? {
+        id: 'vk_video_stream',
+        name: 'VK Видео (Официальный плеер)',
+        type: 'iframe',
+        url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1',
+        quality: '1080p FHD / 4K',
+        badge: 'VK ВИДЕО',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный релиз сериала Ландыши на VK Видео',
+        speed: '⚡ Скоростной VK CDN'
+      } : null;
+
       let vkSearchPlayer = null;
-      try {
-        vkSearchPlayer = await resolveVkVideoPlayer(videoTitle, req.query.year);
-      } catch (_) {}
+      if (!isLandyshi) {
+        try {
+          vkSearchPlayer = await resolveVkVideoPlayer(videoTitle, req.query.year);
+        } catch (_) {}
+      }
 
       mediaDetails = {
         id: `rutube_${cleanRuId}`,
@@ -1978,29 +2095,30 @@ app.get('/api/media/item', async (req, res) => {
         seasons: seasonsData.length > 0 ? seasonsData : undefined,
         episodes: episodesList.length > 0 ? episodesList : undefined,
         players: [
-          ...(playOpts?.m3u8 ? [{
+          {
             id: 'rutube_direct_hls',
             name: 'RuTube HLS (Прямой поток без рекламы)',
-            url: playOpts.m3u8,
+            url: playOpts?.m3u8 || `/api/media/rutube-m3u8?id=${cleanRuId}`,
             quality: '1080p FHD',
             badge: 'RUTUBE HLS',
             status: 'working',
             status_label: '🟢 Онлайн',
             is_recommended: true,
             recommended_badge: '🔥 Рекомендуемый'
-          }] : []),
+          },
+          ...(vkLandyshiPlayer ? [vkLandyshiPlayer] : []),
+          ...(vkSearchPlayer ? [vkSearchPlayer] : []),
           {
             id: 'rutube_embed',
             name: 'RuTube Плеер (Официальный)',
             type: 'iframe',
-            url: `https://rutube.ru/play/embed/${cleanRuId}`,
+            url: `/api/player/rutube-embed/${cleanRuId}`,
             quality: '1080p FHD',
             badge: 'RUTUBE',
             status: 'working',
             status_label: '🟢 Онлайн',
-            is_recommended: !playOpts?.m3u8
-          },
-          ...(vkSearchPlayer ? [vkSearchPlayer] : [])
+            is_recommended: false
+          }
         ]
       };
     } else if (source === 'vkvideo' || String(id || '').startsWith('vk_')) {
