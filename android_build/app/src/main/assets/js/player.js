@@ -3741,8 +3741,50 @@ function applyAmbilightInstantGlow() {
 function startAmbilightLoop(video) {
   stopAmbilight();
 
+  let lastSampleTime = 0;
+  let cachedR = 0, cachedG = 210, cachedB = 255;
+
   function loop() {
     if (!ambilightEnabled) return;
+
+    const modal = document.getElementById('cinema-modal');
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || (modal && modal.classList.contains('is-fullscreen')));
+
+    // В полноэкранном режиме видео закрывает экран на 100%.
+    // Чтобы исключить GPU-to-CPU pipeline stall (drawImage + getImageData на 4K/1080p),
+    // полностью отключаем рендеринг внутренней ауры.
+    if (isFs) {
+      const now = Date.now();
+      if (now - lastSampleTime >= 200) {
+        lastSampleTime = now;
+        if (ambilightSettings.mode === 'preset' || ambilightSettings.mode === 'custom') {
+          const rgb = hexToRgb(ambilightSettings.color);
+          cachedR = rgb.r; cachedG = rgb.g; cachedB = rgb.b;
+        } else if (video && !video.paused && !video.ended && video.videoWidth > 0 && ambilightCtx) {
+          try {
+            ambilightCtx.drawImage(video, 0, 0, 16, 9);
+            const data = ambilightCtx.getImageData(0, 0, 16, 9).data;
+            let sumR = 0, sumG = 0, sumB = 0, count = 0;
+            for (let i = 0; i < data.length; i += 16) {
+              sumR += data[i];
+              sumG += data[i + 1];
+              sumB += data[i + 2];
+              count++;
+            }
+            cachedR = Math.round(sumR / count);
+            cachedG = Math.round(sumG / count);
+            cachedB = Math.round(sumB / count);
+          } catch {
+            const hue = (now / 40) % 360;
+            const rgb = hslToRgb(hue / 360, 0.9, 0.55);
+            cachedR = rgb.r; cachedG = rgb.g; cachedB = rgb.b;
+          }
+        }
+        sendSmartLightsFrame(cachedR, cachedG, cachedB);
+      }
+      ambilightRaf = requestAnimationFrame(loop);
+      return;
+    }
 
     let r = 0, g = 210, b = 255;
 

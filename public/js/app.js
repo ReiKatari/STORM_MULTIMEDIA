@@ -90,6 +90,33 @@ let hoverCloseTimer = null;
 let cachedContinueHistory = null;
 let isBottomNavInitialized = false;
 
+export const clientTabCache = new Map();
+
+export function getPersistentTabCache(key) {
+  try {
+    const raw = localStorage.getItem(`storm_cat_cache_v2_${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+export function setPersistentTabCache(key, data) {
+  try {
+    if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+    const toSave = {
+      items: data.items.slice(0, 30),
+      totalItems: data.totalItems || data.items.length,
+      totalPages: data.totalPages || 1,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(`storm_cat_cache_v2_${key}`, JSON.stringify(toSave));
+  } catch {}
+}
+
 export async function refreshContinueWatchingCache() {
   try {
     cachedContinueHistory = await fetchContinueWatching();
@@ -504,17 +531,24 @@ export function switchTab(tab) {
     b.classList.toggle('active', isActive);
   });
 
-  // При смене вкладки используем кэш или проверенный базовый каталог для мгновенной отрисовки без мельканий
+  // При смене вкладки используем память, постоянный кэш или проверенный базовый каталог
   const targetCategory = tab === 'home' ? 'popular' : tab;
   const targetKey = `${targetCategory}_1_${currentSource}`;
   if (!clientTabCache.has(targetKey)) {
-    const baseline = getBaselineCatalog(targetCategory);
-    if (baseline && baseline.length > 0) {
-      rawCatalogItems = baseline;
+    const persistent = getPersistentTabCache(targetKey);
+    if (persistent && Array.isArray(persistent.items) && persistent.items.length > 0) {
+      clientTabCache.set(targetKey, persistent);
+      rawCatalogItems = persistent.items;
       renderFilteredCatalog();
     } else {
-      rawCatalogItems = [];
-      renderSkeletonGrid();
+      const baseline = getBaselineCatalog(targetCategory);
+      if (baseline && baseline.length > 0) {
+        rawCatalogItems = baseline;
+        renderFilteredCatalog();
+      } else {
+        rawCatalogItems = [];
+        renderSkeletonGrid();
+      }
     }
   }
 
@@ -1312,7 +1346,6 @@ function hideDynamicMediaIsland() {
   if (dynamicIslandEl) dynamicIslandEl.classList.remove('is-visible');
 }
 
-const clientTabCache = new Map();
 let activeTabLoadSeq = 0;
 let prefetchTimer = null;
 
@@ -1636,13 +1669,23 @@ async function loadCurrentTab() {
     renderFilteredCatalog();
     scheduleNextPagePrefetch(category, currentPage, currentSource);
   } else {
-    const baseline = getBaselineCatalog(category);
-    if (baseline && baseline.length > 0) {
-      rawCatalogItems = baseline;
+    const persistent = currentPage === 1 ? getPersistentTabCache(cacheKey) : null;
+    if (persistent && Array.isArray(persistent.items) && persistent.items.length > 0) {
+      clientTabCache.set(cacheKey, persistent);
+      rawCatalogItems = persistent.items;
+      totalCatalogPages = Math.min(defPages, persistent.totalPages || defPages);
+      totalCatalogItems = persistent.totalItems || (totalCatalogPages * 20);
       renderFilteredCatalog();
+      scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
-      rawCatalogItems = [];
-      renderSkeletonGrid();
+      const baseline = getBaselineCatalog(category);
+      if (baseline && baseline.length > 0) {
+        rawCatalogItems = baseline;
+        renderFilteredCatalog();
+      } else {
+        rawCatalogItems = [];
+        renderSkeletonGrid();
+      }
     }
   }
 
@@ -1670,6 +1713,9 @@ async function loadCurrentTab() {
       const wasEquivalent = areMediaListsEquivalent(rawCatalogItems, cleanList);
       rawCatalogItems = cleanList;
       clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
+      if (currentPage === 1) {
+        setPersistentTabCache(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
+      }
       if (!wasEquivalent) {
         renderFilteredCatalog();
       }
@@ -1693,6 +1739,9 @@ async function loadCurrentTab() {
           totalCatalogPages = Math.min(defPages, retryData.total_pages || defPages);
           totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
           clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
+          if (currentPage === 1) {
+            setPersistentTabCache(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
+          }
           renderFilteredCatalog();
           scheduleNextPagePrefetch(category, currentPage, currentSource);
           return;

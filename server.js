@@ -1105,35 +1105,335 @@ function isAnimeMediaItem(item) {
 // ==========================================
 
 const memoryCatalogCache = new Map();
-const MEMORY_CATALOG_TTL = 30 * 60 * 1000; // 30 минут
+const MEMORY_CATALOG_FRESH_TTL = 15 * 60 * 1000; // 15 минут - свежий кэш
+const MEMORY_CATALOG_MAX_STALE_TTL = 24 * 60 * 60 * 1000; // 24 часа - допустимый stale кэш
 
-// Фоновый прогрев реального каталога без блокировки сервера
+async function executeCatalogFetch(category, page = 1, source = 'all') {
+  const normCategory = category === 'home' ? 'popular' : category;
+  const CATALOG_GATHER_TIMEOUT_MS = 4500;
+
+  const fetchTask = async () => {
+    let fetchedItems = [];
+    let fetchedTotal = 0;
+
+    // 1. Прямой источник: The Movie Database (TMDB)
+    if (source === 'tmdb') {
+      const tmdbPage1 = page * 2 - 1;
+      const tmdbPage2 = page * 2;
+      const [res1, res2] = await Promise.allSettled([
+        getTmdbCatalog(normCategory, tmdbPage1),
+        getTmdbCatalog(normCategory, tmdbPage2)
+      ]);
+      const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
+      const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
+      fetchedItems = [...items1, ...items2];
+      fetchedTotal = res1.status === 'fulfilled' ? res1.value?.total_items || fetchedItems.length : fetchedItems.length;
+    }
+    // 2. Прямой источник: AniLibria
+    else if (source === 'anilibria') {
+      const [aLibRes1, aLibRes2] = await Promise.allSettled([
+        getAniLibriaCatalog(normCategory, page * 2 - 1),
+        getAniLibriaCatalog(normCategory, page * 2)
+      ]);
+      const items1 = aLibRes1.status === 'fulfilled' ? aLibRes1.value?.items || [] : [];
+      const items2 = aLibRes2.status === 'fulfilled' ? aLibRes2.value?.items || [] : [];
+      fetchedItems = [...items1, ...items2];
+      fetchedTotal = aLibRes1.status === 'fulfilled' ? aLibRes1.value?.total_items || fetchedItems.length : fetchedItems.length;
+    }
+    // 3. Стриминговые и торрент провайдеры
+    else if (['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox', 'vidsrc', 'kinobaza', 'kinogo', 'webtorrent', 'rutracker', 'nnmclub', 'rutor', 'lostfilm', 'redheadsound', 'animevost'].includes(source)) {
+      const tmdbPage1 = page * 2 - 1;
+      const tmdbPage2 = page * 2;
+      const [res1, res2] = await Promise.allSettled([
+        getTmdbCatalog(normCategory, tmdbPage1),
+        getTmdbCatalog(normCategory, tmdbPage2)
+      ]);
+      const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
+      const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
+      const combined = [...items1, ...items2];
+      fetchedItems = combined.map(i => ({
+        ...i,
+        source: source,
+        provider_name: source.toUpperCase()
+      }));
+      fetchedTotal = res1.status === 'fulfilled' ? res1.value?.total_items || fetchedItems.length : fetchedItems.length;
+    }
+    // 4. Прямой источник: FanFilm4K (с жестким таймаутом гонки)
+    else if (source === 'fanfilm4k') {
+      const cat = normCategory === 'home' ? 'popular' : normCategory;
+      const fanfilmRes = await Promise.race([
+        getFanFilmCatalog(cat, page),
+        new Promise(resolve => setTimeout(() => resolve({ items: [], total_items: 0 }), 3200))
+      ]);
+      fetchedItems = fanfilmRes?.items || [];
+      fetchedTotal = fanfilmRes?.total_items || fetchedItems.length;
+    }
+    // 5. Прямой источник: AniXart
+    else if (source === 'anixart') {
+      const cat = normCategory === 'home' ? 'popular' : normCategory;
+      const [anixRes1, anixRes2] = await Promise.allSettled([
+        getAnixartDiscover(cat, (page - 1) * 2),
+        getAnixartDiscover(cat, (page - 1) * 2 + 1)
+      ]);
+      const items1 = anixRes1.status === 'fulfilled' ? anixRes1.value?.items || [] : [];
+      const items2 = anixRes2.status === 'fulfilled' ? anixRes2.value?.items || [] : [];
+      fetchedItems = [...items1, ...items2];
+      fetchedTotal = Math.max(items1.length + items2.length, 300);
+    }
+    // 6. Прямой источник: Shikimori
+    else if (source === 'shikimori') {
+      const cat = normCategory === 'home' ? 'popular' : normCategory;
+      const shikiRes = await getShikimoriCatalog(cat, page);
+      fetchedItems = shikiRes?.items || [];
+      fetchedTotal = fetchedItems.length;
+    }
+    // 7. Прямой источник: RuTube
+    else if (source === 'rutube') {
+      fetchedItems = await getRuTubeCatalog(normCategory, page);
+      fetchedTotal = Math.max(fetchedItems.length, 100);
+    }
+    // 8. Прямой источник: VK Видео
+    else if (source === 'vkvideo') {
+      fetchedItems = await getVkVideoCatalog(normCategory, page);
+      fetchedTotal = Math.max(fetchedItems.length, 100);
+    }
+    // 9. Сводный каталог всех источников ('all')
+    else {
+      if (normCategory === 'anime-movies') {
+        const [anixRes, shikiRes, libRes, tmdbRes, ffRes] = await Promise.allSettled([
+          getAnixartDiscover('anime-movies', page - 1),
+          getShikimoriCatalog('anime-movies', page),
+          getAniLibriaCatalog('anime-movies', page),
+          getTmdbCatalog('anime-movies', page),
+          Promise.race([
+            getFanFilmCatalog('cartoons', page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
+          ])
+        ]);
+        const ffAnime = (ffRes.status === 'fulfilled' ? ffRes.value?.items || [] : []).filter(item => isAnimeMediaItem(item));
+        fetchedItems = interleaveSources([
+          ffAnime,
+          anixRes.status === 'fulfilled' ? anixRes.value?.items || [] : [],
+          shikiRes.status === 'fulfilled' ? shikiRes.value?.items || [] : [],
+          libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
+          tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : []
+        ]);
+        fetchedTotal = fetchedItems.length;
+      } else if (normCategory === 'anime-series') {
+        const [anixRes, libRes, shikiRes, tmdbRes] = await Promise.allSettled([
+          getAnixartDiscover('anime-series', page - 1),
+          getAniLibriaCatalog('anime-series', page),
+          getShikimoriCatalog('anime-series', page),
+          getTmdbCatalog('anime-series', page)
+        ]);
+        fetchedItems = interleaveSources([
+          anixRes.status === 'fulfilled' ? anixRes.value?.items || [] : [],
+          libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
+          shikiRes.status === 'fulfilled' ? shikiRes.value?.items || [] : [],
+          tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : []
+        ]);
+        fetchedTotal = fetchedItems.length;
+      } else if (normCategory === 'cartoon-series' || normCategory === 'cartoons') {
+        const promises = [
+          getTmdbCatalog(normCategory, page * 2 - 1),
+          getTmdbCatalog(normCategory, page * 2),
+          Promise.race([
+            getFanFilmCatalog(normCategory, page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
+          ])
+        ];
+        const results = await Promise.allSettled(promises);
+        const tmdbRes1 = results[0]?.status === 'fulfilled' ? results[0].value : null;
+        const tmdbRes2 = results[1]?.status === 'fulfilled' ? results[1].value : null;
+        const fanfilmRes = results[2]?.status === 'fulfilled' ? results[2].value : null;
+
+        const tmdbItems1 = tmdbRes1?.items || [];
+        const tmdbItems2 = tmdbRes2?.items || [];
+        const ffItems = fanfilmRes?.items || [];
+
+        fetchedItems = interleaveSources([
+          ffItems,
+          tmdbItems1,
+          tmdbItems2
+        ]).filter(item => !isAnimeMediaItem(item));
+
+        const tmdbTotalPages = Math.min(250, Math.ceil((tmdbRes1?.total_pages || 500) / 2));
+        fetchedTotal = Math.max(fetchedItems.length, tmdbTotalPages * 20);
+      } else if (normCategory === 'movies' || normCategory === 'series') {
+        const [fanfilmRes, tmdbRes] = await Promise.allSettled([
+          Promise.race([
+            getFanFilmCatalog(normCategory, page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 2500))
+          ]),
+          Promise.race([
+            getTmdbCatalog(normCategory, page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 3000))
+          ])
+        ]);
+        const ffItems = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [];
+        const tmdbItems = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [];
+        fetchedItems = interleaveSources([
+          ffItems,
+          tmdbItems
+        ]);
+        const ffPages = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.total_pages : 0;
+        const tmdbPages = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.total_pages : 0;
+        const realPages = Math.max(ffPages || 0, tmdbPages || 0) || (normCategory === 'movies' ? 718 : 162);
+        fetchedTotal = realPages * Math.max(20, fetchedItems.length || 56);
+      } else if (normCategory === 'new') {
+        const [fRes, tmdbRes, aRes, libRes, sRes] = await Promise.allSettled([
+          Promise.race([
+            getFanFilmCatalog('new', page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
+          ]),
+          Promise.race([
+            getTmdbCatalog('new', page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3000))
+          ]),
+          getAnixartDiscover('new', page - 1),
+          getAniLibriaCatalog('new', page),
+          getShikimoriCatalog('new', page)
+        ]);
+        fetchedItems = interleaveSources([
+          fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
+          tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
+          aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
+          libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
+          sRes.status === 'fulfilled' ? sRes.value?.items || [] : []
+        ]);
+        fetchedTotal = Math.max(fetchedItems.length, 500 * 20);
+      } else {
+        // Главная (home / popular)
+        const [fRes, tmdbRes, aRes, libRes, sRes] = await Promise.allSettled([
+          Promise.race([
+            getFanFilmCatalog('popular', page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
+          ]),
+          Promise.race([
+            getTmdbCatalog('popular', page),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3000))
+          ]),
+          getAnixartDiscover('popular', page - 1),
+          getAniLibriaCatalog('popular', page),
+          getShikimoriCatalog('popular', page)
+        ]);
+        fetchedItems = interleaveSources([
+          fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
+          tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
+          aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
+          libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
+          sRes.status === 'fulfilled' ? sRes.value?.items || [] : []
+        ]);
+        fetchedTotal = Math.max(fetchedItems.length, 500 * 20);
+      }
+    }
+
+    if (page > 1) {
+      fetchedItems = fetchedItems.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
+    }
+    fetchedItems.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+    return { items: fetchedItems, totalItems: fetchedTotal };
+  };
+
+  let timerId;
+  const timeoutPromise = new Promise(resolve => {
+    timerId = setTimeout(() => resolve(null), CATALOG_GATHER_TIMEOUT_MS);
+  });
+
+  let gathered = null;
+  try {
+    gathered = await Promise.race([fetchTask().catch(() => null), timeoutPromise]);
+  } finally {
+    clearTimeout(timerId);
+  }
+
+  let items = gathered?.items || [];
+  let totalItems = gathered?.totalItems || 0;
+
+  if (page === 1 && (!items || items.length === 0)) {
+    console.warn(`[Catalog] Применяем проверенный каталог для ${normCategory}`);
+    items = getCategoryFallback(normCategory);
+    totalItems = items.length;
+  }
+
+  if (items && items.length > 0) {
+    if (page > 1) {
+      items = items.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
+    }
+    items = items.map(i => {
+      const yr = resolveCanonicalYear(i.title, i.link || i.url || '', i.poster || '', i.premiere || i.release_date, i.year);
+      const genres = resolveCanonicalGenres(i.title, normCategory, i.description || '', i.genres);
+      const mediaType = resolveCanonicalMediaType(i.title, i.link || i.url || '', normCategory, genres, i);
+      const categoryLabel = mediaType === 'series' ? 'Сериал' :
+                           (mediaType === 'anime-series' ? 'Аниме-сериал' :
+                           (mediaType === 'anime-movie' ? 'Аниме-фильм' :
+                           (mediaType === 'cartoon-series' ? 'Мультсериал' :
+                           (mediaType === 'cartoon' ? 'Мультфильм' :
+                           (mediaType === 'show' ? 'Шоу' : 'Фильм')))));
+
+      return {
+        ...i,
+        year: String(yr),
+        genres,
+        media_type: mediaType,
+        category: i.category || categoryLabel,
+        premiere: i.premiere || (yr ? `${yr} год` : ''),
+        release_date: i.release_date || (yr ? `${yr}-01-01` : '')
+      };
+    });
+    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+  }
+
+  let calculatedTotalPages = 1;
+  if (normCategory === 'movies') calculatedTotalPages = 718;
+  else if (normCategory === 'series') calculatedTotalPages = 162;
+  else if (normCategory === 'cartoons') calculatedTotalPages = 35;
+  else if (normCategory === 'cartoon-series') calculatedTotalPages = 20;
+  else if (normCategory === 'anime-movies') calculatedTotalPages = 50;
+  else if (normCategory === 'anime-series') calculatedTotalPages = 50;
+  else if (normCategory === 'new') calculatedTotalPages = 50;
+  else if (normCategory === 'popular' || normCategory === 'home') calculatedTotalPages = 500;
+  else if (totalItems > 0 && items.length > 0) {
+    calculatedTotalPages = Math.max(1, Math.ceil(totalItems / Math.max(20, items.length)));
+  } else {
+    calculatedTotalPages = 50;
+  }
+
+  return {
+    items,
+    totalItems: totalItems || (calculatedTotalPages * 20),
+    totalPages: calculatedTotalPages
+  };
+}
+
+// Фоновый прогрев реального каталога при старте сервера без блокировки
 setTimeout(async () => {
   try {
-    const popularCategories = ['popular', 'movies', 'anime-series', 'cartoons'];
-    for (const cat of popularCategories) {
+    const warmupCategories = ['popular', 'movies', 'series', 'cartoons', 'new', 'anime-series', 'anime-movies'];
+    for (const cat of warmupCategories) {
       const cacheKey = `${cat}_1_all`;
       if (!memoryCatalogCache.has(cacheKey)) {
-        if (cat === 'anime-series') {
-          const [anixRes, libRes, shikiRes] = await Promise.allSettled([
-            getAnixartDiscover('anime-series', 0),
-            getAniLibriaCatalog('anime-series', 1),
-            getShikimoriCatalog('anime-series', 1)
-          ]);
-          const aItems = anixRes.status === 'fulfilled' ? anixRes.value?.items || [] : [];
-          const lItems = libRes.status === 'fulfilled' ? libRes.value?.items || [] : [];
-          const sItems = shikiRes.status === 'fulfilled' ? shikiRes.value?.items || [] : [];
-          const merged = interleaveSources([aItems, lItems, sItems]);
-          if (merged.length > 0) {
-            memoryCatalogCache.set(cacheKey, { items: merged, totalItems: merged.length, timestamp: Date.now() });
+        try {
+          const res = await executeCatalogFetch(cat, 1, 'all');
+          if (res && res.items && res.items.length > 0) {
+            memoryCatalogCache.set(cacheKey, {
+              items: res.items,
+              totalItems: res.totalItems,
+              totalPages: res.totalPages,
+              timestamp: Date.now(),
+              isRevalidating: false
+            });
+            console.log(`[Catalog Warmup] Прогрета категория ${cat} (${res.items.length} релизов)`);
           }
+        } catch (catErr) {
+          console.warn(`[Catalog Warmup] Ошибка ${cat}:`, catErr.message);
         }
       }
     }
   } catch (e) {
     console.warn('[Catalog] Фоновый прогрев:', e.message);
   }
-}, 1000);
+}, 500);
 
 app.get('/api/media/catalog', async (req, res) => {
   try {
@@ -1144,272 +1444,74 @@ app.get('/api/media/catalog', async (req, res) => {
 
     const cacheKey = `${category}_${page}_${source}`;
     const cachedEntry = memoryCatalogCache.get(cacheKey);
+    const now = Date.now();
 
-    let items = [];
-    let totalItems = 0;
-
+    // Stale-While-Revalidate: отдаем кэш мгновенно (< 3ms)
     if (cachedEntry && Array.isArray(cachedEntry.items) && cachedEntry.items.length > 0) {
-      items = cachedEntry.items;
-      totalItems = cachedEntry.totalItems;
-    } else {
-      // Надежный лимит времени на опрос внешних API
-      const CATALOG_GATHER_TIMEOUT_MS = 9000;
+      const isStale = now - (cachedEntry.timestamp || 0) > MEMORY_CATALOG_FRESH_TTL;
+      const isExpired = now - (cachedEntry.timestamp || 0) > MEMORY_CATALOG_MAX_STALE_TTL;
 
-      const fetchTask = async () => {
-        let fetchedItems = [];
-        let fetchedTotal = 0;
-
-        // 1. Прямой источник: The Movie Database (TMDB)
-        if (source === 'tmdb') {
-          const tmdbPage1 = page * 2 - 1;
-          const tmdbPage2 = page * 2;
-          const [res1, res2] = await Promise.allSettled([
-            getTmdbCatalog(category, tmdbPage1),
-            getTmdbCatalog(category, tmdbPage2)
-          ]);
-          const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
-          const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
-          fetchedItems = [...items1, ...items2];
-          fetchedTotal = res1.status === 'fulfilled' ? res1.value?.total_items || fetchedItems.length : fetchedItems.length;
-        }
-        // 2. Прямой источник: AniLibria
-        else if (source === 'anilibria') {
-          const [aLibRes1, aLibRes2] = await Promise.allSettled([
-            getAniLibriaCatalog(category, page * 2 - 1),
-            getAniLibriaCatalog(category, page * 2)
-          ]);
-          const items1 = aLibRes1.status === 'fulfilled' ? aLibRes1.value?.items || [] : [];
-          const items2 = aLibRes2.status === 'fulfilled' ? aLibRes2.value?.items || [] : [];
-          fetchedItems = [...items1, ...items2];
-          fetchedTotal = aLibRes1.status === 'fulfilled' ? aLibRes1.value?.total_items || fetchedItems.length : fetchedItems.length;
-        }
-        // 3. Стриминговые и торрент провайдеры
-        else if (['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox', 'vidsrc', 'kinobaza', 'kinogo', 'webtorrent', 'rutracker', 'nnmclub', 'rutor', 'lostfilm', 'redheadsound', 'animevost'].includes(source)) {
-          const tmdbPage1 = page * 2 - 1;
-          const tmdbPage2 = page * 2;
-          const [res1, res2] = await Promise.allSettled([
-            getTmdbCatalog(category, tmdbPage1),
-            getTmdbCatalog(category, tmdbPage2)
-          ]);
-          const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
-          const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
-          const combined = [...items1, ...items2];
-          fetchedItems = combined.map(i => ({
-            ...i,
-            source: source,
-            provider_name: source.toUpperCase()
-          }));
-          fetchedTotal = res1.status === 'fulfilled' ? res1.value?.total_items || fetchedItems.length : fetchedItems.length;
-        }
-        // 4. Прямой источник: FanFilm4K
-        else if (source === 'fanfilm4k') {
-          const cat = category === 'home' ? 'popular' : category;
-          const fanfilmRes = await getFanFilmCatalog(cat, page);
-          fetchedItems = fanfilmRes.items;
-          fetchedTotal = fanfilmRes.total_items;
-        }
-        // 5. Прямой источник: AniXart
-        else if (source === 'anixart') {
-          const cat = category === 'home' ? 'popular' : category;
-          const [anixRes1, anixRes2] = await Promise.allSettled([
-            getAnixartDiscover(cat, (page - 1) * 2),
-            getAnixartDiscover(cat, (page - 1) * 2 + 1)
-          ]);
-          const items1 = anixRes1.status === 'fulfilled' ? anixRes1.value?.items || [] : [];
-          const items2 = anixRes2.status === 'fulfilled' ? anixRes2.value?.items || [] : [];
-          fetchedItems = [...items1, ...items2];
-          fetchedTotal = Math.max(items1.length + items2.length, 300);
-        }
-        // 6. Прямой источник: Shikimori
-        else if (source === 'shikimori') {
-          const cat = category === 'home' ? 'popular' : category;
-          const shikiRes = await getShikimoriCatalog(cat, page);
-          fetchedItems = shikiRes.items;
-          fetchedTotal = shikiRes.items.length;
-        }
-        // 7. Прямой источник: RuTube
-        else if (source === 'rutube') {
-          fetchedItems = await getRuTubeCatalog(category, page);
-          fetchedTotal = Math.max(fetchedItems.length, 100);
-        }
-        // 8. Прямой источник: VK Видео
-        else if (source === 'vkvideo') {
-          fetchedItems = await getVkVideoCatalog(category, page);
-          fetchedTotal = Math.max(fetchedItems.length, 100);
-        }
-        // 9. Сводный каталог всех источников ('all')
-        else {
-          if (category === 'anime-movies') {
-            const [anixRes, shikiRes, libRes, tmdbRes, ffRes] = await Promise.allSettled([
-              getAnixartDiscover('anime-movies', page - 1),
-              getShikimoriCatalog('anime-movies', page),
-              getAniLibriaCatalog('anime-movies', page),
-              getTmdbCatalog('anime-movies', page),
-              getFanFilmCatalog('cartoons', page)
-            ]);
-            const ffAnime = (ffRes.status === 'fulfilled' ? ffRes.value?.items || [] : []).filter(item => isAnimeMediaItem(item));
-            fetchedItems = interleaveSources([
-              ffAnime,
-              anixRes.status === 'fulfilled' ? anixRes.value?.items || [] : [],
-              shikiRes.status === 'fulfilled' ? shikiRes.value?.items || [] : [],
-              libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
-              tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : []
-            ]);
-            fetchedTotal = fetchedItems.length;
-          } else if (category === 'anime-series') {
-            const [anixRes, libRes, shikiRes, tmdbRes] = await Promise.allSettled([
-              getAnixartDiscover('anime-series', page - 1),
-              getAniLibriaCatalog('anime-series', page),
-              getShikimoriCatalog('anime-series', page),
-              getTmdbCatalog('anime-series', page)
-            ]);
-            fetchedItems = interleaveSources([
-              anixRes.status === 'fulfilled' ? anixRes.value?.items || [] : [],
-              libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
-              shikiRes.status === 'fulfilled' ? shikiRes.value?.items || [] : [],
-              tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : []
-            ]);
-            fetchedTotal = fetchedItems.length;
-          } else if (category === 'cartoon-series' || category === 'cartoons') {
-            const promises = [
-              getTmdbCatalog(category, page * 2 - 1),
-              getTmdbCatalog(category, page * 2),
-              Promise.race([
-                getFanFilmCatalog(category, page),
-                new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3500))
-              ])
-            ];
-            const results = await Promise.allSettled(promises);
-            const tmdbRes1 = results[0]?.status === 'fulfilled' ? results[0].value : null;
-            const tmdbRes2 = results[1]?.status === 'fulfilled' ? results[1].value : null;
-            const fanfilmRes = results[2]?.status === 'fulfilled' ? results[2].value : null;
-
-            const tmdbItems1 = tmdbRes1?.items || [];
-            const tmdbItems2 = tmdbRes2?.items || [];
-            const ffItems = fanfilmRes?.items || [];
-
-            fetchedItems = interleaveSources([
-              ffItems,
-              tmdbItems1,
-              tmdbItems2
-            ]).filter(item => !isAnimeMediaItem(item));
-
-            const tmdbTotalPages = Math.min(250, Math.ceil((tmdbRes1?.total_pages || 500) / 2));
-            fetchedTotal = Math.max(fetchedItems.length, tmdbTotalPages * 20);
-          } else if (category === 'movies' || category === 'series') {
-            const [fanfilmRes, tmdbRes] = await Promise.allSettled([
-              getFanFilmCatalog(category, page),
-              Promise.race([
-                getTmdbCatalog(category, page),
-                new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 3200))
-              ])
-            ]);
-            const ffItems = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [];
-            const tmdbItems = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [];
-            fetchedItems = interleaveSources([
-              ffItems,
-              tmdbItems
-            ]);
-            const ffPages = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.total_pages : 0;
-            const tmdbPages = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.total_pages : 0;
-            const realPages = Math.max(ffPages || 0, tmdbPages || 0) || (category === 'movies' ? 718 : 162);
-            fetchedTotal = realPages * Math.max(20, fetchedItems.length || 56);
-          } else if (category === 'new') {
-            const [fRes, tmdbRes, aRes, libRes, sRes] = await Promise.allSettled([
-              getFanFilmCatalog('new', page),
-              Promise.race([
-                getTmdbCatalog('new', page),
-                new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3000))
-              ]),
-              getAnixartDiscover('new', page - 1),
-              getAniLibriaCatalog('new', page),
-              getShikimoriCatalog('new', page)
-            ]);
-            fetchedItems = interleaveSources([
-              fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
-              tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
-              aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
-              libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
-              sRes.status === 'fulfilled' ? sRes.value?.items || [] : []
-            ]);
-            fetchedTotal = Math.max(fetchedItems.length, 500 * 20);
+      if (isStale && !cachedEntry.isRevalidating && !isExpired) {
+        cachedEntry.isRevalidating = true;
+        // Фоновая тихая ревалидация свежих данных
+        executeCatalogFetch(category, page, source).then(fresh => {
+          if (fresh && fresh.items && fresh.items.length > 0) {
+            memoryCatalogCache.set(cacheKey, {
+              items: fresh.items,
+              totalItems: fresh.totalItems,
+              totalPages: fresh.totalPages,
+              timestamp: Date.now(),
+              isRevalidating: false
+            });
           } else {
-            // Главная (home / popular)
-            const [fRes, tmdbRes, aRes, libRes, sRes] = await Promise.allSettled([
-              getFanFilmCatalog('popular', page),
-              Promise.race([
-                getTmdbCatalog('popular', page),
-                new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3000))
-              ]),
-              getAnixartDiscover('popular', page - 1),
-              getAniLibriaCatalog('popular', page),
-              getShikimoriCatalog('popular', page)
-            ]);
-            fetchedItems = interleaveSources([
-              fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
-              tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
-              aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
-              libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
-              sRes.status === 'fulfilled' ? sRes.value?.items || [] : []
-            ]);
-            fetchedTotal = Math.max(fetchedItems.length, 500 * 20);
+            cachedEntry.isRevalidating = false;
           }
-        }
-        if (page > 1) {
-          fetchedItems = fetchedItems.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
-        }
-        fetchedItems.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
-        return { items: fetchedItems, totalItems: fetchedTotal };
-      };
+        }).catch(() => {
+          cachedEntry.isRevalidating = false;
+        });
+      }
 
-      let timerId;
-      const timeoutPromise = new Promise(resolve => {
-        timerId = setTimeout(() => resolve(null), CATALOG_GATHER_TIMEOUT_MS);
-      });
+      if (!isExpired) {
+        let finalItems = cachedEntry.items;
+        const activeUserId = req.user?.id || null;
+        finalItems = finalItems.map(item => {
+          const bookmark = activeUserId ? getBookmark(activeUserId, item.id, item.source, item.title, item.original_title) : null;
+          return {
+            ...item,
+            user_status: bookmark?.status || item.user_status || null,
+            progress_percent: bookmark?.progress_percent || item.progress_percent || 0.0,
+            episodes_watched: bookmark?.episodes_watched || item.episodes_watched || 0,
+            total_episodes: bookmark?.total_episodes || item.total_episodes || 0
+          };
+        });
 
-      const gathered = await Promise.race([fetchTask().catch(() => null), timeoutPromise]);
-      clearTimeout(timerId);
-
-      if (gathered && Array.isArray(gathered.items) && gathered.items.length > 0) {
-        items = gathered.items;
-        totalItems = gathered.totalItems;
+        return res.json({
+          category,
+          page,
+          source,
+          total_items: cachedEntry.totalItems,
+          total_pages: cachedEntry.totalPages,
+          items: finalItems,
+          from_cache: true,
+          is_stale: isStale
+        });
       }
     }
 
-    if (page === 1 && (!items || items.length === 0)) {
-      console.warn(`[Catalog] Применяем проверенный каталог для ${category}`);
-      items = getCategoryFallback(category);
-      totalItems = items.length;
-    }
+    // Если кэша еще нет или он полностью истек (холодный запрос)
+    const fetched = await executeCatalogFetch(category, page, source);
+    let items = fetched.items || [];
+    let totalItems = fetched.totalItems || (fetched.totalPages * 20);
+    let calculatedTotalPages = fetched.totalPages || 1;
 
     if (items && items.length > 0) {
-      if (page > 1) {
-        items = items.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
-      }
-      // Обогащаем года, тип медиа, жанры и премьеры для 100% карточек
-      items = items.map(i => {
-        const yr = resolveCanonicalYear(i.title, i.link || i.url || '', i.poster || '', i.premiere || i.release_date, i.year);
-        const genres = resolveCanonicalGenres(i.title, category, i.description || '', i.genres);
-        const mediaType = resolveCanonicalMediaType(i.title, i.link || i.url || '', category, genres, i);
-        const categoryLabel = mediaType === 'series' ? 'Сериал' :
-                             (mediaType === 'anime-series' ? 'Аниме-сериал' :
-                             (mediaType === 'anime-movie' ? 'Аниме-фильм' :
-                             (mediaType === 'cartoon-series' ? 'Мультсериал' :
-                             (mediaType === 'cartoon' ? 'Мультфильм' :
-                             (mediaType === 'show' ? 'Шоу' : 'Фильм')))));
-
-        return {
-          ...i,
-          year: String(yr),
-          genres,
-          media_type: mediaType,
-          category: i.category || categoryLabel,
-          premiere: i.premiere || (yr ? `${yr} год` : ''),
-          release_date: i.release_date || (yr ? `${yr}-01-01` : '')
-        };
+      memoryCatalogCache.set(cacheKey, {
+        items,
+        totalItems,
+        totalPages: calculatedTotalPages,
+        timestamp: Date.now(),
+        isRevalidating: false
       });
-      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
-      memoryCatalogCache.set(cacheKey, { items, totalItems, timestamp: Date.now() });
     }
 
     // Прикрепляем закладки и статусы только для авторизованных пользователей
@@ -1425,36 +1527,11 @@ app.get('/api/media/catalog', async (req, res) => {
       };
     });
 
-    let calculatedTotalPages = 1;
-    if (category === 'movies') calculatedTotalPages = 718;
-    else if (category === 'series') calculatedTotalPages = 162;
-    else if (category === 'cartoons') calculatedTotalPages = 35;
-    else if (category === 'cartoon-series') calculatedTotalPages = 20;
-    else if (category === 'anime-movies') calculatedTotalPages = 50;
-    else if (category === 'anime-series') calculatedTotalPages = 50;
-    else if (category === 'new') calculatedTotalPages = 50;
-    else if (category === 'popular' || category === 'home') calculatedTotalPages = 500;
-    else if (totalItems > 0 && items.length > 0) {
-      calculatedTotalPages = Math.max(1, Math.ceil(totalItems / Math.max(20, items.length)));
-    } else {
-      calculatedTotalPages = 50;
-    }
-
-    // Защита от пустых страниц пагинации: если запрошенная страница превышает доступный лимит,
-    // отдаем данные последней существующей страницы
-    if (page > calculatedTotalPages && (!items || items.length === 0)) {
-      const lastKey = `${category}_${calculatedTotalPages}_${source}`;
-      const lastCached = memoryCatalogCache.get(lastKey);
-      if (lastCached && Array.isArray(lastCached.items) && lastCached.items.length > 0) {
-        items = lastCached.items;
-      }
-    }
-
     res.json({
       category,
       page,
       source,
-      total_items: totalItems || (calculatedTotalPages * 20),
+      total_items: totalItems,
       total_pages: calculatedTotalPages,
       items
     });

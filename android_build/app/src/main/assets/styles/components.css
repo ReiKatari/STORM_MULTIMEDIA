@@ -931,10 +931,11 @@ button:active .storm-status-svg {
   pointer-events: none;
   z-index: 1;
   border-radius: 24px;
-  transition: box-shadow 0.35s ease, opacity 0.4s ease, filter 0.35s ease;
+  transition: opacity 0.4s ease, filter 0.35s ease;
   opacity: 0;
   filter: blur(40px);
-  will-change: box-shadow, opacity;
+  will-change: opacity;
+  contain: layout paint style;
 }
 
 .ambilight-aura.active {
