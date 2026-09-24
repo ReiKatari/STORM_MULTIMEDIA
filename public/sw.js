@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v3.0';
+const CACHE_NAME = 'storm-multimedia-v3.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -34,6 +34,10 @@ const STATIC_ASSETS = [
   '/js/whisper-subtitles.js',
   '/js/release-calendar.js',
   '/js/storm-remote.js',
+  '/js/admin-dashboard.js',
+  '/js/updater.js',
+  '/js/ad-shield.js',
+  '/js/pro-media-engine.js',
   '/assets/favicon.svg',
   '/manifest.json'
 ];
@@ -72,7 +76,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для API-запросов: прямой сетевой запрос к серверу без тайм-аута с мягким кэшированием
+  // Для API-запросов: прямой сетевой запрос к серверу с мягким кэшированием
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(event.request).then((netRes) => {
@@ -81,7 +85,7 @@ self.addEventListener('fetch', (event) => {
         }
         return netRes;
       }).catch(async () => {
-        const cached = await caches.match(event.request);
+        const cached = await caches.match(event.request, { ignoreSearch: true });
         if (cached) return cached;
         if (url.pathname === '/api/media/catalog') {
           return new Response(JSON.stringify({ items: [], total_items: 0 }), {
@@ -96,33 +100,64 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для скриптов, стилей и HTML: Network-First для мгновенного применения обновлений без кэш-задержек
+  // Для скриптов, стилей и HTML: Network-First с быстрым таймаутом (2800мс) и устойчивым fallback на кэш с ignoreSearch
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname === '/' || url.pathname.endsWith('.html')) {
     event.respondWith(
-      fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
+      new Promise((resolve) => {
+        let resolved = false;
+        const controller = new AbortController();
+        const timer = setTimeout(() => {
+          controller.abort();
+          caches.match(event.request, { ignoreSearch: true }).then((cached) => {
+            if (cached && !resolved) {
+              resolved = true;
+              resolve(cached);
+            }
+          }).catch(() => {});
+        }, 2800);
+
+        fetch(event.request, { signal: controller.signal })
+          .then((networkResponse) => {
+            clearTimeout(timer);
+            if (networkResponse && networkResponse.status === 200) {
+              const responseClone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseClone);
+              }).catch(() => {});
+            }
+            if (!resolved) {
+              resolved = true;
+              resolve(networkResponse);
+            }
+          })
+          .catch(async () => {
+            clearTimeout(timer);
+            const cached = await caches.match(event.request, { ignoreSearch: true });
+            if (cached && !resolved) {
+              resolved = true;
+              resolve(cached);
+            } else if (!resolved) {
+              resolved = true;
+              resolve(new Response('/* ServiceWorker Cache Fallback */', {
+                status: 200,
+                headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+              }));
+            }
           });
-        }
-        return networkResponse;
-      }).catch(() => {
-        return caches.match(event.request);
       })
     );
     return;
   }
 
-  // Для остальных статических файлов (картинки, шрифты): Stale-While-Revalidate
+  // Для остальных статических файлов (картинки, шрифты): Stale-While-Revalidate с ignoreSearch
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    caches.match(event.request, { ignoreSearch: true }).then((cached) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);
-          });
+          }).catch(() => {});
         }
         return networkResponse;
       }).catch(() => {

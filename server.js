@@ -3661,6 +3661,56 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             try { window.open = function() { return null; }; } catch(e) {}
             try { window.alert = function() {}; } catch(e) {}
 
+            // STORM AdBlock Engine: сетевой перехватчик VAST и видеорекламы (Fetch и XHR)
+            var emptyVast = '<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"></VAST>';
+            var isAdUrl = function(u) {
+              var low = String(u || '').toLowerCase();
+              return low.includes('vast') || low.includes('preroll') || low.includes('midroll') ||
+                     low.includes('postroll') || low.includes('adfox') || low.includes('yandex') ||
+                     low.includes('ssp') || low.includes('doubleclick') || low.includes('googleads') ||
+                     low.includes('adsystem') || low.includes('adkernel') || low.includes('banner') ||
+                     low.includes('popunder') || low.includes('clickunder') || low.includes('casino') ||
+                     low.includes('1xbet') || low.includes('winline') || low.includes('melbet');
+            };
+
+            var origFetch = window.fetch;
+            if (origFetch) {
+              window.fetch = function(input, init) {
+                var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+                if (isAdUrl(url)) {
+                  return Promise.resolve(new Response(emptyVast, {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/xml; charset=utf-8' }
+                  }));
+                }
+                return origFetch.apply(this, arguments);
+              };
+            }
+
+            var origOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url) {
+              if (isAdUrl(url)) {
+                this._isStormBlockedAd = true;
+              }
+              return origOpen.apply(this, arguments);
+            };
+
+            var origSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.send = function() {
+              if (this._isStormBlockedAd) {
+                try {
+                  Object.defineProperty(this, 'status', { get: function() { return 200; } });
+                  Object.defineProperty(this, 'readyState', { get: function() { return 4; } });
+                  Object.defineProperty(this, 'responseText', { get: function() { return emptyVast; } });
+                  Object.defineProperty(this, 'response', { get: function() { return emptyVast; } });
+                  if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
+                  if (typeof this.onload === 'function') this.onload();
+                } catch(_) {}
+                return;
+              }
+              return origSend.apply(this, arguments);
+            };
+
             // STORM AdBlock Engine: автоматический пропуск, уничтожение и глушение рекламы
             (function() {
               function sterilizeAds() {
@@ -3686,7 +3736,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                   var vids = document.querySelectorAll('video');
                   for (var k = 0; k < vids.length; k++) {
                     var v = vids[k];
-                    var isAd = v.closest('.ad-container') || v.closest('[class*="vast"]') || v.classList.contains('vpaid-video') || (v.src && (v.src.indexOf('/ad') !== -1 || v.src.indexOf('preroll') !== -1));
+                    var isAd = v.closest('.ad-container') || v.closest('[class*="vast"]') || v.classList.contains('vpaid-video') || (v.src && (v.src.indexOf('/ad') !== -1 || v.src.indexOf('preroll') !== -1 || isAdUrl(v.src)));
                     if (isAd) {
                       v.muted = true;
                       if (v.duration && isFinite(v.duration) && v.currentTime < v.duration) {
@@ -3697,7 +3747,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 } catch(e) {}
               }
 
-              setInterval(sterilizeAds, 200);
+              setInterval(sterilizeAds, 120);
               if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', sterilizeAds);
               } else {
@@ -4282,10 +4332,15 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Permissions-Policy', 'fullscreen=*');
 
+    // Для Kodik / Aniqit / баз плееров подменяем Referer на kodikplayer.com для успешной отдачи плеера
+    const effectiveReferer = (cleanUrl.includes('aniqit') || cleanUrl.includes('kodik') || cleanUrl.includes('playk'))
+      ? 'https://kodikplayer.com/'
+      : (targetOrigin + '/');
+
     const proxyRes = await fetch(cleanUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        'Referer': targetOrigin + '/',
+        'Referer': effectiveReferer,
         'Origin': targetOrigin,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -4344,11 +4399,17 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         `);
       }
 
-      // STORM AdBlock Engine: вырезание полей конфигурации рекламы и внешних скриптов
+      // 1. STORM AdBlock Engine: вырезание полей конфигурации рекламы Playerjs, VAST и баннеров
       html = html
-        .replace(/(["']?(?:preroll|midroll|postroll|vast|vast_url|banner|brand|adv|advert)["']?\s*:\s*)(?:\[[^\]]*\]|"[^"]*"|'[^']*'|\{[^\}]*\}|true)/gi, '$1null')
+        .replace(/(["']?(?:preroll|midroll|postroll|vast|vast_url|banner|brand|adv|advert|clickunder|popunder)["']?\s*:\s*)(?:\[[^\]]*\]|"[^"]*"|'[^']*'|\{[^\}]*\}|true)/gi, '$1null')
         .replace(/\b(?:preroll|midroll|vast|vast_url)\s*=\s*[^;,\n]+/gi, '/* storm ad removed */')
         .replace(/<script[^>]*src=["'][^"']*(?:yandex|adfox|googleads|doubleclick|adsystem|adkernel|redclick|marketgid|casino|1xbet|betting|traff|banner|adv)[^"']*["'][^>]*><\/script>/gi, '');
+
+      // 2. В kodikplayer.com/find-player перенаправляем создаваемый внутренний iframe на наш adblock-proxy
+      html = html.replace(
+        /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link/g,
+        'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink'
+      );
 
       const finalOrigin = new URL(proxyRes.url || cleanUrl).origin;
       const injection = `
@@ -4356,8 +4417,96 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         <script>
         (function() {
           try {
-            window.open = function() { return null; };
+            // Блокировка всплывающих окон, редиректов и кликандеров
+            window.open = function() {
+              console.warn('🛡️ STORM AdBlock: открытие внешнего окна заблокировано');
+              return null;
+            };
             window.alert = function() {};
+
+            // Сетевой перехватчик VAST и видеорекламы (Fetch и XHR)
+            var emptyVast = '<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"></VAST>';
+            var isAdUrl = function(u) {
+              var low = String(u || '').toLowerCase();
+              return low.includes('vast') || low.includes('preroll') || low.includes('midroll') ||
+                     low.includes('postroll') || low.includes('adfox') || low.includes('yandex') ||
+                     low.includes('ssp') || low.includes('doubleclick') || low.includes('googleads') ||
+                     low.includes('adsystem') || low.includes('adkernel') || low.includes('banner') ||
+                     low.includes('popunder') || low.includes('clickunder') || low.includes('casino') ||
+                     low.includes('1xbet') || low.includes('winline') || low.includes('melbet') ||
+                     low.includes('betwinner') || low.includes('vavada') || low.includes('pin-up') ||
+                     low.includes('adcash') || low.includes('propellerads') || low.includes('marketgid');
+            };
+
+            var origFetch = window.fetch;
+            if (origFetch) {
+              window.fetch = function(input, init) {
+                var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+                if (isAdUrl(url)) {
+                  if (url.includes('.xml') || url.includes('vast')) {
+                    return Promise.resolve(new Response(emptyVast, {
+                      status: 200,
+                      headers: { 'Content-Type': 'application/xml; charset=utf-8' }
+                    }));
+                  }
+                  return Promise.resolve(new Response(JSON.stringify({ ads: [], preroll: null, vast: null }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+                  }));
+                }
+                return origFetch.apply(this, arguments);
+              };
+            }
+
+            var origOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url) {
+              if (isAdUrl(url)) {
+                this._isStormBlockedAd = true;
+              }
+              return origOpen.apply(this, arguments);
+            };
+
+            var origSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.send = function() {
+              if (this._isStormBlockedAd) {
+                try {
+                  Object.defineProperty(this, 'status', { get: function() { return 200; } });
+                  Object.defineProperty(this, 'readyState', { get: function() { return 4; } });
+                  Object.defineProperty(this, 'responseText', { get: function() { return emptyVast; } });
+                  Object.defineProperty(this, 'response', { get: function() { return emptyVast; } });
+                  if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
+                  if (typeof this.onload === 'function') this.onload();
+                } catch(_) {}
+                return;
+              }
+              return origSend.apply(this, arguments);
+            };
+
+            // Перехват кликов по рекламным баннерам и кликандерам
+            document.addEventListener('click', function(e) {
+              var target = e.target;
+              if (!target) return;
+              var link = target.closest('a');
+              if (link) {
+                var href = link.getAttribute('href') || '';
+                if (isAdUrl(href) || link.target === '_blank') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              }
+            }, true);
+
+            // Перехват динамического создания iframe для маршрутизации через adblock-proxy
+            var origSetAttribute = Element.prototype.setAttribute;
+            Element.prototype.setAttribute = function(name, val) {
+              if (this.tagName === 'IFRAME' && name.toLowerCase() === 'src' && typeof val === 'string') {
+                if (!val.startsWith('/api/player/') && (val.includes('kodik') || val.includes('aniqit') || val.includes('playk') || val.includes('video'))) {
+                  val = '/api/player/adblock-proxy?url=' + encodeURIComponent(val.startsWith('//') ? 'https:' + val : val);
+                }
+              }
+              return origSetAttribute.call(this, name, val);
+            };
+
             function sterilizeAds() {
               try {
                 var skipSelectors = [
@@ -4372,7 +4521,7 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
                   if (btns[i].offsetParent !== null) btns[i].click();
                 }
 
-                var adNodes = document.querySelectorAll('[id*="ad-"], [class*="ad-container"], [class*="player-ad"], .vast-container, [id*="banner"], [class*="teaser"], iframe[src*="ad"]');
+                var adNodes = document.querySelectorAll('[id*="ad-"], [class*="ad-container"], [class*="player-ad"], .vast-container, [id*="banner"], [class*="teaser"], iframe[src*="ad"], [class*="clickunder"], [class*="popunder"]');
                 for (var j = 0; j < adNodes.length; j++) {
                   adNodes[j].style.setProperty('display', 'none', 'important');
                   adNodes[j].style.setProperty('pointer-events', 'none', 'important');
@@ -4381,7 +4530,7 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
                 var vids = document.querySelectorAll('video');
                 for (var k = 0; k < vids.length; k++) {
                   var v = vids[k];
-                  var isAd = v.closest('.ad-container') || v.closest('[class*="vast"]') || v.classList.contains('vpaid-video') || (v.src && (v.src.indexOf('/ad') !== -1 || v.src.indexOf('preroll') !== -1));
+                  var isAd = v.closest('.ad-container') || v.closest('[class*="vast"]') || v.classList.contains('vpaid-video') || (v.src && (v.src.indexOf('/ad') !== -1 || v.src.indexOf('preroll') !== -1 || isAdUrl(v.src)));
                   if (isAd) {
                     v.muted = true;
                     if (v.duration && isFinite(v.duration) && v.currentTime < v.duration) {
@@ -4391,7 +4540,7 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
                 }
               } catch(e) {}
             }
-            setInterval(sterilizeAds, 200);
+            setInterval(sterilizeAds, 120);
             if (document.readyState === 'loading') {
               document.addEventListener('DOMContentLoaded', sterilizeAds);
             } else {
@@ -4401,24 +4550,17 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         })();
         </script>
         <style>
-          [class*="ad-"], [id*="ad-"], .vast-container, [class*="teaser"], [id*="banner"] {
+          [class*="ad-"], [id*="ad-"], .vast-container, [class*="teaser"], [id*="banner"], [class*="clickunder"], [class*="popunder"] {
             display: none !important;
+            opacity: 0 !important;
             pointer-events: none !important;
+            width: 0 !important;
+            height: 0 !important;
           }
         </style>
         <script>
         (function() {
           try {
-            window.open = function() { return null; };
-            window.alert = function() {};
-            setInterval(function() {
-              try {
-                var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, .playerjs-ad-skip, [class*="skip"][class*="ad"], button[class*="skip"], .close-ad, .ad-close');
-                for (var i = 0; i < skipBtns.length; i++) {
-                  if (skipBtns[i].offsetParent !== null) skipBtns[i].click();
-                }
-              } catch(e) {}
-            }, 300);
 
             // STORM Fullscreen Bridge: перехват кликов по кнопкам полноэкранного режима, горячей клавиши F и вызовов Fullscreen API
             (function() {
