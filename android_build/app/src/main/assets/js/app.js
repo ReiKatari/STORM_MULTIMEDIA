@@ -134,111 +134,126 @@ export function isStormNativeApp() {
 }
 
 async function startStormApp() {
-  if (isStormNativeApp()) {
-    document.body.classList.add('is-native-app');
-  }
-  document.body.dataset.activeTab = currentTab || 'home';
-  initTheme();
-  applyTranslations();
+  try {
+    if (isStormNativeApp()) {
+      document.body.classList.add('is-native-app');
+    }
+    document.body.dataset.activeTab = currentTab || 'home';
+  } catch (_) {}
 
-  initPwaServiceWorker();
-  initViewModes();
-  initTabs();
-  initBottomNav();
-  initFilterSheet();
-  initCardActionSheet();
-  initSearch();
-  initScrollToTop();
-  initFilterDropdowns();
-  initModals();
-  initProfileHandlers();
-  initLanguageSwitcher();
-  initNewCyberFeatures();
-  initAdminDashboard();
-  initDynamicMediaIsland();
-  updateFamilyProfileHeader();
+  // 1. Немедленная инициализация темы и языка
+  try { initTheme(); } catch (e) { console.warn('initTheme error:', e); }
+  try { applyTranslations(); } catch (e) { console.warn('applyTranslations error:', e); }
+
+  // 2. Мгновенная отрисовка каталога (baseline кэш или сохраненный снимок) до второстепенных модулей
+  try {
+    loadCurrentTab();
+  } catch (e) {
+    console.warn('Initial loadCurrentTab error:', e);
+  }
+
+  // 3. Отказоустойчивая инициализация подсистем интерфейса в изолированных error boundary
+  try { initPwaServiceWorker(); } catch (e) { console.warn('initPwaServiceWorker error:', e); }
+  try { initViewModes(); } catch (e) { console.warn('initViewModes error:', e); }
+  try { initTabs(); } catch (e) { console.warn('initTabs error:', e); }
+  try { initBottomNav(); } catch (e) { console.warn('initBottomNav error:', e); }
+  try { initFilterSheet(); } catch (e) { console.warn('initFilterSheet error:', e); }
+  try { initCardActionSheet(); } catch (e) { console.warn('initCardActionSheet error:', e); }
+  try { initSearch(); } catch (e) { console.warn('initSearch error:', e); }
+  try { initScrollToTop(); } catch (e) { console.warn('initScrollToTop error:', e); }
+  try { initFilterDropdowns(); } catch (e) { console.warn('initFilterDropdowns error:', e); }
+  try { initModals(); } catch (e) { console.warn('initModals error:', e); }
+  try { initProfileHandlers(); } catch (e) { console.warn('initProfileHandlers error:', e); }
+  try { initLanguageSwitcher(); } catch (e) { console.warn('initLanguageSwitcher error:', e); }
+  try { initNewCyberFeatures(); } catch (e) { console.warn('initNewCyberFeatures error:', e); }
+  try { initAdminDashboard(); } catch (e) { console.warn('initAdminDashboard error:', e); }
+  try { initDynamicMediaIsland(); } catch (e) { console.warn('initDynamicMediaIsland error:', e); }
+  try { updateFamilyProfileHeader(); } catch (e) { console.warn('updateFamilyProfileHeader error:', e); }
 
   // Предзагрузка реальной истории просмотров без выдумок
-  refreshContinueWatchingCache().then(() => {
-    if (currentTab === 'home' && rawCatalogItems.length > 0) {
-      renderHomeView(rawCatalogItems);
-    }
-  });
-
-  onAuthChanged(() => {
-    updateFamilyProfileHeader();
-    updateMobileDrawerUser();
+  try {
     refreshContinueWatchingCache().then(() => {
-      if (currentTab === 'bookmarks' || currentTab === 'continue') {
-        loadCurrentTab();
-      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+      if (currentTab === 'home' && rawCatalogItems.length > 0) {
         renderHomeView(rawCatalogItems);
       }
+    }).catch(() => {});
+  } catch (_) {}
+
+  try {
+    onAuthChanged(() => {
+      try { updateFamilyProfileHeader(); } catch (_) {}
+      try { updateMobileDrawerUser(); } catch (_) {}
+      refreshContinueWatchingCache().then(() => {
+        if (currentTab === 'bookmarks' || currentTab === 'continue') {
+          loadCurrentTab();
+        } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+          renderHomeView(rawCatalogItems);
+        }
+      }).catch(() => {});
     });
-  });
+  } catch (_) {}
 
   // Динамическое автоматическое обновление закладок и списков без перезагрузки
-  window.addEventListener('storm:bookmarks-updated', (e) => {
-    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-    if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
-      loadCurrentTab();
-    } else if (e.detail?.deleted) {
-      const deletedId = String(e.detail.mediaId || '');
-      const deletedTitle = normalizeMediaTitle(e.detail.title || '');
-      rawCatalogItems.forEach(x => {
-        if (String(x.id) === deletedId || (deletedTitle && normalizeMediaTitle(x.title, x.original_title) === deletedTitle)) {
-          x.user_status = null;
-        }
-      });
-      renderFilteredCatalog();
-    } else if (e.detail?.mediaData && e.detail?.status) {
-      const updatedId = String(e.detail.mediaData.id || e.detail.mediaData.media_id);
-      const updatedTitle = normalizeMediaTitle(e.detail.mediaData.title || '');
-      rawCatalogItems.forEach(x => {
-        if (String(x.id) === updatedId || (updatedTitle && normalizeMediaTitle(x.title, x.original_title) === updatedTitle)) {
-          x.user_status = e.detail.status;
-        }
-      });
-      renderFilteredCatalog();
-    }
-  });
-
-  // Автоматическое обновление статусов сериалов (Emby / Plex модель)
-  window.addEventListener('storm:series-status-changed', (e) => {
-    const { mediaId, status } = e.detail || {};
-    if (!mediaId || !status) return;
-    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-    rawCatalogItems.forEach(x => {
-      if (String(x.id) === String(mediaId)) {
-        x.user_status = status;
+  try {
+    window.addEventListener('storm:bookmarks-updated', (e) => {
+      const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+      if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
+        loadCurrentTab();
+      } else if (e.detail?.deleted) {
+        const deletedId = String(e.detail.mediaId || '');
+        const deletedTitle = normalizeMediaTitle(e.detail.title || '');
+        rawCatalogItems.forEach(x => {
+          if (String(x.id) === deletedId || (deletedTitle && normalizeMediaTitle(x.title, x.original_title) === deletedTitle)) {
+            x.user_status = null;
+          }
+        });
+        renderFilteredCatalog();
+      } else if (e.detail?.mediaData && e.detail?.status) {
+        const updatedId = String(e.detail.mediaData.id || e.detail.mediaData.media_id);
+        const updatedTitle = normalizeMediaTitle(e.detail.mediaData.title || '');
+        rawCatalogItems.forEach(x => {
+          if (String(x.id) === updatedId || (updatedTitle && normalizeMediaTitle(x.title, x.original_title) === updatedTitle)) {
+            x.user_status = e.detail.status;
+          }
+        });
+        renderFilteredCatalog();
       }
     });
-    if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
-      loadCurrentTab();
-    } else {
-      renderFilteredCatalog();
-    }
-  });
 
-  // Живое обновление продолжения просмотра при начале или прогрессе фильма
-  window.addEventListener('storm:continue-watching-updated', async () => {
-    await refreshContinueWatchingCache();
-    const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-    if (!isSearching) {
-      if (currentTab === 'continue') {
+    window.addEventListener('storm:series-status-changed', (e) => {
+      const { mediaId, status } = e.detail || {};
+      if (!mediaId || !status) return;
+      const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+      rawCatalogItems.forEach(x => {
+        if (String(x.id) === String(mediaId)) {
+          x.user_status = status;
+        }
+      });
+      if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
-      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
+      } else {
+        renderFilteredCatalog();
       }
-    }
-  });
+    });
 
-  loadCurrentTab();
-  checkAuth();
-  initDeepLinking();
+    window.addEventListener('storm:continue-watching-updated', async () => {
+      await refreshContinueWatchingCache();
+      const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
+      if (!isSearching) {
+        if (currentTab === 'continue') {
+          loadCurrentTab();
+        } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+          renderHomeView(rawCatalogItems);
+        }
+      }
+    });
+  } catch (_) {}
+
+  try { checkAuth(); } catch (_) {}
+  try { initDeepLinking(); } catch (_) {}
 
   // Автоматическая тихая проверка обновлений при старте
-  setTimeout(() => checkForUpdates(false), 2500);
+  try { setTimeout(() => checkForUpdates(false), 2500); } catch (_) {}
 }
 
 async function initDeepLinking() {
@@ -6007,21 +6022,37 @@ export function updateMobileDrawerUser() {
   }
 }
 
+export { startStormApp };
+
 window.stormRefreshCatalog = () => {
   clientTabCache.clear();
-  loadCurrentTab();
+  try {
+    loadCurrentTab();
+  } catch (err) {
+    console.warn('stormRefreshCatalog error:', err);
+  }
 };
 
 // =============================================================
 // БЕЗОПАСНЫЙ СТАРТ ПРИЛОЖЕНИЯ (ПОСЛЕ ПОЛНОЙ ИНИЦИАЛИЗАЦИИ ВСЕХ МОДУЛЕЙ И ПЕРЕМЕННЫХ)
 // =============================================================
+function safeBootstrap() {
+  try {
+    startStormApp();
+  } catch (err) {
+    console.error('STORM App bootstrap error:', err);
+    try {
+      loadCurrentTab();
+    } catch (_) {}
+  }
+}
+
 if (typeof window !== 'undefined') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      startStormApp();
-    });
+  window.startStormApp = safeBootstrap;
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(safeBootstrap, 0);
   } else {
-    // В Android WebView при loadDataWithBaseURL DOM уже готов — запускаем через микротаск
-    setTimeout(startStormApp, 0);
+    document.addEventListener('DOMContentLoaded', safeBootstrap);
+    window.addEventListener('load', safeBootstrap);
   }
 }

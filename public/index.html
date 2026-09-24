@@ -261,10 +261,14 @@
     <div id="hero-showcase-container" class="hero-showcase-container" style="display: none;"></div>
 
     <div class="media-container view-grid" id="media-render-container">
-      <div style="grid-column: 1 / -1; text-align: center; padding: 100px 20px; color: var(--text-muted);">
-        <div style="font-size: 38px; margin-bottom: 16px; animation: spin 1.5s linear infinite;">⏳</div>
-        <h2>Инициализация портала STORM MULTIMEDIA...</h2>
-      </div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
+      <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
     </div>
 
     <!-- Панель пагинации, ВСЕГДА закрепленная у нижней границы -->
@@ -1166,6 +1170,46 @@
   </button>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.26"></script>
+  <script type="module" src="/js/app.js?v=1.0.27"></script>
+
+  <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
+  <script>
+    (function() {
+      function checkAppLoaded() {
+        var container = document.getElementById('media-render-container');
+        var hasRealContent = container && container.querySelector('.media-card, .storm-media-rail, .storm-rails-container');
+        if (!hasRealContent) {
+          console.warn('⚠️ STORM Watchdog: обнаружена задержка инициализации, принудительный запуск каталога...');
+          if (typeof window.startStormApp === 'function') {
+            window.startStormApp();
+          } else if (typeof window.stormRefreshCatalog === 'function') {
+            window.stormRefreshCatalog();
+          }
+        }
+      }
+
+      // Первая мягкая проверка через 2.2 секунды
+      setTimeout(checkAppLoaded, 2200);
+
+      // Вторая контрольная проверка через 4.5 секунды
+      setTimeout(function() {
+        var container = document.getElementById('media-render-container');
+        var hasRealContent = container && container.querySelector('.media-card, .storm-media-rail, .storm-rails-container');
+        if (!hasRealContent) {
+          if (typeof window.startStormApp === 'function') {
+            window.startStormApp();
+          } else if (typeof window.stormRefreshCatalog === 'function') {
+            window.stormRefreshCatalog();
+          } else {
+            // Динамическая перезагрузка модуля app.js в случае сетевого сбоя или кэш-ошибки
+            var s = document.createElement('script');
+            s.type = 'module';
+            s.src = '/js/app.js?retry=' + Date.now();
+            document.body.appendChild(s);
+          }
+        }
+      }, 4500);
+    })();
+  </script>
 </body>
 </html>

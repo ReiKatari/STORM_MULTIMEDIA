@@ -13,7 +13,21 @@ export const THEMES = [
   'STORM WARHAMMER 40K'
 ];
 
-let currentTheme = localStorage.getItem('storm_theme') || 'STORM DARK';
+function safeGetStorage(key, fallback = '') {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function safeSetStorage(key, val) {
+  try {
+    localStorage.setItem(key, val);
+  } catch (_) {}
+}
+
+let currentTheme = safeGetStorage('storm_theme', 'STORM DARK');
 
 export function getTheme() {
   return currentTheme;
@@ -23,7 +37,7 @@ export function setTheme(themeName) {
   if (THEMES.includes(themeName)) {
     currentTheme = themeName;
     document.documentElement.setAttribute('data-theme', themeName);
-    localStorage.setItem('storm_theme', themeName);
+    safeSetStorage('storm_theme', themeName);
 
     const profileThemeSelect = document.getElementById('profile-theme-select');
     if (profileThemeSelect && profileThemeSelect.value !== themeName) {
