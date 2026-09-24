@@ -153,6 +153,16 @@ export const KNOWN_RELEASE_YEARS = {
   'шерлок': '2010',
   'доктор хаус': '2004',
   'острые козырьки': '2013',
+  'монстры': '2022',
+  'монстр: история джеффри дамера': '2022',
+  'монстр история джеффри дамера': '2022',
+  'менталист': '2008',
+  'the mentalist': '2008',
+  'дневники вампира': '2009',
+  'the vampire diaries': '2009',
+  'корпорация монстров': '2001',
+  'монстры на каникулах': '2012',
+  'одиссея': '2026',
 
   // Аниме-сериалы
   'аркейн': '2021',
@@ -308,7 +318,21 @@ export const KNOWN_SERIES = [
   'рыцарь семи королевств', 'a knight of the seven kingdoms',
   'сорвиголова: рождённый заново', 'сорвиголова: рожденный заново', 'daredevil: born again',
   'гангстерленд', 'mobland',
-  'белый лотос', 'the white lotus'
+  'белый лотос', 'the white lotus',
+  'монстры', 'монстр', 'монстр: история джеффри дамера', 'монстры: история', 'монстры: история лайла и эрика менендес', 'monsters', 'monster: the jeffrey dahmer story', 'monsters: the lyle and erik menendez story',
+  'менталист', 'the mentalist', 'mentalist',
+  'дневники вампира', 'the vampire diaries', 'vampire diaries', 'первородные', 'the originals', 'наследие', 'legacies',
+  'побег', 'побег из тюрьмы', 'prison break',
+  'анатомия страсти', "grey's anatomy", 'greys anatomy',
+  'форс-мажоры', 'suits', 'миллиарды', 'billions', 'наследники', 'succession',
+  'черный список', 'чёрный список', 'the blacklist', 'карточный домик', 'house of cards',
+  'вечность', 'forever', 'как я встретил вашу маму', 'how i met your mother',
+  'американская история ужасов', 'american horror story', 'американская история преступлений', 'american crime story',
+  'большая маленькая ложь', 'big little lies', 'молодой папа', 'the young pope', 'новый папа', 'the new pope',
+  'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
+  'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
+  'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
+  'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
 ];
 
 // Реестр известных аниме (по умолчанию 'anime-series', если не фильм)
@@ -386,6 +410,17 @@ export const KNOWN_CARTOON_SERIES = [
 
 // Каноническая база жанров
 export const KNOWN_MEDIA_GENRES = {
+  'монстры': ['Сериал', 'Драма', 'Криминал', 'Биография'],
+  'монстр': ['Сериал', 'Драма', 'Криминал', 'Биография'],
+  'монстр: история джеффри дамера': ['Сериал', 'Драма', 'Криминал', 'Биография'],
+  'монстры: история лайла и эрика менендес': ['Сериал', 'Драма', 'Криминал', 'Биография'],
+  'менталист': ['Сериал', 'Детектив', 'Драма', 'Криминал'],
+  'the mentalist': ['Сериал', 'Детектив', 'Драма', 'Криминал'],
+  'дневники вампира': ['Сериал', 'Фэнтези', 'Драма', 'Мелодрама'],
+  'the vampire diaries': ['Сериал', 'Фэнтези', 'Драма', 'Мелодрама'],
+  'одиссея': ['Фильм', 'Фантастика', 'Приключения', 'Боевик'],
+  'корпорация монстров': ['Мультфильм', 'Комедия', 'Семейный', 'Фэнтези'],
+  'монстры на каникулах': ['Мультфильм', 'Комедия', 'Семейный', 'Фэнтези'],
   'пассажир': ['Боевик', 'Триллер', 'Детектив'],
   'персонажи в клетке': ['Комедия', 'Аниме', 'Повседневность'],
   'кафе из другого мира': ['Аниме', 'Фэнтези', 'Повседневность'],
@@ -526,6 +561,30 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
   if (item.isSeries || item.is_series || item.media_type === 'series' || item.type === 'series' || item.type === 'tv') {
     return 'series';
   }
+
+  // Защита от мультфильмов со словом монстр/монстры (Корпорация монстров, Монстры на каникулах и др. - строго мультфильмы)
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => norm === m || norm.startsWith(m + ' ') || norm.includes(m));
+
+  if (!isMonsterCartoonOrMovie) {
+    if (norm === 'монстры' || norm.startsWith('монстры ') || norm.startsWith('монстры:') ||
+        norm === 'монстр' || norm.startsWith('монстр ') || norm.startsWith('монстр:') ||
+        norm === 'monsters' || norm.startsWith('monsters ') || norm === 'monster' || norm.startsWith('monster ') ||
+        linkStr.includes('monstr-istorija') || linkStr.includes('menendez') || linkStr.includes('dahmer')) {
+      return 'series';
+    }
+  }
+
+  // Менталист и Дневники вампира
+  if (norm.includes('менталист') || norm.includes('mentalist') || linkStr.includes('mentalist')) {
+    return 'series';
+  }
+  if (norm.includes('дневники вампира') || norm.includes('vampire diaries') || linkStr.includes('dnevniki-vampira')) {
+    return 'series';
+  }
+
   if (KNOWN_SERIES.some(s => norm === s || norm.startsWith(s + ' ') || norm.includes(s))) {
     return 'series';
   }
@@ -560,9 +619,21 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
 export function resolveCanonicalYear(title = '', link = '', poster = '', dateStr = '', existingYear = '') {
   const norm = normalizeTitle(title);
 
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => norm === m || norm.startsWith(m + ' ') || norm.includes(m));
+
   // 1. Проверка реестра подтверждённых дат (сортировка по убыванию длины ключа для исключения коллизий подстрок)
   const sortedEntries = Object.entries(KNOWN_RELEASE_YEARS).sort((a, b) => b[0].length - a[0].length);
   for (const [knownTitle, yr] of sortedEntries) {
+    if (knownTitle === 'монстры' || knownTitle === 'монстр') {
+      if (isMonsterCartoonOrMovie) continue;
+      if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.startsWith(knownTitle + ':')) {
+        return yr;
+      }
+      continue;
+    }
     if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.includes(knownTitle)) {
       return yr;
     }
@@ -625,7 +696,37 @@ export function resolveCanonicalYear(title = '', link = '', poster = '', dateStr
 export function resolveCanonicalGenres(title = '', category = '', description = '', existingGenres = null) {
   const norm = normalizeTitle(title);
 
-  // 1. Если уже переданы структурированные жанры, нормализуем их
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => norm === m || norm.startsWith(m + ' ') || norm.includes(m));
+
+  // 1. Проверка канонической базы подтверждённых жанров (наивысший приоритет)
+  for (const [knownTitle, genreList] of Object.entries(KNOWN_MEDIA_GENRES)) {
+    if (knownTitle === 'монстры' || knownTitle === 'монстр') {
+      if (isMonsterCartoonOrMovie) continue;
+      if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.startsWith(knownTitle + ':')) {
+        return [...genreList];
+      }
+      continue;
+    }
+    if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.includes(knownTitle)) {
+      return [...genreList];
+    }
+  }
+
+  const isExplicitSeries = !isMonsterCartoonOrMovie && (
+    category === 'series' || category === 'serial' || category === 'Сериал' || category === 'сериал' ||
+    norm === 'монстры' || norm.startsWith('монстры ') || norm.startsWith('монстры:') ||
+    norm === 'монстр' || norm.startsWith('монстр ') || norm.startsWith('монстр:') ||
+    norm.includes('менталист') || norm.includes('mentalist') ||
+    norm.includes('дневники вампира') || norm.includes('vampire diaries') ||
+    KNOWN_SERIES.some(s => norm === s || norm.startsWith(s + ' ') || norm.includes(s))
+  );
+
+  const isExplicitMovie = category === 'movies' || category === 'movie' || category === 'Фильм' || category === 'фильм';
+
+  // 2. Если уже переданы структурированные жанры, нормализуем их
   let baseList = [];
   if (Array.isArray(existingGenres) && existingGenres.length > 0) {
     baseList = existingGenres.map(g => String(g).trim()).filter(Boolean);
@@ -638,16 +739,16 @@ export function resolveCanonicalGenres(title = '', category = '', description = 
     const set = new Set();
     baseList.forEach(g => {
       const clean = g.charAt(0).toUpperCase() + g.slice(1);
-      if (clean && !clean.includes('undefined')) set.add(clean);
+      if (clean && !clean.includes('undefined')) {
+        if (isExplicitSeries && clean === 'Фильм') return;
+        if (isExplicitMovie && clean === 'Сериал') return;
+        set.add(clean);
+      }
     });
-    if (set.size > 0) return Array.from(set);
-  }
-
-  // 2. Проверка канонической базы жанров
-  for (const [knownTitle, genreList] of Object.entries(KNOWN_MEDIA_GENRES)) {
-    if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.includes(knownTitle)) {
-      return [...genreList];
+    if (isExplicitSeries && !set.has('Сериал')) {
+      set.add('Сериал');
     }
+    if (set.size > 0) return Array.from(set);
   }
 
   // 3. Контекстный экстрактор по ключевым словам из описания, названия и категории
@@ -681,10 +782,19 @@ export function resolveCanonicalGenres(title = '', category = '', description = 
     }
   }
 
+  if (isExplicitSeries) {
+    detected.delete('Фильм');
+    detected.add('Сериал');
+  }
+  if (isExplicitMovie) {
+    detected.delete('Сериал');
+    detected.add('Фильм');
+  }
+
   if (detected.size === 0) {
     if (category === 'cartoons' || category === 'cartoon-series') return ['Мультфильм', 'Семейный'];
     if (category === 'anime' || category === 'anime-series' || category === 'anime-movies') return ['Аниме', 'Приключения'];
-    if (category === 'series') return ['Сериал', 'Драма'];
+    if (category === 'series' || isExplicitSeries) return ['Сериал', 'Драма'];
     return ['Фильм', 'Приключения'];
   }
 

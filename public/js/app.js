@@ -1957,6 +1957,24 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
     return 'Мультсериал';
   }
 
+  // Защита от мультфильмов со словом монстр/монстры
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => title === m || title.startsWith(m + ' ') || title.includes(m));
+
+  if (!isMonsterCartoonOrMovie) {
+    if (title === 'монстры' || title.startsWith('монстры ') || title.startsWith('монстры:') ||
+        title === 'монстр' || title.startsWith('монстр ') || title.startsWith('монстр:') ||
+        title === 'monsters' || title.startsWith('monsters ') || title === 'monster' || title.startsWith('monster ')) {
+      return 'Сериал';
+    }
+  }
+
+  if (title.includes('менталист') || title.includes('mentalist') || title.includes('дневники вампира') || title.includes('vampire diaries')) {
+    return 'Сериал';
+  }
+
   if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
     return 'Аниме-сериал';
   }
@@ -2682,10 +2700,21 @@ function renderHomeView(items) {
     .slice(0, 10);
 
   // Рейл 2: Горячие премьеры 2026/2025
-  const trendingItems = items.filter(i => {
+  let trendingItems = items.filter(i => {
     const yr = parseInt(getMediaYear(i) || i.year, 10);
     return yr >= 2025;
-  }).slice(0, 16);
+  });
+  if (trendingItems.length < 28) {
+    const baseNew = getBaselineCatalog('new') || [];
+    const existingIds = new Set(trendingItems.map(x => String(x.id || x.media_id)));
+    for (const b of baseNew) {
+      if (!existingIds.has(String(b.id || b.media_id))) {
+        trendingItems.push(b);
+        existingIds.add(String(b.id || b.media_id));
+      }
+    }
+  }
+  trendingItems = trendingItems.slice(0, 36);
 
   const EXPLICIT_KNOWN_SERIES = [
     'король талсы', 'tulsa king', 'основание', 'foundation', 'целую, китти', 'целую китти', 'xo, kitty', 'xo kitty',
@@ -2693,36 +2722,94 @@ function renderHomeView(items) {
     'гангстерленд', 'mobland', 'медленные лошади', 'slow horses', 'йеллоустоун', 'yellowstone',
     'мэр кингстауна', 'mayor of kingstown', 'извне', 'from', 'ричер', 'reacher', 'пацаны', 'the boys',
     'белый лотос', 'the white lotus', 'дом дракона', 'house of the dragon', 'фоллаут', 'fallout', 'уэнсдэй', 'уэнсдей',
-    'ландыши', 'ландыши. такая нежная любовь', 'ландыши. вторая весна'
+    'ландыши', 'ландыши. такая нежная любовь', 'ландыши. вторая весна',
+    'монстры', 'монстр', 'монстр: история джеффри дамера', 'монстры: история', 'монстры: история лайла и эрика менендес', 'monsters', 'monster',
+    'менталист', 'the mentalist', 'mentalist',
+    'дневники вампира', 'the vampire diaries', 'vampire diaries', 'первородные', 'the originals', 'наследие', 'legacies',
+    'побег', 'побег из тюрьмы', 'prison break',
+    'анатомия страсти', "grey's anatomy", 'greys anatomy',
+    'форс-мажоры', 'suits', 'миллиарды', 'billions', 'наследники', 'succession',
+    'черный список', 'чёрный список', 'the blacklist', 'карточный домик', 'house of cards',
+    'вечность', 'forever', 'как я встретил вашу маму', 'how i met your mother',
+    'американская история ужасов', 'american horror story', 'американская история преступлений', 'american crime story',
+    'большая маленькая ложь', 'big little lies', 'молодой папа', 'the young pope', 'новый папа', 'the new pope',
+    'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
+    'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
+    'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
+    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
   ];
 
   // Рейл 3: Популярные фильмы (строго исключаем сериалы и аниме)
-  const movieItems = items.filter(i => {
+  let movieItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
     if (mType === 'series' || mType === 'cartoon-series' || mType === 'anime-series') return false;
     if (i.category === 'series' || i.category === 'Сериал' || i.type === 'series' || i.media_type === 'series' || i.seasons) return false;
     const normTitle = String(i.title || '').toLowerCase();
+    const isMonsterCartoon = [
+      'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+      'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+    ].some(m => normTitle === m || normTitle.startsWith(m + ' ') || normTitle.includes(m));
+    if (!isMonsterCartoon && (normTitle === 'монстры' || normTitle.startsWith('монстры ') || normTitle.startsWith('монстры:') || normTitle === 'монстр' || normTitle.startsWith('монстр ') || normTitle.startsWith('монстр:'))) return false;
+    if (normTitle.includes('менталист') || normTitle.includes('mentalist') || normTitle.includes('дневники вампира') || normTitle.includes('vampire diaries')) return false;
     if (normTitle.includes('сериал') || normTitle.includes('сезон') || /сезон\s*\d+/i.test(normTitle)) return false;
     if (EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s))) return false;
     return true;
-  }).slice(0, 16);
+  });
+  if (movieItems.length < 28) {
+    const baseMovies = getBaselineCatalog('movies') || [];
+    const existingIds = new Set(movieItems.map(x => String(x.id || x.media_id)));
+    for (const b of baseMovies) {
+      if (!existingIds.has(String(b.id || b.media_id))) {
+        movieItems.push(b);
+        existingIds.add(String(b.id || b.media_id));
+      }
+    }
+  }
+  movieItems = movieItems.slice(0, 36);
 
   // Рейл 4: Лучшие сериалы
-  const seriesItems = items.filter(i => {
+  let seriesItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
     const normTitle = String(i.title || '').toLowerCase();
-    const isExplicit = EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s));
+    const isMonsterCartoon = [
+      'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+      'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+    ].some(m => normTitle === m || normTitle.startsWith(m + ' ') || normTitle.includes(m));
+    const isMonsterSeries = !isMonsterCartoon && (normTitle === 'монстры' || normTitle.startsWith('монстры ') || normTitle.startsWith('монстры:') || normTitle === 'монстр' || normTitle.startsWith('монстр ') || normTitle.startsWith('монстр:'));
+    const isExplicit = isMonsterSeries || normTitle.includes('менталист') || normTitle.includes('mentalist') || normTitle.includes('дневники вампира') || normTitle.includes('vampire diaries') || EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s));
     return (mType === 'series' || i.category === 'series' || i.category === 'Сериал' || i.type === 'series' || i.media_type === 'series' || i.seasons || isExplicit || normTitle.includes('сериал') || normTitle.includes('сезон'));
-  }).slice(0, 16);
+  });
+  if (seriesItems.length < 28) {
+    const baseSeries = getBaselineCatalog('series') || [];
+    const existingIds = new Set(seriesItems.map(x => String(x.id || x.media_id)));
+    for (const b of baseSeries) {
+      if (!existingIds.has(String(b.id || b.media_id))) {
+        seriesItems.push(b);
+        existingIds.add(String(b.id || b.media_id));
+      }
+    }
+  }
+  seriesItems = seriesItems.slice(0, 36);
 
   // Рейл 5: Топ аниме
-  const animeItems = items.filter(i => {
+  let animeItems = items.filter(i => {
     return i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria' ||
            (typeof i.genres === 'string' && i.genres.toLowerCase().includes('аниме')) ||
            (Array.isArray(i.genres) && i.genres.some(g => String(g).toLowerCase().includes('аниме')));
-  }).slice(0, 16);
+  });
+  if (animeItems.length < 28) {
+    const baseAnime = getBaselineCatalog('anime-series') || getBaselineCatalog('anime') || [];
+    const existingIds = new Set(animeItems.map(x => String(x.id || x.media_id)));
+    for (const b of baseAnime) {
+      if (!existingIds.has(String(b.id || b.media_id))) {
+        animeItems.push(b);
+        existingIds.add(String(b.id || b.media_id));
+      }
+    }
+  }
+  animeItems = animeItems.slice(0, 36);
 
   // Рейл 6: Шедевры мирового кино (Культовые фильмы и сериалы мирового кинематографа)
   const WORLD_CINEMA_LEGENDS = [
@@ -2745,7 +2832,7 @@ function renderHomeView(items) {
       id: 'legend_green_mile',
       title: 'Зеленая миля',
       original_title: 'The Green Mile',
-      poster: 'https://image.tmdb.org/t/p/w500/8VG8fDNiy50H4Fed0LSVemQI47G.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/lHxe8t4B0CKv4DO0C0B4rsuiG95.jpg',
       year: '1999',
       rating: 9.1,
       quality: '4K Ultra HD',
@@ -2880,7 +2967,7 @@ function renderHomeView(items) {
       id: 'legend_forrest_gump',
       title: 'Форрест Гамп',
       original_title: 'Forrest Gump',
-      poster: 'https://image.tmdb.org/t/p/w500/arw2VCBveWOVZr6pxd9XTd1TdQa.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/6fAVi5Iic2I1mvTW8vfp5kZPJjJ.jpg',
       year: '1994',
       rating: 8.8,
       quality: '4K Ultra HD',
@@ -2910,7 +2997,7 @@ function renderHomeView(items) {
       id: 'legend_intouchables',
       title: '1+1',
       original_title: 'Intouchables',
-      poster: 'https://image.tmdb.org/t/p/w500/4mFsNQwbKaP5X20vd92L57B0o4C.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/zQsq95pYgjwYKqoFdeXlVse88.jpg',
       year: '2011',
       rating: 8.5,
       quality: '4K Ultra HD',
@@ -2955,7 +3042,7 @@ function renderHomeView(items) {
       id: 'legend_prestige',
       title: 'Престиж',
       original_title: 'The Prestige',
-      poster: 'https://image.tmdb.org/t/p/w500/bdN3gXu4Iu54qHytJzgK9iN6BqE.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/cynfEpFBHGkdBIVpdnx8Od2TQNj.jpg',
       year: '2006',
       rating: 8.5,
       quality: '4K Ultra HD',
@@ -2970,7 +3057,7 @@ function renderHomeView(items) {
       id: 'legend_departed',
       title: 'Отступники',
       original_title: 'The Departed',
-      poster: 'https://image.tmdb.org/t/p/w500/nT97ifL2A4o9n9n8b9Cms9A2Q5U.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/jT6JJV6t902SN9dJlSRdiPi6hSv.jpg',
       year: '2006',
       rating: 8.5,
       quality: '4K Ultra HD',
@@ -2985,7 +3072,7 @@ function renderHomeView(items) {
       id: 'legend_leon',
       title: 'Леон',
       original_title: 'Léon',
-      poster: 'https://image.tmdb.org/t/p/w500/w7RDIgQMZSZZgHn7jZfP0s0fSGe.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/yyjNn3Ly7ChAT2V9yOlx8QyFs82.jpg',
       year: '1994',
       rating: 8.5,
       quality: '4K Ultra HD',
@@ -3080,7 +3167,7 @@ function renderHomeView(items) {
       id: 'legend_sherlock',
       title: 'Шерлок',
       original_title: 'Sherlock',
-      poster: 'https://image.tmdb.org/t/p/w500/7WTsnDMwkUIoJVY8BPgu4Ay8i5U.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/j1OzoewUK3fA7bjMX8oB1mwyG1P.jpg',
       year: '2010–2017',
       rating: 9.1,
       quality: '1080p FHD',
@@ -3171,7 +3258,7 @@ function renderHomeView(items) {
       id: 'legend_django',
       title: 'Джанго освобожденный',
       original_title: 'Django Unchained',
-      poster: 'https://image.tmdb.org/t/p/w500/7oWY8vdWW7thTzWh3OKYRkWUlD5.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/9TqgGueg974s9Vw3U1rCYK30QP3.jpg',
       year: '2012',
       rating: 8.5,
       quality: '4K Ultra HD',
@@ -3186,7 +3273,7 @@ function renderHomeView(items) {
       id: 'legend_pirates',
       title: 'Пираты Карибского моря: Проклятие Чёрной жемчужины',
       original_title: 'Pirates of the Caribbean: The Curse of the Black Pearl',
-      poster: 'https://image.tmdb.org/t/p/w500/z8onk7LV9Mlh6zcreLPY9qY9sRi.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/70xRYK8orGWA7NfxvzhtkjpZAD6.jpg',
       year: '2003',
       rating: 8.1,
       quality: '4K Ultra HD',
@@ -3216,7 +3303,7 @@ function renderHomeView(items) {
       id: 'legend_avatar',
       title: 'Аватар',
       original_title: 'Avatar',
-      poster: 'https://image.tmdb.org/t/p/w500/jRXYjXNq0Cs2TcJjLkki24MLewe.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/lUKcrcO3wEPhNnzGq06JIX7GIEb.jpg',
       year: '2009',
       rating: 8.0,
       quality: '4K Ultra HD',
@@ -3246,7 +3333,7 @@ function renderHomeView(items) {
       id: 'legend_true_detective',
       title: 'Настоящий детектив',
       original_title: 'True Detective',
-      poster: 'https://image.tmdb.org/t/p/w500/aowrBEovUb7bB89G4Ts45yVnfxP.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/dHqKLovbM9GT0fkwtL5ew5SPtmk.jpg',
       year: '2014',
       rating: 8.9,
       quality: '4K Ultra HD',
@@ -3262,7 +3349,7 @@ function renderHomeView(items) {
       id: 'legend_fargo',
       title: 'Фарго',
       original_title: 'Fargo',
-      poster: 'https://image.tmdb.org/t/p/w500/6jVvdh5e0VvJkIknr73j1cO93gM.jpg',
+      poster: 'https://image.tmdb.org/t/p/w500/r8HpRhKl5q0kiNehdjVOmTC7K7p.jpg',
       year: '2014',
       rating: 8.9,
       quality: '1080p FHD',
