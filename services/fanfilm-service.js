@@ -930,7 +930,8 @@ export async function getFanFilmDetails(idOrUrl) {
       }
     });
 
-    const detectedType = resolveCanonicalMediaType(title, url, '', genres, { total_episodes: players.length, season: 1 });
+    const isExplicitSeries = /\(?(?:сериал|дорама|все сезоны|сезон)\)?/i.test(title) || /\/(?:serials?|dorama)\//i.test(url);
+    const detectedType = resolveCanonicalMediaType(title, url, isExplicitSeries ? 'series' : '', genres, { isSeries: isExplicitSeries });
     const canonicalGenres = resolveCanonicalGenres(title, '', description, genres);
     const resolvedYear = year || resolveCanonicalYear(title, url, poster, premiere) || '2026';
 

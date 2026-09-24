@@ -1396,6 +1396,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Инициализируем универсальную панель серий для сериалов сразу
   if (checkIfMediaIsSeries(currentMedia)) {
     initUniversalSeriesQuickBar(options.initialSeason || 1, options.initialEpisode || 1);
+  } else {
+    quickBarSeriesData = null;
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar) quickBar.style.display = 'none';
+    modal.classList.remove('has-series-bar');
   }
 
   // Мгновенный сброс скролла на 0, чтобы плеер открывался на весь экран сверху без необходимости пролистывать
@@ -1532,6 +1537,12 @@ export async function openPlayerModal(mediaItem, options = {}) {
     // Инициализируем универсальную панель серий с обновленными метаданными
     if (checkIfMediaIsSeries(currentMedia)) {
       initUniversalSeriesQuickBar(options.initialSeason || 1, options.initialEpisode || 1);
+    } else {
+      quickBarSeriesData = null;
+      const quickBar = document.getElementById('player-series-quick-bar');
+      if (quickBar) quickBar.style.display = 'none';
+      if (modal) modal.classList.remove('has-series-bar');
+      updateInPlayerEpisodeInfo();
     }
 
     // 🛡️ ОБЪЕДИНЕНИЕ СЕРВЕРНЫХ И УНИВЕРСАЛЬНЫХ ПЛЕЕРОВ:
@@ -5078,21 +5089,49 @@ export function checkIfMediaIsSeries(media) {
   if (titleLower.includes('обитель зла') && (titleLower.includes('мутация') || titleLower.includes('вендетта') || titleLower.includes('вырождение') || titleLower.includes('проклятие') || titleLower.includes('остров смерти') || titleLower.includes('resident evil'))) {
     return false;
   }
-  // Мультсериалы и известные сериалы
-  if (titleLower.includes('рик и морти') || titleLower.includes('rick and morty') || titleLower.includes('гриффины') || titleLower.includes('симпсоны') || titleLower.includes('южный парк')) {
+
+  // Защита от мультфильмов со словом монстр/монстры (Корпорация монстров, Монстры на каникулах и др. - строго мультфильмы)
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => titleLower === m || titleLower.startsWith(m + ' ') || titleLower.includes(m));
+
+  // Известные подтверждённые сериалы (включая Монстры, Менталист, Дневники вампира)
+  const isExplicitSeriesTitle = !isMonsterCartoonOrMovie && (
+    titleLower === 'монстры' || titleLower.startsWith('монстры ') || titleLower.startsWith('монстры:') ||
+    titleLower === 'монстр' || titleLower.startsWith('монстр ') || titleLower.startsWith('монстр:') ||
+    titleLower.includes('менталист') || titleLower.includes('the mentalist') ||
+    titleLower.includes('дневники вампира') || titleLower.includes('vampire diaries') ||
+    titleLower.includes('рик и морти') || titleLower.includes('rick and morty') ||
+    titleLower.includes('гриффины') || titleLower.includes('симпсоны') || titleLower.includes('южный парк') ||
+    /сезон\s*\d+/i.test(titleLower) || /\b(s\d+|season\s*\d+)\b/i.test(titleLower)
+  );
+
+  if (isExplicitSeriesTitle) {
     return true;
   }
-  // 1. Приоритет данных: если у медиа есть сезоны или серии - это 100% сериал
+
+  // Явные признаки фильма: если медиа помечено как фильм и не входит в список подтверждённых сериалов
+  const isExplicitMovie = media.media_type === 'movie' || media.type === 'movie' || 
+                          media.media_type === 'cartoon' || media.media_type === 'anime-movie' ||
+                          media.category === 'Фильм' || media.category === 'фильм' || 
+                          media.category === 'Мультфильм';
+
+  if (isExplicitMovie && !isExplicitSeriesTitle) {
+    return false;
+  }
+
+  // 1. Приоритет данных: быстрая панель серий (только если тип не movie)
   if (quickBarSeriesData && quickBarSeriesData.type !== 'movie' && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0) {
     return true;
   }
-  if (typeof media.seasons === 'number' && media.seasons > 0) {
+  if (typeof media.seasons === 'number' && media.seasons > 1) {
     return true;
   }
-  if (Array.isArray(media.seasons) && media.seasons.length > 0) {
+  if (Array.isArray(media.seasons) && media.seasons.length > 1) {
     return true;
   }
-  if (Array.isArray(media.episodes) && media.episodes.length > 0) {
+  if (Array.isArray(media.episodes) && media.episodes.length > 1) {
     return true;
   }
   if (media.rutube_id && (media.seasons || media.episodes)) {
@@ -5101,7 +5140,7 @@ export function checkIfMediaIsSeries(media) {
   if ((parseInt(media.total_episodes, 10) || 0) > 1 || (parseInt(media.episode, 10) || 0) > 1 || (parseInt(media.season, 10) || 0) > 1) {
     return true;
   }
-  if (media.source === 'anilibria' || media.source === 'anixart') {
+  if ((media.source === 'anilibria' || media.source === 'anixart') && media.media_type !== 'anime-movie') {
     return true;
   }
   // 2. Признаки сериала по категории, ссылке или заголовку
@@ -5114,13 +5153,8 @@ export function checkIfMediaIsSeries(media) {
       media.category === 'Аниме-сериал' || 
       media.category === 'Мультсериал' ||
       String(media.link || media.url || '').includes('serial') ||
-      String(media.link || media.url || '').includes('fan-serials') ||
-      /сезон\s*\d+/i.test(titleLower)) {
+      String(media.link || media.url || '').includes('fan-serials')) {
     return true;
-  }
-  // 3. Явные признаки фильма
-  if (media.media_type === 'movie' || media.type === 'movie' || media.media_type === 'cartoon' || media.category === 'Фильм' || media.category === 'фильм' || media.category === 'Мультфильм') {
-    return false;
   }
   return false;
 }
@@ -5173,12 +5207,24 @@ export function updateInPlayerEpisodeInfo() {
 
   if (badge) badge.textContent = epText;
   if (name) name.textContent = titleText;
-  if (epBtn) epBtn.style.display = isSeries ? 'inline-flex' : 'none';
-  if (bottomBar) bottomBar.style.display = isSeries ? 'flex' : 'none';
+  if (epBtn) {
+    if (isSeries) {
+      epBtn.style.display = 'inline-flex';
+    } else {
+      epBtn.style.setProperty('display', 'none', 'important');
+    }
+  }
+  if (bottomBar) {
+    if (isSeries) {
+      bottomBar.style.display = 'flex';
+    } else {
+      bottomBar.style.setProperty('display', 'none', 'important');
+    }
+  }
   if (sheet) {
     if (!isSeries) {
       sheet.classList.remove('is-open');
-      sheet.style.display = 'none';
+      sheet.style.setProperty('display', 'none', 'important');
     } else {
       sheet.style.display = '';
     }
@@ -9676,7 +9722,11 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   if (!container) return;
 
   const detType = detectClientMediaType(mediaDetails);
-  const isSeries = checkIfMediaIsSeries(mediaDetails) ||
+  const isMovie = !checkIfMediaIsSeries(mediaDetails) && !checkIfMediaIsSeries(currentMedia) &&
+                  (detType === 'movie' || detType === 'cartoon' || detType === 'anime-movie' ||
+                   mediaDetails.media_type === 'movie' || mediaDetails.category === 'Фильм' || mediaDetails.category === 'фильм');
+
+  const isSeries = !isMovie && (checkIfMediaIsSeries(mediaDetails) ||
                    checkIfMediaIsSeries(currentMedia) ||
                    detType === 'series' ||
                    detType === 'cartoon-series' ||
@@ -9686,11 +9736,10 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
                    mediaDetails.category === 'сериал' ||
                    mediaDetails.media_type === 'cartoon-series' || 
                    mediaDetails.media_type === 'anime-series' ||
-                   mediaDetails.source === 'anilibria' ||
-                   mediaDetails.source === 'anixart' ||
-                   (mediaDetails.seasons && mediaDetails.seasons.length > 0) ||
-                   (mediaDetails.episodes && mediaDetails.episodes.length > 0) ||
-                   (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0);
+                   ((mediaDetails.source === 'anilibria' || mediaDetails.source === 'anixart') && mediaDetails.media_type !== 'anime-movie') ||
+                   (mediaDetails.seasons && mediaDetails.seasons.length > 1) ||
+                   (mediaDetails.episodes && mediaDetails.episodes.length > 1) ||
+                   (quickBarSeriesData && quickBarSeriesData.type !== 'movie' && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0));
   if (typeof mediaDetails.seasons === 'number' && mediaDetails.seasons > 0) {
     mediaDetails.seasons = Array.from({ length: mediaDetails.seasons }, (_, i) => ({
       season_number: i + 1,

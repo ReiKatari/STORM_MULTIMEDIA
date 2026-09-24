@@ -714,17 +714,61 @@ export function detectClientMediaType(item) {
     'рыцарь семи королевств', 'a knight of the seven kingdoms',
     'сорвиголова: рождённый заново', 'сорвиголова: рожденный заново', 'daredevil: born again',
     'гангстерленд', 'mobland',
-    'белый лотос', 'the white lotus'
+    'белый лотос', 'the white lotus',
+    'монстры', 'монстр', 'монстр: история джеффри дамера', 'монстры: история', 'монстры: история лайла и эрика менендес', 'monsters', 'monster: the jeffrey dahmer story', 'monsters: the lyle and erik menendez story',
+    'менталист', 'the mentalist', 'mentalist',
+    'дневники вампира', 'the vampire diaries', 'vampire diaries', 'первородные', 'the originals', 'наследие', 'legacies',
+    'побег', 'побег из тюрьмы', 'prison break',
+    'анатомия страсти', "grey's anatomy", 'greys anatomy',
+    'форс-мажоры', 'suits', 'миллиарды', 'billions', 'наследники', 'succession',
+    'черный список', 'чёрный список', 'the blacklist', 'карточный домик', 'house of cards',
+    'вечность', 'forever', 'как я встретил вашу маму', 'how i met your mother',
+    'американская история ужасов', 'american horror story', 'американская история преступлений', 'american crime story',
+    'большая маленькая ложь', 'big little lies', 'молодой папа', 'the young pope', 'новый папа', 'the new pope',
+    'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
+    'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
+    'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
+    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
   ];
+
+  // Защита от мультфильмов со словом монстр/монстры
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => t === m || t.startsWith(m + ' ') || t.includes(m));
+
+  if (!isMonsterCartoonOrMovie) {
+    if (t === 'монстры' || t.startsWith('монстры ') || t.startsWith('монстры:') ||
+        t === 'монстр' || t.startsWith('монстр ') || t.startsWith('монстр:') ||
+        t === 'monsters' || t.startsWith('monsters ') || t === 'monster' || t.startsWith('monster ') ||
+        link.includes('monstr-istorija') || link.includes('menendez') || link.includes('dahmer')) {
+      return 'series';
+    }
+  }
+
+  if (t.includes('менталист') || t.includes('mentalist') || link.includes('mentalist')) {
+    return 'series';
+  }
+  if (t.includes('дневники вампира') || t.includes('vampire diaries') || link.includes('dnevniki-vampira')) {
+    return 'series';
+  }
 
   if (knownSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
     return 'series';
   }
 
+  // Если это явный фильм - не считаем его сериалом из-за season: 1 или episode: 1
+  const isExplicitMovie = (item.media_type === 'movie' || item.type === 'movie' || cat === 'фильм' || cat === 'movie' || item.category === 'Фильм');
+  if (isExplicitMovie) {
+    if ((parseInt(item.total_episodes, 10) || 0) <= 1 && (parseInt(item.season, 10) || 0) <= 1 && (!Array.isArray(item.seasons) || item.seasons.length <= 1)) {
+      return 'movie';
+    }
+  }
+
   const ep = parseInt(item.episode, 10) || 0;
   const totalEp = parseInt(item.total_episodes, 10) || parseInt(item.episodes_total, 10) || 0;
   const season = parseInt(item.season, 10) || 0;
-  if (ep > 0 || totalEp > 0 || season > 0 || (Array.isArray(item.seasons) && item.seasons.length > 0) || (Array.isArray(item.episodes) && item.episodes.length > 0)) {
+  if (ep > 1 || totalEp > 1 || season > 1 || (Array.isArray(item.seasons) && item.seasons.length > 1) || (Array.isArray(item.episodes) && item.episodes.length > 1)) {
     return 'series';
   }
 
