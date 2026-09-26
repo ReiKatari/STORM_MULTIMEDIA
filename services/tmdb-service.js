@@ -6,7 +6,7 @@
 import { getCache, setCache } from '../db.js';
 import { resolveMediaYear, isAnimeLinkOrTitle } from './fanfilm-service.js';
 
-const TMDB_API_KEY = 'REDACTED_TMDB_KEY';
+export const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 

@@ -126,11 +126,11 @@ export async function getAggregatedSchedule(week = 'current') {
   }
 
   // 3. TMDB Upcoming Movies (актуальные мировые кинопремьеры строго текущей недели)
-  try {
-    const tmdbRes = await fetch('https://api.themoviedb.org/3/movie/upcoming?api_key=REDACTED_TMDB_KEY&language=ru-RU&page=1', {
+    const tmdbKey = process.env.TMDB_API_KEY || '';
+    const tmdbRes = tmdbKey ? await fetch(`https://api.themoviedb.org/3/movie/upcoming?api_key=${tmdbKey}&language=ru-RU&page=1`, {
       headers: { 'User-Agent': 'STORM-Multimedia/1.0' },
       signal: AbortSignal.timeout(5000)
-    });
+    }) : { ok: false };
     if (tmdbRes.ok) {
       const tmdbData = await tmdbRes.json();
       if (Array.isArray(tmdbData.results)) {
