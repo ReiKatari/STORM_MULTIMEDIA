@@ -1738,6 +1738,8 @@ export function closePlayerModal() {
     if (jogBtn) jogBtn.classList.remove('active');
     isPlayerScreenLocked = false;
 
+    stopInvisibleEpisodeWatchTracker();
+
     if (iframeWatchInterval) {
       clearInterval(iframeWatchInterval);
       iframeWatchInterval = null;
@@ -3091,9 +3093,7 @@ function highlightActiveEpisodeInGrid(episodeNum) {
   gridEl.querySelectorAll('.series-episode-card').forEach(card => {
     const isAct = parseInt(card.dataset.epNum, 10) === episodeNum;
     card.classList.toggle('active', isAct);
-    if (isAct) {
-      card.classList.add('watched');
-    }
+    // Серия НЕ отмечается просмотренной при выборе — только после просмотра >= 50%
   });
 }
 
@@ -3127,7 +3127,8 @@ function selectQuickEpisode(episodeNum) {
   updateQuickIframeSrc();
 
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, quickBarActiveSeason, ep, true);
+    // Запускаем невидимый счетчик просмотра (серия будет отмечена только при просмотре >= 50%)
+    startInvisibleEpisodeWatchTracker(currentMedia, quickBarActiveSeason, ep);
   }
 
   showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${ep}`, 'info');
@@ -5312,7 +5313,7 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
   quickBarActiveSeason = sNum;
 
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, sNum, ep, true);
+    startInvisibleEpisodeWatchTracker(currentMedia, sNum, ep);
   }
 
   // 1. Универсальная быстрая панель серверов / FanFilm / RuTube / VK / Kodik
@@ -8031,8 +8032,236 @@ function renderPlayerUtilityButtons() {
 }
 
 // ==========================================================================
-// СИСТЕМА ОТСЛЕЖИВАНИЯ ПРОСМОТРЕННЫХ СЕРИЙ И ПОДСКАЗОК
+// НЕВИДИМЫЙ СЧЕТЧИК И ДИНАМИЧЕСКИЙ ТРЕКЕР ПРОСМОТРА СЕРИЙ (>= 50%)
+// Серия отмечается просмотренной ТОЛЬКО при достижении как минимум 50% хронометража.
+// Статус серии и сериала динамически обновляется на лету во всех компонентах DOM.
 // ==========================================================================
+let episodeWatchTrackerInterval = null;
+let activeTrackingMediaId = null;
+let activeTrackingSeason = 1;
+let activeTrackingEpisode = 1;
+let activeTrackingWatchedSeconds = 0;
+let activeTrackingDurationSeconds = 1440;
+let activeTrackingHasReached50 = false;
+let activeTrackingStorageKey = '';
+
+export function stopInvisibleEpisodeWatchTracker() {
+  if (episodeWatchTrackerInterval) {
+    clearInterval(episodeWatchTrackerInterval);
+    episodeWatchTrackerInterval = null;
+  }
+}
+
+export function parseDurationStringToSeconds(str) {
+  if (!str) return 0;
+  if (typeof str === 'number') return str > 300 ? Math.round(str) : Math.round(str * 60);
+  const s = String(str).toLowerCase().trim();
+  if (s.includes(':')) {
+    const parts = s.split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+  }
+  let total = 0;
+  const hMatch = s.match(/(\d+)\s*(?:ч|h|час)/);
+  if (hMatch) total += parseInt(hMatch[1], 10) * 3600;
+  const mMatch = s.match(/(\d+)\s*(?:м|m|мин)/);
+  if (mMatch) total += parseInt(mMatch[1], 10) * 60;
+  const sMatch = s.match(/(\d+)\s*(?:с|s|сек)/);
+  if (sMatch) total += parseInt(sMatch[1], 10);
+  if (total > 0) return total;
+  const num = parseInt(s, 10);
+  if (!isNaN(num) && num > 0) {
+    return num <= 300 ? num * 60 : num;
+  }
+  return 0;
+}
+
+export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeNum = 1) {
+  if (!media || !media.id) return;
+  stopInvisibleEpisodeWatchTracker();
+
+  activeTrackingMediaId = String(media.id);
+  activeTrackingSeason = Number(seasonNum) || 1;
+  activeTrackingEpisode = Number(episodeNum) || 1;
+  activeTrackingStorageKey = `storm_ep_watchtime_${activeTrackingMediaId}_s${activeTrackingSeason}_e${activeTrackingEpisode}`;
+
+  // Проверяем, не была ли серия УЖЕ отмечена просмотренной ранее
+  const watchedSet = getWatchedEpisodes(activeTrackingMediaId, activeTrackingSeason);
+  activeTrackingHasReached50 = watchedSet.has(activeTrackingEpisode);
+
+  // Считываем сохраненное время просмотра этой серии (если пользователь уже смотрел часть)
+  try {
+    activeTrackingWatchedSeconds = parseInt(localStorage.getItem(activeTrackingStorageKey) || '0', 10);
+    if (isNaN(activeTrackingWatchedSeconds) || activeTrackingWatchedSeconds < 0) {
+      activeTrackingWatchedSeconds = 0;
+    }
+  } catch (_) {
+    activeTrackingWatchedSeconds = 0;
+  }
+
+  // Определение хронометража серии (в секундах)
+  let resolvedDuration = 0;
+
+  // 1. Из нативного видеоэлемента
+  const video = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+  if (video && video.duration && !isNaN(video.duration) && isFinite(video.duration) && video.duration > 30) {
+    resolvedDuration = Math.round(video.duration);
+  }
+
+  // 2. Из перечня серий текущего сезона (ep.duration)
+  if (!resolvedDuration && Array.isArray(currentEpisodes) && currentEpisodes.length > 0) {
+    const epObj = currentEpisodes.find(e => (Number(e.episode || e.episode_number) === activeTrackingEpisode));
+    if (epObj?.duration) {
+      resolvedDuration = parseDurationStringToSeconds(epObj.duration);
+    }
+  }
+
+  // 3. Из данных медиа или быстрого бара
+  if (!resolvedDuration && media.duration) {
+    resolvedDuration = parseDurationStringToSeconds(media.duration);
+  }
+
+  // 4. Умный дефолт по типу медиа:
+  // Аниме: 24 минуты (1440 сек, 50% = 12 мин)
+  // Сериал: 45 минут (2700 сек, 50% = 22.5 мин)
+  // Фильм: 90 минут (5400 сек, 50% = 45 мин)
+  if (!resolvedDuration || resolvedDuration <= 30) {
+    const mType = media.media_type || '';
+    const genres = (Array.isArray(media.genres) ? media.genres.join(' ') : (media.genres || '')).toLowerCase();
+    if (mType.includes('anime') || genres.includes('аниме')) {
+      resolvedDuration = 24 * 60; // 1440
+    } else if (mType.includes('series') || media.seasons || quickBarSeriesData) {
+      resolvedDuration = 45 * 60; // 2700
+    } else {
+      resolvedDuration = 90 * 60; // 5400
+    }
+  }
+
+  activeTrackingDurationSeconds = resolvedDuration;
+
+  // Немедленная проверка: если сохраненное время уже >= 50%, отмечаем
+  check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+
+  // Запуск невидимого ежесекундного тикера
+  episodeWatchTrackerInterval = setInterval(() => {
+    const modal = document.getElementById('cinema-modal');
+    if (!modal || !modal.classList.contains('is-open')) {
+      stopInvisibleEpisodeWatchTracker();
+      return;
+    }
+    // Если пользователь свернул окно/вкладку — невидимый таймер на паузе
+    if (document.hidden) return;
+
+    // Нативный HTML5 видеоплеер
+    const currentVideo = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+    if (currentVideo) {
+      if (!currentVideo.paused && !currentVideo.ended) {
+        if (currentVideo.duration && isFinite(currentVideo.duration) && currentVideo.duration > 30) {
+          activeTrackingDurationSeconds = Math.round(currentVideo.duration);
+        }
+        activeTrackingWatchedSeconds = Math.round(currentVideo.currentTime || 0);
+        check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+      }
+    } else {
+      // Встраиваемый Iframe плеер (Kodik, Alloha, VideoCDN, FanFilm4K, RuTube, VK и др.)
+      activeTrackingWatchedSeconds += 1;
+      check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+    }
+
+    // Сохраняем прогресс каждые 5 секунд
+    if (activeTrackingWatchedSeconds % 5 === 0 && activeTrackingStorageKey) {
+      try {
+        localStorage.setItem(activeTrackingStorageKey, String(activeTrackingWatchedSeconds));
+      } catch (_) {}
+    }
+  }, 1000);
+}
+
+function check50PercentWatchCondition(watchedSec, totalSec) {
+  if (activeTrackingHasReached50 || !activeTrackingMediaId) return;
+  if (!totalSec || totalSec <= 0) totalSec = 1440;
+  const progressRatio = watchedSec / totalSec;
+
+  if (progressRatio >= 0.5) {
+    activeTrackingHasReached50 = true;
+    markEpisodeWatched(activeTrackingMediaId, activeTrackingSeason, activeTrackingEpisode, true);
+    showToast(`Серия ${activeTrackingEpisode} просмотрена более чем на 50% и отмечена`, 'success');
+  }
+}
+
+// Слушатель postMessage от встраиваемых плееров (Kodik, Alloha, Playerjs)
+if (typeof window !== 'undefined' && !window._stormPostMessageListenerAttached) {
+  window._stormPostMessageListenerAttached = true;
+  window.addEventListener('message', (event) => {
+    try {
+      let data = event.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (_) {}
+      }
+      if (data && typeof data === 'object') {
+        const time = Number(data.time || data.currentTime || data.value?.time);
+        const duration = Number(data.duration || data.value?.duration);
+        if (time > 0 && duration > 30) {
+          if (activeTrackingDurationSeconds <= 0 || activeTrackingDurationSeconds === 1440 || activeTrackingDurationSeconds === 2700) {
+            activeTrackingDurationSeconds = Math.round(duration);
+          }
+          activeTrackingWatchedSeconds = Math.max(activeTrackingWatchedSeconds, Math.round(time));
+          check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+        }
+      }
+    } catch (_) {}
+  });
+}
+
+export function updateEpisodeDOMElements(mediaId, seasonNum, episodeNum, watched) {
+  const epNum = Number(episodeNum) || 1;
+  const sNum = Number(seasonNum) || 1;
+
+  // 1. Карточка серии в основном списке серий (#series-episodes-grid)
+  const gridEl = document.getElementById('series-episodes-grid');
+  if (gridEl) {
+    const card = gridEl.querySelector(`.series-episode-card[data-ep-num="${epNum}"]`);
+    if (card) {
+      card.classList.toggle('watched', watched);
+      const isAct = card.classList.contains('active');
+      const chip = card.querySelector('.season-status-chip, .ep-status-toggle');
+      if (chip) {
+        chip.className = `season-status-chip ${watched ? 'completed' : (isAct ? 'watching' : 'planned')} ep-status-toggle`;
+        chip.textContent = watched ? '✓ Просмотрено' : (isAct ? '▶ Смотрю' : 'Не просмотрено');
+      }
+    }
+  }
+
+  // 2. Элемент серии в выезжающей шторке серий внутри плеера
+  const inplayerItems = document.querySelectorAll(`.inplayer-ep-item[data-ep-num="${epNum}"]`);
+  inplayerItems.forEach(item => {
+    const isAct = item.classList.contains('active');
+    item.classList.toggle('watched', watched);
+    let pill = item.querySelector('.inplayer-ep-status-pill');
+    if (!pill) {
+      pill = document.createElement('span');
+      pill.className = 'inplayer-ep-status-pill';
+      item.appendChild(pill);
+    }
+    if (isAct) {
+      pill.className = 'inplayer-ep-status-pill current';
+      pill.textContent = '▶ Смотрю';
+    } else if (watched) {
+      pill.className = 'inplayer-ep-status-pill watched';
+      pill.textContent = '✓';
+    } else {
+      pill.className = 'inplayer-ep-status-pill';
+      pill.textContent = '';
+    }
+  });
+
+  // 3. Выпадающие списки серий быстрой панели (QuickBar)
+  renderQuickBarDropdowns();
+
+  // 4. Вкладки сезонов (счетчик просмотренных серий "Сезон 1 (3/10)")
+  renderSeasonTabs();
+}
+
 function getWatchedEpisodes(mediaId, seasonNum = 1) {
   if (!mediaId) return new Set();
   try {
@@ -8078,6 +8307,9 @@ function markEpisodeWatched(mediaId, seasonOrEp, maybeEpisode, maybeWatched) {
     }
   } catch {}
 
+  // МГНОВЕННО обновляем DOM элементов серии, вкладок и быстрой панели без перезагрузки страницы
+  updateEpisodeDOMElements(mediaId, seasonNum, episodeNum, watched);
+
   evaluateAndSyncOverallSeriesStatus(mediaId);
 }
 
@@ -8115,34 +8347,39 @@ function evaluateAndSyncOverallSeriesStatus(mediaId) {
       totalExpectedEpisodes = Number(currentM.total_episodes);
     }
 
-    let newOverallStatus = null;
+    let newOverallStatus = 'watching';
     if (totalExpectedEpisodes > 0 && totalWatchedAcrossAll >= totalExpectedEpisodes) {
       newOverallStatus = 'completed';
     } else if (totalWatchedAcrossAll > 0) {
       newOverallStatus = 'watching';
+    } else {
+      newOverallStatus = 'planned';
     }
 
-    if (newOverallStatus) {
-      localStorage.setItem(`storm_status_${mediaId}`, newOverallStatus);
-      if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, newOverallStatus);
+    localStorage.setItem(`storm_status_${mediaId}`, newOverallStatus);
+    if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, newOverallStatus);
 
-      if (newOverallStatus === 'completed') {
-        const cw = localStorage.getItem('storm_continue_watching');
-        if (cw) {
-          try {
-            const list = JSON.parse(cw).filter(it => String(it.media_id) !== String(mediaId));
-            localStorage.setItem('storm_continue_watching', JSON.stringify(list));
-          } catch (_) {}
-        }
+    if (currentM) {
+      currentM.user_status = newOverallStatus;
+      renderStatusButtons(newOverallStatus);
+    }
+
+    if (newOverallStatus === 'completed') {
+      const cw = localStorage.getItem('storm_continue_watching');
+      if (cw) {
+        try {
+          const list = JSON.parse(cw).filter(it => String(it.media_id) !== String(mediaId));
+          localStorage.setItem('storm_continue_watching', JSON.stringify(list));
+        } catch (_) {}
       }
-
-      window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
-        detail: { mediaId, status: newOverallStatus }
-      }));
-      window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', {
-        detail: { mediaId }
-      }));
     }
+
+    window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+      detail: { mediaId, status: newOverallStatus }
+    }));
+    window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', {
+      detail: { mediaId }
+    }));
   } catch (e) {
     console.warn('[Player] Ошибка пересчета статуса сериала:', e);
   }
@@ -8721,9 +8958,9 @@ function playAnixartEpisode(episode) {
   currentActivePlayer = playerObj;
   updatePlayerTriggerInfo(playerObj);
 
-  // Отмечаем серию как просмотренную в хранилище для активного сезона
+  // Запускаем невидимый счетчик просмотра (серия будет отмечена только при просмотре >= 50%)
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, quickBarActiveSeason || 1, pos, true);
+    startInvisibleEpisodeWatchTracker(currentMedia, quickBarActiveSeason || 1, pos);
   }
 
   quickBarActiveEpisode = pos;
@@ -8811,6 +9048,13 @@ function renderStatusButtons(currentStatus) {
         markAllSeriesSeasonsAndEpisodes(currentMedia, 'planned');
         renderStatusButtons(null);
         renderQuickBarDropdowns();
+        if (typeof renderSeasonTabs === 'function') renderSeasonTabs();
+        if (typeof loadSeasonEpisodes === 'function') {
+          loadSeasonEpisodes(quickBarActiveSeason || 1, activeEpisodeNum || 1);
+        }
+        window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+          detail: { mediaId: currentMedia?.id, status: 'planned' }
+        }));
         showToast('Статус просмотра снят', 'info');
       } else {
         if (currentMedia) currentMedia.user_status = s.id;
@@ -8822,7 +9066,14 @@ function renderStatusButtons(currentStatus) {
         }
         renderStatusButtons(s.id);
         renderQuickBarDropdowns();
+        if (typeof renderSeasonTabs === 'function') renderSeasonTabs();
+        if (typeof loadSeasonEpisodes === 'function') {
+          loadSeasonEpisodes(quickBarActiveSeason || 1, activeEpisodeNum || 1);
+        }
         await saveBookmarkStatus(currentMedia, s.id);
+        window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+          detail: { mediaId: currentMedia?.id, status: s.id }
+        }));
         if (s.id === 'completed') {
           showToast('Сериал и все серии отмечены как просмотренные', 'success');
         }
@@ -10423,7 +10674,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         const tvId = mediaDetails.tmdb_id || (mediaDetails.source === 'tmdb' ? String(mediaDetails.id).replace('tmdb_', '') : '');
         const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
         try {
-          const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
+          const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`, {
+            signal: AbortSignal.timeout(6000)
+          });
           if (res.ok) {
             const data = await res.json();
             episodes = data.episodes || [];
@@ -10454,7 +10707,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       if ((mediaDetails.source === 'anixart' || mediaDetails.source === 'anilibria') && episodes.length > 0) {
         try {
           const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
-          const metaRes = await fetch(`/api/media/series-episodes?season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
+          const metaRes = await fetch(`/api/media/series-episodes?season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`, {
+            signal: AbortSignal.timeout(5000)
+          });
           if (metaRes.ok) {
             const metaData = await metaRes.json();
             if (metaData?.episodes && metaData.episodes.length > 0) {
@@ -10626,14 +10881,11 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           card.classList.add('active');
           activeEpisodeNum = epNum;
 
-          markEpisodeWatched(mediaDetails.id, seasonNum, epNum, true);
-          card.classList.add('watched');
           updateEpisodeSynopsis(epObj);
 
           showToast(`Выбрана серия ${epNum}: ${epObj?.name || ''}`, 'info');
           updateProgressState(epNum, episodes.length);
           renderSeasonTabs();
-          await syncOverallSeriesProgress(mediaDetails);
 
           // Обновляем быструю панель
           quickBarActiveSeason = seasonNum;
@@ -10641,6 +10893,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           renderQuickBarDropdowns();
 
           if (!currentMedia) currentMedia = mediaDetails;
+          startInvisibleEpisodeWatchTracker(currentMedia, seasonNum, epNum);
           playEpisodeByNumber(epNum, seasonNum);
         };
       });

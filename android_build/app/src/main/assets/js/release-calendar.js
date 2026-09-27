@@ -28,7 +28,7 @@ export function openLiveTvEpgModal() {
   openReleaseCalendarModal();
 }
 
-export const POSTER_FALLBACK_SVG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%230c1017"/><stop offset="100%" stop-color="%23141a24"/></linearGradient><linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%2300D2FF"/><stop offset="100%" stop-color="%2300F0FF"/></linearGradient></defs><rect width="300" height="450" fill="url(%23bg)"/><rect x="10" y="10" width="280" height="430" rx="10" fill="%230f141d" stroke="%231e2838" stroke-width="1.5"/><circle cx="150" cy="190" r="44" fill="%2300D2FF" fill-opacity="0.08" stroke="%2300D2FF" stroke-opacity="0.25" stroke-width="2"/><path d="M140 172 L168 190 L140 208 Z" fill="url(%23glow)"/><text x="150" y="270" fill="%2300D2FF" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="700" letter-spacing="1.5" text-anchor="middle">STORM CINEMA</text><text x="150" y="294" fill="%2364748b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="11" font-weight="500" text-anchor="middle">АФИША РЕЛИЗА</text></svg>';
+export const POSTER_FALLBACK_SVG = 'assets/favicon.svg';
 
 export function unwrapPosterUrl(url) {
   if (!url) return '';
@@ -182,7 +182,7 @@ async function renderCalendarContent(container) {
           <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'movies' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="movies">Премьеры</button>
         </div>
 
-        <!-- Фильтр студий и источников (LostFilm, AniLibria, Shikimori, TMDB, TVMaze) -->
+        <!-- Фильтр студий и источников (LostFilm, AniLibria, Shikimori, TMDB, TVMaze, AniXart) -->
         <div class="cal-source-filters" style="display: flex; gap: 6px; flex-wrap: wrap;">
           <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'all' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="all">Все студии</button>
           <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'lostfilm' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="lostfilm" title="Расписание зарубежных сериалов LostFilm">🎙️ LostFilm</button>
@@ -190,6 +190,7 @@ async function renderCalendarContent(container) {
           <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'shikimori' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="shikimori" title="Календарь онгоингов Shikimori">📺 Shikimori</button>
           <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'tmdb' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="tmdb" title="Мировые кинопремьеры и сериалы TMDB">🎬 TMDB / Кино</button>
           <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'tvmaze' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="tvmaze" title="Премиальный эфир телеканалов США/UK">🌐 TVMaze</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'anixart' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="anixart" title="Релизы и онгоинги AniXart">⚡ AniXart / Студии</button>
         </div>
       </div>
     </div>
@@ -279,12 +280,9 @@ async function loadAndRenderWeek(container) {
   const defaultItems = selectedWeek === 'next' ? DEFAULT_NEXT_WEEK : DEFAULT_CURRENT_WEEK;
   let scheduleItems = [...defaultItems];
 
-  // 1. Быстрая загрузка из локального кэша v112, если есть
+  // 1. Быстрая загрузка из локального кэша v113, если есть
   try {
-    localStorage.removeItem(`storm_cal_v108_${selectedWeek}`);
-    localStorage.removeItem(`storm_cal_v110_${selectedWeek}`);
-    localStorage.removeItem(`storm_cal_v111_${selectedWeek}`);
-    const localCached = localStorage.getItem(`storm_cal_v112_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v113_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -304,7 +302,7 @@ async function loadAndRenderWeek(container) {
         <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
           <div class="storm-spinner" style="width: 36px; height: 36px; border-width: 3px;"></div>
           <div style="font-size: 14px; font-weight: 700; color: #ffffff;">Синхронизация расписания онгоингов...</div>
-          <div style="font-size: 11.5px; color: var(--text-muted);">Получение актуальных серий из LostFilm, AniLibria, Shikimori и TMDB</div>
+          <div style="font-size: 11.5px; color: var(--text-muted);">Получение актуальных серий из LostFilm, AniLibria, Shikimori, TMDB и AniXart</div>
         </div>
       `;
     }
@@ -313,7 +311,7 @@ async function loadAndRenderWeek(container) {
   // 3. Фоновое обновление с сервера (актуализация эфира и премьер)
   try {
     const res = await fetch(`/api/media/schedule?week=${selectedWeek}`, {
-      signal: AbortSignal.timeout(6000)
+      signal: AbortSignal.timeout(12000)
     });
     if (res.ok) {
       const schedData = await res.json();
@@ -327,7 +325,7 @@ async function loadAndRenderWeek(container) {
         });
 
         try {
-          localStorage.setItem(`storm_cal_v112_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v113_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
         renderScheduleDaysAndGrid(container, combined, daysConfig);
@@ -378,6 +376,7 @@ function renderScheduleDaysAndGrid(container, allItems, daysConfig) {
       if (activeSourceFilter === 'shikimori') return it.source === 'shikimori' || it.studio?.toLowerCase().includes('shikimori');
       if (activeSourceFilter === 'tmdb') return it.source === 'tmdb' || it.studio?.toLowerCase().includes('red head sound') || it.studio?.toLowerCase().includes('tvshows');
       if (activeSourceFilter === 'tvmaze') return it.source === 'tvmaze';
+      if (activeSourceFilter === 'anixart') return it.source === 'anixart' || it.studio?.toLowerCase().includes('anixart');
       return true;
     });
   }

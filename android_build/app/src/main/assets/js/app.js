@@ -197,10 +197,9 @@ async function startStormApp() {
   // Динамическое автоматическое обновление закладок и списков без перезагрузки
   try {
     window.addEventListener('storm:bookmarks-updated', (e) => {
+      lastRenderedHomeKey = '';
       const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-      if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
-        loadCurrentTab();
-      } else if (e.detail?.deleted) {
+      if (e.detail?.deleted) {
         const deletedId = String(e.detail.mediaId || '');
         const deletedTitle = normalizeMediaTitle(e.detail.title || '');
         rawCatalogItems.forEach(x => {
@@ -208,15 +207,24 @@ async function startStormApp() {
             x.user_status = null;
           }
         });
-        renderFilteredCatalog();
+        updateCardsInDOM(deletedId, e.detail.title, null, false);
       } else if (e.detail?.mediaData && e.detail?.status) {
         const updatedId = String(e.detail.mediaData.id || e.detail.mediaData.media_id);
         const updatedTitle = normalizeMediaTitle(e.detail.mediaData.title || '');
+        const st = e.detail.status;
         rawCatalogItems.forEach(x => {
           if (String(x.id) === updatedId || (updatedTitle && normalizeMediaTitle(x.title, x.original_title) === updatedTitle)) {
-            x.user_status = e.detail.status;
+            x.user_status = st;
           }
         });
+        updateCardsInDOM(updatedId, e.detail.mediaData.title, st, st === 'completed');
+      }
+
+      if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
+        loadCurrentTab();
+      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+        renderHomeView(rawCatalogItems);
+      } else {
         renderFilteredCatalog();
       }
     });
@@ -224,14 +232,19 @@ async function startStormApp() {
     window.addEventListener('storm:series-status-changed', (e) => {
       const { mediaId, status } = e.detail || {};
       if (!mediaId || !status) return;
+      lastRenderedHomeKey = '';
       const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
       rawCatalogItems.forEach(x => {
         if (String(x.id) === String(mediaId)) {
           x.user_status = status;
         }
       });
+      updateCardsInDOM(mediaId, '', status, status === 'completed');
+
       if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
+      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+        renderHomeView(rawCatalogItems);
       } else {
         renderFilteredCatalog();
       }
@@ -2600,13 +2613,71 @@ export function openHomeSectionsModal() {
   modal.classList.add('is-open');
 }
 
+export function updateCardsInDOM(mediaId, title = '', status = null, isWatched = false) {
+  if (!mediaId && !title) return;
+  const mIdStr = String(mediaId || '');
+  const normTitle = normalizeMediaTitle(title || '');
+
+  const cards = document.querySelectorAll('.media-card, .media-detailed-card');
+  cards.forEach(card => {
+    const cardId = String(card.dataset.id || '');
+    let matches = (mIdStr && cardId === mIdStr);
+    if (!matches && normTitle) {
+      const cardTitleEl = card.querySelector('.media-card-title, .media-detailed-title');
+      if (cardTitleEl && normalizeMediaTitle(cardTitleEl.textContent || '') === normTitle) {
+        matches = true;
+      }
+    }
+    if (!matches) return;
+
+    // 1. Обновляем плашку статуса (В планах, Смотрю, Просмотрено и т.д.)
+    const cardPoster = card.querySelector('.media-card-poster');
+    if (cardPoster) {
+      const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
+      if (oldCardBadge) oldCardBadge.remove();
+      if (status && status !== 'none') {
+        const overlay = cardPoster.querySelector('.media-card-overlay');
+        const badgeHtml = `<div class="media-card-status-badge">${getStatusBadge(status)}</div>`;
+        if (overlay) {
+          overlay.insertAdjacentHTML('beforebegin', badgeHtml);
+        } else {
+          cardPoster.insertAdjacentHTML('beforeend', badgeHtml);
+        }
+      }
+    }
+
+    const detailedHeaderDiv = card.querySelector('.media-detailed-header > div:last-child');
+    if (detailedHeaderDiv) {
+      const oldBadge = detailedHeaderDiv.querySelector('.media-card-status-badge');
+      if (oldBadge) oldBadge.remove();
+      if (status && status !== 'none') {
+        detailedHeaderDiv.insertAdjacentHTML('beforeend', `<div class="media-card-status-badge">${getStatusBadge(status)}</div>`);
+      }
+    }
+
+    // 2. Обновляем галочку просмотрено (✓)
+    const topRight = card.querySelector('.media-card-top-right');
+    if (topRight) {
+      const oldTag = topRight.querySelector('.media-card-watched-tag');
+      const shouldBeWatched = isWatched || status === 'completed';
+      if (shouldBeWatched) {
+        if (!oldTag) {
+          topRight.insertAdjacentHTML('afterbegin', '<span class="media-card-watched-tag" title="Просмотрено">✓</span>');
+        }
+      } else {
+        if (oldTag) oldTag.remove();
+      }
+    }
+  });
+}
+
 let lastRenderedHomeKey = '';
 
 function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
-  const currentHomeKey = `${(items || []).map(x => String(x.id || x.media_id)).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}`;
+  const currentHomeKey = `${(items || []).map(x => `${x.id || x.media_id}:${x.user_status || ''}`).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}`;
   if (container.dataset.renderedView === 'home' && lastRenderedHomeKey === currentHomeKey) {
     return;
   }

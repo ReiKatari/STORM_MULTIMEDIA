@@ -2947,6 +2947,13 @@ app.get('/api/media/series-episodes', async (req, res) => {
       resolvedTvId = null;
     }
 
+    const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+    const cacheKey = `episodes_cache_${resolvedTvId || ''}_s${sNum}_${cleanTitle.toLowerCase()}`;
+    const cachedData = getCache('series_episodes', cacheKey);
+    if (cachedData && Array.isArray(cachedData.episodes) && cachedData.episodes.length > 0) {
+      return res.json(cachedData);
+    }
+
     if (resolvedTvId && !isNaN(Number(String(resolvedTvId).replace('tmdb_', '')))) {
       try {
         const cleanId = String(resolvedTvId).replace('tmdb_', '');
@@ -2959,7 +2966,6 @@ app.get('/api/media/series-episodes', async (req, res) => {
     // Если по tvId ничего не найдено или tvId не был указан, выполняем умный поиск сериала по названию
     if ((!data.episodes || data.episodes.length === 0) && title) {
       try {
-        const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
         let fallbackTvId = null;
         if (cleanTitle.toLowerCase().includes('ричер') || cleanTitle.toLowerCase().includes('reacher')) {
           fallbackTvId = '108978';
@@ -2983,7 +2989,7 @@ app.get('/api/media/series-episodes', async (req, res) => {
 
     // Если даже после поиска серии не найдены, синтезируем качественные слоты серий для гарантированной работы плеера
     if (!data.episodes || data.episodes.length === 0) {
-      const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim() || 'Сериал';
+      const fallbackTitle = cleanTitle || 'Сериал';
       const fallbackCount = 8;
       data.episodes = Array.from({ length: fallbackCount }, (_, i) => ({
         episode_number: i + 1,
@@ -2992,9 +2998,13 @@ app.get('/api/media/series-episodes', async (req, res) => {
         still_path: null,
         duration: '45 мин.',
         air_date: '',
-        overview: `Серия ${i + 1}. Смотрите ${i + 1}-ю серию проекта «${cleanTitle}» в высоком разрешении со студийным переводом и субтитрами.`
+        overview: `Серия ${i + 1}. Смотрите ${i + 1}-ю серию проекта «${fallbackTitle}» в высоком разрешении со студийным переводом и субтитрами.`
       }));
       data.overview = `Сезон ${sNum}: официальный сезон из ${fallbackCount} серий.`;
+    }
+
+    if (data && Array.isArray(data.episodes) && data.episodes.length > 0) {
+      setCache('series_episodes', cacheKey, data, 86400 * 7);
     }
 
     res.json(data);
