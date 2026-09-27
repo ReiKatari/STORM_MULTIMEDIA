@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>STORM REMOTE — Пульт управления</title>
+  <title>STORM MOBILE REMOTE 2.0 — Пульт управления</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="styles/main.css">
   <style>
@@ -18,6 +18,7 @@
       box-sizing: border-box;
       touch-action: manipulation;
       user-select: none;
+      font-family: system-ui, -apple-system, sans-serif;
     }
     .remote-header {
       display: flex;
@@ -28,18 +29,43 @@
     }
     .remote-title {
       font-size: 16px;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--accent, #00d2ff);
       display: flex;
       align-items: center;
       gap: 8px;
     }
+    .remote-mode-switch {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 4px;
+      margin-top: 12px;
+    }
+    .remote-mode-btn {
+      flex: 1;
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .remote-mode-btn.active {
+      background: var(--accent, #00d2ff);
+      color: #000;
+    }
+
     .remote-dpad-container {
       flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 20px 0;
+      margin: 14px 0;
     }
     .remote-dpad {
       position: relative;
@@ -75,24 +101,68 @@
     .dpad-right { top: 75px; right: 10px; width: 50px; height: 70px; }
     .dpad-center { top: 75px; left: 75px; width: 70px; height: 70px; border-radius: 50%; font-weight: 800; font-size: 16px; background: rgba(0, 210, 255, 0.15); border-color: var(--accent, #00d2ff); }
 
+    /* Touchpad view */
+    .remote-touchpad-container {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 14px 0;
+    }
+    .remote-touchpad {
+      width: 100%;
+      height: 220px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 2px dashed rgba(0, 210, 255, 0.4);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 600;
+      touch-action: none;
+    }
+    .remote-touchpad:active {
+      border-color: var(--accent, #00d2ff);
+      background: rgba(0, 210, 255, 0.06);
+    }
+
+    /* Volume bar */
+    .remote-volume-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+    }
+    .remote-volume-slider {
+      flex: 1;
+      accent-color: var(--accent, #00d2ff);
+      height: 6px;
+    }
+
     .remote-controls-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-bottom: 16px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
     }
     .remote-ctrl-btn {
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 12px;
       color: #fff;
-      padding: 14px 6px;
-      font-size: 14px;
+      padding: 10px 4px;
+      font-size: 11.5px;
       font-weight: 600;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       cursor: pointer;
     }
     .remote-ctrl-btn:active {
@@ -108,12 +178,17 @@
 <body>
   <div class="remote-header">
     <div class="remote-title">
-      <span>📱</span> STORM REMOTE
+      <span>📱</span> STORM REMOTE 2.0
     </div>
     <span id="remote-status-badge" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; background: rgba(0, 255, 102, 0.15); color: #00ff66;">🟢 Подключено</span>
   </div>
 
-  <div class="remote-dpad-container">
+  <div class="remote-mode-switch">
+    <button class="remote-mode-btn active" id="mode-dpad-btn">🕹️ D-Pad пульт</button>
+    <button class="remote-mode-btn" id="mode-touchpad-btn">🖱️ Сенсорный тачпад</button>
+  </div>
+
+  <div class="remote-dpad-container" id="dpad-view">
     <div class="remote-dpad">
       <button class="dpad-btn dpad-up" data-action="up">▲</button>
       <button class="dpad-btn dpad-down" data-action="down">▼</button>
@@ -123,37 +198,58 @@
     </div>
   </div>
 
+  <div class="remote-touchpad-container" id="touchpad-view">
+    <div class="remote-touchpad" id="virtual-touchpad">
+      Проведите пальцем для навигации • Нажмите для OK
+    </div>
+  </div>
+
+  <div class="remote-volume-box">
+    <span>🔈</span>
+    <input type="range" class="remote-volume-slider" id="remote-vol-slider" min="0" max="100" value="80">
+    <span>🔊</span>
+  </div>
+
   <div class="remote-controls-grid">
     <button class="remote-ctrl-btn" data-action="back">
-      <span style="font-size: 18px;">↩</span>
+      <span style="font-size: 16px;">↩</span>
       <span>Назад</span>
     </button>
     <button class="remote-ctrl-btn" data-action="play_pause">
-      <span style="font-size: 18px;">⏯</span>
+      <span style="font-size: 16px;">⏯</span>
       <span>Пауза</span>
     </button>
     <button class="remote-ctrl-btn" data-action="home">
-      <span style="font-size: 18px;">🏠</span>
+      <span style="font-size: 16px;">🏠</span>
       <span>Домой</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="toggle_fullscreen">
+      <span style="font-size: 16px;">⛶</span>
+      <span>Экран</span>
     </button>
 
     <button class="remote-ctrl-btn" data-action="seek_back">
-      <span style="font-size: 18px;">⏪</span>
+      <span style="font-size: 16px;">⏪</span>
       <span>-10 сек</span>
     </button>
     <button class="remote-ctrl-btn" data-action="mute">
-      <span style="font-size: 18px;">🔇</span>
+      <span style="font-size: 16px;">🔇</span>
       <span>Звук</span>
     </button>
     <button class="remote-ctrl-btn" data-action="seek_forward">
-      <span style="font-size: 18px;">⏩</span>
+      <span style="font-size: 16px;">⏩</span>
       <span>+10 сек</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="toggle_ambilight">
+      <span style="font-size: 16px;">🌈</span>
+      <span>Аура</span>
     </button>
   </div>
 
   <div class="remote-search-wrap">
-    <input type="text" id="remote-search-input" class="storm-input" placeholder="Поиск на большом экране..." style="flex: 1; font-size: 14px; padding: 10px;">
-    <button id="remote-search-btn" class="storm-btn storm-btn-primary" style="padding: 10px 16px;">🔍</button>
+    <input type="text" id="remote-search-input" class="storm-input" placeholder="Поиск на ТВ с телефона..." style="flex: 1; font-size: 14px; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: #fff;">
+    <button id="remote-voice-btn" class="storm-btn storm-btn-secondary" style="padding: 10px 14px; border-radius: 10px;" title="Голосовой ввод">🎤</button>
+    <button id="remote-search-btn" class="storm-btn storm-btn-primary" style="padding: 10px 16px; border-radius: 10px;">🔍</button>
   </div>
 
   <script>
@@ -166,13 +262,19 @@
       ws = new WebSocket(`${proto}//${window.location.host}/ws/rooms?code=${encodeURIComponent(session)}`);
 
       ws.onopen = () => {
-        document.getElementById('remote-status-badge').textContent = '🟢 В сети';
-        document.getElementById('remote-status-badge').style.color = '#00ff66';
+        const badge = document.getElementById('remote-status-badge');
+        if (badge) {
+          badge.textContent = '🟢 В сети';
+          badge.style.color = '#00ff66';
+        }
       };
 
       ws.onclose = () => {
-        document.getElementById('remote-status-badge').textContent = '🔴 Переподключение...';
-        document.getElementById('remote-status-badge').style.color = '#ff4444';
+        const badge = document.getElementById('remote-status-badge');
+        if (badge) {
+          badge.textContent = '🔴 Переподключение...';
+          badge.style.color = '#ff4444';
+        }
         setTimeout(connectWs, 2000);
       };
     }
@@ -186,15 +288,74 @@
           ...extra
         }));
       }
-      if (navigator.vibrate) navigator.vibrate(30);
+      if (navigator.vibrate) navigator.vibrate(20);
     }
 
+    // Кнопки D-Pad и управления
     document.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', () => {
         sendRemoteAction(btn.dataset.action);
       });
     });
 
+    // Переключение режимов: D-Pad / Touchpad
+    const dpadView = document.getElementById('dpad-view');
+    const touchpadView = document.getElementById('touchpad-view');
+    const modeDpadBtn = document.getElementById('mode-dpad-btn');
+    const modeTouchpadBtn = document.getElementById('mode-touchpad-btn');
+
+    modeDpadBtn.onclick = () => {
+      modeDpadBtn.classList.add('active');
+      modeTouchpadBtn.classList.remove('active');
+      dpadView.style.display = 'flex';
+      touchpadView.style.display = 'none';
+    };
+
+    modeTouchpadBtn.onclick = () => {
+      modeTouchpadBtn.classList.add('active');
+      modeDpadBtn.classList.remove('active');
+      dpadView.style.display = 'none';
+      touchpadView.style.display = 'flex';
+    };
+
+    // Сенсорный тачпад
+    const touchpad = document.getElementById('virtual-touchpad');
+    let tpStartX = 0, tpStartY = 0, isMoved = false;
+
+    touchpad.addEventListener('touchstart', (e) => {
+      tpStartX = e.touches[0].clientX;
+      tpStartY = e.touches[0].clientY;
+      isMoved = false;
+    }, { passive: true });
+
+    touchpad.addEventListener('touchmove', (e) => {
+      const dx = e.touches[0].clientX - tpStartX;
+      const dy = e.touches[0].clientY - tpStartY;
+      if (Math.abs(dx) > 30 || Math.abs(dy) > 30) {
+        isMoved = true;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          sendRemoteAction(dx > 0 ? 'right' : 'left');
+        } else {
+          sendRemoteAction(dy > 0 ? 'down' : 'up');
+        }
+        tpStartX = e.touches[0].clientX;
+        tpStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    touchpad.addEventListener('touchend', () => {
+      if (!isMoved) {
+        sendRemoteAction('enter');
+      }
+    });
+
+    // Регулятор громкости
+    const volSlider = document.getElementById('remote-vol-slider');
+    volSlider.addEventListener('input', (e) => {
+      sendRemoteAction('volume', { level: e.target.value });
+    });
+
+    // Поиск
     const searchInput = document.getElementById('remote-search-input');
     const searchBtn = document.getElementById('remote-search-btn');
     const doSearch = () => {
@@ -208,6 +369,33 @@
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doSearch();
     });
+
+    // Голосовой ввод через Web Speech API
+    const voiceBtn = document.getElementById('remote-voice-btn');
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognizer = new SpeechRecognition();
+      recognizer.lang = 'ru-RU';
+      recognizer.interimResults = false;
+
+      recognizer.onresult = (e) => {
+        const text = e.results[0][0].transcript;
+        if (text) {
+          searchInput.value = text;
+          doSearch();
+        }
+      };
+
+      voiceBtn.onclick = () => {
+        voiceBtn.style.background = '#ef4444';
+        recognizer.start();
+      };
+      recognizer.onend = () => {
+        voiceBtn.style.background = '';
+      };
+    } else {
+      voiceBtn.style.display = 'none';
+    }
 
     connectWs();
   </script>

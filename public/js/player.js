@@ -1271,6 +1271,17 @@ export function adjustCinemaModalScale() {
   const vw = window.innerWidth || document.documentElement.clientWidth;
   if (!vh || vh <= 0) return;
 
+  // На смартфонах и компактных экранах фиксируем плеер по ширине экрана и соотношению 16:9
+  if (vw <= 768) {
+    const mobilePlayerW = Math.min(vw, 768);
+    const mobilePlayerH = Math.round(mobilePlayerW * (9 / 16));
+    modal.style.setProperty('--cinema-player-max-h', `${mobilePlayerH}px`);
+    modal.style.setProperty('--cinema-player-max-w', '100%');
+    modal.style.setProperty('--cinema-poster-max-h', '180px');
+    modal.style.setProperty('--cinema-side-max-h', 'none');
+    return;
+  }
+
   const headerEl = modal.querySelector('.storm-modal-header');
   const headerH = (headerEl && headerEl.offsetHeight > 0) ? headerEl.offsetHeight : 40;
 
@@ -1461,7 +1472,12 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const isLandyshiMedia = mediaItem.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || mediaItem.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
-    if (isLandyshiMedia) {
+    const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
+    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
+    const fourKInitial = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isWorking(p));
+    if (fourKInitial) {
+      initialChoice = fourKInitial;
+    } else if (isLandyshiMedia) {
       initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
@@ -1497,6 +1513,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
     status_label: '🟢 Онлайн'
   };
   updatePlayerTriggerInfo(currentActivePlayer);
+  requestScreenWakeLock();
 
   try {
     // Получаем детальные данные с сервера с увеличенным таймаутом 12000мс
@@ -1612,9 +1629,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
           const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
           const preferStableKodik = itemYr < 2020;
 
-          const isLandyshiItem = currentMedia?.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || currentMedia?.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
-          const isDomesticItem = isDomesticContent(currentMedia, cleanTitle);
-          if (isLandyshiItem) {
+          // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
+          const fourKPlayer = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isWorking(p));
+          if (fourKPlayer) {
+            defaultPlayer = fourKPlayer;
+          } else if (isLandyshiItem) {
             defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
               || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
               || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
@@ -1651,10 +1670,19 @@ export async function openPlayerModal(mediaItem, options = {}) {
       }
     }
 
-    // Рендерим секцию рецензий со спойлер-блоками
+    // Рендерим секцию «В ролях и создатели» в стиле Luno (горизонтальная карусель, фото w500, роли)
+    renderCastAndCrewCarousel(currentMedia);
+
+    // Рендерим секцию рецензий со спойлер-блоками и WYSIWYG
     const reviewsContainer = document.getElementById('cinema-reviews-container');
     if (reviewsContainer) {
       renderReviewsSection(reviewsContainer, currentMedia);
+    }
+
+    // Инициализация мобильных жестов сенсорного экрана (двойной тап перемотки, свайпы)
+    const playerWrapper = document.getElementById('cinema-player-wrapper');
+    if (playerWrapper) {
+      initPlayerTouchGestures(playerWrapper);
     }
   } catch (err) {
     console.error('Ошибка модального окна плеера:', err);
@@ -1678,6 +1706,7 @@ export function closePlayerModal() {
     const fBtn = document.getElementById('inplayer-focus-btn');
     if (fBtn) fBtn.classList.remove('active');
     stopAmbilight();
+    releaseScreenWakeLock();
     clearPlayerUrl();
     try {
       sessionStorage.removeItem('storm_active_cinema_media');
@@ -1762,6 +1791,15 @@ function renderPlayerSources(players) {
     if (!p || !p.url) return false;
     if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
     return true;
+  });
+
+  // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) всегда в самом верху списка!
+  validPlayers.sort((a, b) => {
+    const aIs4k = a.id === 'fanfilm4k_uhd' || a.id === 'fanfilm_4k' || a.quality === '4K UHD' || (typeof a.name === 'string' && a.name.includes('4K'));
+    const bIs4k = b.id === 'fanfilm4k_uhd' || b.id === 'fanfilm_4k' || b.quality === '4K UHD' || (typeof b.name === 'string' && b.name.includes('4K'));
+    if (aIs4k && !bIs4k) return -1;
+    if (!aIs4k && bIs4k) return 1;
+    return 0;
   });
 
   // Если список плееров пуст, гарантируем доступный промо-трейлер (YouTube)
@@ -3381,7 +3419,7 @@ function playStreamUrl(url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         ${isVkPlayer ? `
           <button type="button" class="storm-unmute-btn" id="storm-unmute-btn" title="Включить звук VK Видео">
             <span class="unmute-icon">🔊</span>
@@ -4443,10 +4481,31 @@ function startAmbilightLoop(video) {
         r = rgb.r; g = rgb.g; b = rgb.b;
       }
     } else {
-      // Плавный динамический спектральный перелив для Iframe или паузы
-      const hue = (Date.now() / 40) % 360;
-      const rgb = hslToRgb(hue / 360, 0.9, 0.55);
-      r = rgb.r; g = rgb.g; b = rgb.b;
+      // Улучшенный кинематографичный Ambilight: адаптация под атмосферу жанра релиза
+      let atmosColor = null;
+      if (currentMedia) {
+        const genres = (currentMedia.genres || []).map(g => (typeof g === 'string' ? g : g.name || '').toLowerCase());
+        if (genres.some(g => g.includes('ужас') || g.includes('триллер'))) {
+          atmosColor = { r: 220, g: 38, b: 38 }; // мистический кроваво-красный
+        } else if (genres.some(g => g.includes('фантаст') || g.includes('кибер'))) {
+          atmosColor = { r: 0, g: 240, b: 255 }; // неоновый циан
+        } else if (genres.some(g => g.includes('фэнтези') || g.includes('приключ'))) {
+          atmosColor = { r: 245, g: 158, b: 11 }; // янтарно-золотой
+        } else if (genres.some(g => g.includes('боевик') || g.includes('криминал'))) {
+          atmosColor = { r: 255, g: 107, b: 74 }; // закатно-огненный
+        }
+      }
+
+      if (atmosColor) {
+        const pulse = 0.88 + 0.12 * Math.sin(Date.now() / 1100);
+        r = Math.round(atmosColor.r * pulse);
+        g = Math.round(atmosColor.g * pulse);
+        b = Math.round(atmosColor.b * pulse);
+      } else {
+        const hue = (Date.now() / 50) % 360;
+        const rgb = hslToRgb(hue / 360, 0.85, 0.55);
+        r = rgb.r; g = rgb.g; b = rgb.b;
+      }
     }
 
     const aura = document.getElementById('player-ambilight-aura');
@@ -4455,7 +4514,13 @@ function startAmbilightLoop(video) {
       const blur = ambilightSettings.blur;
       aura.classList.add('active');
       aura.style.opacity = `${alpha}`;
-      aura.style.boxShadow = `0 0 ${blur}px rgba(${r}, ${g}, ${b}, 0.9), 0 0 ${Math.round(blur * 1.5)}px rgba(${r}, ${g}, ${b}, 0.55), inset 0 0 ${Math.round(blur * 0.5)}px rgba(${r}, ${g}, ${b}, 0.35)`;
+      aura.style.boxShadow = `
+        0 -18px ${blur}px rgba(${r}, ${g}, ${b}, 0.5),
+        0 18px ${blur}px rgba(${r}, ${g}, ${b}, 0.6),
+        -24px 0 ${Math.round(blur * 1.3)}px rgba(${r}, ${g}, ${b}, 0.55),
+        24px 0 ${Math.round(blur * 1.3)}px rgba(${r}, ${g}, ${b}, 0.55),
+        inset 0 0 ${Math.round(blur * 0.4)}px rgba(${r}, ${g}, ${b}, 0.35)
+      `;
     }
 
     sendSmartLightsFrame(r, g, b);
@@ -6798,12 +6863,167 @@ export function getNextEpisodeData() {
   return null;
 }
 
+// ==========================================
+// БЛОКИРОВКА ЗАСЫПАНИЯ ЭКРАНА (SCREEN WAKE LOCK API)
+// ==========================================
+let screenWakeLock = null;
+
+export async function requestScreenWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      if (!screenWakeLock) {
+        screenWakeLock = await navigator.wakeLock.request('screen');
+        screenWakeLock.addEventListener('release', () => {
+          screenWakeLock = null;
+        });
+      }
+    } catch (err) {
+      console.warn('[WakeLock]:', err.message);
+    }
+  }
+}
+
+export function releaseScreenWakeLock() {
+  if (screenWakeLock) {
+    try {
+      screenWakeLock.release();
+    } catch {}
+    screenWakeLock = null;
+  }
+}
+
+// ==========================================
+// МОБИЛЬНЫЕ СЕНСОРНЫЕ ЖЕСТЫ И ТАКТИЛЬНАЯ ОТДАЧА (HAPTICS)
+// ==========================================
+let playerBrightnessLevel = 100;
+
+export function initPlayerTouchGestures(wrapper) {
+  if (!wrapper || wrapper.dataset.hasTouchGestures) return;
+  wrapper.dataset.hasTouchGestures = 'true';
+
+  let lastTapTime = 0;
+  let lastTapX = 0;
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isSwiping = false;
+
+  wrapper.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      isSwiping = false;
+    }
+  }, { passive: true });
+
+  wrapper.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1) return;
+    const curX = e.touches[0].clientX;
+    const curY = e.touches[0].clientY;
+    const deltaX = curX - touchStartX;
+    const deltaY = curY - touchStartY;
+
+    if (Math.abs(deltaY) > 22 && Math.abs(deltaY) > Math.abs(deltaX) * 1.4) {
+      isSwiping = true;
+      const rect = wrapper.getBoundingClientRect();
+      const isLeft = (touchStartX - rect.left) < rect.width * 0.45;
+      const step = deltaY < 0 ? 3 : -3;
+
+      if (isLeft) {
+        playerBrightnessLevel = Math.min(150, Math.max(30, playerBrightnessLevel + step));
+        const videoOrIframe = wrapper.querySelector('video, iframe');
+        if (videoOrIframe) {
+          videoOrIframe.style.filter = `brightness(${playerBrightnessLevel}%)`;
+        }
+        showTouchGesturePill(`☀️ Яркость: ${playerBrightnessLevel}%`);
+      } else {
+        const video = wrapper.querySelector('video');
+        if (video) {
+          video.volume = Math.min(1, Math.max(0, video.volume + (step > 0 ? 0.04 : -0.04)));
+          showTouchGesturePill(`🔊 Громкость: ${Math.round(video.volume * 100)}%`);
+        }
+      }
+    }
+  }, { passive: true });
+
+  wrapper.addEventListener('touchend', () => {
+    if (isSwiping) return;
+
+    const now = Date.now();
+    const tapX = touchStartX;
+    const rect = wrapper.getBoundingClientRect();
+
+    if (now - lastTapTime < 320 && Math.abs(tapX - lastTapX) < 45) {
+      const relX = tapX - rect.left;
+      if (relX < rect.width * 0.38) {
+        handlePlayerTvSeek(-10);
+        showTouchGestureRipple('left', '⏪ -10 сек');
+        if (navigator.vibrate) navigator.vibrate(15);
+      } else if (relX > rect.width * 0.62) {
+        handlePlayerTvSeek(10);
+        showTouchGestureRipple('right', '⏩ +10 сек');
+        if (navigator.vibrate) navigator.vibrate(15);
+      }
+      lastTapTime = 0;
+      return;
+    }
+
+    lastTapTime = now;
+    lastTapX = tapX;
+  });
+}
+
+function showTouchGesturePill(text) {
+  let pill = document.getElementById('player-touch-gesture-pill');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'player-touch-gesture-pill';
+    pill.className = 'player-touch-gesture-pill';
+    const wrapper = document.getElementById('cinema-player-wrapper');
+    if (wrapper) wrapper.appendChild(pill);
+  }
+  pill.textContent = text;
+  pill.classList.add('visible');
+  clearTimeout(pill._timer);
+  pill._timer = setTimeout(() => {
+    pill.classList.remove('visible');
+  }, 900);
+}
+
+function showTouchGestureRipple(side, text) {
+  const wrapper = document.getElementById('cinema-player-wrapper');
+  if (!wrapper) return;
+  const ripple = document.createElement('div');
+  ripple.className = `player-touch-ripple ripple-${side}`;
+  ripple.innerHTML = `<span class="ripple-text">${text}</span>`;
+  wrapper.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 700);
+}
+
+// ==========================================
+// УПРЕЖДАЮЩАЯ ФОНОВАЯ БУФЕРИЗАЦИЯ СЛЕДУЮЩЕЙ СЕРИИ (PRE-FETCHING ENGINE)
+// ==========================================
 function triggerNextEpisodePrebuffer() {
   try {
     const nextEp = getNextEpisodeData();
     if (!nextEp) return;
+
+    // 1. Потоковое кеширование для HLS / MP4
     if (currentMedia?.source === 'anilibria' && nextEp.streamUrl) {
       fetch(nextEp.streamUrl, { method: 'HEAD', priority: 'low' }).catch(() => {});
+    }
+
+    // 2. Фоновый запрос к структуре серий
+    if (quickBarBaseUrl) {
+      const curMediaId = currentMedia?.id || '';
+      const mediaTitle = currentMedia?.title || currentMedia?.name || '';
+      const mediaTmdbId = currentMedia?.tmdb_id || '';
+      fetch(`/api/player/series-options?url=${encodeURIComponent(quickBarBaseUrl)}&title=${encodeURIComponent(mediaTitle)}&mediaId=${encodeURIComponent(curMediaId)}&tmdbId=${encodeURIComponent(mediaTmdbId)}&season=${nextEp.season || 1}&episode=${nextEp.episode || 1}`, { priority: 'low' }).catch(() => {});
+    }
+
+    // 3. Предзагрузка стоп-кадра следующего эпизода
+    if (nextEp.still && String(nextEp.still).startsWith('http')) {
+      const img = new Image();
+      img.src = nextEp.still;
     }
   } catch (_) {}
 }
@@ -8539,7 +8759,7 @@ function playAnixartEpisode(episode) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -9538,45 +9758,84 @@ export async function renderFranchiseOrder(mediaItem) {
     const currentTitleNorm = (mediaItem.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
     const currentIdStr = String(mediaItem.id || '');
 
-    currentFranchiseActiveIndex = currentFranchiseItems.findIndex(it => {
-      if (String(it.id) === currentIdStr || String(it.tmdb_id) === currentIdStr) return true;
-      const itTitleNorm = (it.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-      return itTitleNorm === currentTitleNorm || itTitleNorm.includes(currentTitleNorm) || currentTitleNorm.includes(itTitleNorm);
-    });
+    // Проверяем список просмотренных картин для отметок в таймлайне
+    let watchedIds = new Set();
+    try {
+      const bRes = await fetch('/api/bookmarks?status=completed');
+      if (bRes.ok) {
+        const bList = await bRes.json();
+        if (Array.isArray(bList)) {
+          bList.forEach(b => {
+            if (b.media_id) watchedIds.add(String(b.media_id));
+            if (b.title) watchedIds.add(String(b.title).toLowerCase().trim());
+          });
+        }
+      }
+    } catch {}
 
-    listEl.innerHTML = currentFranchiseItems.map((item, idx) => {
-      const isCurrent = idx === currentFranchiseActiveIndex;
-      const orderLabel = item.order_label || (item.order ? `Часть ${item.order}` : `Часть ${idx + 1}`);
-      const relationBadge = item.relation ? `<span class="franchise-order-badge">${item.relation}</span>` : `<span class="franchise-order-badge">${orderLabel}</span>`;
-      const poster = item.poster || 'assets/favicon.svg';
-      const year = item.year || '';
+    let franchiseSortMode = localStorage.getItem('storm_franchise_sort') || 'chronology';
 
-      return `
-        <div class="franchise-card ${isCurrent ? 'current' : ''}" data-franchise-index="${idx}" title="${item.title}">
-          <div class="franchise-card-poster">
-            <img src="${poster}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
-            ${relationBadge}
-          </div>
-          <div class="franchise-card-content">
-            <div class="franchise-card-title">${item.title}</div>
-            <div class="franchise-card-meta">
-              <span>${year}</span>
-              ${item.rating ? `<span style="color:var(--accent);font-weight:700;">★ ${item.rating}</span>` : ''}
+    function renderFranchiseCards() {
+      let itemsToRender = [...currentFranchiseItems];
+      if (franchiseSortMode === 'release') {
+        itemsToRender.sort((a, b) => (parseInt(a.year, 10) || 0) - (parseInt(b.year, 10) || 0));
+      }
+
+      listEl.innerHTML = itemsToRender.map((item, idx) => {
+        const itemTitleNorm = (item.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+        const isCurrent = String(item.id) === currentIdStr || itemTitleNorm === currentTitleNorm || itemTitleNorm.includes(currentTitleNorm);
+        const isWatched = watchedIds.has(String(item.id)) || watchedIds.has(String(item.tmdb_id)) || watchedIds.has((item.title || '').toLowerCase().trim());
+        const orderLabel = franchiseSortMode === 'release' 
+          ? (item.year ? `${item.year} г.` : `Часть ${idx + 1}`) 
+          : (item.relation || item.order_label || (item.order ? `Часть ${item.order}` : `Часть ${idx + 1}`));
+        const relationBadge = `<span class="franchise-order-badge">${orderLabel}</span>`;
+        const poster = item.poster || 'assets/favicon.svg';
+        const year = item.year || '';
+
+        return `
+          <div class="franchise-card ${isCurrent ? 'current' : ''} ${isWatched ? 'watched' : ''}" data-franchise-index="${idx}" title="${item.title}">
+            <div class="franchise-card-poster">
+              <img src="${poster}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              ${relationBadge}
+            </div>
+            <div class="franchise-card-content">
+              <div class="franchise-card-title">${item.title}</div>
+              <div class="franchise-card-meta">
+                <span>${year}</span>
+                ${item.rating ? `<span style="color:var(--accent);font-weight:700;">★ ${item.rating}</span>` : ''}
+              </div>
             </div>
           </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
 
-    // Подключение быстрых переходов при клике на карточку части
-    listEl.querySelectorAll('.franchise-card').forEach(card => {
-      card.onclick = () => {
-        const idx = parseInt(card.dataset.franchiseIndex, 10);
-        if (!isNaN(idx) && currentFranchiseItems[idx]) {
-          openPlayerModal(currentFranchiseItems[idx]);
-        }
+      listEl.querySelectorAll('.franchise-card').forEach((card, idx) => {
+        card.onclick = () => {
+          if (itemsToRender[idx]) openPlayerModal(itemsToRender[idx]);
+        };
+      });
+    }
+
+    // Добавляем переключатель сортировки в заголовок блока
+    let sortBtn = document.getElementById('franchise-sort-toggle-btn');
+    if (!sortBtn && titleEl && titleEl.parentElement) {
+      sortBtn = document.createElement('button');
+      sortBtn.id = 'franchise-sort-toggle-btn';
+      sortBtn.type = 'button';
+      sortBtn.className = 'franchise-sort-toggle';
+      titleEl.parentElement.appendChild(sortBtn);
+    }
+    if (sortBtn) {
+      sortBtn.textContent = franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)';
+      sortBtn.onclick = () => {
+        franchiseSortMode = franchiseSortMode === 'release' ? 'chronology' : 'release';
+        localStorage.setItem('storm_franchise_sort', franchiseSortMode);
+        sortBtn.textContent = franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)';
+        renderFranchiseCards();
       };
-    });
+    }
+
+    renderFranchiseCards();
 
     section.style.display = 'block';
 
@@ -9625,6 +9884,148 @@ export async function autoAdvanceNextFranchiseItem() {
 }
 
 // ==========================================
+// КАРУСЕЛЬ «В РОЛЯХ И СОЗДАТЕЛИ» В СТИЛЕ LUNO (CAST & CREW CAROUSEL)
+// ==========================================
+export async function renderCastAndCrewCarousel(mediaDetails) {
+  const container = document.getElementById('cinema-cast-and-crew-container');
+  if (!container) return;
+
+  if (!mediaDetails) {
+    container.style.display = 'none';
+    return;
+  }
+
+  // Сначала проверяем, есть ли актеры и создатели в переданном mediaDetails
+  let directors = Array.isArray(mediaDetails.directors) ? [...mediaDetails.directors] : [];
+  let cast = Array.isArray(mediaDetails.cast) ? [...mediaDetails.cast] : [];
+
+  // Если список пуст, выполняем запрос к серверному эндпоинту cast
+  if (directors.length === 0 && cast.length === 0) {
+    try {
+      const src = mediaDetails.source || 'tmdb';
+      const mId = mediaDetails.id || '';
+      const mTitle = mediaDetails.title || mediaDetails.name || '';
+      const mOrigTitle = mediaDetails.original_title || '';
+      const mYear = mediaDetails.year || '';
+      const mActors = mediaDetails.actors || '';
+      const mType = mediaDetails.media_type || '';
+
+      const queryParams = new URLSearchParams({
+        source: src,
+        id: String(mId),
+        title: String(mTitle),
+        original_title: String(mOrigTitle),
+        year: String(mYear),
+        media_type: String(mType),
+        actors: String(mActors)
+      });
+
+      const res = await fetch(`/api/media/cast?${queryParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (Array.isArray(data.directors) && data.directors.length > 0) {
+            directors = data.directors;
+          }
+          if (Array.isArray(data.cast) && data.cast.length > 0) {
+            cast = data.cast;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Cast & Crew]: Ошибка получения создателей:', err);
+    }
+  }
+
+  // Объединяем режиссеров и актеров в единый список (как на Luno)
+  const combined = [];
+  const seenNames = new Set();
+
+  directors.forEach(d => {
+    const name = (d.name || '').trim();
+    if (name && !seenNames.has(name.toLowerCase())) {
+      seenNames.add(name.toLowerCase());
+      combined.push({
+        id: d.id || name,
+        name: name,
+        role: d.role || 'Режиссёр',
+        photo: d.photo || 'assets/avatar_default.svg',
+        isDirector: true
+      });
+    }
+  });
+
+  cast.forEach(c => {
+    const name = (c.name || '').trim();
+    if (name && !seenNames.has(name.toLowerCase())) {
+      seenNames.add(name.toLowerCase());
+      combined.push({
+        id: c.id || name,
+        name: name,
+        role: c.character || 'Актёр',
+        photo: c.photo || 'assets/avatar_default.svg',
+        isDirector: false
+      });
+    }
+  });
+
+  if (combined.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'flex';
+  container.innerHTML = `
+    <div class="md-cast-head">
+      <h4 class="md-cast-title">
+        <span class="cast-icon">🎭</span>
+        <span>В ролях и создатели</span>
+        <span class="md-cast-count">(${combined.length})</span>
+      </h4>
+      <div class="md-cast-nav">
+        <button type="button" class="md-cast-nav-btn md-cast-prev" id="md-cast-prev-btn" title="Прокрутить назад" aria-label="Назад">‹</button>
+        <button type="button" class="md-cast-nav-btn md-cast-next" id="md-cast-next-btn" title="Прокрутить вперед" aria-label="Вперед">›</button>
+      </div>
+    </div>
+    <div class="md-cast-track" id="md-cast-track">
+      ${combined.map(m => `
+        <div class="md-cast-card" data-person-id="${escapeHtml(String(m.id))}" data-person-name="${escapeHtml(m.name)}" title="${escapeHtml(m.name)} — ${escapeHtml(m.role)}">
+          <div class="md-cast-photo-wrap">
+            <img src="${m.photo || 'assets/avatar_default.svg'}" alt="${escapeHtml(m.name)}" class="md-cast-photo" loading="lazy" onerror="this.src='assets/avatar_default.svg'">
+            ${m.isDirector ? '<span class="md-cast-director-badge">Режиссёр</span>' : ''}
+          </div>
+          <div class="md-cast-name">${escapeHtml(m.name)}</div>
+          <div class="md-cast-role">${escapeHtml(m.role)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Скролл карусели кнопками навигации
+  const track = document.getElementById('md-cast-track');
+  const prevBtn = document.getElementById('md-cast-prev-btn');
+  const nextBtn = document.getElementById('md-cast-next-btn');
+
+  if (prevBtn && track) {
+    prevBtn.onclick = () => track.scrollBy({ left: -360, behavior: 'smooth' });
+  }
+  if (nextBtn && track) {
+    nextBtn.onclick = () => track.scrollBy({ left: 360, behavior: 'smooth' });
+  }
+
+  // Клик по карточке персоны открывает окно фильмографии
+  container.querySelectorAll('.md-cast-card').forEach(card => {
+    card.onclick = () => {
+      const pid = card.dataset.personId;
+      const pname = card.dataset.personName;
+      if (pid || pname) {
+        openPersonModal(pid || pname, pname);
+      }
+    };
+  });
+}
+
+// ==========================================
 // МОДАЛЬНОЕ ОКНО ФИЛЬМОГРАФИИ АКТЕРА И РЕЖИССЕРА
 // ==========================================
 export async function openPersonModal(personId, personName) {
@@ -9662,7 +10063,7 @@ export async function openPersonModal(personId, personName) {
 
     body.innerHTML = `
       <div class="person-profile-header">
-        <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="person-profile-photo" onerror="this.src='assets/favicon.svg'">
+        <img src="${person.photo || 'assets/avatar_default.svg'}" alt="${person.name || personName || 'Персона'}" class="person-profile-photo" onerror="this.src='assets/avatar_default.svg'">
         <div class="person-profile-info">
           <h3 class="person-profile-name">${person.name || personName}</h3>
           <div class="person-profile-meta">
@@ -9689,6 +10090,7 @@ export async function openPersonModal(personId, personName) {
             <div class="person-media-poster-box">
               <img src="${item.poster || 'assets/favicon.svg'}" alt="${item.title}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
               <span class="person-media-rating">★ ${item.rating || '—'}</span>
+              <span class="person-media-badge-4k" title="Воспроизведение в 4K Ultra HD качестве">4K UHD</span>
             </div>
             <div class="person-media-info">
               <div class="person-media-title" title="${item.title}">${item.title}</div>
@@ -9713,6 +10115,46 @@ export async function openPersonModal(personId, personName) {
     `;
   }
 }
+
+// ==========================================
+// ИНТЕРАКТИВНЫЙ ТАЙМКОД ИЗ ОТЗЫВОВ ЗРИТЕЛЕЙ
+// ==========================================
+window.seekPlayerToTimecode = function(timecodeStr) {
+  if (!timecodeStr) return;
+  const parts = String(timecodeStr).split(':').map(p => parseInt(p, 10) || 0);
+  let totalSeconds = 0;
+  if (parts.length === 3) {
+    totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    totalSeconds = parts[0] * 60 + parts[1];
+  } else {
+    totalSeconds = parts[0];
+  }
+
+  // Проверяем наличие нативного HTML5 video
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    video.currentTime = totalSeconds;
+    video.play().catch(() => {});
+    showToast(`⏱️ Перемотка на таймкод ${timecodeStr}`, 'info');
+    return;
+  }
+
+  // Если iframe (плееры Kinobox, FanFilm 4K, Kodik)
+  const iframe = document.querySelector('#cinema-player-wrapper iframe');
+  if (iframe && iframe.contentWindow) {
+    try {
+      iframe.contentWindow.postMessage({ event: 'seek', time: totalSeconds }, '*');
+      iframe.contentWindow.postMessage({ api: 'seek', time: totalSeconds }, '*');
+      iframe.contentWindow.postMessage({ type: 'seek', value: totalSeconds }, '*');
+      showToast(`⏱️ Перемотка на таймкод ${timecodeStr}`, 'info');
+    } catch (e) {
+      console.warn('Seek postMessage error:', e);
+    }
+  } else {
+    showToast(`⏱️ Таймкод: ${timecodeStr}`, 'info');
+  }
+};
 
 // ==========================================
 // СЕЛЕКТОР СЕЗОНОВ И СЕРИЙ С ДИНАМИЧЕСКИМИ ОПИСАНИЯМИ И СТАТУСАМИ

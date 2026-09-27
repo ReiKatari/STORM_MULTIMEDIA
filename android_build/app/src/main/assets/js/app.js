@@ -54,7 +54,7 @@
 
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest } from './auth.js';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js';
 import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
@@ -69,6 +69,7 @@ import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js'
 import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js';
 import { getStatusIconSvg } from './status-icons.js';
 import { checkForUpdates } from './updater.js';
+import { initFormFactorEngine } from './form-factor.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -1509,6 +1510,22 @@ export function cleanVideoTitle(str) {
   // Хвостовые разделители
   s = s.replace(/[-–—/|•]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
+}
+
+/**
+ * Генерация адаптивных наборов разрешений постеров (Responsive Picture Sets)
+ * Обеспечивает экономию до 60-70% мобильного трафика и идеальную резкость на 4K экранах.
+ */
+export function getPosterSrcset(posterUrl) {
+  if (!posterUrl || typeof posterUrl !== 'string' || !posterUrl.includes('image.tmdb.org/t/p/')) {
+    return '';
+  }
+  const basePath = posterUrl.replace(/\/t\/p\/(w\d+|original)\//, '/t/p/');
+  const w185 = basePath.replace('/t/p/', '/t/p/w185/');
+  const w342 = basePath.replace('/t/p/', '/t/p/w342/');
+  const w500 = basePath.replace('/t/p/', '/t/p/w500/');
+  const w780 = basePath.replace('/t/p/', '/t/p/w780/');
+  return `srcset="${w185} 185w, ${w342} 342w, ${w500} 500w, ${w780} 780w" sizes="(max-width: 640px) 185px, (max-width: 1024px) 342px, 500px"`;
 }
 
 export function formatMediaTitle(item) {
@@ -3681,7 +3698,7 @@ function renderMediaItems(items) {
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          <img src="${poster}" ${getPosterSrcset(poster)} alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-card-badges">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
             ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
@@ -3814,7 +3831,7 @@ function renderMediaItems(items) {
       return `
       <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
         <div class="media-detailed-poster">
-          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          <img src="${poster}" ${getPosterSrcset(poster)} alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
             ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
@@ -5217,6 +5234,7 @@ function initModals() {
           closePlayerModal();
         } else {
           backdrop.classList.remove('is-open');
+          if (backdrop.id === 'auth-modal') stopTvDeviceCodeSession();
         }
       }
     });
@@ -5231,6 +5249,7 @@ function initModals() {
           closePlayerModal();
         } else {
           modal.classList.remove('is-open');
+          if (modal.id === 'auth-modal') stopTvDeviceCodeSession();
         }
       }
     });
@@ -5243,23 +5262,56 @@ function initModals() {
     loginModalBtn.onclick = () => authModal.classList.add('is-open');
   }
 
-  // Переключение Вход / Регистрация
+  // Переключение Вход / Регистрация / ТВ-код
   const switchToRegister = document.getElementById('switch-to-register');
   const switchToLogin = document.getElementById('switch-to-login');
   const loginForm = document.getElementById('login-form');
   const registerForm = document.getElementById('register-form');
   const authModalTitle = document.getElementById('auth-modal-title');
+  const openTvCodeBtn = document.getElementById('open-tv-code-btn');
+  const tvCodeContainer = document.getElementById('tv-code-container');
+  const tvCodeRefreshBtn = document.getElementById('tv-code-refresh-btn');
+  const tvCodeBackBtn = document.getElementById('tv-code-back-btn');
 
   if (switchToRegister && switchToLogin) {
     switchToRegister.onclick = () => {
+      stopTvDeviceCodeSession();
+      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
       loginForm.style.display = 'none';
       registerForm.style.display = 'block';
       authModalTitle.textContent = t('auth_register');
     };
     switchToLogin.onclick = () => {
+      stopTvDeviceCodeSession();
+      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
       registerForm.style.display = 'none';
       loginForm.style.display = 'block';
       authModalTitle.textContent = t('auth_login');
+    };
+  }
+
+  if (openTvCodeBtn && tvCodeContainer) {
+    openTvCodeBtn.onclick = () => {
+      if (loginForm) loginForm.style.display = 'none';
+      if (registerForm) registerForm.style.display = 'none';
+      tvCodeContainer.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = 'Вход по коду с ТВ';
+      startTvDeviceCodeSession();
+    };
+  }
+
+  if (tvCodeBackBtn && tvCodeContainer) {
+    tvCodeBackBtn.onclick = () => {
+      stopTvDeviceCodeSession();
+      tvCodeContainer.style.display = 'none';
+      if (loginForm) loginForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = t('auth_login');
+    };
+  }
+
+  if (tvCodeRefreshBtn) {
+    tvCodeRefreshBtn.onclick = () => {
+      startTvDeviceCodeSession();
     };
   }
 
@@ -5637,6 +5689,7 @@ function initPwaServiceWorker() {
 function initNewCyberFeatures() {
   // 1. Smart TV и геймпад
   initGamepadAndTvMode();
+  initFormFactorEngine();
   const tvBtn = document.getElementById('toggle-tv-mode-btn');
   if (tvBtn) {
     tvBtn.onclick = () => toggleTvMode();

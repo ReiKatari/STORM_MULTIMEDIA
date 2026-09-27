@@ -11,6 +11,7 @@ import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data
 let selectedWeek = 'current'; // 'current' | 'next'
 let selectedDay = new Date().getDay(); // 0=ВС, 1=ПН, 2=ВТ...
 let activeCategoryFilter = 'all'; // 'all' | 'series' | 'anime' | 'movies'
+let activeSourceFilter = 'all'; // 'all' | 'lostfilm' | 'anilibria' | 'shikimori' | 'tmdb' | 'tvmaze'
 let currentViewMode = 'list'; // 'list' | 'epg'
 
 function escapeHtml(str) {
@@ -103,6 +104,8 @@ export function getWeekDays(weekOffset = 0) {
 }
 
 export async function openReleaseCalendarModal() {
+  selectedWeek = 'current';
+  selectedDay = new Date().getDay();
   let modal = document.getElementById('release-calendar-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -144,34 +147,50 @@ async function renderCalendarContent(container) {
   const nxtWeekDays = getWeekDays(1);
 
   container.innerHTML = `
-    <!-- Переключатель недель и фильтры категорий -->
-    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <div class="cal-week-switcher" style="margin-bottom: 0;">
-        <button type="button" class="cal-week-btn ${selectedWeek === 'current' ? 'active' : ''}" data-week="current">
-          <span class="cal-week-icon">🗓️</span>
-          <span>Текущая неделя (${curWeekDays[0].date} — ${curWeekDays[6].date})</span>
-        </button>
-        <button type="button" class="cal-week-btn ${selectedWeek === 'next' ? 'active' : ''}" data-week="next">
-          <span class="cal-week-icon">⏭️</span>
-          <span>Следующая неделя (${nxtWeekDays[0].date} — ${nxtWeekDays[6].date})</span>
-        </button>
+    <!-- Переключатель недель, фильтры форматов, источников и режимы -->
+    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
+        <div class="cal-week-switcher" style="margin-bottom: 0;">
+          <button type="button" class="cal-week-btn ${selectedWeek === 'current' ? 'active' : ''}" data-week="current">
+            <span class="cal-week-icon">🗓️</span>
+            <span>Текущая неделя (${curWeekDays[0].date} — ${curWeekDays[6].date})</span>
+          </button>
+          <button type="button" class="cal-week-btn ${selectedWeek === 'next' ? 'active' : ''}" data-week="next">
+            <span class="cal-week-icon">⏭️</span>
+            <span>Следующая неделя (${nxtWeekDays[0].date} — ${nxtWeekDays[6].date})</span>
+          </button>
+        </div>
+
+        <!-- Режим отображения: Карточки / Сетка EPG -->
+        <div class="cal-view-modes" style="display: flex; gap: 6px;">
+          <button type="button" class="storm-btn storm-btn-sm ${currentViewMode === 'list' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="cal-mode-list-btn" title="Отображение в виде карточек">
+            📅 Карточки
+          </button>
+          <button type="button" class="storm-btn storm-btn-sm ${currentViewMode === 'epg' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="cal-mode-epg-btn" title="Сетка телепередач и каналов (EPG Guide)">
+            📺 Сетка эфира (EPG)
+          </button>
+        </div>
       </div>
 
-      <!-- Фильтр категорий -->
-      <div class="cal-category-filters" style="display: flex; gap: 6px;">
-        <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'all' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="all">Все</button>
-        <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'series' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="series">Сериалы</button>
-        <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'anime' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="anime">Аниме</button>
-        <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'movies' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="movies">Премьеры</button>
-      </div>
-      <!-- Режим отображения: Карточки / Сетка EPG -->
-      <div class="cal-view-modes" style="display: flex; gap: 6px;">
-        <button type="button" class="storm-btn storm-btn-sm ${currentViewMode === 'list' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="cal-mode-list-btn" title="Отображение в виде карточек">
-          📅 Карточки
-        </button>
-        <button type="button" class="storm-btn storm-btn-sm ${currentViewMode === 'epg' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="cal-mode-epg-btn" title="Сетка телепередач и каналов (EPG Guide)">
-          📺 Сетка эфира (EPG)
-        </button>
+      <!-- Фильтры: Форматы релизов и Студии / Источники (Источник по умолчанию: Все студии) -->
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+        <!-- Фильтр категорий/форматов -->
+        <div class="cal-category-filters" style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'all' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="all">Все форматы</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'series' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="series">Сериалы</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'anime' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="anime">Аниме</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeCategoryFilter === 'movies' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-filter="movies">Премьеры</button>
+        </div>
+
+        <!-- Фильтр студий и источников (LostFilm, AniLibria, Shikimori, TMDB, TVMaze) -->
+        <div class="cal-source-filters" style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'all' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="all">Все студии</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'lostfilm' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="lostfilm" title="Расписание зарубежных сериалов LostFilm">🎙️ LostFilm</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'anilibria' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="anilibria" title="Расписание аниме от AniLibria">🎙️ AniLibria</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'shikimori' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="shikimori" title="Календарь онгоингов Shikimori">📺 Shikimori</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'tmdb' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="tmdb" title="Мировые кинопремьеры и сериалы TMDB">🎬 TMDB / Кино</button>
+          <button type="button" class="storm-btn storm-btn-sm ${activeSourceFilter === 'tvmaze' ? 'storm-btn-primary' : 'storm-btn-secondary'}" data-source="tvmaze" title="Премиальный эфир телеканалов США/UK">🌐 TVMaze</button>
+        </div>
       </div>
     </div>
 
@@ -205,6 +224,11 @@ async function renderCalendarContent(container) {
   weekBtns.forEach(btn => {
     btn.onclick = () => {
       selectedWeek = btn.dataset.week;
+      if (selectedWeek === 'next') {
+        selectedDay = 1; // Понедельник для следующей недели
+      } else {
+        selectedDay = new Date().getDay(); // Сегодня для текущей недели
+      }
       weekBtns.forEach(b => b.classList.toggle('active', b.dataset.week === selectedWeek));
       loadAndRenderWeek(container);
     };
@@ -218,6 +242,19 @@ async function renderCalendarContent(container) {
       filterBtns.forEach(b => {
         b.classList.toggle('storm-btn-primary', b.dataset.filter === activeCategoryFilter);
         b.classList.toggle('storm-btn-secondary', b.dataset.filter !== activeCategoryFilter);
+      });
+      loadAndRenderWeek(container);
+    };
+  });
+
+  // Фильтрация источников и студий
+  const sourceBtns = container.querySelectorAll('.cal-source-filters button');
+  sourceBtns.forEach(btn => {
+    btn.onclick = () => {
+      activeSourceFilter = btn.dataset.source;
+      sourceBtns.forEach(b => {
+        b.classList.toggle('storm-btn-primary', b.dataset.source === activeSourceFilter);
+        b.classList.toggle('storm-btn-secondary', b.dataset.source !== activeSourceFilter);
       });
       loadAndRenderWeek(container);
     };
@@ -242,11 +279,12 @@ async function loadAndRenderWeek(container) {
   const defaultItems = selectedWeek === 'next' ? DEFAULT_NEXT_WEEK : DEFAULT_CURRENT_WEEK;
   let scheduleItems = [...defaultItems];
 
-  // 1. Быстрая загрузка из локального кэша v111, если есть
+  // 1. Быстрая загрузка из локального кэша v112, если есть
   try {
     localStorage.removeItem(`storm_cal_v108_${selectedWeek}`);
     localStorage.removeItem(`storm_cal_v110_${selectedWeek}`);
-    const localCached = localStorage.getItem(`storm_cal_v111_${selectedWeek}`);
+    localStorage.removeItem(`storm_cal_v111_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v112_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -255,25 +293,28 @@ async function loadAndRenderWeek(container) {
     }
   } catch {}
 
-  // 2. Если кэш пуст, показываем аккуратный спиннер загрузки
-  if (scheduleItems.length === 0) {
+  // 2. Мгновенная отрисовка доступных данных без ожидания сети
+  if (scheduleItems.length > 0) {
+    renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
+  } else {
+    // Если абсолютно ничего нет, показываем спиннер
     const grid = container.querySelector('#calendar-day-items-grid');
     if (grid) {
       grid.innerHTML = `
         <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
           <div class="storm-spinner" style="width: 36px; height: 36px; border-width: 3px;"></div>
           <div style="font-size: 14px; font-weight: 700; color: #ffffff;">Синхронизация расписания онгоингов...</div>
-          <div style="font-size: 11.5px; color: var(--text-muted);">Получение актуальных серий из Shikimori, AniLibria и TMDB</div>
+          <div style="font-size: 11.5px; color: var(--text-muted);">Получение актуальных серий из LostFilm, AniLibria, Shikimori и TMDB</div>
         </div>
       `;
     }
-  } else {
-    renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
   }
 
   // 3. Фоновое обновление с сервера (актуализация эфира и премьер)
   try {
-    const res = await fetch(`/api/media/schedule?week=${selectedWeek}`);
+    const res = await fetch(`/api/media/schedule?week=${selectedWeek}`, {
+      signal: AbortSignal.timeout(6000)
+    });
     if (res.ok) {
       const schedData = await res.json();
       const liveList = Array.isArray(schedData) ? schedData : (schedData.items || schedData.schedule || []);
@@ -281,23 +322,45 @@ async function loadAndRenderWeek(container) {
         const combined = [];
         const seen = new Set();
         liveList.forEach(it => {
-          const k = (it.title || '').toLowerCase().trim();
+          const k = `${(it.title || '').toLowerCase().trim()}_s${it.season || 1}e${it.episode || 1}`;
           if (k && !seen.has(k)) { seen.add(k); combined.push(it); }
         });
 
         try {
-          localStorage.setItem(`storm_cal_v111_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v112_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
 
         renderScheduleDaysAndGrid(container, combined, daysConfig);
       } else if (scheduleItems.length === 0) {
-        renderScheduleDaysAndGrid(container, [], daysConfig);
+        renderEmptyErrorState(container, daysConfig);
       }
+    } else if (scheduleItems.length === 0) {
+      renderEmptyErrorState(container, daysConfig);
     }
-  } catch (_) {
-    if (scheduleItems.length > 0) {
-      renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
+  } catch (err) {
+    console.warn('[Calendar] Сетевая синхронизация:', err.message);
+    if (scheduleItems.length === 0) {
+      renderEmptyErrorState(container, daysConfig);
     }
+  }
+}
+
+function renderEmptyErrorState(container, daysConfig) {
+  renderScheduleDaysAndGrid(container, [], daysConfig);
+  const grid = container.querySelector('#calendar-day-items-grid');
+  if (grid) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 48px 20px; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
+        <div style="font-size: 36px;">📡</div>
+        <div style="font-size: 15px; font-weight: 700; color: #ffffff;">Не удалось загрузить расписание</div>
+        <div style="font-size: 12px; color: var(--text-muted); max-width: 380px;">Проверьте интернет-соединение или повторите синхронизацию</div>
+        <button type="button" class="storm-btn storm-btn-primary" id="cal-retry-sync-btn" style="margin-top: 6px; padding: 8px 18px;">
+          🔄 Повторить попытку
+        </button>
+      </div>
+    `;
+    const retryBtn = grid.querySelector('#cal-retry-sync-btn');
+    if (retryBtn) retryBtn.onclick = () => loadAndRenderWeek(container);
   }
 }
 
@@ -306,14 +369,26 @@ function renderScheduleDaysAndGrid(container, allItems, daysConfig) {
   const grid = container.querySelector('#calendar-day-items-grid');
   if (!daysNav || !grid) return;
 
-  // Применяем фильтр категории
+  // Применяем фильтр источников и студий (по умолчанию 'all')
   let filteredItems = allItems;
+  if (activeSourceFilter !== 'all') {
+    filteredItems = filteredItems.filter(it => {
+      if (activeSourceFilter === 'lostfilm') return it.source === 'lostfilm' || it.studio?.toLowerCase().includes('lostfilm');
+      if (activeSourceFilter === 'anilibria') return it.source === 'anilibria' || it.studio?.toLowerCase().includes('anilibria');
+      if (activeSourceFilter === 'shikimori') return it.source === 'shikimori' || it.studio?.toLowerCase().includes('shikimori');
+      if (activeSourceFilter === 'tmdb') return it.source === 'tmdb' || it.studio?.toLowerCase().includes('red head sound') || it.studio?.toLowerCase().includes('tvshows');
+      if (activeSourceFilter === 'tvmaze') return it.source === 'tvmaze';
+      return true;
+    });
+  }
+
+  // Применяем фильтр категории
   if (activeCategoryFilter === 'series') {
-    filteredItems = allItems.filter(it => it.media_type === 'series' || (it.episode && it.episode > 0 && !it.genres?.includes('Аниме')));
+    filteredItems = filteredItems.filter(it => it.media_type === 'series' || (it.episode && it.episode > 0 && !it.genres?.includes('Аниме')));
   } else if (activeCategoryFilter === 'anime') {
-    filteredItems = allItems.filter(it => it.media_type?.includes('anime') || it.source === 'shikimori' || it.genres?.includes('Аниме') || it.studio?.includes('AniLibria'));
+    filteredItems = filteredItems.filter(it => it.media_type?.includes('anime') || it.source === 'shikimori' || it.genres?.includes('Аниме') || it.studio?.includes('AniLibria'));
   } else if (activeCategoryFilter === 'movies') {
-    filteredItems = allItems.filter(it => it.media_type === 'movie' || it.episode_title?.includes('премьера') || it.genres?.includes('Кинопремьера') || it.episode_title?.includes('Мировая премьера'));
+    filteredItems = filteredItems.filter(it => it.media_type === 'movie' || it.episode_title?.includes('премьера') || it.genres?.includes('Кинопремьера') || it.episode_title?.includes('Мировая премьера'));
   }
 
   const currentDayIndex = new Date().getDay();
@@ -391,7 +466,7 @@ function renderEpgMatrixGuide(grid, items, dayId, week) {
   }
 
   const timeSlots = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'];
-  const studios = ['AniLibria', 'LostFilm', 'Red Head Sound', 'HDRezka Studio', 'TVShows', 'Apple TV+'];
+  const studios = ['LostFilm', 'AniLibria', 'Shikimori', 'Red Head Sound', 'TVShows', 'Apple TV+'];
 
   grid.innerHTML = `
     <div class="epg-matrix-table-wrap">
@@ -516,7 +591,7 @@ function renderDayGrid(grid, items, dayId, week) {
           <!-- Метаданные: Студия, Качество, Рейтинг -->
           <div class="cal-meta-badges">
             <span class="cal-meta-badge cal-badge-year">${it.year || '2026'}</span>
-            ${it.studio ? `<span class="cal-meta-badge cal-badge-studio">🎙️ ${escapeHtml(it.studio)}</span>` : ''}
+            ${it.studio ? `<span class="cal-meta-badge ${it.studio.toLowerCase().includes('lostfilm') ? 'cal-badge-lostfilm' : 'cal-badge-studio'}">🎙️ ${escapeHtml(it.studio)}</span>` : ''}
             ${it.rating ? `<span class="cal-meta-badge cal-badge-rating">★ ${it.rating}</span>` : ''}
             ${it.quality ? `<span class="cal-meta-badge cal-badge-quality">${it.quality}</span>` : ''}
           </div>

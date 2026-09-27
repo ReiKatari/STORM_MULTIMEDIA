@@ -1420,6 +1420,8 @@ body {
   padding: 12px 14px !important;
   gap: 10px !important;
   border-radius: 12px !important;
+  position: sticky !important;
+  top: 10px !important;
 }
 
 #cinema-modal .cinema-side-poster-wrap {
@@ -3494,25 +3496,53 @@ body.drawer-open {
     gap: 12px !important;
   }
 
+  #cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-container,
   #cinema-modal .cinema-player-container {
     border-radius: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
+    max-height: calc(100vw * 9 / 16) !important;
     aspect-ratio: 16 / 9 !important;
     position: relative !important;
     top: auto !important;
     z-index: 5 !important;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8) !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     background: #000000 !important;
+    box-sizing: border-box !important;
   }
 
+  #cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-wrapper,
   #cinema-modal .cinema-player-wrapper {
     width: 100% !important;
     height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    aspect-ratio: 16 / 9 !important;
     border-radius: 0 !important;
     position: relative !important;
-    overflow: visible !important;
+    overflow: hidden !important;
+  }
+
+  #cinema-modal .player-video-box {
+    width: 100% !important;
+    height: 100% !important;
+    position: relative !important;
+    overflow: hidden !important;
+    border-radius: 0 !important;
+  }
+
+  #cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-wrapper iframe,
+  #cinema-modal .cinema-player-iframe {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
   }
 
   #cinema-modal .player-series-quick-bar {

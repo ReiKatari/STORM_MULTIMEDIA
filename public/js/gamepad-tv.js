@@ -106,19 +106,25 @@ export function initGamepadAndTvMode() {
   }
 
   window.addEventListener('gamepadconnected', (e) => {
-    showToast(`🎮 Подключен контроллер: ${e.gamepad.id.split('(')[0].trim()}`, 'success');
+    const padName = (e.gamepad?.id || 'Геймпад').split('(')[0].trim();
     trackClientAction('use_gamepad');
-    if (!isTvModeActive) {
-      toggleTvMode(true);
+    if (isTvModeActive) {
+      showToast(`🎮 Подключен контроллер: ${padName}`, 'success');
+      startGamepadPolling();
+    } else {
+      showToast(`🎮 Подключен контроллер: ${padName}. Управление активируется при включении ТВ-режима`, 'info');
     }
-    startGamepadPolling();
   });
 
   window.addEventListener('gamepaddisconnected', (e) => {
-    showToast(`🎮 Контроллер отключен: ${e.gamepad.id.split('(')[0].trim()}`, 'info');
+    const padName = (e.gamepad?.id || 'Геймпад').split('(')[0].trim();
+    showToast(`🎮 Контроллер отключен: ${padName}`, 'info');
   });
 
-  startGamepadPolling();
+  // Запускаем опрос только если ТВ-режим уже был активен из настроек
+  if (isTvModeActive) {
+    startGamepadPolling();
+  }
 
   // Клавиатурная навигация и клавиши ТВ-пульта (Стрелки, Enter, Esc, MediaKeys, Цвета)
   window.addEventListener('keydown', handleSpatialKeyboard);
@@ -142,16 +148,30 @@ export function toggleTvMode(forceState = null) {
     tvBtn.innerHTML = isTvModeActive ? '<span>📺</span> ТВ-режим: Вкл' : '<span>📺</span> ТВ-режим';
   }
 
+  const drawerTvBtn = document.getElementById('drawer-tv-mode-btn');
+  if (drawerTvBtn) {
+    drawerTvBtn.classList.toggle('active', isTvModeActive);
+    const titleEl = drawerTvBtn.querySelector('.mobile-nav-title');
+    if (titleEl) {
+      titleEl.textContent = isTvModeActive ? 'ТВ-режим (Включен)' : 'ТВ-режим';
+    }
+  }
+
   if (isTvModeActive) {
     showToast('📺 Активирован режим Smart TV (Leanback HUD 2.0)', 'info');
     renderTvHudBar();
     focusInitialElement();
+    startGamepadPolling();
     trackClientAction('use_gamepad');
     playTvSelectSound();
   } else {
     showToast('Режим Smart TV выключен', 'info');
     removeTvHudBar();
     clearFocusRing();
+    if (gamepadLoopId) {
+      cancelAnimationFrame(gamepadLoopId);
+      gamepadLoopId = null;
+    }
     playTvBackSound();
   }
 }
@@ -491,9 +511,20 @@ function switchAdjacentProfileTab(direction) {
 // 5. ЦИКЛ ОПРОСА ГЕЙМПАДА
 // ==========================================
 function startGamepadPolling() {
+  if (!isTvModeActive) {
+    if (gamepadLoopId) {
+      cancelAnimationFrame(gamepadLoopId);
+      gamepadLoopId = null;
+    }
+    return;
+  }
   if (gamepadLoopId) return;
 
   function poll() {
+    if (!isTvModeActive) {
+      gamepadLoopId = null;
+      return;
+    }
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (let i = 0; i < gamepads.length; i++) {
       const gp = gamepads[i];
@@ -509,6 +540,7 @@ function startGamepadPolling() {
 }
 
 function handleGamepadInput(gp) {
+  if (!isTvModeActive) return;
   const now = Date.now();
   const deadzone = 0.45;
 
@@ -701,7 +733,17 @@ function handleSpatialKeyboard(e) {
     return;
   }
 
-  if (!isTvModeActive && !document.querySelector('.storm-modal-backdrop.is-open')) return;
+  // Если ТВ-режим не активен (обычный ПК / мобильное устройство):
+  // Стрелки и навигация не перехватываются, чтобы нормально работал колесо мыши и клавиатурный скролл
+  if (!isTvModeActive) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      if (document.querySelector('.storm-modal-backdrop.is-open')) {
+        e.preventDefault();
+        closeActiveModalOrBack();
+      }
+    }
+    return;
+  }
 
   const isDirectVideoFocus = currentFocusedElement && (
     currentFocusedElement.tagName === 'VIDEO' ||

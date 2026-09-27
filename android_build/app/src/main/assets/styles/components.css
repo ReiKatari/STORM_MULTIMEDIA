@@ -6428,6 +6428,13 @@ body.player-dropdown-active .cinema-player-iframe {
   font-weight: 700;
 }
 
+.cal-meta-badge.cal-badge-lostfilm {
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.12);
+  border-color: rgba(255, 152, 0, 0.35);
+  font-weight: 700;
+}
+
 .cal-meta-badge.cal-badge-rating,
 .cal-meta-chip.rating {
   color: #f59e0b;
@@ -9819,3 +9826,781 @@ body.cinema-focus-active::-webkit-scrollbar,
   color: #020617 !important;
   font-weight: 800 !important;
 }
+
+/* ==========================================================================
+   STORM MULTIMEDIA - В РОЛЯХ И СОЗДАТЕЛИ (СТИЛЬ LUNO)
+   Горизонтальная карусель, фото высокого разрешения, роли, плавный скролл
+   ========================================================================== */
+.md-cast-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.md-cast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.md-cast-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.md-cast-title .cast-icon {
+  font-size: 19px;
+  color: #f59e0b;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.4));
+}
+
+.md-cast-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.md-cast-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.md-cast-nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+
+.md-cast-nav-btn:hover {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.md-cast-nav-btn:active {
+  transform: translateY(1px) scale(0.96);
+}
+
+.md-cast-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  padding: 4px 2px 14px 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-cast-track::-webkit-scrollbar {
+  height: 6px;
+}
+
+.md-cast-track::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+.md-cast-card {
+  flex: 0 0 130px;
+  width: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 10px 8px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.md-cast-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(0, 210, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
+  box-shadow: 0 8px 24px var(--accent-glow);
+}
+
+.md-cast-photo-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: #0f172a;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.md-cast-card:hover .md-cast-photo-wrap {
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.md-cast-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.md-cast-director-badge {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.md-cast-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+  margin-bottom: 3px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.md-cast-role {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* ==========================================================================
+   STORM MULTIMEDIA - МОДАЛЬНОЕ ОКНО ПЕРСОНЫ И ФИЛЬМОГРАФИИ
+   ========================================================================== */
+.person-modal-dialog {
+  max-width: 880px !important;
+  width: 94vw !important;
+  max-height: 88vh !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.person-profile-header {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 18px;
+}
+
+@media (max-width: 640px) {
+  .person-profile-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}
+
+.person-profile-photo {
+  width: 110px;
+  height: 140px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 2px solid var(--accent);
+  box-shadow: 0 8px 24px var(--accent-glow);
+  flex-shrink: 0;
+}
+
+.person-profile-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.person-profile-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.person-profile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.person-profile-meta .badge-role {
+  background: var(--accent);
+  color: #000;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.person-profile-bio {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+
+.person-filmography-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+  overflow-y: auto;
+  max-height: 52vh;
+  padding: 4px 4px 16px;
+  scrollbar-width: thin;
+}
+
+.person-media-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.person-media-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px var(--accent-glow);
+}
+
+.person-media-poster-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2/3;
+  overflow: hidden;
+  background: #000;
+}
+
+.person-media-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.person-media-card:hover .person-media-poster {
+  transform: scale(1.05);
+}
+
+.person-media-rating {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffb703;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  backdrop-filter: blur(4px);
+}
+
+.person-media-4k-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: linear-gradient(135deg, #00d2ff, #0072ff);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.person-media-info {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.person-media-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-media-year {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   STORM MULTIMEDIA - РАСШИРЕННЫЙ WYSIWYG РЕДАКТОР И ТОНАЛЬНОСТИ РЕЦЕНЗИЙ
+   ========================================================================== */
+.review-tone-selector {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.review-tone-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.review-tone-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.review-tone-btn.positive.active {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+}
+
+.review-tone-btn.neutral.active {
+  border-color: #94a3b8;
+  background: rgba(148, 163, 184, 0.16);
+  color: #f1f5f9;
+  box-shadow: 0 0 16px rgba(148, 163, 184, 0.3);
+}
+
+.review-tone-btn.negative.active {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.16);
+  color: #ef4444;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.3);
+}
+
+.wysiwyg-container {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(10, 14, 23, 0.5);
+  margin-bottom: 8px;
+}
+
+.wysiwyg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wysiwyg-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.wysiwyg-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.wysiwyg-btn:active {
+  transform: translateY(1px);
+}
+
+.wysiwyg-tabs {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.wysiwyg-tab-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.wysiwyg-tab-btn.active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+.wysiwyg-editor-area {
+  width: 100%;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-primary);
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 110px;
+  outline: none;
+}
+
+.wysiwyg-preview-area {
+  padding: 12px;
+  min-height: 110px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  overflow-y: auto;
+  display: none;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.review-compose-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.review-char-counter {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-char-counter.near-limit {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+/* Бейджи тональности в карточках отзывов */
+.review-tone-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.review-tone-badge.positive {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #10b981;
+}
+
+.review-tone-badge.neutral {
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  color: #94a3b8;
+}
+
+.review-tone-badge.negative {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+.review-timecode-link {
+  color: #00f0ff;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: monospace;
+  font-weight: 700;
+  transition: all 0.15s ease;
+  display: inline-block;
+}
+
+.review-timecode-link:hover {
+  background: rgba(0, 240, 255, 0.25);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+/* ==========================================================================
+   СТИЛИ ДЛЯ АДАПТИВНОГО ТРИУМВИРАТА ИНТЕРФЕЙСОВ (FORM FACTOR ENGINE)
+   ========================================================================== */
+.form-factor-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .form-factor-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-factor-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 14px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  position: relative;
+}
+
+.form-factor-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(0, 210, 255, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 210, 255, 0.15);
+}
+
+.form-factor-card.active {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.12) 0%, rgba(2, 132, 199, 0.08) 100%);
+  border-color: var(--accent, #00d2ff);
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.28);
+}
+
+.form-factor-card.active::after {
+  content: '✓ Активен';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #000;
+  background: var(--accent, #00d2ff);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.form-factor-card-icon {
+  font-size: 26px;
+  margin-bottom: 6px;
+}
+
+.form-factor-card-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary, #fff);
+  margin-bottom: 4px;
+}
+
+.form-factor-card-desc {
+  font-size: 11.5px;
+  color: var(--text-secondary, #94a3b8);
+  line-height: 1.45;
+}
+
+/* Оптимизация виртуализации каталога (Virtual Windowing 60-120 FPS) */
+.media-container.view-grid .rail-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 220px 340px;
+}
+
+/* Мобильные сенсорные жесты и тактильная отдача в плеере */
+.player-touch-gesture-pill {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  background: rgba(10, 12, 18, 0.88);
+  border: 1px solid var(--accent, #00d2ff);
+  box-shadow: 0 4px 18px rgba(0, 210, 255, 0.35);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 16px;
+  border-radius: 20px;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 100;
+}
+
+.player-touch-gesture-pill.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.player-touch-ripple {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 95;
+  animation: rippleFade 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.player-touch-ripple.ripple-left {
+  left: 0;
+  background: radial-gradient(circle at 30% 50%, rgba(0, 210, 255, 0.35) 0%, transparent 70%);
+}
+
+.player-touch-ripple.ripple-right {
+  right: 0;
+  background: radial-gradient(circle at 70% 50%, rgba(0, 210, 255, 0.35) 0%, transparent 70%);
+}
+
+.player-touch-ripple .ripple-text {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 16px;
+  border-radius: 24px;
+  border: 1px solid var(--accent, #00d2ff);
+  text-shadow: 0 0 10px rgba(0, 210, 255, 0.6);
+}
+
+@keyframes rippleFade {
+  0% { opacity: 0; transform: scale(0.85); }
+  30% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+
+/* Интерактивная хронология киновселенных (Franchise Timeline) */
+.franchise-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.franchise-sort-toggle {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.franchise-sort-toggle:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+.franchise-card.watched .franchise-card-poster::after {
+  content: '✓ Просмотрено';
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(16, 185, 129, 0.9);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+}
+
+/* Расширенная неоновая аура Ambilight (Multi-zone halo) */
+.ambilight-aura {
+  position: absolute;
+  inset: -25px;
+  border-radius: 24px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease, box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.6s ease;
+  z-index: 0;
+  mix-blend-mode: screen;
+}
+
+.ambilight-aura.active {
+  opacity: 0.92;
+}
+
+

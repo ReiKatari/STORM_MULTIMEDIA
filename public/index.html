@@ -62,6 +62,11 @@
           <span>📱</span> Пульт
         </button>
 
+        <!-- Кнопка Адаптивного триумвирата интерфейсов (ПК / Мобильный / ТВ) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="form-factor-switcher-btn" title="Режим интерфейса (ПК / Мобильный / ТВ)">
+          <span id="form-factor-icon">🖥️</span> <span id="form-factor-label">ПК</span>
+        </button>
+
         <!-- Кнопка Smart TV режима -->
         <button class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-tv-mode-btn" title="Режим Smart TV">
           <span>📺</span> ТВ-режим
@@ -534,11 +539,13 @@
                 <div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="player_frames_title">Кадры и скриншоты</div>
                 <div class="cinema-screenshots-gallery" id="cinema-modal-screenshots"></div>
               </div>
-            </div>
+              <!-- Секция «В ролях и создатели» в стиле Luno (горизонтальная карусель, фото w500, роли, фильмография) -->
+              <div id="cinema-cast-and-crew-container" class="md-cast-section" style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-subtle); display: none;"></div>
 
-            <!-- Секция рецензий зрителей со спойлер-блоками -->
-            <div id="cinema-reviews-container" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);"></div>
-          </div>
+              <!-- Секция рецензий зрителей со спойлер-блоками и WYSIWYG -->
+              <div id="cinema-reviews-container" style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-subtle);"></div>
+            </div>
+          </div> <!-- /cinema-main-column -->
 
           <!-- Правая колонка подробной информации о релизе (актеры, режиссеры, рейтинги, даты) -->
           <div class="cinema-side-column" id="cinema-side-info">
@@ -581,11 +588,32 @@
             <input type="password" class="storm-input" id="login-password" required placeholder="Введите пароль" autocomplete="current-password">
           </div>
           <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%; margin-bottom: 10px;" data-i18n="auth_login_submit">Войти в аккаунт</button>
-          <button type="button" class="storm-btn storm-btn-secondary" id="guest-login-btn" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_guest_login">Войти как гость</button>
+          <button type="button" class="storm-btn storm-btn-secondary" id="open-tv-code-btn" style="width: 100%; margin-bottom: 10px;">📺 Войти по коду с ТВ</button>
+          <button type="button" class="storm-btn storm-btn-outline" id="guest-login-btn" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_guest_login">Войти как гость</button>
           <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
             <span data-i18n="auth_no_account">Ещё нет аккаунта?</span> <a href="#" id="switch-to-register" style="color: var(--accent); font-weight: 600; text-decoration: none;" data-i18n="auth_register">Регистрация</a>
           </div>
         </form>
+
+        <!-- Экран входа по одноразовому ТВ-коду -->
+        <div id="tv-code-container" style="display: none; text-align: center; padding: 12px 0;">
+          <div style="font-size: 38px; margin-bottom: 6px;">📺</div>
+          <h4 style="font-size: 16px; font-weight: 700; margin: 0 0 6px 0;">Быстрый вход на ТВ</h4>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px 0; line-height: 1.5;">
+            Откройте STORM MULTIMEDIA на смартфоне или ПК, перейдите в раздел <b>Мой профиль ➔ Безопасность ➔ Привязать ТВ</b> и введите код:
+          </p>
+          <div id="tv-code-display" style="font-family: monospace; font-size: 34px; font-weight: 900; letter-spacing: 4px; color: var(--accent); background: var(--bg-tertiary); padding: 14px 20px; border-radius: 12px; border: 2px dashed var(--accent); margin-bottom: 16px; display: inline-block; min-width: 220px; user-select: all;">
+            ------
+          </div>
+          <div id="tv-code-status" style="font-size: 12px; color: var(--text-muted); margin-bottom: 18px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <span class="tv-code-spinner" style="display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: storm-spin 1s linear infinite;"></span>
+            <span id="tv-code-status-text">Ожидание подтверждения на устройстве...</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="storm-btn storm-btn-secondary" id="tv-code-refresh-btn" style="flex: 1;">🔄 Новый код</button>
+            <button type="button" class="storm-btn storm-btn-outline" id="tv-code-back-btn" style="flex: 1;">Назад</button>
+          </div>
+        </div>
 
         <!-- Форма регистрации -->
         <form id="register-form" style="display: none;">
@@ -792,6 +820,18 @@
             </div>
             <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">Обновить пароль</button>
           </form>
+
+          <!-- Привязка ТВ-устройства по одноразовому коду -->
+          <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-subtle);">
+            <h5 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: var(--accent);">📺 Привязать ТВ-устройство</h5>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
+              Введите 6-значный одноразовый код (ST-XXXX), отображаемый на экране телевизора или ТВ-приставки, чтобы мгновенно авторизовать устройство.
+            </p>
+            <form id="verify-tv-device-form" style="display: flex; gap: 8px;">
+              <input type="text" class="storm-input" id="tv-device-code-input" placeholder="Код ST-XXXX" style="text-transform: uppercase; font-family: monospace; font-weight: 700; letter-spacing: 2px;" required maxlength="10">
+              <button type="submit" class="storm-btn storm-btn-primary" id="verify-tv-device-btn">Подтвердить</button>
+            </form>
+          </div>
         </div>
 
         <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
@@ -937,6 +977,13 @@
             <div class="mobile-nav-texts">
               <span class="mobile-nav-title">Синхронизация</span>
               <span class="mobile-nav-desc">Shikimori, MAL, резервные копии</span>
+            </div>
+          </button>
+          <button type="button" class="mobile-drawer-nav-item" id="drawer-form-factor-btn">
+            <span class="mobile-nav-icon">📐</span>
+            <div class="mobile-nav-texts">
+              <span class="mobile-nav-title">Форм-фактор интерфейса</span>
+              <span class="mobile-nav-desc">ПК, Мобильный или Smart TV</span>
             </div>
           </button>
           <button type="button" class="mobile-drawer-nav-item" id="drawer-tv-mode-btn">

@@ -117,6 +117,7 @@ db.exec(`
     title TEXT NOT NULL,
     rating INTEGER DEFAULT 10,
     content TEXT NOT NULL,
+    tone TEXT DEFAULT 'positive',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -526,6 +527,8 @@ export function changeUserPassword(userId, oldPassword, newPassword) {
 
   const newHash = hashPassword(newPassword);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, userId);
+  // Инвалидация всех активных сессий пользователя для криптографической безопасности
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
 // Инициализация стартовых данных пользователя (закладки, списки, история) при первом входе
@@ -1242,19 +1245,24 @@ export function getMediaReviews(mediaId, source, currentUserId = null) {
     }
     return {
       ...rev,
+      tone: rev.tone || (rev.rating >= 8 ? 'positive' : (rev.rating >= 5 ? 'neutral' : 'negative')),
       user_reaction: userReaction
     };
   });
 }
 
-export function addReview(userId, { media_id, source, title, rating, content }) {
+export function addReview(userId, { media_id, source, title, rating, content, tone }) {
   const now = Date.now();
   const safeRating = Math.max(1, Math.min(10, parseInt(rating, 10) || 10));
+  const safeTone = (tone === 'negative' || tone === 'neutral' || tone === 'positive')
+    ? tone
+    : (safeRating >= 8 ? 'positive' : (safeRating >= 5 ? 'neutral' : 'negative'));
+
   const insert = db.prepare(`
-    INSERT INTO reviews (user_id, media_id, source, title, rating, content, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO reviews (user_id, media_id, source, title, rating, content, tone, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = insert.run(userId, String(media_id), source, title || '', safeRating, content, now, now);
+  const result = insert.run(userId, String(media_id), source, title || '', safeRating, content, safeTone, now, now);
   const reviewId = Number(result.lastInsertRowid);
 
   // Начисляем достижения автору рецензии
@@ -1268,6 +1276,7 @@ export function addReview(userId, { media_id, source, title, rating, content }) 
     source,
     title: title || '',
     rating: safeRating,
+    tone: safeTone,
     content,
     created_at: now,
     updated_at: now,

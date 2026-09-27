@@ -306,6 +306,64 @@ export async function logout() {
   showToast(t('msg_logout_success'), 'info');
 }
 
+// ==========================================
+// ВХОД ПО ОДНОРАЗОВОМУ ТВ-КОДУ (DEVICE CODE FLOW)
+// ==========================================
+let tvCodePollInterval = null;
+
+export async function startTvDeviceCodeSession() {
+  const displayEl = document.getElementById('tv-code-display');
+  const statusEl = document.getElementById('tv-code-status-text');
+  if (displayEl) displayEl.textContent = '------';
+  if (statusEl) statusEl.textContent = 'Генерация одноразового кода...';
+
+  stopTvDeviceCodeSession();
+
+  try {
+    const res = await fetch('/api/auth/device/code', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.code) throw new Error(data.error || 'Ошибка запроса кода');
+
+    const code = data.code;
+    if (displayEl) displayEl.textContent = code;
+    if (statusEl) statusEl.textContent = 'Ожидание подтверждения на устройстве...';
+
+    tvCodePollInterval = setInterval(async () => {
+      try {
+        const pollRes = await fetch(`/api/auth/device/poll?code=${encodeURIComponent(code)}`);
+        const pollData = await pollRes.json();
+
+        if (pollData.status === 'authorized' && pollData.session) {
+          stopTvDeviceCodeSession();
+          currentToken = pollData.session.token;
+          currentUser = pollData.session.user;
+          localStorage.setItem('storm_token', currentToken);
+          localStorage.setItem('storm_user', JSON.stringify(currentUser));
+          updateAuthUI();
+          notifyAuthChanged();
+          showToast(`✅ Успешный вход на ТВ (${currentUser.username})!`, 'success');
+          const authModal = document.getElementById('auth-modal');
+          if (authModal) authModal.classList.remove('is-open');
+        } else if (pollData.status === 'expired') {
+          stopTvDeviceCodeSession();
+          if (statusEl) statusEl.textContent = '⚠️ Срок действия кода истёк. Запросите новый код.';
+        }
+      } catch (err) {
+        console.warn('Ошибка проверки статуса ТВ-кода:', err);
+      }
+    }, 2500);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
+  }
+}
+
+export function stopTvDeviceCodeSession() {
+  if (tvCodePollInterval) {
+    clearInterval(tvCodePollInterval);
+    tvCodePollInterval = null;
+  }
+}
+
 export function updateFamilyHeaderUI() {
   const profile = getActiveProfile();
   const iconEl = document.getElementById('active-profile-avatar-icon');
@@ -709,6 +767,37 @@ export function initProfileHandlers() {
         await changePassword(oldPass, newPass);
         changePasswordForm.reset();
         switchProfileTab('overview');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  // Привязка ТВ-устройства по коду (Device Code Verification)
+  const verifyTvForm = document.getElementById('verify-tv-device-form');
+  if (verifyTvForm) {
+    verifyTvForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const codeInput = document.getElementById('tv-device-code-input');
+      const rawCode = (codeInput?.value || '').trim().toUpperCase();
+      if (!rawCode) {
+        showToast('Пожалуйста, введите 6-значный ТВ-код', 'error');
+        return;
+      }
+      try {
+        const token = getToken();
+        const res = await fetch('/api/auth/device/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ code: rawCode })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Не удалось привязать ТВ-устройство');
+        showToast('✅ ТВ-устройство успешно авторизовано!', 'success');
+        if (codeInput) codeInput.value = '';
       } catch (err) {
         showToast(err.message, 'error');
       }

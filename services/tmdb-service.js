@@ -625,7 +625,25 @@ export async function getTmdbPersonMedia(personId) {
   if (cached) return cached;
 
   try {
-    const url = `${TMDB_BASE}/person/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
+    let numericId = cleanId;
+    if (isNaN(Number(cleanId)) || cleanId.startsWith('actor_') || cleanId.startsWith('dir_')) {
+      const searchName = cleanId.replace(/^(actor_|dir_)\d*_?/, '').trim();
+      if (!searchName) return { person: null, items: [] };
+      const searchUrl = `${TMDB_BASE}/search/person?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(searchName)}`;
+      const searchRes = await tmdbFetch(searchUrl);
+      if (searchRes.ok) {
+        const sData = await searchRes.json();
+        if (sData.results && sData.results.length > 0) {
+          numericId = sData.results[0].id;
+        } else {
+          return { person: null, items: [] };
+        }
+      } else {
+        return { person: null, items: [] };
+      }
+    }
+
+    const url = `${TMDB_BASE}/person/${numericId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
     const res = await tmdbFetch(url);
     if (!res.ok) throw new Error(`Person fetch error: ${res.status}`);
 
