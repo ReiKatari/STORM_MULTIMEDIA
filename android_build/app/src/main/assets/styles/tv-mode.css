@@ -10,6 +10,40 @@ body.tv-mode {
   padding-right: env(safe-area-inset-right, 0);
 }
 
+/* Поддержка аэромышки (Air Mouse): курсор всегда четко виден на экране ТВ */
+body.tv-mode,
+body.tv-mode * {
+  cursor: default;
+}
+
+body.tv-mode a,
+body.tv-mode button,
+body.tv-mode .media-card,
+body.tv-mode .media-detailed-card,
+body.tv-mode .series-episode-card,
+body.tv-mode .series-season-tab,
+body.tv-mode .episode-pill,
+body.tv-mode .voiceover-pill,
+body.tv-mode .storm-tab-btn,
+body.tv-mode .filter-chip,
+body.tv-mode .action-sheet-btn,
+body.tv-mode .quick-dropdown-trigger,
+body.tv-mode .player-dropdown-trigger,
+body.tv-mode .player-dropdown-item,
+body.tv-mode .player-fallback-btn,
+body.tv-mode [role="button"],
+body.tv-mode select,
+body.tv-mode input {
+  cursor: pointer !important;
+}
+
+/* При активном движении курсора аэромышки временно гасим фокусную рамку D-Pad */
+body.tv-mode.air-mouse-active .tv-focused {
+  outline: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
 body.tv-mode .storm-sticky-header-container {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
   overflow: visible !important;
@@ -242,6 +276,22 @@ body.tv-mode .media-detailed-card:focus,
 body.tv-mode .media-table-table tbody tr:focus,
 body.tv-mode .storm-tab-btn:focus,
 body.tv-mode .storm-btn:focus,
+body.tv-mode .quick-dropdown-trigger:focus,
+body.tv-mode .quick-dropdown-trigger.tv-focused,
+body.tv-mode .player-dropdown-trigger:focus,
+body.tv-mode .player-dropdown-trigger.tv-focused,
+body.tv-mode .player-dropdown-item:focus,
+body.tv-mode .player-dropdown-item.tv-focused,
+body.tv-mode .player-fallback-btn:focus,
+body.tv-mode .player-fallback-btn.tv-focused,
+body.tv-mode .series-season-tab:focus,
+body.tv-mode .series-season-tab.tv-focused,
+body.tv-mode .series-episode-card:focus,
+body.tv-mode .series-episode-card.tv-focused,
+body.tv-mode .episode-pill:focus,
+body.tv-mode .episode-pill.tv-focused,
+body.tv-mode .voiceover-pill:focus,
+body.tv-mode .voiceover-pill.tv-focused,
 body.tv-mode button:focus-visible,
 body.tv-mode select:focus-visible,
 body.tv-mode input:focus-visible {

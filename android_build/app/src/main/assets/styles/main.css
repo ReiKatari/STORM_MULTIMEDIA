@@ -3179,6 +3179,93 @@ body.drawer-open {
     font-size: 13px !important;
   }
 
+  /* Оптимизация для компактных смартфонов (экраны 360px - 420px) */
+  @media (max-width: 420px) {
+    .storm-navbar-inner {
+      padding: 6px 10px 8px !important;
+      gap: 6px !important;
+    }
+    .storm-brand {
+      gap: 6px !important;
+    }
+    .storm-brand-logo {
+      width: 28px !important;
+      height: 28px !important;
+    }
+    .storm-brand-title {
+      font-size: 14.5px !important;
+    }
+    .storm-brand-sub {
+      display: none !important;
+    }
+    .storm-nav-actions {
+      gap: 4px !important;
+    }
+    .storm-nav-actions #header-recommender-btn {
+      display: none !important;
+    }
+    .storm-nav-actions #header-calendar-btn {
+      width: 30px !important;
+      height: 30px !important;
+      font-size: 14px !important;
+    }
+    #login-modal-btn {
+      padding: 4px 8px !important;
+      font-size: 11px !important;
+    }
+    .user-avatar-img {
+      width: 26px !important;
+      height: 26px !important;
+    }
+    .storm-search-input {
+      padding: 8px 60px 8px 30px !important;
+      font-size: 12px !important;
+    }
+    .storm-search-mic {
+      width: 26px !important;
+      height: 26px !important;
+      font-size: 12px !important;
+      right: 30px !important;
+    }
+    .storm-search-icon {
+      left: 10px !important;
+      font-size: 12px !important;
+    }
+  }
+
+  /* Оптимизация для сверхкомпактных смартфонов (экраны <= 360px) */
+  @media (max-width: 360px) {
+    .storm-navbar-inner {
+      padding: 5px 6px 7px !important;
+      gap: 4px !important;
+    }
+    .storm-brand-logo {
+      width: 24px !important;
+      height: 24px !important;
+    }
+    .storm-brand-title {
+      font-size: 13px !important;
+      letter-spacing: 0 !important;
+    }
+    .storm-nav-actions #header-calendar-btn {
+      width: 28px !important;
+      height: 28px !important;
+      font-size: 13px !important;
+    }
+    #login-modal-btn {
+      padding: 3px 6px !important;
+      font-size: 10.5px !important;
+    }
+    .user-avatar-img {
+      width: 24px !important;
+      height: 24px !important;
+    }
+    .storm-search-input {
+      padding: 7px 54px 7px 26px !important;
+      font-size: 11.5px !important;
+    }
+  }
+
   /* 3. Горизонтальная скролл-лента вкладок (Category Chips) */
   .storm-tabs-bar {
     width: 100% !important;
@@ -3478,10 +3565,55 @@ body.drawer-open {
     }
 
     /* На смартфонах скрываем второстепенные кнопки из узкой шапки, освобождая место для полноэкранного режима и крестика */
+    #cinema-modal #player-aspect-btn,
+    #cinema-modal #player-pip-btn,
     #cinema-modal #player-sleep-btn,
     #cinema-modal #player-screen-lock-btn,
     #cinema-modal .cinema-focus-exit-badge {
       display: none !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    #cinema-modal .storm-modal-header {
+      padding: 6px 8px !important;
+      gap: 6px !important;
+      min-height: 42px !important;
+    }
+    #cinema-modal .storm-modal-title {
+      font-size: 13px !important;
+      line-height: 1.2 !important;
+    }
+    #cinema-modal #cinema-modal-year {
+      font-size: 11px !important;
+    }
+    #cinema-modal .cinema-header-actions {
+      gap: 4px !important;
+    }
+    #cinema-modal .storm-modal-fullscreen-btn,
+    #cinema-modal .storm-modal-close {
+      width: 30px !important;
+      height: 30px !important;
+      min-width: 30px !important;
+      font-size: 13px !important;
+    }
+  }
+
+  @media (max-width: 360px) {
+    #cinema-modal .storm-modal-header {
+      padding: 4px 6px !important;
+      gap: 4px !important;
+      min-height: 38px !important;
+    }
+    #cinema-modal .storm-modal-title {
+      font-size: 12px !important;
+    }
+    #cinema-modal .storm-modal-fullscreen-btn,
+    #cinema-modal .storm-modal-close {
+      width: 28px !important;
+      height: 28px !important;
+      min-width: 28px !important;
+      font-size: 12px !important;
     }
   }
 
@@ -3496,16 +3628,24 @@ body.drawer-open {
     gap: 12px !important;
   }
 
+  #cinema-modal .cinema-main-column {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  /* ВИДЕОПЛЕЕР СТРОГО НАВЕРХУ ЭКРАНА СМАРТФОНА */
   #cinema-modal:not(.is-fullscreen):not(.is-mini-pip) .cinema-player-container,
   #cinema-modal .cinema-player-container {
+    order: -1 !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 80 !important;
     border-radius: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     max-height: calc(100vw * 9 / 16) !important;
     aspect-ratio: 16 / 9 !important;
-    position: relative !important;
-    top: auto !important;
-    z-index: 5 !important;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8) !important;
     overflow: hidden !important;
     background: #000000 !important;
@@ -3545,7 +3685,9 @@ body.drawer-open {
     border-radius: 0 !important;
   }
 
+  /* Размещение элементов под видеоплеером */
   #cinema-modal .player-series-quick-bar {
+    order: 1 !important;
     padding: 8px 12px !important;
     overflow: visible !important;
     scrollbar-width: none !important;
@@ -3554,6 +3696,30 @@ body.drawer-open {
     gap: 8px !important;
     position: relative !important;
     z-index: 4 !important;
+  }
+
+  #cinema-modal #player-fallback-bar {
+    order: 2 !important;
+  }
+
+  #cinema-modal #player-selector-dropdown-wrap {
+    order: 3 !important;
+  }
+
+  #cinema-modal #player-utility-actions {
+    order: 4 !important;
+  }
+
+  #cinema-modal #cinema-modal-desc-wrap {
+    order: 5 !important;
+  }
+
+  #cinema-modal .series-seasons-container {
+    order: 6 !important;
+  }
+
+  #cinema-modal .cinema-side-column {
+    order: 7 !important;
   }
 
   #cinema-modal .player-series-quick-bar.has-open-dropdown,
@@ -3733,6 +3899,84 @@ body.drawer-open {
   pointer-events: auto !important;
   visibility: visible !important;
   background: transparent;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .inplayer-top-sensor {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+  }
+}
+
+/* Кнопка мгновенного старта воспроизведения видео на смартфонах и ПК (Big Play Button) */
+.storm-video-big-play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(10, 13, 20, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 28px var(--accent-glow), 0 8px 24px rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 30;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.storm-video-big-play-btn:hover,
+.storm-video-big-play-btn:active {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 0 36px var(--accent-glow), 0 10px 28px rgba(0, 0, 0, 0.85);
+  background: var(--accent-gradient);
+}
+
+.storm-video-big-play-btn .big-play-icon {
+  font-size: 26px;
+  color: var(--text-primary);
+  margin-left: 4px;
+}
+
+.storm-video-big-play-btn:hover .big-play-icon,
+.storm-video-big-play-btn:active .big-play-icon {
+  color: #05070a;
+}
+
+.storm-video-big-play-btn.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.8);
+}
+
+@media (max-width: 480px) {
+  .storm-video-big-play-btn {
+    width: 58px;
+    height: 58px;
+  }
+  .storm-video-big-play-btn .big-play-icon {
+    font-size: 22px;
+    margin-left: 3px;
+  }
+}
+
+@media (max-width: 360px) {
+  .storm-video-big-play-btn {
+    width: 50px;
+    height: 50px;
+  }
+  .storm-video-big-play-btn .big-play-icon {
+    font-size: 19px;
+    margin-left: 2px;
+  }
 }
 
 /* Оверлей отображается ИСКЛЮЧИТЕЛЬНО при наличии класса активности controls-visible */
@@ -6567,6 +6811,16 @@ body.tv-mode .storm-bottom-nav {
 @media (hover: hover) and (pointer: fine) {
   .player-tap-zone {
     pointer-events: none !important;
+  }
+}
+
+/* На сенсорных мобильных экранах зоны тапа не блокируют запуск видео и активируются только во время воспроизведения */
+@media (max-width: 768px), (pointer: coarse) {
+  .player-tap-zone {
+    pointer-events: none !important;
+  }
+  .player-video-box.is-playing .player-tap-zone {
+    pointer-events: auto !important;
   }
 }
 

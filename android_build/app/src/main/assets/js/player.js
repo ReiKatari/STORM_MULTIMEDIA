@@ -1358,6 +1358,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Закрываем мобильное меню и очищаем всплывающие подсказки
   const drawer = document.getElementById('mobile-drawer-backdrop');
   if (drawer) drawer.classList.remove('is-open');
+  document.body.classList.remove('quick-dropdown-active', 'player-dropdown-active');
   document.querySelectorAll('.media-hover-preview-popup').forEach(p => p.remove());
   // Проверяем ночной просмотр (между 02:00 и 05:00)
   const currentHour = new Date().getHours();
@@ -3305,7 +3306,12 @@ function playStreamUrl(url) {
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
 
-        <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
+        <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
+
+        <!-- Кнопка мгновенного старта воспроизведения на смартфонах и ПК -->
+        <div class="storm-video-big-play-btn" id="storm-video-big-play-btn" title="Воспроизвести">
+          <div class="big-play-icon">▶</div>
+        </div>
 
         <!-- Кнопки пропуска заставок -->
         <button type="button" class="storm-skip-btn" id="skip-intro-btn" style="display: none;">
@@ -3319,6 +3325,27 @@ function playStreamUrl(url) {
 
     const video = document.getElementById('storm-video-player');
     const videoBox = container.querySelector('.player-video-box');
+    const bigPlayBtn = container.querySelector('#storm-video-big-play-btn');
+
+    if (bigPlayBtn && video) {
+      bigPlayBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        video.play().catch(() => {});
+        bigPlayBtn.classList.add('is-hidden');
+      });
+      video.addEventListener('play', () => {
+        bigPlayBtn.classList.add('is-hidden');
+        videoBox.classList.add('is-playing');
+      });
+      video.addEventListener('pause', () => {
+        bigPlayBtn.classList.remove('is-hidden');
+        videoBox.classList.remove('is-playing');
+      });
+      video.addEventListener('playing', () => {
+        bigPlayBtn.classList.add('is-hidden');
+        videoBox.classList.add('is-playing');
+      });
+    }
 
     // Настраиваем HLS с поддержкой ленивой загрузки и P2P Smart-Cache 4K HDR
     const setupHlsStream = () => {
@@ -3420,7 +3447,7 @@ function playStreamUrl(url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         ${isVkPlayer ? `
           <button type="button" class="storm-unmute-btn" id="storm-unmute-btn" title="Включить звук VK Видео">
             <span class="unmute-icon">🔊</span>
@@ -8996,7 +9023,7 @@ function playAnixartEpisode(episode) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 

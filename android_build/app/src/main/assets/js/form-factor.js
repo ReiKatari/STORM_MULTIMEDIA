@@ -11,8 +11,17 @@ let activeEffectiveProfile = 'desktop';
 
 export function detectNativeDeviceType() {
   const ua = (navigator.userAgent || '').toLowerCase();
-  const isTv = /smart[-_]?tv|googletv|appletv|android tv|tizen|web0s|netcast|viera|roku|firetv|pov_tv|hbbtv/i.test(ua);
-  if (isTv) return 'tv';
+  
+  // 1. Сигнатуры Smart TV, Android TV, TV-приставок, Tizen, WebOS, FireTV, Apple TV, консолей
+  const isTvUa = /smart[-_]?tv|googletv|appletv|android[-_ ]?tv|tizen|web0s|webos|netcast|viera|roku|firetv|fire[-_]tv|aft[a-z0-9]|pov_tv|hbbtv|mibox|mi[-_ ]?box|chromecast|shield|bravia|philips|hisense|sharp|tcl|sony|kylo|crkey|dtv|boxee|tv[-_ ]?box|leanback/i.test(ua);
+  
+  // 2. Android-приставка или Smart TV без сенсорного экрана (Android + maxTouchPoints === 0)
+  const isAndroidTvBox = /android/i.test(ua) && (navigator.maxTouchPoints === 0 || !('ontouchstart' in window));
+  
+  // 3. Широкоэкранные ТВ-устройства (1080p, 4K) при наличии ТВ-маркеров
+  const isTvScreen = (window.innerWidth >= 1280 || window.screen?.width >= 1280) && (isTvUa || isAndroidTvBox);
+
+  if (isTvUa || isAndroidTvBox || isTvScreen) return 'tv';
 
   const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
   const isNarrow = window.innerWidth <= 768;

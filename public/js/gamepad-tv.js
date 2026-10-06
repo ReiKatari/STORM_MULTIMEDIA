@@ -96,6 +96,34 @@ function playTvBackSound() {
   } catch {}
 }
 
+let airMouseTimer = null;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+function handleAirMouseMove(e) {
+  pokeTvHud();
+
+  // Отсекаем естественный микро-дрейф гироскопа неподвижной аэромышки
+  const dx = Math.abs(e.clientX - lastMouseX);
+  const dy = Math.abs(e.clientY - lastMouseY);
+  if (dx < 3 && dy < 3) return;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+
+  // Включаем активный режим аэромышки (показываем видимый курсор)
+  if (!document.body.classList.contains('air-mouse-active')) {
+    document.body.classList.add('air-mouse-active');
+  }
+
+  // При активном перемещении курсора аэромышки снимаем неоновый фокус D-Pad
+  clearFocusRing();
+
+  if (airMouseTimer) clearTimeout(airMouseTimer);
+  airMouseTimer = setTimeout(() => {
+    document.body.classList.remove('air-mouse-active');
+  }, 5000);
+}
+
 // ==========================================
 // 2. ИНИЦИАЛИЗАЦИЯ И РЕЖИМ ТЕЛЕВИЗОРА
 // ==========================================
@@ -129,8 +157,9 @@ export function initGamepadAndTvMode() {
   // Клавиатурная навигация и клавиши ТВ-пульта (Стрелки, Enter, Esc, MediaKeys, Цвета)
   window.addEventListener('keydown', handleSpatialKeyboard);
 
-  // Глобальное пробуждение панели HUD при действиях пользователя
-  window.addEventListener('mousemove', pokeTvHud, { passive: true });
+  // Глобальное пробуждение панели HUD и отслеживание курсора аэромышки
+  window.addEventListener('mousemove', handleAirMouseMove, { passive: true });
+  window.addEventListener('pointermove', handleAirMouseMove, { passive: true });
   window.addEventListener('touchstart', pokeTvHud, { passive: true });
 
   // Автоматический трекер модальных окон для HUD и фокуса
@@ -720,6 +749,15 @@ function handleGamepadInput(gp) {
 function handleSpatialKeyboard(e) {
   pokeTvHud();
 
+  // При нажатии любых клавиш пульта/клавиатуры сбрасываем режим парения аэромышки
+  if (document.body.classList.contains('air-mouse-active')) {
+    document.body.classList.remove('air-mouse-active');
+  }
+  if (airMouseTimer) {
+    clearTimeout(airMouseTimer);
+    airMouseTimer = null;
+  }
+
   const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
   const isProfileOpen = Boolean(document.getElementById('profile-modal')?.classList.contains('is-open'));
 
@@ -733,16 +771,41 @@ function handleSpatialKeyboard(e) {
     return;
   }
 
-  // Если ТВ-режим не активен (обычный ПК / мобильное устройство):
-  // Стрелки и навигация не перехватываются, чтобы нормально работал колесо мыши и клавиатурный скролл
+  const k = e.key;
+  const c = e.keyCode;
+
+  // Определение клавиш пульта ТВ / D-Pad
+  const isDpadOrRemoteKey = [
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Up', 'Down', 'Left', 'Right',
+    'Select', 'GoBack', 'Back', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
+    'ChannelUp', 'ChannelDown', 'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
+    'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'MediaTrackPrevious'
+  ].includes(k) || [
+    19, 20, 21, 22, 23, 66, 4, 13, 27, 8, 85, 126, 127, 86, 87, 88, 89, 90,
+    166, 167, 176, 177, 178, 179, 227, 228, 403, 404, 405, 406, 10009, 461
+  ].includes(c);
+
+  // 🚀 АВТОМАТИЧЕСКАЯ АКТИВАЦИЯ ТВ-РЕЖИМА:
+  // Если пользователь нажимает любую навигационную стрелку или клавишу пульта на телевизоре,
+  // мгновенно переключаем приложение в 10-foot ТВ-режим и инициализируем фокус без необходимости ручной настройки!
   if (!isTvModeActive) {
-    if (e.key === 'Escape' || e.keyCode === 27) {
-      if (document.querySelector('.storm-modal-backdrop.is-open')) {
-        e.preventDefault();
-        closeActiveModalOrBack();
+    if (isDpadOrRemoteKey) {
+      toggleTvMode(true);
+      if (typeof window.setFormFactorProfile === 'function') {
+        window.setFormFactorProfile('tv', false);
       }
+      if (!currentFocusedElement || !document.body.contains(currentFocusedElement)) {
+        focusInitialElement();
+      }
+    } else {
+      if (e.key === 'Escape' || e.keyCode === 27) {
+        if (document.querySelector('.storm-modal-backdrop.is-open')) {
+          e.preventDefault();
+          closeActiveModalOrBack();
+        }
+      }
+      return;
     }
-    return;
   }
 
   const isDirectVideoFocus = currentFocusedElement && (
@@ -754,31 +817,28 @@ function handleSpatialKeyboard(e) {
     currentFocusedElement.id === 'cinema-modal'
   );
 
-  const k = e.key;
-  const c = e.keyCode;
-
-  // 1. Выделенные аппаратные мультимедийные клавиши ТВ-пультов
-  if (k === 'AudioVolumeUp') {
+  // 1. Выделенные аппаратные мультимедийные клавиши ТВ-пультов и громкость
+  if (k === 'AudioVolumeUp' || c === 24) {
     e.preventDefault();
     handlePlayerTvVolume(0.1);
     return;
   }
-  if (k === 'AudioVolumeDown') {
+  if (k === 'AudioVolumeDown' || c === 25) {
     e.preventDefault();
     handlePlayerTvVolume(-0.1);
     return;
   }
-  if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause' || c === 179 || c === 126 || c === 127) {
+  if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause' || c === 85 || c === 179 || c === 126 || c === 127) {
     e.preventDefault();
     handlePlayerTvPlayPause();
     return;
   }
-  if (k === 'MediaFastForward' || k === 'MediaTrackNext' || c === 228 || c === 176) {
+  if (k === 'MediaFastForward' || k === 'MediaTrackNext' || c === 228 || c === 176 || c === 90 || c === 87) {
     e.preventDefault();
     if (isPlayerOpen) handlePlayerTvSeek(10);
     return;
   }
-  if (k === 'MediaRewind' || k === 'MediaTrackPrevious' || c === 227 || c === 177) {
+  if (k === 'MediaRewind' || k === 'MediaTrackPrevious' || c === 227 || c === 177 || c === 89 || c === 88) {
     e.preventDefault();
     if (isPlayerOpen) handlePlayerTvSeek(-10);
     return;
@@ -822,14 +882,14 @@ function handleSpatialKeyboard(e) {
   }
 
   // 3. Клавиши каналов (ChannelUp / ChannelDown) и PageUp / PageDown
-  if (k === 'ChannelUp' || k === 'PageUp' || c === 33) {
+  if (k === 'ChannelUp' || k === 'PageUp' || c === 33 || c === 166) {
     e.preventDefault();
     if (isProfileOpen) switchAdjacentProfileTab(1);
     else if (isPlayerOpen) switchAdjacentPlayerEpisode(1);
     else switchAdjacentTab(1);
     return;
   }
-  if (k === 'ChannelDown' || k === 'PageDown' || c === 34) {
+  if (k === 'ChannelDown' || k === 'PageDown' || c === 34 || c === 167) {
     e.preventDefault();
     if (isProfileOpen) switchAdjacentProfileTab(-1);
     else if (isPlayerOpen) switchAdjacentPlayerEpisode(-1);
@@ -837,8 +897,8 @@ function handleSpatialKeyboard(e) {
     return;
   }
 
-  // 4. Кнопка меню ТВ-пульта (Menu / ContextMenu)
-  if (k === 'ContextMenu' || k === 'Menu' || c === 93 || c === 18) {
+  // 4. Кнопка меню ТВ-пульта (Menu / ContextMenu / KEYCODE_MENU 82)
+  if (k === 'ContextMenu' || k === 'Menu' || c === 93 || c === 82 || c === 18) {
     e.preventDefault();
     if (isPlayerOpen) {
       document.getElementById('player-source-trigger')?.click();
@@ -849,7 +909,7 @@ function handleSpatialKeyboard(e) {
     return;
   }
 
-  // 5. Навигационные стрелки пульта и D-Pad
+  // 5. Навигационные стрелки пульта и D-Pad (Вверх, Вниз, Влево, Вправо)
   if (k === 'ArrowUp' || k === 'Up' || c === 19 || c === 38) {
     e.preventDefault();
     if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(0.1);
@@ -884,22 +944,22 @@ function handleSpatialKeyboard(e) {
     }
   }
 
-  // 7. Подтверждение / Клик (Enter, Select, DPAD_CENTER)
+  // 7. Подтверждение / Клик (Enter, Select, DPAD_CENTER / KEYCODE_ENTER 66, KEYCODE_DPAD_CENTER 23)
   if (k === 'Enter' || k === 'Select' || c === 13 || c === 23 || c === 66) {
     e.preventDefault();
     pressFocusedElement();
     return;
   }
 
-  // 8. Назад (Escape, Backspace, GoBack, Android Key 4)
-  if (k === 'Escape' || k === 'Backspace' || k === 'GoBack' || c === 27 || c === 8 || c === 4 || c === 10009) {
+  // 8. Назад (Escape, Backspace, GoBack, Back, Android KeyCode 4, Tizen 10009, WebOS 461)
+  if (k === 'Escape' || k === 'Backspace' || k === 'GoBack' || k === 'Back' || c === 27 || c === 8 || c === 4 || c === 10009 || c === 461) {
     e.preventDefault();
     closeActiveModalOrBack();
     return;
   }
 
-  // 9. Полноэкранный режим
-  if (k === 'f' || k === 'F') {
+  // 9. Полноэкранный режим (Клавиша F)
+  if (k === 'f' || k === 'F' || k === 'а' || k === 'А') {
     if (isTvModeActive) {
       e.preventDefault();
       toggleFullscreen();
@@ -944,6 +1004,7 @@ function getFocusableElements() {
     .quick-dropdown-trigger,
     .player-dropdown-trigger,
     .player-dropdown-item,
+    .player-fallback-btn,
     .storm-modal-tool-btn,
     .storm-modal-fullscreen-btn,
     .storm-modal-close,
@@ -999,7 +1060,22 @@ function moveFocus(direction) {
     }
   });
 
-  // Умный запасной переход между зонами экрана (Header/Toolbar <-> Content Container)
+  // Запасная последовательная навигация по горизонтальным лентам (табы, сезоны, серии)
+  if (!bestCandidate && (direction === 'left' || direction === 'right')) {
+    const parentRail = currentFocusedElement.closest('.storm-tabs-inner, .storm-tabs-bar, .media-rail-slider, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links');
+    if (parentRail) {
+      const items = focusables.filter(el => parentRail.contains(el));
+      const currIdx = items.indexOf(currentFocusedElement);
+      if (currIdx !== -1) {
+        const nextIdx = direction === 'right' ? currIdx + 1 : currIdx - 1;
+        if (nextIdx >= 0 && nextIdx < items.length) {
+          bestCandidate = items[nextIdx];
+        }
+      }
+    }
+  }
+
+  // Умный переход между зонами экрана (Шапка/Тулбар <-> Основной контент)
   if (!bestCandidate && direction === 'down') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
     const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container');
@@ -1007,6 +1083,12 @@ function moveFocus(direction) {
     if (mainArea && isTopArea) {
       const candidates = focusables.filter(el => mainArea.contains(el));
       if (candidates.length > 0) {
+        // Выбираем карточку с наименьшим смещением по горизонтали от текущей позиции фокуса
+        candidates.sort((a, b) => {
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          return Math.abs(ra.left - currentRect.left) - Math.abs(rb.left - currentRect.left);
+        });
         bestCandidate = candidates[0];
         if (typeof window.toggleFiltersCollapsible === 'function' && document.body.classList.contains('tv-mode')) {
           window.toggleFiltersCollapsible(true);
@@ -1015,6 +1097,11 @@ function moveFocus(direction) {
     } else if (mainArea && mainArea.contains(currentFocusedElement)) {
       const belowCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().top > currentRect.top + 15);
       if (belowCandidates.length > 0) {
+        belowCandidates.sort((a, b) => {
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          return Math.hypot(ra.left - currentRect.left, ra.top - currentRect.top) - Math.hypot(rb.left - currentRect.left, rb.top - currentRect.top);
+        });
         bestCandidate = belowCandidates[0];
       } else {
         window.scrollBy({ top: 380, behavior: 'smooth' });
@@ -1037,12 +1124,22 @@ function moveFocus(direction) {
     if (mainArea && mainArea.contains(currentFocusedElement)) {
       const aboveCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().bottom < currentRect.bottom - 15);
       if (aboveCandidates.length > 0) {
-        bestCandidate = aboveCandidates[aboveCandidates.length - 1];
+        aboveCandidates.sort((a, b) => {
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          return Math.hypot(ra.left - currentRect.left, currentRect.bottom - ra.bottom) - Math.hypot(rb.left - currentRect.left, currentRect.bottom - rb.bottom);
+        });
+        bestCandidate = aboveCandidates[0];
       } else {
         const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
         if (topArea) {
           const candidates = focusables.filter(el => topArea.contains(el));
           if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              const ra = a.getBoundingClientRect();
+              const rb = b.getBoundingClientRect();
+              return Math.abs(ra.left - currentRect.left) - Math.abs(rb.left - currentRect.left);
+            });
             bestCandidate = candidates[0];
           }
         }
@@ -1076,7 +1173,7 @@ function setFocusTo(element) {
     element.setAttribute('tabindex', '0');
   }
   element.focus();
-  element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
 }
 
 function focusInitialElement() {

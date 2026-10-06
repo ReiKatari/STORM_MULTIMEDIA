@@ -5678,8 +5678,8 @@ button:active .storm-status-svg {
   }
 }
 
-body.quick-dropdown-active .cinema-player-iframe,
-body.player-dropdown-active .cinema-player-iframe {
+body.quick-dropdown-active #cinema-modal:has(.quick-select-dropdown.is-open) .cinema-player-iframe,
+body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .cinema-player-iframe {
   pointer-events: none;
 }
 

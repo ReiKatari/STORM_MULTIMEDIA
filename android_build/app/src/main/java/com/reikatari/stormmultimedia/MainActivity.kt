@@ -1,10 +1,14 @@
 package com.reikatari.stormmultimedia
 
 import android.annotation.SuppressLint
+import android.app.UiModeManager
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.http.SslError
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.SslErrorHandler
@@ -119,12 +123,17 @@ class MainActivity : ComponentActivity() {
         settings.textZoom = 100
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
-        settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.24"
+        val uiModeManager = getSystemService(UI_MODE_SERVICE) as? UiModeManager
+        val isTv = uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                   packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+                   packageManager.hasSystemFeature("android.hardware.type.television")
+
+        val tvSuffix = if (isTv) " AndroidTV SmartTV Leanback" else ""
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.24$tvSuffix"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
-        webView.requestFocusFromTouch()
+        webView.requestFocus()
 
         webView.addJavascriptInterface(StormAndroidBridge(), "StormAndroidBridge")
     }
@@ -403,6 +412,54 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         webView.onPause()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (customView == null) {
+            val keyCode = event.keyCode
+            val isTvNavKey = when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER,
+                KeyEvent.KEYCODE_BUTTON_A,
+                KeyEvent.KEYCODE_BUTTON_B,
+                KeyEvent.KEYCODE_BUTTON_X,
+                KeyEvent.KEYCODE_BUTTON_Y,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_PLAY,
+                KeyEvent.KEYCODE_MEDIA_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_REWIND,
+                KeyEvent.KEYCODE_MEDIA_NEXT,
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
+                KeyEvent.KEYCODE_CHANNEL_UP,
+                KeyEvent.KEYCODE_CHANNEL_DOWN,
+                KeyEvent.KEYCODE_PAGE_UP,
+                KeyEvent.KEYCODE_PAGE_DOWN,
+                KeyEvent.KEYCODE_PROG_RED,
+                KeyEvent.KEYCODE_PROG_GREEN,
+                KeyEvent.KEYCODE_PROG_YELLOW,
+                KeyEvent.KEYCODE_PROG_BLUE,
+                KeyEvent.KEYCODE_MENU,
+                KeyEvent.KEYCODE_INFO,
+                KeyEvent.KEYCODE_GUIDE,
+                KeyEvent.KEYCODE_BOOKMARK -> true
+                else -> false
+            }
+
+            if (isTvNavKey) {
+                if (webView.dispatchKeyEvent(event)) {
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onDestroy() {
