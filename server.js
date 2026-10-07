@@ -699,6 +699,17 @@ app.get('/api/player/health', (req, res) => {
   });
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: Date.now(),
+    memory: process.memoryUsage(),
+    pid: process.pid,
+    version: '1.0.28'
+  });
+});
+
 app.post('/api/admin/restart', (req, res) => {
   const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
   let currentUser = req.user;
@@ -5687,4 +5698,32 @@ server.listen(PORT, () => {
   console.log(`🚀 STORM MULTIMEDIA Сервер запущен на порту ${PORT}`);
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);
+});
+
+// ==========================================
+// САМОВОССТАНОВЛЕНИЕ И БЕЗОПАСНОСТЬ ПРОЦЕССА
+// ==========================================
+process.on('uncaughtException', (err) => {
+  console.error('[STORM SERVER CRITICAL] Неперехваченное исключение:', err?.stack || err);
+  try { checkpointWal(); } catch (_) {}
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.warn('[STORM SERVER WARNING] Необработанное отклонение промиса:', reason);
+});
+
+process.on('SIGTERM', () => {
+  console.log('[STORM SERVER] Получен сигнал SIGTERM. Фиксация базы данных и остановка...');
+  try { checkpointWal(); } catch (_) {}
+  server.close(() => {
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('[STORM SERVER] Получен сигнал SIGINT. Фиксация базы данных и остановка...');
+  try { checkpointWal(); } catch (_) {}
+  server.close(() => {
+    process.exit(0);
+  });
 });
