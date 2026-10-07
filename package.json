@@ -23,6 +23,7 @@
   "author": "ReiKatari",
   "license": "MIT",
   "dependencies": {
+    "@img/sharp-linux-x64": "^0.35.5",
     "anixapi": "^0.3.2",
     "cheerio": "^1.0.0",
     "compression": "^1.8.2",
