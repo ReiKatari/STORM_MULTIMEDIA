@@ -492,8 +492,15 @@ function authMiddleware(req, res, next) {
     req.token = token;
   }
   if (!req.user) {
-    // Бесшовный доступ к закладкам и спискам для локального сервера
-    req.user = getUserByToken('offline_token_reikatari') || { id: 1, username: 'ReiKatari', role: 'admin' };
+    // Бесшовный доступ к профилю, закладкам и спискам для экосистемы STORM SOFT
+    const defaultSession = getOrCreateDefaultUserSession();
+    if (defaultSession?.user) {
+      req.user = defaultSession.user;
+      req.token = defaultSession.token;
+      if (!token) {
+        setSessionCookie(res, defaultSession.token);
+      }
+    }
   }
   next();
 }
@@ -750,7 +757,8 @@ app.get('/api/auth/me', (req, res) => {
   const stats = getUserStats(req.user.id);
   res.json({
     user: req.user,
-    stats
+    stats,
+    token: req.token
   });
 });
 
@@ -959,15 +967,17 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
         let buffer = Buffer.from(await res.arrayBuffer());
         let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
 
-        if (buffer.length > 500 && sharp) {
-          try {
-            const webpBuf = await sharp(buffer)
-              .webp({ quality: 82, effort: 3 })
-              .toBuffer();
-            buffer = webpBuf;
-            contentType = 'image/webp';
-          } catch {
-            // Фолбэк на оригинальный формат, если sharp не смог обработать (например svg)
+        if (buffer.length > 100) {
+          if (sharp) {
+            try {
+              const webpBuf = await sharp(buffer)
+                .webp({ quality: 82, effort: 3 })
+                .toBuffer();
+              buffer = webpBuf;
+              contentType = 'image/webp';
+            } catch {
+              // Фолбэк на оригинальный формат, если sharp не смог обработать (например svg)
+            }
           }
 
           const item = { buffer, contentType };
@@ -3745,6 +3755,29 @@ app.get('/api/player/check-stream', async (req, res) => {
   }
 });
 
+let straversCssCache = { css: '', fetchedAt: 0, url: '' };
+async function getStraversCss(cssUrl, referer) {
+  if (straversCssCache.css && straversCssCache.url === cssUrl && (Date.now() - straversCssCache.fetchedAt < 3600000)) {
+    return straversCssCache.css;
+  }
+  try {
+    const res = await fetch(cssUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Referer': referer || 'https://v17.fanfilm4k.media/'
+      },
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      straversCssCache.css = await res.text();
+      straversCssCache.fetchedAt = Date.now();
+      straversCssCache.url = cssUrl;
+      return straversCssCache.css;
+    }
+  } catch {}
+  return null;
+}
+
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
@@ -3877,7 +3910,23 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
         // 3. Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
         html = html.replace(/if\s*\(\s*!isFramed\s*\)\s*\{/g, 'if (false && !isFramed) {');
 
+        // 4. Снятие атрибутов Subresource Integrity (SRI) integrity="..." со всех <link> и <script>.
+        // Без этого браузер Chrome блокирует загрузку CSS и JS из-за отсутствия заголовков CORS на CDN балансера!
+        html = html.replace(/\s+integrity=["'][^"']+["']/gi, '');
+
+        // 5. Внедрение и инлайнинг CSS для мгновенного и гарантированного рендеринга плеера
         const baseOrigin = new URL(finalUrl).origin;
+        try {
+          const cssMatch = html.match(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["'][^>]*>/i);
+          if (cssMatch) {
+            const cssHref = cssMatch[1];
+            const fullCssUrl = cssHref.startsWith('http') ? cssHref : `${baseOrigin}${cssHref.startsWith('/') ? '' : '/'}${cssHref}`;
+            const inlinedCss = await getStraversCss(fullCssUrl, baseOrigin);
+            if (inlinedCss) {
+              html = html.replace(cssMatch[0], `<style id="storm-inlined-stravers-css">${inlinedCss}</style>`);
+            }
+          }
+        } catch (_) {}
         const proAudioInjection = `
           <base href="${baseOrigin}/">
           <script>
@@ -4401,6 +4450,9 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           })();
           </script>
           <style>
+            .error_message:not(.active), .error_unsupported:not(.active), .error_player:not(.active), #bug-report-modal:not(.active), .modal.bug-report:not(.active), .bug-report-wrap:not(.active), .modal__content:not(.active) {
+              display: none !important;
+            }
             .pj_menu_item.pj_active, [class*="menu_item"][class*="active"], [class*="speed-item"][class*="active"] {
               background: rgba(0, 210, 255, 0.35) !important;
               color: #ffffff !important;
