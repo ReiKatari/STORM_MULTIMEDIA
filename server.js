@@ -6,7 +6,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import sharp from 'sharp';
+let sharp = null;
+try {
+  const sharpModule = await import('sharp');
+  sharp = sharpModule.default || sharpModule;
+} catch (e) {
+  console.warn('[STORM SERVER WARNING] Модуль sharp не загрузился:', e.message);
+}
 
 import {
   registerUser,
@@ -953,7 +959,7 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
         let buffer = Buffer.from(await res.arrayBuffer());
         let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
 
-        if (buffer.length > 500) {
+        if (buffer.length > 500 && sharp) {
           try {
             const webpBuf = await sharp(buffer)
               .webp({ quality: 82, effort: 3 })
@@ -3586,7 +3592,7 @@ app.post('/api/search/visual', express.json({ limit: '20mb' }), async (req, res)
     }
 
     let metadata = null;
-    if (imageBase64) {
+    if (imageBase64 && sharp) {
       try {
         const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
         const imgBuffer = Buffer.from(cleanBase64, 'base64');
