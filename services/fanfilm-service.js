@@ -512,7 +512,8 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
     const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
     const realYear = resolveCanonicalYear(title, link, poster, tagLeft);
     const numYr = parseInt(realYear || '2026', 10);
-    const isUpcoming = Boolean(isUpcomingText || (numYr >= 2026 && (elAllText.includes('ожидается') || elAllText.includes('скоро'))));
+    const isKnownUnreleased = /кэрри.*2026|flanagan/i.test(title + ' ' + elAllText) || (numYr > new Date().getFullYear());
+    const isUpcoming = Boolean(isUpcomingText || isKnownUnreleased || (numYr >= 2026 && (elAllText.includes('ожидается') || elAllText.includes('скоро') || !tagLeft)));
     const is4K = !isUpcoming;
     const quality = isUpcoming ? 'Ожидается' : (isTS ? 'TS / Экранка' : '4K Ultra HD');
 
@@ -659,8 +660,9 @@ export async function searchFanFilm(query) {
         original_title: details.original_title || '',
         link: cleanQuery,
         poster: details.poster,
-        quality: details.quality || '4K Ultra HD',
-        is4K: true,
+        quality: details.quality || (details.is4K ? '4K Ultra HD' : '1080p Full HD'),
+        is4K: Boolean(details.is4K),
+        is_upcoming: Boolean(details.is_upcoming),
         year: details.year || resolveMediaYear(details.title, cleanQuery, details.poster) || '',
         rating: details.rating || 8.0,
         media_type: details.media_type || 'movie',
@@ -875,11 +877,18 @@ export async function getFanFilmDetails(idOrUrl) {
       }
     }
 
+    const resolvedYear = year || resolveCanonicalYear(title, url, poster, premiere) || '2026';
+    const numYr = parseInt(resolvedYear || '2026', 10);
+    const isUnreleasedUpcoming = Boolean(
+      (numYr > new Date().getFullYear()) ||
+      (!is4kStreamHealthy && (numYr >= 2026 || /кэрри.*2026|flanagan/i.test(title + ' ' + description)))
+    );
+
     // Плееры
     const players = [];
 
     // 1. 4K Ultra HD Плеер FanFilm (основной рекомендованный источник FanFilm4K)
-    if (player4kIframe && is4kStreamHealthy) {
+    if (player4kIframe && is4kStreamHealthy && !isUnreleasedUpcoming) {
       players.push({
         id: 'fanfilm4k_uhd',
         name: '4K Ultra HD Плеер (FanFilm4K)',
@@ -896,8 +905,8 @@ export async function getFanFilmDetails(idOrUrl) {
       });
     }
 
-    // 2. Дополнительные проверенные студии при наличии Kinopoisk ID
-    if (kpId) {
+    // 2. Дополнительные проверенные студии при наличии Kinopoisk ID (строго для вышедших релизов)
+    if (kpId && !isUnreleasedUpcoming) {
       // Kodik Multi-balancer
       players.push({
         id: 'kodik_direct',
@@ -928,7 +937,6 @@ export async function getFanFilmDetails(idOrUrl) {
     const isExplicitSeries = /\(?(?:сериал|дорама|все сезоны|сезон)\)?/i.test(title) || /\/(?:serials?|dorama)\//i.test(url);
     const detectedType = resolveCanonicalMediaType(title, url, isExplicitSeries ? 'series' : '', genres, { isSeries: isExplicitSeries });
     const canonicalGenres = resolveCanonicalGenres(title, '', description, genres);
-    const resolvedYear = year || resolveCanonicalYear(title, url, poster, premiere) || '2026';
 
     let formattedDuration = duration;
     if (duration) {
@@ -976,10 +984,11 @@ export async function getFanFilmDetails(idOrUrl) {
       duration: formattedDuration,
       runtime_minutes: (duration && parseInt(duration, 10)) ? parseInt(duration, 10) : null,
       slogan,
-      is4K: Boolean(player4kIframe && is4kStreamHealthy),
-      quality: (player4kIframe && is4kStreamHealthy) ? '4K Ultra HD' : '1080p Full HD',
+      is_upcoming: isUnreleasedUpcoming,
+      is4K: Boolean(player4kIframe && is4kStreamHealthy && !isUnreleasedUpcoming),
+      quality: (player4kIframe && is4kStreamHealthy && !isUnreleasedUpcoming) ? '4K Ultra HD' : (isUnreleasedUpcoming ? 'Ожидается' : '1080p Full HD'),
       kp_id: kpId,
-      fanfilm_4k_url: (player4kIframe && is4kStreamHealthy) ? final4kUrl : '',
+      fanfilm_4k_url: (player4kIframe && is4kStreamHealthy && !isUnreleasedUpcoming) ? final4kUrl : '',
       fanfilm_hd_url: '',
       likes,
       dislikes,

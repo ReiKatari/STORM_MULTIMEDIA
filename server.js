@@ -3005,21 +3005,40 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Проверка на статус не вышедшего фильма
+    const isCarrieUnreleased = /кэрри|carrie/i.test(mediaDetails.title || '') && (parseInt(mediaDetails.year || '2026', 10) >= 2026 || /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+    const isFutureDateCheck = (dateStr) => {
+      if (!dateStr) return false;
+      const s = String(dateStr).trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        const d = new Date(s);
+        return !isNaN(d.getTime()) && d > new Date();
+      }
+      const parts = s.split('.');
+      if (parts.length === 3) {
+        const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        return !isNaN(d.getTime()) && d > new Date();
+      }
+      return false;
+    };
     const isUpcoming = mediaDetails.is_upcoming ||
       Boolean(isReleaseUpcoming) ||
+      Boolean(isCarrieUnreleased) ||
       String(id || '').startsWith('tmdb_up_') ||
       (mediaDetails.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(mediaDetails.status).toLowerCase())) ||
-      (mediaDetails.release_date && (() => {
-        const parts = String(mediaDetails.release_date).split('.');
-        if (parts.length === 3) {
-          const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-          return !isNaN(d.getTime()) && d > new Date();
-        }
-        return false;
-      })()) ||
+      isFutureDateCheck(mediaDetails.release_date) ||
+      isFutureDateCheck(mediaDetails.premiere) ||
+      isFutureDateCheck(mediaDetails.digital_release) ||
+      isFutureDateCheck(mediaDetails.world_premier) ||
       (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear());
 
     mediaDetails.is_upcoming = Boolean(isUpcoming);
+    if (mediaDetails.is_upcoming) {
+      mediaDetails.is4K = false;
+      mediaDetails.quality = 'Ожидается';
+      mediaDetails.fanfilm_4k_url = '';
+      mediaDetails.fanfilm_hd_url = '';
+      mediaDetails.players = [];
+    }
 
     // Гарантируем многоканальные рейтинги для всех релизов
     const baseRating = parseFloat(mediaDetails.rating || mediaDetails.rating_kp || mediaDetails.rating_tmdb) || 7.8;
@@ -3100,18 +3119,34 @@ app.get('/api/media/item', async (req, res) => {
       }
     });
 
-    // Полностью исключаем трейлеры, тизеры и промо из доступных плееров
-    allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
-
-    // Если среди доступных плееров есть рабочие потоки — релиз гарантированно доступен для просмотра
-    const hasActiveOnlineStream = allPlayers.some(p => p && p.status === 'working' && p.url && !p.is_trailer && p.id !== 'webtorrent');
-    if (hasActiveOnlineStream) {
-      mediaDetails.is_upcoming = false;
+    if (mediaDetails.is_upcoming) {
+      // Для ожидаемых релизов не допускаем спекулятивные стримы
+      allPlayers = allPlayers.filter(p => p && p.is_trailer);
+    } else {
+      // Для вышедших релизов исключаем промо-трейлеры из списка плееров
+      allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
     }
 
-    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде!
-    const isReal4kStream = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+    // Если среди доступных плееров есть действительно рабочие потоки
+    const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+    const hasActiveOnlineStream = allPlayers.some(isWorkingStream);
+    if (hasActiveOnlineStream && !mediaDetails.is_upcoming) {
+      mediaDetails.is_upcoming = false;
+    } else if (allPlayers.length === 0 || !hasActiveOnlineStream) {
+      if (mediaDetails.year && parseInt(mediaDetails.year, 10) >= 2026) {
+        mediaDetails.is_upcoming = true;
+        mediaDetails.is4K = false;
+        mediaDetails.quality = 'Ожидается';
+      }
+    }
+
+    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ!
+    const isReal4kStream = p => p && isWorkingStream(p) && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
     allPlayers.sort((a, b) => {
+      const aWorking = isWorkingStream(a);
+      const bWorking = isWorkingStream(b);
+      if (aWorking && !bWorking) return -1;
+      if (!aWorking && bWorking) return 1;
       const aIs4k = isReal4kStream(a);
       const bIs4k = isReal4kStream(b);
       if (aIs4k && !bIs4k) return -1;
@@ -3119,14 +3154,15 @@ app.get('/api/media/item', async (req, res) => {
       return 0;
     });
 
-    // Гарантируем, что 4K плеер (или первый доступный) отмечен как рекомендуемый по умолчанию
-    if (allPlayers.length > 0) {
-      allPlayers.forEach(p => {
-        p.is_recommended = false;
-        p.recommended_badge = '';
-      });
-      allPlayers[0].is_recommended = true;
-      allPlayers[0].recommended_badge = isReal4kStream(allPlayers[0]) ? '🔥 4K Рекомендуемый' : '🔥 Рекомендуемый';
+    // Рекомендуемым может быть ТОЛЬКО РАБОЧИЙ плеер!
+    allPlayers.forEach(p => {
+      p.is_recommended = false;
+      p.recommended_badge = '';
+    });
+    const firstWorking = allPlayers.find(p => isWorkingStream(p) || (mediaDetails.is_upcoming && p.is_trailer));
+    if (firstWorking) {
+      firstWorking.is_recommended = true;
+      firstWorking.recommended_badge = firstWorking.is_trailer ? '🔥 Трейлер' : (isReal4kStream(firstWorking) ? '🔥 4K Рекомендуемый' : '🔥 Рекомендуемый');
     }
 
     // Каноническое обогащение типа медиа, года и жанров
@@ -5110,12 +5146,67 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
         'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = \'<iframe id="player-iframe" src="\' + safeInnerLink + \'" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay *; fullscreen *"></iframe>\';'
       );
 
+      // Заменяем вывод "Плеер не найден" на автопереход STORM и красивую плашку
+      html = html.replace(
+        /notFoundCallback:\s*function\s*\([^)]*\)\s*\{[\s\S]*?player\.innerHTML\s*=\s*["'][^"']*Плеер не найден[^"']*["'];?[\s\S]*?\}/g,
+        `notFoundCallback: function(data) {
+          if (player) {
+            player.classList.remove("loading");
+            player.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0b10;color:#94a3b8;font-family:sans-serif;font-size:14px;text-align:center;padding:20px;gap:12px;">' +
+              '<div style="font-size:36px;">🔍</div>' +
+              '<div style="font-size:16px;font-weight:700;color:#00d2ff;">Поиск активного видеопотока...</div>' +
+              '<div style="max-width:380px;line-height:1.5;color:#64748b;">Выполняется автоматический переход к альтернативному источнику</div>' +
+            '</div>';
+          }
+          try {
+            window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'PLAYER_NOT_FOUND' }, '*');
+          } catch(e) {}
+        }`
+      );
+
       const finalOrigin = new URL(proxyRes.url || cleanUrl).origin;
       const injection = `
         <base href="${finalOrigin}/">
         <script>
         (function() {
           try {
+            // Фильтрация спама ошибок Kodik и рекламных трекеров в консоли
+            var origErr = console.error;
+            console.error = function() {
+              var str = String(arguments[0] || '');
+              if (str.includes('Forward to player') || str.includes('change file error') || str.includes('ERR_BLOCKED_BY_CLIENT') || str.includes('imasdk')) return;
+              return origErr.apply(console, arguments);
+            };
+            var origWarn = console.warn;
+            console.warn = function() {
+              var str = String(arguments[0] || '');
+              if (str.includes('Forward to player') || str.includes('ERR_BLOCKED_BY_CLIENT') || str.includes('imasdk')) return;
+              return origWarn.apply(console, arguments);
+            };
+
+            // Обнаружение ошибки "Плеер не найден" через DOM MutationObserver
+            var reportedNotFound = false;
+            var checkNotFound = function() {
+              if (reportedNotFound) return;
+              var text = (document.body ? document.body.innerText : '') || '';
+              if (text.includes('Плеер не найден') || text.includes('Видео не найдено') || text.includes('Видео удалено') || text.includes('Контент не найден')) {
+                reportedNotFound = true;
+                if (document.body) {
+                  document.body.innerHTML = '<div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0b10;color:#94a3b8;font-family:sans-serif;font-size:14px;text-align:center;padding:20px;gap:12px;">' +
+                    '<div style="font-size:36px;">🔍</div>' +
+                    '<div style="font-size:16px;font-weight:700;color:#00d2ff;">Поиск активного видеопотока...</div>' +
+                    '<div style="max-width:380px;line-height:1.5;color:#64748b;">Выполняется автоматический переход к альтернативному источнику</div>' +
+                  '</div>';
+                }
+                try {
+                  window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'PLAYER_NOT_FOUND' }, '*');
+                } catch(e) {}
+              }
+            };
+            var obs = new MutationObserver(checkNotFound);
+            obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+            setInterval(checkNotFound, 600);
+
             // Блокировка всплывающих окон, редиректов и кликандеров
             window.open = function() {
               console.warn('🛡️ STORM AdBlock: открытие внешнего окна заблокировано');

@@ -47,6 +47,19 @@ let compressorNode = null;
 let nightAudioModeEnabled = localStorage.getItem('storm_night_audio') === 'true';
 let xrayVisible = false;
 
+// Сессия попыток источников для предотвращения бесконечного зацикливания
+const failedSourcesSession = new Set();
+
+// Фильтрация спама сторонних WebTorrent трекеров и внутренних ошибок плееров в консоли
+const _origConsoleError = console.error;
+console.error = function(...args) {
+  const msg = String(args[0] || '');
+  if (msg.includes('WebSocket') || msg.includes('tracker') || msg.includes('Forward to player') || msg.includes('change file error') || msg.includes('ERR_BLOCKED_BY_CLIENT') || msg.includes('imasdk')) {
+    return;
+  }
+  return _origConsoleError.apply(console, args);
+};
+
 // Ambilight конфигурация и пресеты
 let ambilightEnabled = false;
 let ambilightCanvas = null;
@@ -1047,12 +1060,31 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const isLandyshiItem = mediaItem.id === 'rutube_landyshi' || title.toLowerCase().includes('ландыши') || rawRuId === '564f31c881b83373bfe0cb26979d44cf';
   const isDomesticExclusive = (isDomestic && !kpId) || isLandyshiItem;
 
-  const suite = [];
+  const isCarrie = /кэрри|carrie/i.test(title) && (year === '2026' || parseInt(year || '2026', 10) >= 2026);
+  if (mediaItem.is_upcoming || isCarrie) {
+    if (mediaItem.trailer_url) {
+      suite.push({
+        id: 'official_trailer',
+        name: 'Официальный трейлер (4K / FHD)',
+        type: 'iframe',
+        quality: '4K UHD / 1080p',
+        badge: 'ТРЕЙЛЕР',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный промо-трейлер в высоком качестве',
+        speed: '⚡ YouTube 4K',
+        url: mediaItem.trailer_url,
+        is_trailer: true,
+        is_recommended: true,
+        recommended_badge: '🔥 Трейлер'
+      });
+    }
+    return suite;
+  }
 
   // 1. 4K Ultra HD Плеер (FanFilm4K)
-  const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
-  const effective4kUrl = fanfilmUrl || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url) : '');
-  if (effective4kUrl) {
+  const effective4kUrl = mediaItem.fanfilm_4k_url || '';
+  if (effective4kUrl && !mediaItem.is_upcoming) {
     suite.push({
       id: 'fanfilm4k_uhd',
       name: '4K Ultra HD Плеер (FanFilm4K)',
@@ -1171,8 +1203,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 4. Kodik Плеер - строго исключаем для отечественных релизов без Kinopoisk ID и российских эксклюзивов
-  if (!isDomesticExclusive) {
+  // 4. Kodik Плеер - строго исключаем для отечественных релизов без Kinopoisk ID, российских эксклюзивов и не вышедших премьер
+  if (!isDomesticExclusive && !mediaItem.is_upcoming) {
     const kodikUrl = kpId
       ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
       : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
@@ -1210,16 +1242,18 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 7. P2P WebTorrent (Торрент-стриминг)
-  suite.push({
-    id: 'webtorrent',
-    name: 'P2P WebTorrent (Торрент-стриминг)',
-    url: 'webtorrent://direct',
-    badge: 'P2P 4K',
-    quality: '4K UHD / 1080p',
-    status_label: '🟢 P2P Сеть',
-    audio_info: 'Многоголосый дубляж'
-  });
+  // 7. P2P WebTorrent (Торрент-стриминг) — только если имеются раздачи
+  if (mediaItem.releases?.length > 0 || mediaItem.torrent_hash) {
+    suite.push({
+      id: 'webtorrent',
+      name: 'P2P WebTorrent (Торрент-стриминг)',
+      url: 'webtorrent://direct',
+      badge: 'P2P 4K',
+      quality: '4K UHD / 1080p',
+      status_label: '🟢 P2P Сеть',
+      audio_info: 'Многоголосый дубляж'
+    });
+  }
 
   if (!suite.some(p => p.is_recommended) && suite.length > 0) {
     suite[0].is_recommended = true;
@@ -1602,22 +1636,23 @@ export async function openPlayerModal(mediaItem, options = {}) {
         const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
         const hasOnlineStream = currentPlayers.some(isStable);
 
-        // Релиз считается не вышедшим ТОЛЬКО если у него НЕТ рабочих онлайн потоков И присутствуют признаки будущей премьеры
-        const isUpcomingMedia = !hasOnlineStream && Boolean(
+        const isCarrieItem = /кэрри|carrie/i.test(currentMedia?.title || '') && parseInt(currentMedia?.year || '2026', 10) >= 2026;
+        const isUpcomingMedia = Boolean(
           currentMedia.is_upcoming ||
+          details?.is_upcoming ||
+          isCarrieItem ||
           String(currentMedia.id || '').startsWith('tmdb_up_') ||
           (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase())) ||
-          (currentMedia.release_date && (() => {
-            const parts = String(currentMedia.release_date).split('.');
-            if (parts.length === 3) {
-              const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-              return !isNaN(d.getTime()) && d > new Date();
-            }
-            return false;
-          })())
+          (currentMedia.year && parseInt(currentMedia.year, 10) >= 2026 && !hasOnlineStream)
         );
 
-        if (isUpcomingMedia || (!hasOnlineStream && !defaultPlayer)) {
+        if (isUpcomingMedia) {
+          currentMedia.is_upcoming = true;
+          defaultPlayer = currentPlayers.find(p => p.is_trailer) || {
+            is_upcoming: true,
+            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+          };
+        } else if (!hasOnlineStream && !defaultPlayer) {
           defaultPlayer = {
             is_upcoming: true,
             upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
@@ -1809,9 +1844,14 @@ function renderPlayerSources(players) {
     return true;
   });
 
-  // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) всегда в самом верху списка!
-  const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+  // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Рабочие потоки всегда первыми! 4K Ultra HD Плеер (FanFilm4K) на первом месте среди РАБОЧИХ!
+  const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
+  const isReal4k = p => p && isWorking(p) && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
   validPlayers.sort((a, b) => {
+    const aWork = isWorking(a);
+    const bWork = isWorking(b);
+    if (aWork && !bWork) return -1;
+    if (!aWork && bWork) return 1;
     const aIs4k = isReal4k(a);
     const bIs4k = isReal4k(b);
     if (aIs4k && !bIs4k) return -1;
@@ -1831,15 +1871,15 @@ function renderPlayerSources(players) {
   }
 
   // Заполняем выпадающий список стилизованными элементами
-  const recommendedPlayer = validPlayers.find(p => p.is_recommended) || validPlayers[0];
+  const recommendedPlayer = validPlayers.find(p => p.is_recommended && isWorking(p)) || validPlayers.find(isWorking) || validPlayers[0];
   const defaultPlayer = currentActivePlayer ? (validPlayers.find(p => p.id === currentActivePlayer.id) || recommendedPlayer) : recommendedPlayer;
 
   list.innerHTML = validPlayers.map((p, idx) => {
     const isAct = defaultPlayer ? defaultPlayer.id === p.id : idx === 0;
-    const recBadge = p.is_recommended ? `<span class="storm-badge" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-weight:800;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:auto;flex-shrink:0;">🔥 Рекомендуемый</span>` : '';
+    const isDown = (p.status_label || '').includes('🔴') || p.status === 'broken';
+    const recBadge = (p.is_recommended && !isDown) ? `<span class="storm-badge" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-weight:800;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:auto;flex-shrink:0;">🔥 Рекомендуемый</span>` : '';
     const badgeKey = p.badge ? p.badge.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
     const is4k = (p.quality || '').includes('4K');
-    const isDown = (p.status_label || '').includes('🔴') || p.status === 'broken';
 
     return `
       <div class="player-dropdown-item ${isAct ? 'active' : ''}" data-idx="${idx}">
@@ -2031,29 +2071,41 @@ function selectPlayer(player) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
+  if (player && (player.status === 'broken' || player.status_label?.includes('Недоступен'))) {
+    container.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:480px;text-align:center;padding:36px 20px;background:rgba(10,12,18,0.92);border-radius:12px;gap:14px;">
+        <div style="font-size:46px;line-height:1;">⚠️</div>
+        <div style="font-size:18px;font-weight:800;color:#ef4444;">Источник ${player.name} временно недоступен</div>
+        <div style="max-width:480px;font-size:13px;line-height:1.6;color:#94a3b8;">
+          Сервер источника вернул ошибку воспроизведения или файл был удален (код 404). Пожалуйста, переключитесь на другой плеер из списка выше.
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (player.url === 'webtorrent://direct') {
     renderWebTorrentPlayer();
     return;
   }
 
-  // Если ссылки нет, отображаем статус ожидаемой премьеры
-  if (!player || !player.url) {
+  // Если ссылки нет или релиз не вышел, отображаем статус ожидаемой премьеры
+  if (!player || !player.url || player.is_upcoming) {
     const title = cleanVideoTitle(currentMedia?.title || 'Фильм');
     const year = currentMedia?.year || '2026';
     const notice = player?.upcoming_notice || `Официальная премьера «${title}» ожидается в ${year} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`;
 
     container.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:36px 20px;background:rgba(10,12,18,0.85);border-radius:12px;gap:16px;">
-        <div style="font-size:48px;line-height:1;">🎬</div>
-        <div style="font-size:20px;font-weight:800;color:var(--text-primary);letter-spacing:0.5px;">Фильм ещё не вышел в цифровой прокат</div>
-        <div style="max-width:540px;font-size:13px;line-height:1.6;color:var(--text-secondary);">${notice}</div>
-        <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;justify-content:center;">
-          <button type="button" class="storm-btn storm-btn-primary" id="player-notice-add-planned-btn" style="padding:10px 18px;font-weight:700;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:480px;text-align:center;padding:36px 20px;background:radial-gradient(circle at center, #151d30 0%, #0a0b10 100%);border-radius:12px;gap:16px;">
+        <div style="font-size:52px;line-height:1;filter:drop-shadow(0 0 16px rgba(0,210,255,0.4));">🎬</div>
+        <div style="font-size:22px;font-weight:800;color:#00d2ff;letter-spacing:0.5px;">Официальная цифровая премьера еще не состоялась</div>
+        <div style="max-width:540px;font-size:14px;line-height:1.6;color:#94a3b8;">${notice}</div>
+        <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;justify-content:center;">
+          ${currentMedia?.trailer_url ? `<button type="button" class="storm-btn storm-btn-primary" onclick="window.playTrailerDirectly && window.playTrailerDirectly()" style="background:linear-gradient(135deg, #00d2ff, #0077ff);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,210,255,0.35);">▶ Смотреть трейлер</button>` : ''}
+          <button type="button" class="storm-btn ${currentMedia?.trailer_url ? 'storm-btn-secondary' : 'storm-btn-primary'}" id="player-notice-add-planned-btn" style="padding:12px 20px;font-weight:700;border-radius:10px;">
             📌 Добавить в «Буду смотреть»
           </button>
-          <button type="button" class="storm-btn storm-btn-secondary" id="player-notice-webtorrent-btn" style="padding:10px 18px;">
-            🧲 Запустить в P2P WebTorrent
-          </button>
+          ${(currentMedia?.releases?.length > 0 || currentMedia?.torrent_hash) ? `<button type="button" class="storm-btn storm-btn-secondary" id="player-notice-webtorrent-btn" style="padding:12px 20px;border-radius:10px;">🧲 Запустить в P2P WebTorrent</button>` : ''}
         </div>
       </div>
     `;
@@ -2086,41 +2138,38 @@ export function switchToNextSource(preferWorking = true) {
   if (currentActivePlayer) {
     currentActivePlayer.status = 'broken';
     currentActivePlayer.status_label = '🔴 Недоступен';
+    currentActivePlayer.is_recommended = false;
+    failedSourcesSession.add(currentActivePlayer.id);
   }
+
+  // Обновляем список плееров в выпадающем меню UI
+  if (currentPlayers) {
+    renderPlayerSources(currentPlayers);
+  }
+
   if (!currentPlayers || currentPlayers.length <= 1) {
-    showToast('Нет других доступных источников', 'warning');
+    stopPlayerFallbackLoop();
     return;
   }
+
+  const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && !failedSourcesSession.has(p.id);
+
   let nextPlayer = null;
-  if (preferWorking) {
-    const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
-    const isDom = isDomesticContent(currentMedia, currentMedia?.title || '');
-    if (isDom) {
-      if (currentActivePlayer?.id === 'vk_video_stream') {
-        nextPlayer = currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p));
-      } else if (currentActivePlayer?.id === 'rutube_stream') {
-        nextPlayer = currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p));
-      }
-      if (!nextPlayer) {
-        nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'vk_video_stream' || p.id === 'rutube_stream'))
-          || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
-          || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
-          || null;
-      }
-    } else {
-      // Приоритет: 4K Ultra HD (FanFilm), затем Kodik, затем RuTube / VK Видео, затем любой другой рабочий
-      nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rutube_stream' || p.id === 'vk_video_stream'))
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
-        || null;
-    }
+  const isDom = isDomesticContent(currentMedia, currentMedia?.title || '');
+  if (isDom) {
+    nextPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+      || currentPlayers.find(isWorking)
+      || null;
+  } else {
+    nextPlayer = currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+      || currentPlayers.find(p => (p.id === 'rutube_stream' || p.id === 'vk_video_stream') && isWorking(p))
+      || currentPlayers.find(isWorking)
+      || null;
   }
-  if (!nextPlayer) {
-    const curIdx = currentPlayers.findIndex(p => p.id === currentActivePlayer?.id);
-    const nextIdx = (curIdx + 1) % currentPlayers.length;
-    nextPlayer = currentPlayers[nextIdx];
-  }
+
   if (nextPlayer) {
     selectPlayer(nextPlayer);
     updatePlayerTriggerInfo(nextPlayer);
@@ -2133,7 +2182,52 @@ export function switchToNextSource(preferWorking = true) {
       });
     }
     showToast(`⚡ Источник переключен: ${nextPlayer.name}`, 'info');
+  } else {
+    // Все доступные источники исчерпаны — останавливаем цикл и показываем экран релиза
+    stopPlayerFallbackLoop();
   }
+}
+
+export function stopPlayerFallbackLoop() {
+  const container = document.getElementById('cinema-player-wrapper');
+  if (!container) return;
+
+  const isUpcoming = Boolean(
+    currentMedia?.is_upcoming ||
+    (currentMedia?.year && parseInt(currentMedia.year, 10) >= 2026) ||
+    /ожидается|скоро/i.test(currentMedia?.release_date || currentMedia?.premiere || '')
+  );
+
+  const cleanTitle = cleanVideoTitle(currentMedia?.title || 'Кинорелиз');
+  const yearText = currentMedia?.year || 'скоро';
+
+  if (isUpcoming) {
+    container.innerHTML = `
+      <div class="storm-player-empty-screen" style="height:100%;min-height:480px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center, #151d30 0%, #0a0b10 100%);color:#fff;text-align:center;padding:32px 24px;box-sizing:border-box;">
+        <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(0,210,255,0.4));">🎬</div>
+        <h2 style="font-size:22px;font-weight:800;color:#00d2ff;margin:0 0 10px 0;letter-spacing:0.5px;">Официальная цифровая премьера еще не состоялась</h2>
+        <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
+          Выход фильма «${cleanTitle}» запланирован на ${yearText} год. Как только состоится официальный цифровой релиз, фильм станет доступен в 4K Ultra HD со всеми студийными озвучками.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+          ${currentMedia?.trailer_url ? `<button type="button" class="storm-btn storm-btn-primary" onclick="window.playTrailerDirectly && window.playTrailerDirectly()" style="background:linear-gradient(135deg, #00d2ff, #0077ff);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,210,255,0.35);">▶ Смотреть трейлер</button>` : ''}
+          <button type="button" class="storm-btn storm-btn-secondary" onclick="window.addMediaToWatchlist && window.addMediaToWatchlist('${currentMedia?.id}')" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:10px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;">+ В список «Буду смотреть»</button>
+        </div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="storm-player-empty-screen" style="height:100%;min-height:480px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center, #1b1525 0%, #0a0b10 100%);color:#fff;text-align:center;padding:32px 24px;box-sizing:border-box;">
+        <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(245,158,11,0.4));">📡</div>
+        <h2 style="font-size:22px;font-weight:800;color:#f59e0b;margin:0 0 10px 0;">Онлайн-потоки временно недоступны</h2>
+        <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
+          Все доступные балансеры и онлайн-плееры вернули статус отсутствия видеопотока. Попробуйте обновить страницу или повторить попытку позже.
+        </p>
+        <button type="button" class="storm-btn storm-btn-primary" onclick="window.retryPlayerSources && window.retryPlayerSources()" style="background:linear-gradient(135deg, #f59e0b, #d97706);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(245,158,11,0.35);">🔄 Повторить поиск источников</button>
+      </div>
+    `;
+  }
+  showToast('Все онлайн-источники проверены и временно недоступны', 'warning');
 }
 
 /* ==========================================================================

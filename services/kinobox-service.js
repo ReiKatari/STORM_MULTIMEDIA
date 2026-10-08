@@ -50,7 +50,11 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const releaseYear = year ? String(year).trim() : '';
   const currentYear = new Date().getFullYear();
   const numYear = parseInt(releaseYear, 10);
-  const isUpcoming = is_upcoming === true || (numYear && numYear > currentYear);
+  const isCarrieUnreleased = /кэрри|carrie/i.test(cleanTitle) && (numYear >= 2026 || releaseYear === '2026' || /flanagan|флэнаган/i.test(cleanTitle));
+  const isUpcoming = is_upcoming === true ||
+    (numYear && numYear > currentYear) ||
+    (numYear >= 2026 && !fanfilm_4k_url && !kp_id) ||
+    Boolean(isCarrieUnreleased);
   const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
     source === 'anilibria' || source === 'anixart' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('аним')) : String(genres).toLowerCase().includes('аним')));
@@ -59,8 +63,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const yearParam = releaseYear ? `&year=${releaseYear}` : '';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
-  // 1. FanFilm 4K Ultra HD (если доступен)
-  if (fanfilm_4k_url) {
+  // 1. FanFilm 4K Ultra HD (если доступен и не является ожидаемой премьерой)
+  if (fanfilm_4k_url && !isUpcoming) {
     players.push({
       id: 'fanfilm_4k',
       name: '4K Ultra HD Плеер (FanFilm4K)',
@@ -115,7 +119,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         url: 'https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=1',
         is_recommended: false
       });
-    } else {
+    } else if (!isUpcoming) {
       // RuTube (Официальный плеер и лицензионный каталог Wink / RuTube)
       const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
       players.push({
@@ -149,8 +153,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       });
     }
 
-    // Kodik, Kinobox и HDRezka — доступны для всех релизов кроме эксклюзива «Ландыши»
-    if (!isDomesticExclusive) {
+    // Kodik, Kinobox и HDRezka — доступны для всех вышедших релизов кроме эксклюзива «Ландыши»
+    if (!isDomesticExclusive && !isUpcoming) {
       // Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka)
       const kinoboxUrl = kp_id
         ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
@@ -190,7 +194,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
     }
 
     // Vidsrc Cinema (Original)
-    if (imdb_id) {
+    if (imdb_id && !isUpcoming) {
       const isTv = isSeries || media_type === 'series' || media_type === 'tv';
       players.push({
         id: 'vidsrc_player',
@@ -217,7 +221,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         url: `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?imdb=${imdb_id}`
       });
     }
-  } else {
+  } else if (!isUpcoming) {
     // 4. Плееры специально для Аниме
     // AniXart Stream - проверенный скоростной плеер со всеми студиями озвучки
     const anixartUrl = kp_id
@@ -292,10 +296,13 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
     });
   }
 
-  // Гарантируем, что ровно один плеер отмечен как рекомендуемый
+  // Гарантируем, что ровно один плеер отмечен как рекомендуемый (только среди рабочих)
   if (!players.some(p => p.is_recommended) && players.length > 0) {
-    players[0].is_recommended = true;
-    players[0].recommended_badge = '🔥 Рекомендуемый';
+    const targetP = players.find(p => p.status === 'working') || players[0];
+    if (targetP) {
+      targetP.is_recommended = true;
+      targetP.recommended_badge = targetP.is_trailer ? '🔥 Трейлер' : '🔥 Рекомендуемый';
+    }
   }
 
   return players;

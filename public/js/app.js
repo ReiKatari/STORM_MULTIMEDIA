@@ -2573,6 +2573,7 @@ function createRailCardHtml(item, idx, isWide = false) {
     (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) ||
     (item.premiere && /ожидается|скоро|в кино/i.test(item.premiere)) ||
     (item.quality && /ожидается|скоро/i.test(item.quality)) ||
+    /кэрри.*2026|flanagan/i.test(String(item.title || '') + ' ' + String(item.link || '')) ||
     (item.release_date && (() => {
       const parts = String(item.release_date).split('-');
       if (parts.length === 3) {
@@ -2583,12 +2584,12 @@ function createRailCardHtml(item, idx, isWide = false) {
     })()) ||
     (item.year && parseInt(item.year, 10) > new Date().getFullYear())
   );
-  const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K')));
-  const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || (item.source === 'fanfilm4k' && !isUpcoming));
+  const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K') && !item.quality.includes('Ожидается')));
+  const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || (item.source === 'fanfilm4k' && !isUpcoming && item.is4K !== false));
   const hasHdr = !isUpcoming && (item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr')));
   const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
   const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
-  const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming));
+  const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming && item.is4K !== false && !/ожидается|скоро/i.test(item.quality || '')));
   const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
   const yr = getMediaYear(item);
   const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
@@ -6149,6 +6150,7 @@ function showCardHoverPreview(card, item) {
     (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) ||
     (item.premiere && /ожидается|скоро|в кино/i.test(item.premiere)) ||
     (item.quality && /ожидается|скоро/i.test(item.quality)) ||
+    /кэрри.*2026|flanagan/i.test(String(item.title || '') + ' ' + String(item.link || '')) ||
     (item.release_date && (() => {
       const parts = String(item.release_date).split('-');
       if (parts.length === 3) {
