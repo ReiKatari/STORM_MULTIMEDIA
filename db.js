@@ -2053,5 +2053,23 @@ export function getAdminUsersOverview() {
   };
 }
 
+export function purgeUserData(userId) {
+  if (!userId) return false;
+  try {
+    db.prepare('DELETE FROM bookmarks WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM watch_history WHERE user_id = ?').run(userId);
+    const userLists = db.prepare('SELECT id FROM custom_lists WHERE user_id = ?').all(userId);
+    if (userLists && userLists.length > 0) {
+      const listIds = userLists.map(l => l.id);
+      db.prepare(`DELETE FROM custom_list_items WHERE list_id IN (${listIds.join(',')})`).run();
+    }
+    db.prepare('DELETE FROM custom_lists WHERE user_id = ?').run(userId);
+    return true;
+  } catch (err) {
+    console.error('Ошибка очистки данных пользователя:', err);
+    return false;
+  }
+}
+
 
 

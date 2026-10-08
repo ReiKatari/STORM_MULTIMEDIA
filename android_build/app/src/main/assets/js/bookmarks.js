@@ -339,9 +339,32 @@ export function syncLocalBookmarkItem(mediaData, status) {
   saveLocalBookmarksList(filtered);
 }
 
+const DB_CLEAN_REVISION = '2026-10-08-purge-v1';
+export function checkAndApplyClientPurge() {
+  try {
+    if (localStorage.getItem('storm_purge_rev') !== DB_CLEAN_REVISION) {
+      localStorage.setItem('storm_purge_rev', DB_CLEAN_REVISION);
+      localStorage.removeItem('storm_local_bookmarks');
+      localStorage.removeItem('storm_continue_watching');
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('storm_status_') || k.startsWith('storm_watched_') || k.startsWith('storm_season_status_'))) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      saveLocalBookmarksList([]);
+      setMemoryBookmarksCache([]);
+    }
+  } catch (_) {}
+}
+checkAndApplyClientPurge();
+
 export async function fetchUserBookmarks(status = null, type = null) {
   const token = getToken();
   let serverBookmarks = [];
+  let serverAnswered = false;
 
   // 1. Запрос к серверу
   try {
@@ -359,42 +382,31 @@ export async function fetchUserBookmarks(status = null, type = null) {
       const data = await res.json();
       if (Array.isArray(data)) {
         serverBookmarks = data;
+        serverAnswered = true;
       }
     }
   } catch (err) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
   }
 
-  // 2. Если сервер вернул список, синхронизируем с локальным кэшем (сервер - первоисточник)
-  if (serverBookmarks.length > 0) {
-    const localList = getLocalBookmarksList();
-    const map = new Map();
-    // Серверные данные являются эталонными (Single Source of Truth)
-    serverBookmarks.forEach(it => {
-      const k = String(it.media_id || it.id || '');
-      if (k) map.set(k, it);
-    });
-    // Из локального хранилища сохраняем флаги is_favorite и локальные закладки
-    localList.forEach(it => {
-      const k = String(it.media_id || it.id || '');
-      if (k) {
-        if (map.has(k)) {
-          const srv = map.get(k);
-          if (it.is_favorite && !srv.is_favorite) srv.is_favorite = 1;
-        } else if (it.localOnly) {
-          map.set(k, it);
-        }
+  // 2. Если сервер ответил, он является единственным источником истины (Single Source of Truth)
+  if (serverAnswered) {
+    if (serverBookmarks.length > 0) {
+      if (!status && !type) {
+        saveLocalBookmarksList(serverBookmarks);
       }
-    });
-    const merged = Array.from(map.values());
-    if (!status && !type) {
-      saveLocalBookmarksList(merged);
+      setMemoryBookmarksCache(serverBookmarks);
+      return serverBookmarks;
+    } else {
+      if (!status && !type) {
+        saveLocalBookmarksList([]);
+      }
+      setMemoryBookmarksCache([]);
+      return [];
     }
-    setMemoryBookmarksCache(merged);
-    return serverBookmarks;
   }
 
-  // 3. Резервная отдача из локального хранилища storm_local_bookmarks
+  // 3. Резервная отдача из локального хранилища storm_local_bookmarks (только при отсутствии связи)
   const localBookmarks = getLocalBookmarksList();
   if (localBookmarks.length > 0) {
     let filtered = localBookmarks;
@@ -1230,17 +1242,25 @@ export async function fetchContinueWatching() {
   const token = getToken();
 
   let serverItems = [];
+  let serverAnswered = false;
   if (token) {
     try {
       const res = await fetch('/api/media/continue-watching', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(4000)
       });
       if (res.ok) {
         serverItems = await res.json();
+        serverAnswered = true;
       }
     } catch (err) {
       // Игнорируем сетевые сбои, отдавая локальный кэш
     }
+  }
+
+  if (serverAnswered && Array.isArray(serverItems) && serverItems.length === 0) {
+    localStorage.setItem('storm_continue_watching', JSON.stringify([]));
+    return [];
   }
 
   // Объединяем серверную и локальную историю, исключая дубликаты

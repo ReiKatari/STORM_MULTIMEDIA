@@ -56,7 +56,8 @@ import {
   getWatchRoomDb,
   getAllWatchRoomsDb,
   deleteWatchRoomDb,
-  checkpointWal
+  checkpointWal,
+  purgeUserData
 } from './db.js';
 
 import {
@@ -2491,6 +2492,7 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     let mediaDetails = null;
+    let isReleaseUpcoming = Boolean(String(id || '').startsWith('tmdb_up_'));
 
     if (source === 'anixart' || String(id || '').startsWith('anix_')) {
       const cleanAnixId = String(id || '').replace('anix_', '');
@@ -2706,8 +2708,8 @@ app.get('/api/media/item', async (req, res) => {
         players: players.length > 0 ? players : [searchPlayer]
       };
     } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-      const rawId = String(id || '').replace('tmdb_', '');
-      const cleanTmdbId = /^\d+$/.test(rawId) ? rawId : '';
+      const rawId = String(id || '').replace(/^tmdb_(?:up_)?/, '');
+      const cleanTmdbId = /^\d+$/.test(rawId) ? rawId : (rawId.match(/\d+/)?.[0] || '');
       mediaDetails = await getTmdbItemDetails(cleanTmdbId, req.query.media_type, req.query.title, req.query.year);
 
       if (!mediaDetails) {
@@ -2725,14 +2727,30 @@ app.get('/api/media/item', async (req, res) => {
         };
       }
 
-      if (req.query.fanfilm_4k_url) {
+      // Проверяем, является ли релиз ожидаемой новинкой / не вышедшим в прокат
+      isReleaseUpcoming = isReleaseUpcoming || Boolean(
+        String(id || '').startsWith('tmdb_up_') ||
+        mediaDetails.is_upcoming ||
+        (mediaDetails.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(mediaDetails.status).toLowerCase())) ||
+        (mediaDetails.release_date && (() => {
+          const parts = String(mediaDetails.release_date).split('.');
+          if (parts.length === 3) {
+            const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            return !isNaN(d.getTime()) && d > new Date();
+          }
+          return false;
+        })()) ||
+        (mediaDetails.year && parseInt(mediaDetails.year, 10) >= 2026 && !mediaDetails.kp_id)
+      );
+
+      if (req.query.fanfilm_4k_url && !isReleaseUpcoming) {
         mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url;
         mediaDetails.is4K = true;
         mediaDetails.quality = '4K Ultra HD';
       }
 
-      // Если 4K поток еще не прикреплен — выполняем поиск в FanFilm4K для бесшовного 4K воспроизведения
-      if (!mediaDetails.fanfilm_4k_url && mediaDetails.title) {
+      // Если 4K поток еще не прикреплен — выполняем поиск в FanFilm4K для бесшовного 4K воспроизведения (только для уже вышедших релизов)
+      if (!isReleaseUpcoming && !mediaDetails.fanfilm_4k_url && mediaDetails.title) {
         try {
           const ffResults = await searchFanFilm(mediaDetails.title);
           if (ffResults && ffResults.length > 0) {
@@ -2751,7 +2769,7 @@ app.get('/api/media/item', async (req, res) => {
       }
 
       // Извлекаем прямые стриминговые плееры и kp_id со страницы FanFilm4K
-      if (mediaDetails.fanfilm_4k_url) {
+      if (mediaDetails.fanfilm_4k_url && !isReleaseUpcoming) {
         try {
           const ffDetails = await getFanFilmDetails(mediaDetails.fanfilm_4k_url);
           if (ffDetails) {
@@ -2764,6 +2782,9 @@ app.get('/api/media/item', async (req, res) => {
             if (ffDetails.players && ffDetails.players.length > 0) {
               mediaDetails.players = mediaDetails.players || [];
               ffDetails.players.forEach(p => {
+                if (p.url && (p.url.includes('stravers.live') || p.url.includes('transfusion'))) {
+                  return; // Исключаем плеер-заглушку с трейлером
+                }
                 if (!mediaDetails.players.some(mp => mp.id === p.id || mp.url === p.url)) {
                   mediaDetails.players.push(p);
                 }
@@ -2951,6 +2972,8 @@ app.get('/api/media/item', async (req, res) => {
 
     // Проверка на статус не вышедшего фильма
     const isUpcoming = mediaDetails.is_upcoming ||
+      Boolean(isReleaseUpcoming) ||
+      String(id || '').startsWith('tmdb_up_') ||
       (mediaDetails.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(mediaDetails.status).toLowerCase())) ||
       (mediaDetails.release_date && (() => {
         const parts = String(mediaDetails.release_date).split('.');
@@ -2961,7 +2984,7 @@ app.get('/api/media/item', async (req, res) => {
         return false;
       })()) ||
       (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear()) ||
-      (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear() && !mediaDetails.kp_id && !mediaDetails.players?.some(p => p.id === 'fanfilm4k_uhd'));
+      (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear() && !mediaDetails.kp_id && (!mediaDetails.players || !mediaDetails.players.some(p => p.id === 'fanfilm4k_uhd' && !p.url?.includes('stravers.live'))));
 
     mediaDetails.is_upcoming = Boolean(isUpcoming);
 
@@ -3121,9 +3144,9 @@ app.get('/api/media/series-episodes', async (req, res) => {
       return res.json(cachedData);
     }
 
-    if (resolvedTvId && !isNaN(Number(String(resolvedTvId).replace('tmdb_', '')))) {
+    if (resolvedTvId && !isNaN(Number(String(resolvedTvId).replace(/^tmdb_(?:up_)?/, '')))) {
       try {
-        const cleanId = String(resolvedTvId).replace('tmdb_', '');
+        const cleanId = String(resolvedTvId).replace(/^tmdb_(?:up_)?/, '');
         data = await getTmdbSeasonEpisodes(cleanId, sNum);
       } catch (e) {
         data = { episodes: [], overview: '' };
@@ -3479,8 +3502,8 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
   // 2. Если источник TMDB или ID содержит tmdb_
   const isTmdb = source === 'tmdb' || String(id).startsWith('tmdb_');
   if (isTmdb && id) {
-    const rawId = String(id).replace('tmdb_', '').trim();
-    const cleanId = /^\d+$/.test(rawId) ? rawId : '';
+    const rawId = String(id).replace(/^tmdb_(?:up_)?/, '').trim();
+    const cleanId = /^\d+$/.test(rawId) ? rawId : (rawId.match(/\d+/)?.[0] || '');
     if (cleanId) {
       const details = await getTmdbItemDetails(cleanId, mediaType, cleanTitle, year);
       if (details) {
@@ -3522,7 +3545,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
                 id: r.character.id,
                 name: r.character.russian || r.character.name,
                 character: r.roles ? r.roles.join(', ') : 'Персонаж',
-                photo: r.character.image?.original ? `https://shikimori.one${r.character.image.original}` : 'assets/favicon.svg'
+                photo: r.character.image?.original ? `https://shikimori.one${r.character.image.original}` : 'assets/avatar_default.svg'
               }));
             directors = roles
               .filter(r => r.person && r.roles?.includes('Director'))
@@ -3530,7 +3553,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
                 id: r.person.id,
                 name: r.person.russian || r.person.name,
                 role: 'Режиссер',
-                photo: r.person.image?.original ? `https://shikimori.one${r.person.image.original}` : 'assets/favicon.svg'
+                photo: r.person.image?.original ? `https://shikimori.one${r.person.image.original}` : 'assets/avatar_default.svg'
               }));
           }
         }
@@ -3573,26 +3596,74 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
     } catch {}
   }
 
-  // 5. Парсинг локального списка актеров (из FanFilm / карточки релиза)
+  // 5. Парсинг локального списка актеров (из FanFilm / карточки релиза) с обогащением фото из TMDB
   if (cast.length === 0 && (rawActors || ffDetails?.actors)) {
     const actorStr = rawActors || ffDetails?.actors || '';
     const actorNames = String(actorStr).split(',').map(s => s.trim()).filter(Boolean);
-    cast = actorNames.map((name, idx) => ({
-      id: `actor_${idx + 1}`,
-      name,
-      character: 'В главных ролях',
-      photo: 'assets/favicon.svg'
-    }));
+    const enrichedCast = [];
+    for (let idx = 0; idx < actorNames.length; idx++) {
+      const name = actorNames[idx];
+      let photo = 'assets/avatar_default.svg';
+      if (idx < 8) {
+        try {
+          const pCacheKey = `person_photo_${name.toLowerCase()}`;
+          const cachedPhoto = getCache('person_photos', pCacheKey);
+          if (cachedPhoto) {
+            photo = cachedPhoto;
+          } else {
+            const pRes = await tmdbFetch(`${TMDB_BASE}/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(name)}&language=ru-RU`, { timeout: 2500 });
+            if (pRes.ok) {
+              const pData = await pRes.json();
+              const profile = pData.results?.[0]?.profile_path;
+              if (profile) {
+                photo = `https://image.tmdb.org/t/p/w500${profile}`;
+                setCache('person_photos', pCacheKey, photo, 86400 * 30);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+      enrichedCast.push({
+        id: `actor_${idx + 1}`,
+        name,
+        character: 'В главных ролях',
+        photo
+      });
+    }
+    cast = enrichedCast;
   }
 
   if (directors.length === 0 && ffDetails?.director) {
     const dirNames = String(ffDetails.director).split(',').map(s => s.trim()).filter(Boolean);
-    directors = dirNames.map((name, idx) => ({
-      id: `dir_${idx + 1}`,
-      name,
-      role: 'Режиссер',
-      photo: 'assets/favicon.svg'
-    }));
+    const enrichedDirs = [];
+    for (let idx = 0; idx < dirNames.length; idx++) {
+      const name = dirNames[idx];
+      let photo = 'assets/avatar_default.svg';
+      try {
+        const pCacheKey = `person_photo_${name.toLowerCase()}`;
+        const cachedPhoto = getCache('person_photos', pCacheKey);
+        if (cachedPhoto) {
+          photo = cachedPhoto;
+        } else {
+          const pRes = await tmdbFetch(`${TMDB_BASE}/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(name)}&language=ru-RU`, { timeout: 2500 });
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            const profile = pData.results?.[0]?.profile_path;
+            if (profile) {
+              photo = `https://image.tmdb.org/t/p/w500${profile}`;
+              setCache('person_photos', pCacheKey, photo, 86400 * 30);
+            }
+          }
+        }
+      } catch (_) {}
+      enrichedDirs.push({
+        id: `dir_${idx + 1}`,
+        name,
+        role: 'Режиссер',
+        photo
+      });
+    }
+    directors = enrichedDirs;
   }
 
   const result = {
@@ -4913,16 +4984,31 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
               }
             }, true);
 
-            // Перехват динамического создания iframe для маршрутизации через adblock-proxy
+            // Перехват динамического создания iframe и установки src для маршрутизации через adblock-proxy
             var origSetAttribute = Element.prototype.setAttribute;
             Element.prototype.setAttribute = function(name, val) {
               if (this.tagName === 'IFRAME' && name.toLowerCase() === 'src' && typeof val === 'string') {
-                if (!val.startsWith('/api/player/') && (val.includes('kodik') || val.includes('aniqit') || val.includes('playk') || val.includes('video'))) {
+                if (!val.startsWith('/api/player/') && (val.includes('kodik') || val.includes('aniqit') || val.includes('playk') || val.includes('video') || val.includes('player') || val.includes('balancer') || val.includes('collaps') || val.includes('alloha'))) {
                   val = '/api/player/adblock-proxy?url=' + encodeURIComponent(val.startsWith('//') ? 'https:' + val : val);
                 }
               }
               return origSetAttribute.call(this, name, val);
             };
+
+            try {
+              var iframeSrcDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+              if (iframeSrcDesc && iframeSrcDesc.set) {
+                Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
+                  set: function(val) {
+                    if (typeof val === 'string' && !val.startsWith('/api/player/') && (val.includes('kodik') || val.includes('aniqit') || val.includes('playk') || val.includes('video') || val.includes('player') || val.includes('balancer') || val.includes('collaps') || val.includes('alloha'))) {
+                      val = '/api/player/adblock-proxy?url=' + encodeURIComponent(val.startsWith('//') ? 'https:' + val : val);
+                    }
+                    return iframeSrcDesc.set.call(this, val);
+                  },
+                  get: iframeSrcDesc.get
+                });
+              }
+            } catch (_) {}
 
             function sterilizeAds() {
               try {
@@ -5029,7 +5115,13 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         })();
         </script>
       `;
-      html = html.replace('<head>', '<head>' + injection);
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/<head[^>]*>/i, match => match + injection);
+      } else if (/<html[^>]*>/i.test(html)) {
+        html = html.replace(/<html[^>]*>/i, match => match + '<head>' + injection + '</head>');
+      } else {
+        html = injection + html;
+      }
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       return res.send(html);
     }
@@ -5356,6 +5448,16 @@ app.get('/api/media/continue-watching', requireAuth, (req, res) => {
     res.json(history);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Полная очистка закладок, списков и истории пользователя
+app.post('/api/user/purge-all-data', requireAuth, (req, res) => {
+  try {
+    const success = purgeUserData(req.user.id);
+    res.json({ success, purged: true, message: 'Все закладки, списки и история пользователя успешно очищены.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

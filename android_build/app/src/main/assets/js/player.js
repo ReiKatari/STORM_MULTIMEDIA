@@ -92,6 +92,52 @@ export function setAdblockEnabled(val) {
   localStorage.setItem('storm_adblock_enabled', adblockEnabled ? 'true' : 'false');
 }
 
+export function getSafePersonPhotoUrl(photo) {
+  if (!photo || photo === 'assets/avatar_default.svg' || photo === 'assets/favicon.svg' || photo.startsWith('assets/')) {
+    return 'assets/avatar_default.svg';
+  }
+  if (photo.startsWith('/api/media/image-proxy')) return photo;
+  return `/api/media/image-proxy?url=${encodeURIComponent(photo)}`;
+}
+
+export function getSafeCleanStreamUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return '';
+  let streamUrl = rawUrl.trim();
+  if (streamUrl.startsWith('//')) {
+    streamUrl = 'https:' + streamUrl;
+  }
+
+  if (adblockEnabled) {
+    if (!streamUrl.startsWith('/api/') && !streamUrl.includes('.m3u8')) {
+      if (streamUrl.includes('kodik') || streamUrl.includes('rezka') || streamUrl.includes('lostfilm') || streamUrl.includes('anixart')) {
+        streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
+      } else if (streamUrl.includes('rutube.ru')) {
+        const ruIdMatch = streamUrl.match(/\/embed\/([a-f0-9]{32})/i);
+        if (ruIdMatch) {
+          streamUrl = `/api/player/rutube-embed/${ruIdMatch[1]}`;
+        } else {
+          streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
+        }
+      } else if (!streamUrl.includes('vkvideo.ru') && !streamUrl.includes('vk.com') && !streamUrl.includes('youtube')) {
+        streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
+      }
+    }
+  } else {
+    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
+      try {
+        const parsed = new URL(streamUrl, window.location.origin);
+        const inner = parsed.searchParams.get('url');
+        if (inner) streamUrl = inner;
+      } catch {}
+    }
+    if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
+      streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
+    }
+  }
+
+  return streamUrl;
+}
+
 // WebTorrent
 let torrentClient = null;
 
@@ -1457,7 +1503,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   if (!initialChoice) {
     const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-    const fourKInitial = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isWorking(p));
+    const fourKInitial = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isStable(p));
     if (fourKInitial) {
       initialChoice = fourKInitial;
     } else if (isLandyshiMedia) {
@@ -1606,12 +1652,17 @@ export async function openPlayerModal(mediaItem, options = {}) {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
-        if (!defaultPlayer) {
-          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
+          const isUpcomingMedia = Boolean(
+            currentMedia.is_upcoming ||
+            String(currentMedia.id || '').startsWith('tmdb_up_') ||
+            (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase())) ||
+            (currentMedia.year && parseInt(currentMedia.year, 10) >= 2026 && !currentMedia.kp_id)
+          );
+          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && (!isUpcomingMedia || (!p.url.includes('stravers.live') && !p.url.includes('transfusion')));
           const isStable = p => isWorking(p) && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-          const hasOnlineStream = currentPlayers.some(isWorking);
+          const hasOnlineStream = currentPlayers.some(isStable);
 
-          if (!hasOnlineStream || currentMedia.is_upcoming) {
+          if (!hasOnlineStream || isUpcomingMedia) {
             defaultPlayer = {
               is_upcoming: true,
               upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
@@ -1621,7 +1672,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
             const preferStableKodik = itemYr < 2020;
 
             // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-            const fourKPlayer = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isWorking(p));
+            const fourKPlayer = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isStable(p));
             if (fourKPlayer) {
               defaultPlayer = fourKPlayer;
             } else if (isLandyshiItem) {
@@ -3404,38 +3455,7 @@ function playStreamUrl(url) {
   }
 
   if (typeof streamUrl === 'string') {
-    streamUrl = streamUrl.trim();
-    if (streamUrl.startsWith('//')) {
-      streamUrl = 'https:' + streamUrl;
-    }
-
-    if (adblockEnabled) {
-      if (!streamUrl.startsWith('/api/') && !streamUrl.includes('.m3u8')) {
-        if (streamUrl.includes('kodik') || streamUrl.includes('rezka') || streamUrl.includes('lostfilm') || streamUrl.includes('anixart')) {
-          streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
-        } else if (streamUrl.includes('rutube.ru')) {
-          const ruIdMatch = streamUrl.match(/\/embed\/([a-f0-9]{32})/i);
-          if (ruIdMatch) {
-            streamUrl = `/api/player/rutube-embed/${ruIdMatch[1]}`;
-          } else {
-            streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
-          }
-        } else if (!streamUrl.includes('vkvideo.ru') && !streamUrl.includes('vk.com') && !streamUrl.includes('youtube')) {
-          streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
-        }
-      }
-    } else {
-      if (streamUrl.includes('/api/player/kodik-embed?url=')) {
-        try {
-          const parsed = new URL(streamUrl, window.location.origin);
-          const inner = parsed.searchParams.get('url');
-          if (inner) streamUrl = inner;
-        } catch {}
-      }
-      if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
-        streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
-      }
-    }
+    streamUrl = getSafeCleanStreamUrl(streamUrl);
   }
 
     const isVkPlayer = typeof streamUrl === 'string' && (streamUrl.includes('vkvideo.ru') || streamUrl.includes('vk.com'));
@@ -9020,17 +9040,7 @@ function playAnixartEpisode(episode) {
   }
 
   if (typeof streamUrl === 'string') {
-    streamUrl = streamUrl.trim();
-    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
-      try {
-        const parsed = new URL(streamUrl, window.location.origin);
-        const inner = parsed.searchParams.get('url');
-        if (inner) streamUrl = inner;
-      } catch {}
-    }
-    if (streamUrl.startsWith('//')) {
-      streamUrl = 'https:' + streamUrl;
-    }
+    streamUrl = getSafeCleanStreamUrl(streamUrl);
   }
 
   container.innerHTML = `
@@ -10282,7 +10292,7 @@ export async function renderCastAndCrewCarousel(mediaDetails) {
       ${combined.map(m => `
         <div class="md-cast-card" data-person-id="${escapeHtml(String(m.id))}" data-person-name="${escapeHtml(m.name)}" title="${escapeHtml(m.name)} — ${escapeHtml(m.role)}">
           <div class="md-cast-photo-wrap">
-            <img src="${m.photo || 'assets/avatar_default.svg'}" alt="${escapeHtml(m.name)}" class="md-cast-photo" loading="lazy" onerror="this.src='assets/avatar_default.svg'">
+            <img src="${getSafePersonPhotoUrl(m.photo)}" alt="${escapeHtml(m.name)}" class="md-cast-photo" loading="lazy" onerror="if(!this.dataset.failed){ this.dataset.failed='1'; this.src='assets/avatar_default.svg'; }">
             ${m.isDirector ? '<span class="md-cast-director-badge">Режиссёр</span>' : ''}
           </div>
           <div class="md-cast-name">${escapeHtml(m.name)}</div>
@@ -10354,15 +10364,15 @@ export async function openPersonModal(personId, personName) {
 
     body.innerHTML = `
       <div class="person-profile-header">
-        <img src="${person.photo || 'assets/avatar_default.svg'}" alt="${person.name || personName || 'Персона'}" class="person-profile-photo" onerror="this.src='assets/avatar_default.svg'">
+        <img src="${getSafePersonPhotoUrl(person.photo)}" alt="${escapeHtml(person.name || personName || 'Персона')}" class="person-profile-photo" onerror="if(!this.dataset.failed){ this.dataset.failed='1'; this.src='assets/avatar_default.svg'; }">
         <div class="person-profile-info">
-          <h3 class="person-profile-name">${person.name || personName}</h3>
+          <h3 class="person-profile-name">${escapeHtml(person.name || personName || '')}</h3>
           <div class="person-profile-meta">
-            <span>${person.known_for || 'Кинематографист'}</span>
-            ${formattedBirthday ? `<span>• Дата рождения: <b>${formattedBirthday}</b></span>` : ''}
-            ${person.place_of_birth ? `<span>• ${person.place_of_birth}</span>` : ''}
+            <span>${escapeHtml(person.known_for || 'Кинематографист')}</span>
+            ${formattedBirthday ? `<span>• Дата рождения: <b>${escapeHtml(formattedBirthday)}</b></span>` : ''}
+            ${person.place_of_birth ? `<span>• ${escapeHtml(person.place_of_birth)}</span>` : ''}
           </div>
-          ${person.biography ? `<p class="person-profile-bio">${person.biography}</p>` : ''}
+          ${person.biography ? `<p class="person-profile-bio">${escapeHtml(person.biography)}</p>` : ''}
         </div>
       </div>
 
@@ -10379,12 +10389,12 @@ export async function openPersonModal(personId, personName) {
         ` : items.map(item => `
           <div class="person-media-card" data-id="${item.id}" data-source="${item.source || 'tmdb'}">
             <div class="person-media-poster-box">
-              <img src="${item.poster || 'assets/favicon.svg'}" alt="${item.title}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              <img src="${(item.poster && !item.poster.startsWith('assets/')) ? `/api/media/image-proxy?url=${encodeURIComponent(item.poster)}` : (item.poster || 'assets/favicon.svg')}" alt="${escapeHtml(item.title || '')}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
               <span class="person-media-rating">★ ${item.rating || '—'}</span>
               <span class="person-media-badge-4k" title="Воспроизведение в 4K Ultra HD качестве">4K UHD</span>
             </div>
             <div class="person-media-info">
-              <div class="person-media-title" title="${item.title}">${item.title}</div>
+              <div class="person-media-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || '')}</div>
               <div class="person-media-year">${item.year || ''} • ${item.media_type === 'series' ? 'Сериал' : 'Фильм'}</div>
             </div>
           </div>

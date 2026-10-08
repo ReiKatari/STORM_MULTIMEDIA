@@ -821,6 +821,7 @@ export async function getFanFilmDetails(idOrUrl) {
     if (player4kIframe) {
       final4kUrl = player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe;
       if (final4kUrl.includes('stravers.live') || final4kUrl.includes('transfusion')) {
+        is4kStreamHealthy = false; // По умолчанию заглушка stravers/transfusion не считается рабочим фильмом
         try {
           const chkRes = await fetch(final4kUrl, {
             headers: {
@@ -831,18 +832,17 @@ export async function getFanFilmDetails(idOrUrl) {
           });
           if (chkRes.ok) {
             const chkText = await chkRes.text();
-            const hasFileList = chkText.includes('const fileList =') || chkText.includes('fileList');
+            const hasFileList = chkText.includes('const fileList =') || chkText.includes('fileList') || chkText.includes('.m3u8') || chkText.includes('.mp4');
             const hasConfig = chkText.includes('const config =') || chkText.includes('mediaMetadata');
-            if (hasFileList || hasConfig) {
+            const isTrailerOnly = chkText.includes('Трейлер') && !chkText.includes('.m3u8') && !chkText.includes('.mp4');
+            if ((hasFileList || hasConfig) && !isTrailerOnly) {
               is4kStreamHealthy = true;
-            } else if (chkText.toLowerCase().includes('404 not found') || chkText.toLowerCase().includes('видео удалено')) {
+            } else {
               is4kStreamHealthy = false;
             }
-          } else if (chkRes.status === 404) {
-            is4kStreamHealthy = false;
           }
         } catch {
-          is4kStreamHealthy = true;
+          is4kStreamHealthy = false;
         }
       }
     }
@@ -851,7 +851,7 @@ export async function getFanFilmDetails(idOrUrl) {
     const players = [];
 
     // 1. 4K Ultra HD Плеер FanFilm (основной рекомендованный источник FanFilm4K)
-    if (player4kIframe) {
+    if (player4kIframe && is4kStreamHealthy) {
       players.push({
         id: 'fanfilm4k_uhd',
         name: '4K Ultra HD Плеер (FanFilm4K)',
