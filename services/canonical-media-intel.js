@@ -800,3 +800,101 @@ export function resolveCanonicalGenres(title = '', category = '', description = 
 
   return Array.from(detected).slice(0, 4);
 }
+
+/**
+ * Комплексная проверка медиа-объекта на принадлежность к трейлерам, тизерам, промо и фанатским концептам.
+ * Гарантирует 100% исключение любого рекламного, промо и незавершенного фанатского контента во всех каталогах и поиске.
+ */
+export function isTrailerMedia(item) {
+  if (!item) return false;
+
+  const title = typeof item === 'string' ? item : (item.title || item.name || '');
+  const originalTitle = typeof item === 'string' ? '' : (item.original_title || item.original_name || '');
+  const description = typeof item === 'string' ? '' : (item.description || item.overview || '');
+  const category = typeof item === 'string' ? '' : (item.category || '');
+  const genres = Array.isArray(item.genres) ? item.genres.join(' ') : String(item.genres || '');
+  const durationSec = parseInt(item.duration_seconds || item.durationSec || item.duration || 0, 10);
+  const source = item.source || '';
+
+  const cleanTitle = title.trim();
+  const cleanOriginalTitle = originalTitle.trim();
+  const combinedText = `${cleanTitle} ${cleanOriginalTitle} ${category} ${genres}`.toLowerCase();
+
+  // 1. Прямые маркеры трейлеров и промо в названии или категории
+  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
+
+  if (trailerWordsRegex.test(cleanTitle) || trailerWordsRegex.test(cleanOriginalTitle) || trailerWordsRegex.test(category)) {
+    return true;
+  }
+
+  // Маркеры в скобках, дефисах или составных фразах
+  const subPatterns = [
+    'трейлер', 'тизер', 'trailer', 'teaser',
+    'промо-ролик', 'промо ролик', 'официальный трейлер', 'русский трейлер',
+    'дублированный трейлер', 'финальный трейлер', 'тизер-трейлер', 'концепт-трейлер',
+    'concept trailer', 'fan trailer', 'фан-трейлер', 'фан трейлер'
+  ];
+  for (const p of subPatterns) {
+    if (combinedText.includes(p)) {
+      return true;
+    }
+  }
+
+  // 2. Фанатские концепт-трейлеры несуществующих фильмов (например фейковый Человек-паук: Новый день)
+  const normTitle = cleanTitle.toLowerCase().replace(/[^a-zа-яё0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const normOriginal = cleanOriginalTitle.toLowerCase().replace(/[^a-zа-яё0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const hasSpiderman = normTitle.includes('человек паук') || normTitle.includes('spider man') || normOriginal.includes('spider man');
+  const hasNewDay = normTitle.includes('новый день') || normTitle.includes('brand new day') || normTitle.includes('a new day') || normOriginal.includes('brand new day') || normOriginal.includes('a new day');
+  if (hasSpiderman && hasNewDay) {
+    return true;
+  }
+  if (
+    normTitle.includes('человек паук новый день') ||
+    normTitle.includes('человек паук 4 новый день') ||
+    normTitle.includes('spider man brand new day') ||
+    normTitle.includes('spider man a new day') ||
+    normTitle.includes('spider man 4 new day') ||
+    normOriginal.includes('brand new day') ||
+    normOriginal.includes('a new day')
+  ) {
+    return true;
+  }
+
+  // 2.5 Игрофильмы, прохождения игр и геймплей-ролики
+  const author = (typeof item.author === 'string' ? item.author : '').toLowerCase();
+  const gameFootagePatterns = ['игрофильм', 'игро фильм', 'геймплей', 'gameplay', 'walkthrough', 'прохождение игры', 'прохождение без комментариев', 'летсплей', 'letsplay'];
+  for (const gp of gameFootagePatterns) {
+    if (combinedText.includes(gp) || author.includes(gp)) {
+      return true;
+    }
+  }
+  if ((source === 'rutube' || source === 'vkvideo') && genres.toLowerCase().includes('видеоигры')) {
+    return true;
+  }
+
+  // 3. Проверка длительности для RuTube и VK Видео: видео короче 10 минут (600 сек), позиционируемое как фильм
+  if ((source === 'rutube' || source === 'vkvideo') && durationSec > 0 && durationSec < 600) {
+    const isEpisode = /сери|сезон|эпизод|выпуск/i.test(cleanTitle);
+    if (!isEpisode) {
+      return true;
+    }
+  }
+
+  // 4. Описание, указывающее на промо-материал или трейлер
+  if (description) {
+    const descLower = description.toLowerCase();
+    if (
+      descLower.startsWith('трейлер') ||
+      descLower.startsWith('тизер') ||
+      descLower.startsWith('официальный трейлер') ||
+      descLower.startsWith('русский трейлер') ||
+      descLower.startsWith('дублированный трейлер') ||
+      /\b(смотреть трейлер|смотрите трейлер|официальный дублированный трейлер|главный трейлер|тизер-трейлер)\b/i.test(descLower)
+    ) {
+      if (durationSec > 0 && durationSec < 900) return true;
+      if (descLower.length < 220 && (descLower.includes('трейлер') || descLower.includes('тизер'))) return true;
+    }
+  }
+
+  return false;
+}

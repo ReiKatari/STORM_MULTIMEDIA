@@ -120,7 +120,8 @@ import {
 import {
   resolveCanonicalMediaType,
   resolveCanonicalYear,
-  resolveCanonicalGenres
+  resolveCanonicalGenres,
+  isTrailerMedia
 } from './services/canonical-media-intel.js';
 
 import {
@@ -923,6 +924,21 @@ function isPlaceholderImage(url) {
 function normalizeImageUrl(url) {
   if (!url || typeof url !== 'string') return '';
   let clean = url.trim();
+
+  // Разворачиваем вложенные или экранированные ссылки прокси
+  while (clean.includes('/api/media/image-proxy')) {
+    const match = clean.match(/[?&]url=([^&]+)/);
+    if (match) {
+      try {
+        clean = decodeURIComponent(match[1]);
+      } catch {
+        clean = match[1];
+      }
+    } else {
+      break;
+    }
+  }
+
   if (clean.startsWith('//')) clean = `https:${clean}`;
 
   // Автоматическое перенаправление устаревших / заблокированных CDN AniXart на официальный быстрый CDN static.anixart.tv
@@ -943,7 +959,7 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
   }
 
   const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   };
   if (normalized.includes('anixart') || normalized.includes('anixmirai')) {
     headers['User-Agent'] = 'AnixartApp/8.2.1';
@@ -953,6 +969,10 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
     headers['Referer'] = 'https://shikimori.one/';
   } else if (normalized.includes('fanfilm4k')) {
     headers['Referer'] = 'https://v17.fanfilm4k.media/';
+    headers['Origin'] = 'https://v17.fanfilm4k.media';
+  } else if (normalized.includes('tmdb.org')) {
+    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+    headers['Referer'] = 'https://www.themoviedb.org/';
   }
 
   try {
@@ -1520,6 +1540,8 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
     if (page > 1) {
       fetchedItems = fetchedItems.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
     }
+    // 100% исключение трейлеров, промо и фанатских концептов
+    fetchedItems = fetchedItems.filter(i => i && !isTrailerMedia(i));
     fetchedItems.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
     return { items: fetchedItems, totalItems: fetchedTotal };
   };
@@ -1837,6 +1859,8 @@ async function executeUnifiedSearch(query, source = 'all') {
   settled.forEach(arr => {
     if (Array.isArray(arr)) rawItems.push(...arr);
   });
+  // 100% исключение трейлеров, промо и фанатских концептов
+  rawItems = rawItems.filter(item => item && !isTrailerMedia(item));
 
   const normalizeMediaKey = (t) => {
     if (!t) return '';

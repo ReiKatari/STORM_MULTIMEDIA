@@ -776,4 +776,93 @@ body.tv-mode .player-fallback-btn {
   border-radius: 10px !important;
 }
 
+/* ==========================================================================
+   АДАПТАЦИЯ РЕЙЛОВ И ОБЛОЖЕК ДЛЯ ЭКРАНОВ SMART TV (10-FOOT UI)
+   ========================================================================== */
+
+body.tv-mode .storm-media-rail {
+  margin-bottom: 32px !important;
+  width: 100% !important;
+}
+
+body.tv-mode .rail-header {
+  margin-bottom: 16px !important;
+  padding: 0 6px !important;
+}
+
+body.tv-mode .rail-title {
+  font-size: 23px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.3px !important;
+}
+
+body.tv-mode .rail-carousel-wrap {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+body.tv-mode .rail-carousel {
+  gap: 20px !important;
+  padding: 16px 8px 26px 8px !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  scroll-behavior: smooth !important;
+  scroll-margin-top: 175px !important;
+  scroll-margin-bottom: 95px !important;
+}
+
+body.tv-mode .rail-item {
+  flex: 0 0 215px !important;
+  scroll-snap-align: start !important;
+}
+
+body.tv-mode .rail-item-wide {
+  flex: 0 0 340px !important;
+}
+
+body.tv-mode .media-card,
+body.tv-mode .rail-item .media-card {
+  scroll-margin-top: 175px !important;
+  scroll-margin-bottom: 95px !important;
+  border-radius: 14px !important;
+  outline-offset: 4px !important;
+}
+
+body.tv-mode .media-card-poster {
+  aspect-ratio: 2 / 3 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  border-radius: 13px 13px 0 0 !important;
+  background: #080b10 !important;
+  position: relative !important;
+}
+
+body.tv-mode .rail-item-wide .media-card-poster {
+  aspect-ratio: 16 / 9 !important;
+}
+
+body.tv-mode .media-card-poster img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center top !important;
+}
+
+/* На ТВ кнопка трех точек не перехватывает D-Pad навигацию */
+body.tv-mode .media-card-menu-btn {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Плавный ТВ-фокус без обрезки краев */
+body.tv-mode .media-card:focus,
+body.tv-mode .media-card.tv-focused {
+  outline: 3.5px solid var(--accent) !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 32px var(--accent-glow), 0 14px 34px rgba(0, 0, 0, 0.9) !important;
+  transform: scale(1.05) translateY(-3px) !important;
+  z-index: 60 !important;
+}
+
+
 

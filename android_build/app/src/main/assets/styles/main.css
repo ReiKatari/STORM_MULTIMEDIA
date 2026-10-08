@@ -5524,6 +5524,7 @@ body.tv-mode .storm-bottom-nav {
     100% { transform: scale(1.12); }
   }
 
+@media (max-width: 768px) {
   /* Адаптив Hero Showcase для мобильных */
   .hero-showcase-container {
     margin: 0 -10px 18px -10px !important;
@@ -7065,5 +7066,229 @@ body.is-native-app #header-remote-btn,
 body.is-native-app #drawer-remote-btn,
 body.is-native-app #drawer-screen-control-block {
   display: none !important;
+}
+
+/* ==========================================================================
+   STORM BOOKMARKS & CUSTOM LISTS SUB-NAVIGATION
+   ========================================================================== */
+.bookmarks-subnav-container {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 14px 4px 18px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.bookmarks-subnav-container::-webkit-scrollbar {
+  display: none;
+}
+.bookmarks-subnav-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--card-bg, rgba(20, 25, 35, 0.7));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 9999px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  text-decoration: none;
+  user-select: none;
+}
+.bookmarks-subnav-chip:hover {
+  color: var(--text-main, #f8fafc);
+  border-color: var(--accent, #00d2ff);
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 12px rgba(0, 210, 255, 0.25);
+}
+.bookmarks-subnav-chip:active {
+  transform: translateY(1px) scale(0.98);
+}
+.bookmarks-subnav-chip.active {
+  background: var(--accent, #00d2ff);
+  color: #040810;
+  border-color: var(--accent, #00d2ff);
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 210, 255, 0.45);
+}
+.bookmarks-subnav-chip .chip-count {
+  padding: 2px 7px;
+  font-size: 11px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+.bookmarks-subnav-chip.active .chip-count {
+  background: rgba(0, 0, 0, 0.2);
+  color: #040810;
+}
+body.tv-mode .bookmarks-subnav-chip:focus {
+  outline: none;
+  border-color: var(--accent, #00d2ff) !important;
+  box-shadow: 0 0 0 3px var(--accent, #00d2ff), 0 0 20px rgba(0, 210, 255, 0.5) !important;
+  transform: scale(1.05);
+}
+
+/* Карточки коллекций и списков */
+.custom-lists-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 20px;
+  width: 100%;
+  margin-top: 6px;
+}
+.custom-list-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg, rgba(20, 25, 35, 0.75));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  position: relative;
+}
+.custom-list-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent, #00d2ff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(0, 210, 255, 0.3);
+}
+.custom-list-card:focus,
+.custom-list-card:focus-visible {
+  outline: none;
+  border-color: var(--accent, #00d2ff) !important;
+  box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.4), 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+  transform: translateY(-2px) scale(1.02);
+}
+body.tv-mode .custom-list-card:focus {
+  border-color: var(--accent, #00d2ff) !important;
+  box-shadow: 0 0 0 3px var(--accent, #00d2ff), 0 0 22px rgba(0, 210, 255, 0.55) !important;
+  transform: scale(1.03);
+}
+.custom-list-collage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 105px 105px;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+.custom-list-collage.empty-collage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.08), rgba(0, 0, 0, 0.4));
+  font-size: 42px;
+  color: var(--text-muted);
+}
+.custom-list-collage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+.custom-list-card:hover .custom-list-collage img {
+  transform: scale(1.05);
+}
+.custom-list-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(10, 14, 20, 0.88);
+  backdrop-filter: blur(8px);
+  color: var(--accent, #00d2ff);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(0, 210, 255, 0.3);
+}
+.custom-list-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.custom-list-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main, #f8fafc);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.custom-list-desc {
+  font-size: 13px;
+  color: var(--text-muted, #94a3b8);
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.custom-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.custom-list-create-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  border: 2px dashed rgba(0, 210, 255, 0.35);
+  border-radius: 14px;
+  background: rgba(0, 210, 255, 0.03);
+  color: var(--accent, #00d2ff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 24px;
+  text-align: center;
+}
+.custom-list-create-card:hover {
+  background: rgba(0, 210, 255, 0.08);
+  border-color: var(--accent, #00d2ff);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 210, 255, 0.2);
+}
+.custom-list-create-card:focus {
+  outline: none;
+  border-color: var(--accent, #00d2ff);
+  box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.4);
+}
+.custom-list-header-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--card-bg, rgba(20, 25, 35, 0.7));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.custom-list-header-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main, #f8fafc);
 }
 

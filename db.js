@@ -550,8 +550,8 @@ export function ensureUserInitialData(userId) {
       { media_id: 'rhs_silo', source: 'tmdb', title: 'Укрытие / Бункер', original_title: 'Silo', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', media_type: 'series', year: '2023', status: 'watching', episodes_watched: 7, total_episodes: 10, progress_percent: 70.0, last_time_seconds: 3200 },
 
       // В планах (planned)
-      { media_id: '82529_spider_man_new_day', source: 'fanfilm4k', title: 'Человек-паук: Новый день', original_title: 'Spider-Man: Brand New Day', poster_url: 'https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg', media_type: 'movie', year: '2026', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'mayday_2026', source: 'tmdb', title: 'Мэйдэй', original_title: 'Mayday', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F2cxhvwyEwRlysAmRH4iodkvo0z5.jpg', media_type: 'movie', year: '2026', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
+      { media_id: '533535', source: 'tmdb', title: 'Дэдпул и Росомаха', original_title: 'Deadpool & Wolverine', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8cdWjvZQUExUUTzyp4t6EDMubfO.jpg', media_type: 'movie', year: '2024', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
+      { media_id: 'gladiator_2', source: 'tmdb', title: 'Гладиатор 2', original_title: 'Gladiator II', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F2cxhvwyEwRlysAmRH4iodkvo0z5.jpg', media_type: 'movie', year: '2024', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
       { media_id: 'severance_s2', source: 'tmdb', title: 'Разделение', original_title: 'Severance', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 10, progress_percent: 0, last_time_seconds: 0 },
       { media_id: 'last_of_us_s2', source: 'tmdb', title: 'Одни из нас', original_title: 'The Last of Us', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FuKvVjK19szUZ4t53vgvgXq65Hqv.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 8, progress_percent: 0, last_time_seconds: 0 },
 
@@ -562,8 +562,8 @@ export function ensureUserInitialData(userId) {
       { media_id: '335984', source: 'tmdb', title: 'Бегущий по лезвию 2049', original_title: 'Blade Runner 2049', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', media_type: 'movie', year: '2017', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 9800 },
 
       // Любимые (favorite)
-      { media_id: 'fav_interstellar', source: 'tmdb', title: 'Интерстеллар (Коллекционное 4K)', original_title: 'Interstellar IMAX', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', media_type: 'movie', year: '2014', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
-      { media_id: 'fav_arcane', source: 'tmdb', title: 'Аркейн (Золотая коллекция)', original_title: 'Arcane UHD', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', media_type: 'series', year: '2024', status: 'favorite', episodes_watched: 9, total_episodes: 9, progress_percent: 100.0, last_time_seconds: 3600 },
+      { media_id: '120', source: 'tmdb', title: 'Властелин колец: Братство кольца', original_title: 'The Lord of the Rings: The Fellowship of the Ring', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F6oom5QYQ2yQTMJIbnvbkBL9cDK6.jpg', media_type: 'movie', year: '2001', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10680 },
+      { media_id: '603', source: 'tmdb', title: 'Матрица', original_title: 'The Matrix', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Ff89U3ADr1oiB1s9GkdPOEpXUk5H.jpg', media_type: 'movie', year: '1999', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 8160 },
 
       // Отложено (on_hold)
       { media_id: 'rings_power', source: 'tmdb', title: 'Властелин колец: Кольца власти', original_title: 'The Lord of the Rings: The Rings of Power', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FmYLOqiStMxDK3fYZFsCw9qwzW9.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 3, total_episodes: 8, progress_percent: 37.5, last_time_seconds: 3900 },
@@ -601,8 +601,17 @@ export function ensureUserInitialData(userId) {
     `);
     itemStmt.run(l1, '693134', 'tmdb', 'Дюна: Часть вторая', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', 'movie', '2024', 8.5, now);
     itemStmt.run(l1, '157336', 'tmdb', 'Интерстеллар', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', 'movie', '2014', 8.7, now);
+    itemStmt.run(l1, '872585', 'tmdb', 'Оппенгеймер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8OQzw8keE6sDNH25sOqPRTxhFTO.jpg', 'movie', '2023', 8.9, now);
+    itemStmt.run(l1, '335984', 'tmdb', 'Бегущий по лезвию 2049', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', 'movie', '2017', 8.1, now);
+
     itemStmt.run(l2, '105248', 'tmdb', 'Киберпанк: Бегущие по краю', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', 'anime-series', '2022', 8.6, now);
+    itemStmt.run(l2, '94605', 'tmdb', 'Аркейн', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', 'series', '2024', 9.0, now);
+    itemStmt.run(l2, '1429', 'tmdb', 'Атака титанов', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F9whSxgqSW7dPIIMJyM4WG3BYVo7.jpg', 'anime-series', '2013', 9.1, now);
+
     itemStmt.run(l3, 'tmdb_gentlemen', 'fanfilm4k', 'Джентльмены', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', 'series', '2024', 8.2, now);
+    itemStmt.run(l3, 'rhs_silo', 'tmdb', 'Укрытие / Бункер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', 'series', '2023', 8.1, now);
+    itemStmt.run(l3, 'severance_s2', 'tmdb', 'Разделение', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', 'series', '2022', 8.7, now);
+    itemStmt.run(l3, 'house_dragon', 'tmdb', 'Дом Дракона', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F1X4h40fcB4WWUmIBK0auT4zZZga.jpg', 'series', '2024', 8.4, now);
   }
 
   const hCount = db.prepare('SELECT count(*) as count FROM watch_history WHERE user_id = ?').get(userId)?.count || 0;
@@ -1115,10 +1124,15 @@ export function getContinueWatching(userId, limit = 12) {
 export function getCustomLists(userId) {
   const lists = db.prepare('SELECT * FROM custom_lists WHERE user_id = ? ORDER BY created_at DESC').all(userId);
   const getItemsCount = db.prepare('SELECT count(*) as count FROM custom_list_items WHERE list_id = ?');
+  const getPreviewItems = db.prepare('SELECT poster_url, title FROM custom_list_items WHERE list_id = ? ORDER BY added_at DESC LIMIT 4');
 
   return lists.map(list => ({
     ...list,
-    items_count: getItemsCount.get(list.id).count
+    items_count: getItemsCount.get(list.id).count,
+    previews: getPreviewItems.all(list.id).map(p => ({
+      title: p.title,
+      poster_url: p.poster_url || 'assets/favicon.svg'
+    }))
   }));
 }
 

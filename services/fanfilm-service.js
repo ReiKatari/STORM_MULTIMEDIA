@@ -5,6 +5,7 @@ import {
   resolveCanonicalMediaType,
   resolveCanonicalYear,
   resolveCanonicalGenres,
+  isTrailerMedia,
   KNOWN_RELEASE_YEARS as INTEL_RELEASE_YEARS
 } from './canonical-media-intel.js';
 
@@ -490,6 +491,16 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
       .replace(/\s*смотреть(?:\s+онлайн)?/gi, '')
       .trim();
 
+    // Исключаем трейлеры, тизеры, промо и незавершенные концепты
+    if (isTrailerMedia({
+      title: rawTitle,
+      original_title: title,
+      category,
+      source: 'fanfilm4k'
+    })) {
+      return;
+    }
+
     // Картинка постера
     let poster = el.find('img').first().attr('data-src') || el.find('img').first().attr('src') || '';
     if (poster && poster.startsWith('/')) poster = `${BASE_URL}${poster}`;
@@ -681,8 +692,9 @@ export async function searchFanFilm(query) {
       items = await performSearch(queryWithoutSeason);
     }
 
-    setCache('fanfilm4k', cacheKey, items || [], 900); // 15 минут
-    return items || [];
+    items = (items || []).filter(it => it && !isTrailerMedia(it));
+    setCache('fanfilm4k', cacheKey, items, 900); // 15 минут
+    return items;
   } catch (err) {
     console.error(`[FanFilm4K] Ошибка поиска по запросу "${query}":`, err.message);
     if (queryWithoutSeason && queryWithoutSeason !== cleanQuery) {

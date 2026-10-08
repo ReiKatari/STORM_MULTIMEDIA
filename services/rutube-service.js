@@ -4,7 +4,7 @@
  */
 
 import { getCache, setCache } from '../db.js';
-import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType, isTrailerMedia } from './canonical-media-intel.js';
 
 const RUTUBE_API = 'https://rutube.ru/api';
 
@@ -32,11 +32,26 @@ function formatRuTubeItem(item) {
   if (!item || !item.id) return null;
 
   const title = (item.title || 'Видео RuTube').trim();
+  const durationSec = parseInt(item.duration, 10) || 0;
+  const description = (item.description || '').trim();
+  const categoryName = item.category?.name || '';
+
+  // Исключаем трейлеры, тизеры и короткие рекламные клипы
+  if (isTrailerMedia({
+    title,
+    original_title: title,
+    description,
+    category: categoryName,
+    duration_seconds: durationSec,
+    source: 'rutube'
+  })) {
+    return null;
+  }
+
   const rawYear = item.publication_ts ? new Date(item.publication_ts).getFullYear() : (item.created_ts ? new Date(item.created_ts).getFullYear() : '');
   const resolvedYear = resolveCanonicalYear(title, item.video_url || '', '', rawYear, String(rawYear || '')) || String(rawYear || new Date().getFullYear());
 
   const poster = item.thumbnail_url || 'assets/favicon.svg';
-  const durationSec = parseInt(item.duration, 10) || 0;
   const durationMin = durationSec > 0 ? Math.round(durationSec / 60) : 0;
   const durationStr = durationMin > 0 ? `${durationMin} мин` : '';
 
@@ -45,7 +60,7 @@ function formatRuTubeItem(item) {
   const isSeries = lowerTitle.includes('серия') || lowerTitle.includes('сезон') || lowerTitle.includes('эпизод') || lowerTitle.includes('выпуск') || lowerTitle.includes('сериал');
   const mediaType = isSeries ? 'series' : resolveCanonicalMediaType(title, item.video_url || '', 'movie', []);
 
-  const genres = resolveCanonicalGenres(title, item.category?.name || 'Видео', item.description || '', [item.category?.name].filter(Boolean));
+  const genres = resolveCanonicalGenres(title, categoryName || 'Видео', description, [categoryName].filter(Boolean));
 
   return {
     id: `rutube_${item.id}`,
@@ -160,13 +175,13 @@ export async function getRuTubeCatalog(category = 'popular', page = 1) {
   if (cached) return cached;
 
   try {
-    // В зависимости от категории используем поиск по популярным тегам
-    let queryTag = 'фильм';
-    if (category === 'series' || category === 'russian-series') queryTag = 'сериал';
+    // В зависимости от категории используем поиск по тегам полного метра/серий
+    let queryTag = 'полный фильм';
+    if (category === 'series' || category === 'russian-series') queryTag = 'сериал все серии';
     else if (category === 'cartoons' || category === 'kids') queryTag = 'мультфильм';
-    else if (category === 'show') queryTag = 'шоу';
+    else if (category === 'show') queryTag = 'шоу выпуск';
 
-    const items = await searchRuTube(queryTag, pageNum);
+    const items = (await searchRuTube(queryTag, pageNum)).filter(it => it && !isTrailerMedia(it));
     setCache('rutube', cacheKey, items, 30 * 60);
     return items;
   } catch (err) {

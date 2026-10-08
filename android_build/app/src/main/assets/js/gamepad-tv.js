@@ -1014,6 +1014,7 @@ function getFocusableElements() {
   `;
 
   return Array.from(root.querySelectorAll(selector)).filter(el => {
+    if (el.classList.contains('media-card-menu-btn')) return false;
     return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
   });
 }
@@ -1060,9 +1061,9 @@ function moveFocus(direction) {
     }
   });
 
-  // Запасная последовательная навигация по горизонтальным лентам (табы, сезоны, серии)
+  // Запасная последовательная навигация по горизонтальным лентам (табы, сезоны, серии, карусели)
   if (!bestCandidate && (direction === 'left' || direction === 'right')) {
-    const parentRail = currentFocusedElement.closest('.storm-tabs-inner, .storm-tabs-bar, .media-rail-slider, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links');
+    const parentRail = currentFocusedElement.closest('.storm-tabs-inner, .storm-tabs-bar, .bookmarks-subnav-container, .rail-carousel, .rail-carousel-wrap, .media-rail-slider, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links');
     if (parentRail) {
       const items = focusables.filter(el => parentRail.contains(el));
       const currIdx = items.indexOf(currentFocusedElement);
@@ -1083,13 +1084,22 @@ function moveFocus(direction) {
     if (mainArea && isTopArea) {
       const candidates = focusables.filter(el => mainArea.contains(el));
       if (candidates.length > 0) {
-        // Выбираем карточку с наименьшим смещением по горизонтали от текущей позиции фокуса
-        candidates.sort((a, b) => {
+        // Находим верхний видимый ряд контента (minTop + 60px)
+        let minTop = Infinity;
+        candidates.forEach(c => {
+          const t = c.getBoundingClientRect().top;
+          if (t < minTop) minTop = t;
+        });
+        const topRowCandidates = candidates.filter(c => c.getBoundingClientRect().top <= minTop + 60);
+        topRowCandidates.sort((a, b) => {
           const ra = a.getBoundingClientRect();
           const rb = b.getBoundingClientRect();
-          return Math.abs(ra.left - currentRect.left) - Math.abs(rb.left - currentRect.left);
+          const aCenter = ra.left + ra.width / 2;
+          const bCenter = rb.left + rb.width / 2;
+          const currCenter = currentRect.left + currentRect.width / 2;
+          return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
         });
-        bestCandidate = candidates[0];
+        bestCandidate = topRowCandidates[0];
         if (typeof window.toggleFiltersCollapsible === 'function' && document.body.classList.contains('tv-mode')) {
           window.toggleFiltersCollapsible(true);
         }
@@ -1104,7 +1114,7 @@ function moveFocus(direction) {
         });
         bestCandidate = belowCandidates[0];
       } else {
-        window.scrollBy({ top: 380, behavior: 'smooth' });
+        window.scrollBy({ top: 320, behavior: 'smooth' });
       }
     } else if (isPlayerOpen) {
       const modalBody = document.querySelector('#cinema-modal .storm-modal-body') || document.querySelector('#cinema-modal .cinema-modal-dialog');
@@ -1113,7 +1123,7 @@ function moveFocus(direction) {
         if (modalBelow.length > 0) {
           bestCandidate = modalBelow[0];
         } else {
-          modalBody.scrollBy({ top: 260, behavior: 'smooth' });
+          modalBody.scrollBy({ top: 240, behavior: 'smooth' });
         }
       }
     }
@@ -1127,10 +1137,11 @@ function moveFocus(direction) {
         aboveCandidates.sort((a, b) => {
           const ra = a.getBoundingClientRect();
           const rb = b.getBoundingClientRect();
-          return Math.hypot(ra.left - currentRect.left, currentRect.bottom - ra.bottom) - Math.hypot(rb.left - currentRect.left, currentRect.bottom - rb.bottom);
+          return Math.hypot(ra.left - currentRect.left, currentRect.bottom - ra.bottom) - Math.hypot(rb.left - currentRect.left, currentRect.bottom - ra.bottom);
         });
         bestCandidate = aboveCandidates[0];
       } else {
+        // Мы в верхнем ряду контента: бесшовный переход в тулбар или панель вкладок
         const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
         if (topArea) {
           const candidates = focusables.filter(el => topArea.contains(el));
@@ -1138,12 +1149,14 @@ function moveFocus(direction) {
             candidates.sort((a, b) => {
               const ra = a.getBoundingClientRect();
               const rb = b.getBoundingClientRect();
-              return Math.abs(ra.left - currentRect.left) - Math.abs(rb.left - currentRect.left);
+              const aCenter = ra.left + ra.width / 2;
+              const bCenter = rb.left + rb.width / 2;
+              const currCenter = currentRect.left + currentRect.width / 2;
+              return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
             });
             bestCandidate = candidates[0];
           }
         }
-        window.scrollBy({ top: -380, behavior: 'smooth' });
       }
     } else if (isPlayerOpen) {
       const modalBody = document.querySelector('#cinema-modal .storm-modal-body') || document.querySelector('#cinema-modal .cinema-modal-dialog');
@@ -1152,7 +1165,7 @@ function moveFocus(direction) {
         if (modalAbove.length > 0) {
           bestCandidate = modalAbove[modalAbove.length - 1];
         } else {
-          modalBody.scrollBy({ top: -260, behavior: 'smooth' });
+          modalBody.scrollBy({ top: -240, behavior: 'smooth' });
         }
       }
     }
@@ -1173,7 +1186,44 @@ function setFocusTo(element) {
     element.setAttribute('tabindex', '0');
   }
   element.focus();
-  element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+
+  // 1. Плавный горизонтальный скролл внутри каруселей и списков без рывков всего окна
+  const railContainer = element.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .inplayer-season-chips-bar, .profile-tab-links');
+  if (railContainer) {
+    const pRect = railContainer.getBoundingClientRect();
+    const eRect = element.getBoundingClientRect();
+    if (eRect.left < pRect.left + 40 || eRect.right > pRect.right - 40) {
+      const scrollTarget = railContainer.scrollLeft + (eRect.left - pRect.left) - (pRect.width / 2) + (eRect.width / 2);
+      railContainer.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+    }
+  }
+
+  // 2. Интеллектуальный вертикальный скролл экрана ТВ с защитой от обрезания обложек
+  const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || document.querySelector('.storm-modal-backdrop.is-open'));
+  if (isPlayerOpen) {
+    const modalBody = element.closest('.storm-modal-body, .cinema-modal-dialog, .profile-modal-dialog');
+    if (modalBody) {
+      const mbRect = modalBody.getBoundingClientRect();
+      const elRect = element.getBoundingClientRect();
+      if (elRect.top < mbRect.top + 20) {
+        modalBody.scrollBy({ top: elRect.top - mbRect.top - 24, behavior: 'smooth' });
+      } else if (elRect.bottom > mbRect.bottom - 20) {
+        modalBody.scrollBy({ top: elRect.bottom - mbRect.bottom + 24, behavior: 'smooth' });
+      }
+    }
+  } else {
+    // В основном интерфейсе: защита от перекрытия фиксированной шапкой (~150px) и нижним плавающим HUD (~85px)
+    const headerHeight = 150;
+    const bottomSafe = 85;
+    const elRect = element.getBoundingClientRect();
+    const vh = window.innerHeight;
+
+    if (elRect.top < headerHeight) {
+      window.scrollBy({ top: elRect.top - headerHeight - 16, behavior: 'smooth' });
+    } else if (elRect.bottom > vh - bottomSafe) {
+      window.scrollBy({ top: elRect.bottom - (vh - bottomSafe) + 16, behavior: 'smooth' });
+    }
+  }
 }
 
 function focusInitialElement() {

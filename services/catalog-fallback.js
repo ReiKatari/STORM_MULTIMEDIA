@@ -63,26 +63,6 @@ export const VERIFIED_CATALOG_FALLBACK = {
       "description": "Популярная музыкальная мелодрама Wink о Кате Орловой и Лехе Данилине: любовь, распад группы, интриги и борьба за наследство."
     },
     {
-      "id": "82529",
-      "title": "Человек-паук: Новый день",
-      "original_title": "Spider-Man: Brand New Day",
-      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
-      "year": "2026",
-      "rating": 8.5,
-      "quality": "4K Ultra HD",
-      "is4K": true,
-      "media_type": "movie",
-      "category": "Фильм",
-      "genres": [
-        "Фантастика",
-        "Боевик",
-        "Приключения"
-      ],
-      "source": "fanfilm4k",
-      "url": "https://v17.fanfilm4k.media/82529-chelovek-pauk-novyj-den-film.html",
-      "description": "Питер Паркер сталкивается с последствиями стертой памяти мира и новыми угрозами Нью-Йорка в новой эре."
-    },
-    {
       "id": "tmdb_dune2",
       "title": "Дюна: Часть вторая",
       "original_title": "Dune: Part Two",
@@ -521,26 +501,6 @@ export const VERIFIED_CATALOG_FALLBACK = {
   ],
   "new": [
     {
-      "id": "82529",
-      "title": "Человек-паук: Новый день",
-      "original_title": "Spider-Man: Brand New Day",
-      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
-      "year": "2026",
-      "rating": 8.5,
-      "quality": "4K Ultra HD",
-      "is4K": true,
-      "media_type": "movie",
-      "category": "Фильм",
-      "genres": [
-        "Фантастика",
-        "Боевик",
-        "Приключения"
-      ],
-      "source": "fanfilm4k",
-      "url": "https://v17.fanfilm4k.media/82529-chelovek-pauk-novyj-den-film.html",
-      "description": "Питер Паркер сталкивается с последствиями стертой памяти мира и новыми угрозами Нью-Йорка в новой эре."
-    },
-    {
       "id": "lostfilm_gentlemen",
       "title": "Джентльмены",
       "original_title": "The Gentlemen",
@@ -977,26 +937,6 @@ export const VERIFIED_CATALOG_FALLBACK = {
     }
   ],
   "movies": [
-    {
-      "id": "82529",
-      "title": "Человек-паук: Новый день",
-      "original_title": "Spider-Man: Brand New Day",
-      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
-      "year": "2026",
-      "rating": 8.5,
-      "quality": "4K Ultra HD",
-      "is4K": true,
-      "media_type": "movie",
-      "category": "Фильм",
-      "genres": [
-        "Фантастика",
-        "Боевик",
-        "Приключения"
-      ],
-      "source": "fanfilm4k",
-      "url": "https://v17.fanfilm4k.media/82529-chelovek-pauk-novyj-den-film.html",
-      "description": "Питер Паркер сталкивается с последствиями стертой памяти мира и новыми угрозами Нью-Йорка в новой эре."
-    },
     {
       "id": "tmdb_dune2",
       "title": "Дюна: Часть вторая",

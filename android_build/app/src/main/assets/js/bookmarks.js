@@ -1362,3 +1362,35 @@ export async function removeItemFromCollection(listId, mediaId, source) {
     showToast('Ошибка при удалении', 'error');
   }
 }
+
+export async function fetchCustomListDetails(listId) {
+  const token = getToken();
+  if (!token) return null;
+
+  try {
+    const res = await fetch(`/api/custom-lists/${listId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function deleteCustomListApi(listId) {
+  const token = getToken();
+  if (!token) return false;
+
+  try {
+    const res = await fetch(`/api/custom-lists/${listId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      showToast('Коллекция удалена', 'info');
+      return true;
+    }
+  } catch (err) {}
+  return false;
+}
