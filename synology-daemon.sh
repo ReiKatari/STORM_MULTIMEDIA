@@ -11,9 +11,8 @@ PROJECT_DIR="/volume1/WEBSITES/STORM MULTIMEDIA"
 cd "$PROJECT_DIR" || exit 1
 
 # Завершаем старые процессы именно STORM MULTIMEDIA, не затрагивая другие проекты
-fuser -k 3900/tcp || true
-pkill -f "STORM MULTIMEDIA.*server.js" || true
-pkill -f "STORM MULTIMEDIA.*watchdog.js" || true
+pkill -f "STORM MULTIMEDIA/watchdog.js" || true
+pkill -f "STORM MULTIMEDIA/server.js" || true
 sleep 1
 
 # Запуск вечного демона-сторожа в фоне с автоматическим восстановлением
