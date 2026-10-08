@@ -17,10 +17,11 @@ sleep 1
 
 # Запуск вечного демона-сторожа в фоне с автоматическим восстановлением
 nohup bash -c '
-echo "[$(date "+%Y-%m-%d %H:%M:%S")] Запуск демона STORM MULTIMEDIA на порту 3900..." >> "'"$PROJECT_DIR"'/daemon.log"
-until node watchdog.js || node server.js; do
+while true; do
+  echo "[$(date "+%Y-%m-%d %H:%M:%S")] Запуск сторожа STORM MULTIMEDIA на порту 3900..." >> "'"$PROJECT_DIR"'/daemon.log"
+  node watchdog.js >> "'"$PROJECT_DIR"'/daemon.log" 2>&1
   EXIT_CODE=$?
-  echo "[$(date "+%Y-%m-%d %H:%M:%S")] Сервер STORM MULTIMEDIA завершился с кодом $EXIT_CODE. Авто-перезапуск через 3 сек..." >> "'"$PROJECT_DIR"'/daemon.log"
+  echo "[$(date "+%Y-%m-%d %H:%M:%S")] Сторож STORM MULTIMEDIA завершился с кодом $EXIT_CODE. Авто-перезапуск через 3 сек..." >> "'"$PROJECT_DIR"'/daemon.log"
   sleep 3
 done
 ' >> "$PROJECT_DIR/daemon.log" 2>&1 &

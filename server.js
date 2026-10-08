@@ -57,7 +57,10 @@ import {
   getAllWatchRoomsDb,
   deleteWatchRoomDb,
   checkpointWal,
-  purgeUserData
+  purgeUserData,
+  isMariaDbActive,
+  getMariaDbHost,
+  syncFromMariaDbToSqlite
 } from './db.js';
 
 import {
@@ -721,8 +724,35 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.29'
+    version: '1.0.29',
+    database: {
+      driver: 'mariadb',
+      connected: isMariaDbActive(),
+      host: getMariaDbHost(),
+      name: 'stormmultimedia'
+    }
   });
+});
+
+app.post('/api/admin/sync-db', async (req, res) => {
+  const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
+  let currentUser = req.user;
+  const isAdmin = currentUser && (
+    (currentUser.username || '').toLowerCase() === 'reikatari' ||
+    (currentUser.role || '').toLowerCase() === 'admin'
+  );
+
+  if (!isLocal && !isAdmin) {
+    return res.status(403).json({ error: 'Доступ ограничен' });
+  }
+
+  try {
+    const { db } = await import('./db.js');
+    await syncFromMariaDbToSqlite(db);
+    res.json({ success: true, message: 'Синхронизация с MariaDB 10 завершена успешно' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/admin/restart', (req, res) => {

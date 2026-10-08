@@ -3,12 +3,57 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCanonicalMediaType, resolveCanonicalYear, resolveCanonicalGenres } from './services/canonical-media-intel.js';
+import {
+  initMariaDb,
+  isMariaDbActive,
+  getMariaDbHost,
+  syncFromMariaDbToSqlite,
+  mariaSaveUser,
+  mariaSaveSession,
+  mariaDeleteSession,
+  mariaDeleteUserSessions,
+  mariaSaveBookmark,
+  mariaDeleteBookmark,
+  mariaSaveWatchHistory,
+  mariaPurgeUserData,
+  mariaSaveCustomList,
+  mariaDeleteCustomList,
+  mariaSaveCustomListItem,
+  mariaDeleteCustomListItem,
+  mariaSaveReview,
+  mariaDeleteReview,
+  mariaSaveReviewLike,
+  mariaDeleteReviewLike,
+  mariaSaveAchievement,
+  mariaSaveWatchRoom,
+  mariaDeleteWatchRoom,
+  mariaSaveCache,
+  mariaDeleteCache
+} from './mariadb.js';
+
+export {
+  initMariaDb,
+  isMariaDbActive,
+  getMariaDbHost,
+  syncFromMariaDbToSqlite
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, 'storm_multimedia.db');
 
 export const db = new DatabaseSync(dbPath);
+
+// Автоматическая инициализация MariaDB 10 (Synology NAS phpMyAdmin)
+initMariaDb().then(() => {
+  syncFromMariaDbToSqlite(db);
+  // Периодическая фоновая синхронизация каждые 30 секунд для подхвата правок из phpMyAdmin
+  setInterval(() => {
+    syncFromMariaDbToSqlite(db);
+  }, 30000).unref();
+}).catch(err => {
+  console.warn('[MariaDB 10] Инициализация:', err.message);
+});
 
 // Настройка оптимизации SQLite (WAL режим, synchronous = NORMAL)
 db.exec(`
@@ -168,6 +213,7 @@ db.exec(`
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN year TEXT;'); } catch {}
 try { db.exec('ALTER TABLE watch_history ADD COLUMN year TEXT;'); } catch {}
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN is_favorite INTEGER DEFAULT 0;'); } catch {}
+try { db.exec("ALTER TABLE reviews ADD COLUMN tone TEXT DEFAULT 'positive';"); } catch {}
 
 // Автоматическое заполнение отсутствующих годов в существующих закладках
 try {
@@ -231,6 +277,7 @@ export function saveWatchRoomDb(room) {
       room.createdAt || now,
       now
     );
+    mariaSaveWatchRoom(room);
   } catch (e) {
     console.error('Ошибка сохранения watch_room в SQLite:', e.message);
   }
@@ -278,6 +325,7 @@ export function getAllWatchRoomsDb() {
 export function deleteWatchRoomDb(roomId) {
   try {
     db.prepare('DELETE FROM watch_rooms WHERE room_id = ?').run(roomId);
+    mariaDeleteWatchRoom(roomId);
   } catch (e) {}
 }
 
@@ -321,6 +369,9 @@ export function registerUser(username, email, password, avatar = null) {
   createList.run(userId, 'Избранные шедевры', 'Коллекция лучших фильмов и сериалов', '#00d2ff', now);
   createList.run(userId, 'Аниме марафон', 'Список аниме для просмотра на выходных', '#ff007f', now);
 
+  const newUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (newUser) mariaSaveUser(newUser);
+
   return createSession(userId);
 }
 
@@ -354,6 +405,8 @@ export function loginUser(login, password) {
   if (user && isReiKatari && (isStandardAdminPass || verifyPassword(cleanPass, user.password_hash))) {
     const newHash = hashPassword(cleanPass);
     db.prepare("UPDATE users SET password_hash = ?, role = 'admin' WHERE id = ?").run(newHash, user.id);
+    const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+    if (u) mariaSaveUser(u);
     return createSession(user.id);
   }
 
@@ -373,6 +426,8 @@ export function loginUser(login, password) {
       role,
       Date.now()
     );
+    const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(res.lastInsertRowid);
+    if (u) mariaSaveUser(u);
     return createSession(res.lastInsertRowid);
   }
 
@@ -382,6 +437,8 @@ export function loginUser(login, password) {
     if (isReiKatari || user.role === 'admin') {
       const newHash = hashPassword(cleanPass);
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+      const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+      if (u) mariaSaveUser(u);
       return createSession(user.id);
     }
     throw new Error('Неверное имя пользователя или пароль');
@@ -395,6 +452,7 @@ export function createSession(userId) {
   const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 дней
 
   db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  mariaSaveSession(token, userId, expiresAt);
   const user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
 
   return {
@@ -424,9 +482,12 @@ export function getOrCreateDefaultUserSession() {
     `).run('ReiKatari', 'ReiKatari@outlook.com', passwordHash, 'assets/favicon.svg', now);
     const userId = Number(res.lastInsertRowid);
     user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+    if (user) mariaSaveUser(user);
   } else if (user.role !== 'admin') {
     db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(user.id);
     user.role = 'admin';
+    const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+    if (u) mariaSaveUser(u);
   }
 
   const existingSession = db.prepare('SELECT token FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1').get(user.id, now);
@@ -464,12 +525,15 @@ export function getUserByToken(token) {
 export function logoutUser(token) {
   if (token) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    mariaDeleteSession(token);
   }
 }
 
 export function updateUserSettings(userId, settings) {
   const settingsJson = JSON.stringify(settings || {});
   db.prepare('UPDATE users SET settings_json = ? WHERE id = ?').run(settingsJson, userId);
+  const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (u) mariaSaveUser(u);
 }
 
 export function getUserFamilyProfiles(userId) {
@@ -516,7 +580,9 @@ export function updateUserProfile(userId, { username, email, avatar }) {
   params.push(userId);
 
   db.prepare(query).run(...params);
-  return db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  const updatedUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (updatedUser) mariaSaveUser(updatedUser);
+  return updatedUser;
 }
 
 export function changeUserPassword(userId, oldPassword, newPassword) {
@@ -535,6 +601,11 @@ export function changeUserPassword(userId, oldPassword, newPassword) {
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, userId);
   // Инвалидация всех активных сессий пользователя для криптографической безопасности
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (u) {
+    mariaSaveUser(u);
+    mariaDeleteUserSessions(userId);
+  }
 }
 
 // Инициализация стартовых данных пользователя
@@ -756,6 +827,7 @@ export function setBookmark(userId, data) {
     if (duplicateRows.length > 1) {
       const extraIds = duplicateRows.slice(1).map(r => r.id);
       db.prepare(`DELETE FROM bookmarks WHERE id IN (${extraIds.join(',')})`).run();
+      mariaDeleteBookmark(userId, null, null, extraIds);
     }
 
     if (['completed', 'dropped', 'wont_watch'].includes(status)) {
@@ -771,7 +843,9 @@ export function setBookmark(userId, data) {
       } catch {}
     }
 
-    return db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(primary.id);
+    const savedBookmark = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(primary.id);
+    if (savedBookmark) mariaSaveBookmark(savedBookmark);
+    return savedBookmark;
   }
 
   // Новая закладка
@@ -814,7 +888,9 @@ export function setBookmark(userId, data) {
     } catch {}
   }
 
-  return getBookmark(userId, String(media_id), source);
+  const savedBookmark = getBookmark(userId, String(media_id), source);
+  if (savedBookmark) mariaSaveBookmark(savedBookmark);
+  return savedBookmark;
 }
 
 export function removeBookmark(userId, mediaId, source, title = '') {
@@ -828,6 +904,7 @@ export function removeBookmark(userId, mediaId, source, title = '') {
     WHERE user_id = ?
       AND (media_id = ? OR media_id = ? OR media_id = ?)
   `).run(userId, strId, cleanId, prefixId);
+  mariaDeleteBookmark(userId, strId, source);
 
   // Дополнительно удаляем по названию для очистки записей альтернативных плееров
   if (targetKey) {
@@ -838,6 +915,7 @@ export function removeBookmark(userId, mediaId, source, title = '') {
 
     if (matchedIds.length > 0) {
       db.prepare(`DELETE FROM bookmarks WHERE id IN (${matchedIds.join(',')})`).run();
+      mariaDeleteBookmark(userId, null, null, matchedIds);
     }
   }
 }
@@ -980,6 +1058,22 @@ export function logWatchProgress(userId, data) {
     });
   }
 
+  mariaSaveWatchHistory({
+    user_id: userId,
+    media_id: String(media_id),
+    source,
+    title,
+    poster_url,
+    media_type: cleanMediaType,
+    year: cleanYear,
+    season,
+    episode,
+    time_seconds,
+    duration_seconds,
+    progress_percent: overallPercent,
+    updated_at: now
+  });
+
   return {
     media_id,
     season,
@@ -1079,20 +1173,23 @@ export function createCustomList(userId, title, description = '', color = '#00d2
     VALUES (?, ?, ?, ?, ?, ?)
   `);
   const result = insert.run(userId, cleanTitle, description, color, isPublic ? 1 : 0, now);
-  return {
+  const newList = {
     id: Number(result.lastInsertRowid),
     user_id: userId,
     title: cleanTitle,
     description,
     color,
-    is_public: isPublic,
+    is_public: isPublic ? 1 : 0,
     created_at: now,
     items_count: 0
   };
+  mariaSaveCustomList(newList);
+  return newList;
 }
 
 export function deleteCustomList(listId, userId) {
   db.prepare('DELETE FROM custom_lists WHERE id = ? AND user_id = ?').run(listId, userId);
+  mariaDeleteCustomList(listId, userId);
 }
 
 export function addCustomListItem(listId, userId, item) {
@@ -1121,6 +1218,17 @@ export function addCustomListItem(listId, userId, item) {
     item.rating || 0.0,
     now
   );
+  mariaSaveCustomListItem({
+    list_id: listId,
+    media_id: String(item.media_id),
+    source: item.source,
+    title: item.title,
+    poster_url: item.poster_url || '',
+    media_type: item.media_type || 'movie',
+    year: item.year || '',
+    rating: item.rating || 0.0,
+    added_at: now
+  });
 }
 
 export function removeCustomListItem(listId, userId, mediaId, source) {
@@ -1128,6 +1236,7 @@ export function removeCustomListItem(listId, userId, mediaId, source) {
   if (!list) throw new Error('Список не найден');
 
   db.prepare('DELETE FROM custom_list_items WHERE list_id = ? AND media_id = ? AND source = ?').run(listId, String(mediaId), source);
+  mariaDeleteCustomListItem(listId, mediaId, source);
 }
 
 // Кэширование сетевых запросов
@@ -1155,6 +1264,7 @@ export function setCache(source, cacheKey, data, ttlSeconds = 1800) {
       data_json = excluded.data_json,
       expires_at = excluded.expires_at
   `).run(source, cacheKey, dataJson, expiresAt);
+  mariaSaveCache(source, cacheKey, dataJson, expiresAt);
 }
 
 // ==========================================
@@ -1206,7 +1316,7 @@ export function addReview(userId, { media_id, source, title, rating, content, to
   trackUserAction(userId, 'write_review');
 
   const user = db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(userId);
-  return {
+  const newRev = {
     id: reviewId,
     user_id: userId,
     media_id: String(media_id),
@@ -1223,10 +1333,13 @@ export function addReview(userId, { media_id, source, title, rating, content, to
     dislikes_count: 0,
     user_reaction: null
   };
+  mariaSaveReview(newRev);
+  return newRev;
 }
 
 export function deleteReview(reviewId, userId) {
   db.prepare('DELETE FROM reviews WHERE id = ? AND user_id = ?').run(reviewId, userId);
+  mariaDeleteReview(reviewId, userId);
 }
 
 export function toggleReviewLike(reviewId, userId, isLike) {
@@ -1237,11 +1350,14 @@ export function toggleReviewLike(reviewId, userId, isLike) {
   if (existing) {
     if (existing.is_like === targetLike) {
       db.prepare('DELETE FROM review_likes WHERE review_id = ? AND user_id = ?').run(reviewId, userId);
+      mariaDeleteReviewLike(reviewId, userId);
     } else {
       db.prepare('UPDATE review_likes SET is_like = ?, created_at = ? WHERE review_id = ? AND user_id = ?').run(targetLike, now, reviewId, userId);
+      mariaSaveReviewLike(reviewId, userId, targetLike);
     }
   } else {
     db.prepare('INSERT INTO review_likes (review_id, user_id, is_like, created_at) VALUES (?, ?, ?, ?)').run(reviewId, userId, targetLike, now);
+    mariaSaveReviewLike(reviewId, userId, targetLike);
 
     // Если поставили лайк, проверяем достижения автора рецензии
     if (targetLike === 1) {
@@ -1392,6 +1508,15 @@ export function updateAchievementProgress(userId, achievementId, amount = 1, isS
       unlocked = excluded.unlocked,
       unlocked_at = excluded.unlocked_at
   `).run(userId, achievementId, Math.min(newProgress, target), target, isUnlocked, now);
+
+  mariaSaveAchievement({
+    user_id: userId,
+    achievement_id: achievementId,
+    progress: Math.min(newProgress, target),
+    target,
+    unlocked: isUnlocked,
+    unlocked_at: now
+  });
 
   if (isUnlocked && (!existing || !existing.unlocked)) {
     return {
@@ -1709,6 +1834,14 @@ export function claimAchievement(userId, achievementId) {
 
   if (existing && existing.progress >= target) {
     db.prepare('UPDATE user_achievements SET unlocked = 1, unlocked_at = COALESCE(unlocked_at, ?) WHERE user_id = ? AND achievement_id = ?').run(now, userId, achievementId);
+    mariaSaveAchievement({
+      user_id: userId,
+      achievement_id: achievementId,
+      progress: target,
+      target,
+      unlocked: 1,
+      unlocked_at: now
+    });
     return {
       unlocked: true,
       achievement: {
@@ -1728,6 +1861,15 @@ export function claimAchievement(userId, achievementId) {
       unlocked = 1,
       unlocked_at = COALESCE(user_achievements.unlocked_at, excluded.unlocked_at)
   `).run(userId, achievementId, target, target, now);
+
+  mariaSaveAchievement({
+    user_id: userId,
+    achievement_id: achievementId,
+    progress: target,
+    target,
+    unlocked: 1,
+    unlocked_at: now
+  });
 
   return {
     unlocked: true,
@@ -1970,6 +2112,7 @@ export function purgeUserData(userId) {
       db.prepare(`DELETE FROM custom_list_items WHERE list_id IN (${listIds.join(',')})`).run();
     }
     db.prepare('DELETE FROM custom_lists WHERE user_id = ?').run(userId);
+    mariaPurgeUserData(userId);
     return true;
   } catch (err) {
     console.error('Ошибка очистки данных пользователя:', err);
