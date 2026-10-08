@@ -1171,62 +1171,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 4. HDRezka Cinema (FHD и 4K) - исключаем для отечественного контента без Kinopoisk ID и эксклюзивов
-  if (!isDomesticExclusive) {
-    const rezkaUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'rezka_cinema',
-      name: 'HDRezka Cinema (FHD и 4K)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'HDREZKA',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Студийный перевод HDRezka Studio',
-      speed: '⚡ Высокая скорость',
-      url: rezkaUrl,
-      is_recommended: !isDomestic && !effective4kUrl && !isAnime
-    });
-  }
-
-  // 5. LostFilm TV и Red Head Sound - СТРОГО ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
-  if (!isDomestic && !isDomesticExclusive) {
-    const lostfilmUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'lostfilm_player',
-      name: 'LostFilm TV (Студийный перевод)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'LOSTFILM',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Фирменная многоголосая озвучка LostFilm',
-      speed: '⚡ Быстрый CDN',
-      url: lostfilmUrl
-    });
-
-    const rhsUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'rhs_player',
-      name: 'Red Head Sound (Дубляж RHS)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'RHS',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальные голоса дубляжа студии RHS',
-      speed: '⚡ Премиум дубляж',
-      url: rhsUrl
-    });
-  }
-
-  // 6. Kodik Плеер - строго исключаем для отечественных релизов без Kinopoisk ID и российских эксклюзивов
+  // 4. Kodik Плеер - строго исключаем для отечественных релизов без Kinopoisk ID и российских эксклюзивов
   if (!isDomesticExclusive) {
     const kodikUrl = kpId
       ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
@@ -1494,16 +1439,16 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Определяем стартовый рекомендуемый плеер с защитой от удаленных 4K архивов
   const isDomestic = isDomesticContent(mediaItem, cleanTitle);
   const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-  const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+  const isStable = p => isWorking(p) && Boolean(p.url);
+  const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
   const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
   const preferStableKodik = itemYr < 2020;
 
   const isLandyshiMedia = mediaItem.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || mediaItem.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice) {
-    const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-    const fourKInitial = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isStable(p));
+    const fourKInitial = currentPlayers.find(p => isReal4k(p) && isStable(p));
     if (fourKInitial) {
       initialChoice = fourKInitial;
     } else if (isLandyshiMedia) {
@@ -1652,8 +1597,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
-        const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && (!p.url.includes('stravers.live') && !p.url.includes('transfusion'));
-        const isStable = p => isWorking(p) && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+        const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
+        const isStable = p => isWorking(p) && Boolean(p.url);
+        const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
         const hasOnlineStream = currentPlayers.some(isStable);
 
         // Релиз считается не вышедшим ТОЛЬКО если у него НЕТ рабочих онлайн потоков И присутствуют признаки будущей премьеры
@@ -1683,7 +1629,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
             const preferStableKodik = itemYr < 2020;
 
             // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-            const fourKPlayer = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isStable(p));
+            const fourKPlayer = currentPlayers.find(p => isReal4k(p) && isStable(p));
             if (fourKPlayer) {
               defaultPlayer = fourKPlayer;
             } else if (isLandyshiItem) {
@@ -1710,9 +1656,6 @@ export async function openPlayerModal(mediaItem, options = {}) {
             } else {
               defaultPlayer = currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
                 || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
-                || currentPlayers.find(p => p.id === 'rezka_cinema' && isWorking(p))
-                || currentPlayers.find(p => p.id === 'rhs_player' && isWorking(p))
-                || currentPlayers.find(p => p.id === 'lostfilm_player' && isWorking(p))
                 || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
                 || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
                 || currentPlayers.find(p => p.is_recommended && isStable(p))
@@ -1867,9 +1810,10 @@ function renderPlayerSources(players) {
   });
 
   // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) всегда в самом верху списка!
+  const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
   validPlayers.sort((a, b) => {
-    const aIs4k = a.id === 'fanfilm4k_uhd' || a.id === 'fanfilm_4k' || a.quality === '4K UHD' || (typeof a.name === 'string' && a.name.includes('4K'));
-    const bIs4k = b.id === 'fanfilm4k_uhd' || b.id === 'fanfilm_4k' || b.quality === '4K UHD' || (typeof b.name === 'string' && b.name.includes('4K'));
+    const aIs4k = isReal4k(a);
+    const bIs4k = isReal4k(b);
     if (aIs4k && !bIs4k) return -1;
     if (!aIs4k && bIs4k) return 1;
     return 0;
@@ -2027,7 +1971,6 @@ export function updateFallbackButton(player = currentActivePlayer) {
   } else {
     nextCandidate = validPlayers.find(p => p.id !== player?.id && p.id === 'fanfilm4k_uhd')
       || validPlayers.find(p => p.id !== player?.id && p.id === 'kodik_direct')
-      || validPlayers.find(p => p.id !== player?.id && (p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player'))
       || validPlayers.find(p => p.id !== player?.id && (p.id === 'rutube_stream' || p.id === 'vk_video_stream'))
       || validPlayers.find(p => p.id !== player?.id);
   }
@@ -2041,9 +1984,6 @@ export function updateFallbackButton(player = currentActivePlayer) {
       else if (nextCandidate.id === 'rutube_stream') shortName = 'RuTube';
       else if (nextCandidate.id === 'fanfilm4k_uhd') shortName = '4K Ultra HD';
       else if (nextCandidate.id === 'kodik_direct') shortName = 'Kodik';
-      else if (nextCandidate.id === 'rezka_cinema') shortName = 'HDRezka';
-      else if (nextCandidate.id === 'lostfilm_player') shortName = 'LostFilm';
-      else if (nextCandidate.id === 'rhs_player') shortName = 'Red Head Sound';
       labelEl.textContent = `Переключить на ${shortName}`;
       fallbackBtn.title = `Переключить на резервный плеер: ${nextCandidate.name}`;
     } else {
@@ -2164,10 +2104,9 @@ export function switchToNextSource(preferWorking = true) {
           || null;
       }
     } else {
-      // Приоритет: 4K Ultra HD (FanFilm), затем Kodik, затем HDRezka / LostFilm / RHS, затем любой другой рабочий
+      // Приоритет: 4K Ultra HD (FanFilm), затем Kodik, затем RuTube / VK Видео, затем любой другой рабочий
       nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
         || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player'))
         || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rutube_stream' || p.id === 'vk_video_stream'))
         || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
         || null;
@@ -3317,8 +3256,7 @@ async function checkAndAutoFallbackStream(rawUrl) {
           brokenP.status_label = '🔴 Недоступен';
         }
         const kodik = currentPlayers?.find(p => p.id === 'kodik_direct' && p.status !== 'broken');
-        const rezka = currentPlayers?.find(p => p.id === 'rezka_cinema' && p.status !== 'broken');
-        const fallbackTarget = kodik || rezka || currentPlayers?.find(p => p.id !== 'fanfilm4k_uhd' && p.status !== 'broken');
+        const fallbackTarget = kodik || currentPlayers?.find(p => p.id !== 'fanfilm4k_uhd' && p.status !== 'broken');
         if (fallbackTarget && currentActivePlayer?.id !== fallbackTarget.id) {
           selectPlayer(fallbackTarget);
           showToast(`⚡ Автоматически включен проверенный плеер ${fallbackTarget.name}!`, 'info');

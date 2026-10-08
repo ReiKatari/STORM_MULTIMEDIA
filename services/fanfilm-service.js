@@ -838,7 +838,8 @@ export async function getFanFilmDetails(idOrUrl) {
             const hasFileList = chkText.includes('const fileList =') || chkText.includes('fileList') || chkText.includes('.m3u8') || chkText.includes('.mp4');
             const hasConfig = chkText.includes('const config =') || chkText.includes('mediaMetadata');
             const isTrailerOnly = chkText.includes('Трейлер') && !chkText.includes('.m3u8') && !chkText.includes('.mp4');
-            if ((hasFileList || hasConfig) && !isTrailerOnly) {
+            const isExplicitError = (chkText.includes('<title>Ошибка!</title>') || chkText.includes('<div class="error">')) && !hasFileList;
+            if ((hasFileList || hasConfig) && !isTrailerOnly && !isExplicitError) {
               is4kStreamHealthy = true;
             } else {
               is4kStreamHealthy = false;
@@ -885,53 +886,8 @@ export async function getFanFilmDetails(idOrUrl) {
         audio_info: 'Большой выбор студийных озвучек',
         speed: '⚡ Быстрый поток',
         url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}`,
-        is_recommended: !player4kIframe,
-        recommended_badge: !player4kIframe ? '🔥 Рекомендуемый' : ''
-      });
-
-      // HDRezka Studio
-      players.push({
-        id: 'rezka_cinema',
-        name: 'HDRezka Cinema (FHD и 4K)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'HDREZKA',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Студийный перевод HDRezka Studio',
-        speed: '⚡ Высокая скорость',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka`,
-        is_recommended: false
-      });
-
-      // LostFilm Series
-      players.push({
-        id: 'lostfilm_player',
-        name: 'LostFilm Series (дубляж)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'LOSTFILM',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальный дубляж LostFilm',
-        speed: '⚡ Студийный поток',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm`,
-        is_recommended: false
-      });
-
-      // Red Head Sound
-      players.push({
-        id: 'rhs_player',
-        name: 'Red Head Sound (RHS дубляж)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'RHS',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Профессиональный дубляж Red Head Sound',
-        speed: '⚡ Студийный поток',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs`,
-        is_recommended: false
+        is_recommended: !(player4kIframe && is4kStreamHealthy),
+        recommended_badge: !(player4kIframe && is4kStreamHealthy) ? '🔥 Рекомендуемый' : ''
       });
     }
 
@@ -996,9 +952,10 @@ export async function getFanFilmDetails(idOrUrl) {
       duration: formattedDuration,
       runtime_minutes: (duration && parseInt(duration, 10)) ? parseInt(duration, 10) : null,
       slogan,
-      is4K: Boolean(player4kIframe),
-      quality: player4kIframe ? '4K Ultra HD' : '1080p Full HD',
+      is4K: Boolean(player4kIframe && is4kStreamHealthy),
+      quality: (player4kIframe && is4kStreamHealthy) ? '4K Ultra HD' : '1080p Full HD',
       kp_id: kpId,
+      fanfilm_4k_url: (player4kIframe && is4kStreamHealthy) ? final4kUrl : '',
       fanfilm_hd_url: '',
       likes,
       dislikes,

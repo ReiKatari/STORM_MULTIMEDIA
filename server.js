@@ -3045,7 +3045,11 @@ app.get('/api/media/item', async (req, res) => {
           const ffItem = ffResults[0];
           const ffDetails = await getFanFilmDetails(ffItem.link || ffItem.url || ffItem.id);
           if (ffDetails) {
-            if (ffDetails.fanfilm_4k_url) fanfilmStreamUrl = ffDetails.fanfilm_4k_url;
+            if (ffDetails.fanfilm_4k_url) {
+              fanfilmStreamUrl = ffDetails.fanfilm_4k_url;
+            } else if (ffDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url) {
+              fanfilmStreamUrl = ffDetails.players.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k').url;
+            }
             if (ffDetails.fanfilm_hd_url) fanfilmHdStreamUrl = ffDetails.fanfilm_hd_url;
             if (!mediaDetails.kp_id && ffDetails.kp_id) mediaDetails.kp_id = ffDetails.kp_id;
             if (ffDetails.players && ffDetails.players.length > 0) {
@@ -3090,7 +3094,7 @@ app.get('/api/media/item', async (req, res) => {
     kinoboxPlayers.forEach(p => {
       // Исключаем дубли FanFilm, если fanfilm4k_uhd уже добавлен
       if (p.id === 'fanfilm_4k' && allPlayers.some(ap => ap.id === 'fanfilm4k_uhd')) return;
-      if (isLandyshiItem && (p.id === 'kodik_direct' || p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player' || p.id === 'kinobox_universal')) return;
+      if (isLandyshiItem && (p.id === 'kodik_direct' || p.id === 'kinobox_universal')) return;
       if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
         allPlayers.push(p);
       }
@@ -3100,15 +3104,16 @@ app.get('/api/media/item', async (req, res) => {
     allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
 
     // Если среди доступных плееров есть рабочие потоки — релиз гарантированно доступен для просмотра
-    const hasActiveOnlineStream = allPlayers.some(p => p && p.status === 'working' && p.url && !p.is_trailer && p.id !== 'webtorrent' && !p.url.includes('stravers.live') && !p.url.includes('transfusion'));
+    const hasActiveOnlineStream = allPlayers.some(p => p && p.status === 'working' && p.url && !p.is_trailer && p.id !== 'webtorrent');
     if (hasActiveOnlineStream) {
       mediaDetails.is_upcoming = false;
     }
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде!
+    const isReal4kStream = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
     allPlayers.sort((a, b) => {
-      const aIs4k = a.id === 'fanfilm4k_uhd' || a.id === 'fanfilm_4k' || a.quality === '4K UHD' || (typeof a.name === 'string' && a.name.includes('4K'));
-      const bIs4k = b.id === 'fanfilm4k_uhd' || b.id === 'fanfilm_4k' || b.quality === '4K UHD' || (typeof b.name === 'string' && b.name.includes('4K'));
+      const aIs4k = isReal4kStream(a);
+      const bIs4k = isReal4kStream(b);
       if (aIs4k && !bIs4k) return -1;
       if (!aIs4k && bIs4k) return 1;
       return 0;
@@ -3121,7 +3126,7 @@ app.get('/api/media/item', async (req, res) => {
         p.recommended_badge = '';
       });
       allPlayers[0].is_recommended = true;
-      allPlayers[0].recommended_badge = (allPlayers[0].quality === '4K UHD' || (allPlayers[0].name && allPlayers[0].name.includes('4K'))) ? '🔥 4K Рекомендуемый' : '🔥 Рекомендуемый';
+      allPlayers[0].recommended_badge = isReal4kStream(allPlayers[0]) ? '🔥 4K Рекомендуемый' : '🔥 Рекомендуемый';
     }
 
     // Каноническое обогащение типа медиа, года и жанров
@@ -4026,6 +4031,54 @@ async function getStraversCss(cssUrl, referer) {
   return null;
 }
 
+// Проксирование внутренних API запросов Stravers / Transfusion (/bnsi/movies/..., /events и т.д.) без CORS и preflight блокировок
+app.all('/api/player/stravers-api-proxy', express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
+  try {
+    const targetUrl = req.query.url;
+    if (!targetUrl || (!targetUrl.includes('stravers.live') && !targetUrl.includes('transfusion') && !targetUrl.includes('fanfilm'))) {
+      return res.status(400).json({ error: 'Неверный URL' });
+    }
+
+    const headers = {
+      'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      'Referer': 'https://v17.fanfilm4k.media/',
+      'Origin': 'https://v17.fanfilm4k.media'
+    };
+
+    if (req.headers['borth']) headers['Borth'] = req.headers['borth'];
+    if (req.headers['content-type']) headers['Content-Type'] = req.headers['content-type'];
+
+    const fetchOptions = {
+      method: req.method || 'GET',
+      headers,
+      signal: AbortSignal.timeout(8000)
+    };
+
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Buffer.isBuffer(req.body) && req.body.length > 0) {
+      fetchOptions.body = req.body;
+    }
+
+    const proxyRes = await fetch(targetUrl, fetchOptions);
+    const resHeaders = {};
+    proxyRes.headers.forEach((val, key) => {
+      const lowKey = key.toLowerCase();
+      if (!['content-encoding', 'transfer-encoding', 'connection'].includes(lowKey)) {
+        resHeaders[key] = val;
+      }
+    });
+
+    resHeaders['access-control-allow-origin'] = '*';
+    resHeaders['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE';
+    resHeaders['access-control-allow-headers'] = '*';
+
+    res.writeHead(proxyRes.status, resHeaders);
+    const resBuffer = await proxyRes.arrayBuffer();
+    res.end(Buffer.from(resBuffer));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
@@ -4085,11 +4138,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
         let html = await embedRes.text();
         const hasFileList = html.includes('const fileList =') || html.includes('fileList');
         const hasConfig = html.includes('const config =') || html.includes('mediaMetadata');
-        const isDead = (!hasFileList || !hasConfig) && (
-          html.toLowerCase().includes('видео удалено') ||
-          html.toLowerCase().includes('файл не найден') ||
-          html.toLowerCase().includes('404 not found')
-        );
+        const isDead = (html.toLowerCase().includes('<title>ошибка!</title>') || html.includes('<div class="error">')) && !hasFileList;
 
         if (isDead) {
           console.warn('FanFilm embed: обнаружен неработающий поток, переключаем на следующий источник');
@@ -4131,7 +4180,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               <div class="vpn-card">
                 <div class="vpn-icon">🔄</div>
                 <div class="vpn-title">Переключение источника</div>
-                <div class="vpn-desc">В данном потоке файл не найден. Выполняется автоматическое переключение на стабильный балансер (HDRezka / Collaps)...</div>
+                <div class="vpn-desc">В данном потоке файл не найден. Выполняется автоматическое переключение на стабильный балансер...</div>
                 <button type="button" class="vpn-btn" onclick="triggerNext()">Переключить сейчас</button>
               </div>
               <script>
@@ -4147,22 +4196,16 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           `);
         }
 
-        // 1. STORM AdBlock Engine: вырезание полей конфигурации рекламы Playerjs и VAST
-        html = html
-          .replace(/(["']?(?:preroll|midroll|postroll|vast|vast_url|banner|brand|adv|advert)["']?\s*:\s*)(?:\[[^\]]*\]|"[^"]*"|'[^']*'|\{[^\}]*\}|true)/gi, '$1null')
-          .replace(/\b(?:preroll|midroll|vast|vast_url)\s*=\s*[^;,\n]+/gi, '/* storm ad removed */');
-
-        // 2. STORM AdBlock Engine: вырезание внешних скриптов тизеров, трекеров и казино
+        // 1. STORM AdBlock Engine: вырезание внешних скриптов тизеров, трекеров и казино
         html = html.replace(/<script[^>]*src=["'][^"']*(?:yandex|adfox|googleads|doubleclick|adsystem|adkernel|redclick|marketgid|casino|1xbet|betting|traff|banner|adv)[^"']*["'][^>]*><\/script>/gi, '');
 
-        // 3. Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
+        // 2. Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
         html = html.replace(/if\s*\(\s*!isFramed\s*\)\s*\{/g, 'if (false && !isFramed) {');
 
-        // 4. Снятие атрибутов Subresource Integrity (SRI) integrity="..." со всех <link> и <script>.
-        // Без этого браузер Chrome блокирует загрузку CSS и JS из-за отсутствия заголовков CORS на CDN балансера!
+        // 3. Снятие атрибутов Subresource Integrity (SRI) integrity="..." со всех <link> и <script>.
         html = html.replace(/\s+integrity=["'][^"']+["']/gi, '');
 
-        // 5. Внедрение и инлайнинг CSS для мгновенного и гарантированного рендеринга плеера
+        // 4. Внедрение и инлайнинг CSS для мгновенного и гарантированного рендеринга плеера
         const baseOrigin = new URL(finalUrl).origin;
         try {
           const cssMatch = html.match(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["'][^>]*>/i);
@@ -4183,16 +4226,15 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             try { window.open = function() { return null; }; } catch(e) {}
             try { window.alert = function() {}; } catch(e) {}
 
-            // STORM AdBlock Engine: сетевой перехватчик VAST и видеорекламы (Fetch и XHR)
+            // STORM AdBlock Engine & Stravers API Proxy
             var emptyVast = '<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"></VAST>';
             var isAdUrl = function(u) {
               var low = String(u || '').toLowerCase();
-              return low.includes('vast') || low.includes('preroll') || low.includes('midroll') ||
-                     low.includes('postroll') || low.includes('adfox') || low.includes('yandex') ||
+              return low.includes('vast') || low.includes('adfox') || low.includes('yandex') ||
                      low.includes('ssp') || low.includes('doubleclick') || low.includes('googleads') ||
-                     low.includes('adsystem') || low.includes('adkernel') || low.includes('banner') ||
-                     low.includes('popunder') || low.includes('clickunder') || low.includes('casino') ||
-                     low.includes('1xbet') || low.includes('winline') || low.includes('melbet');
+                     low.includes('adsystem') || low.includes('adkernel') || low.includes('popunder') ||
+                     low.includes('clickunder') || low.includes('casino') || low.includes('1xbet') ||
+                     low.includes('winline') || low.includes('melbet');
             };
 
             var origFetch = window.fetch;
@@ -4205,6 +4247,16 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                     headers: { 'Content-Type': 'application/xml; charset=utf-8' }
                   }));
                 }
+                var strUrl = String(url || '');
+                if (strUrl.includes('/bnsi/') || strUrl.includes('/events') || strUrl.includes('stravers.live') || strUrl.includes('transfusion')) {
+                  var fullTarget = strUrl.startsWith('http') ? strUrl : ('${baseOrigin}' + (strUrl.startsWith('/') ? '' : '/') + strUrl);
+                  var proxied = '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
+                  if (typeof input === 'string') {
+                    return origFetch.call(this, proxied, init);
+                  } else {
+                    return origFetch.call(this, new Request(proxied, init));
+                  }
+                }
                 return origFetch.apply(this, arguments);
               };
             }
@@ -4213,6 +4265,13 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             XMLHttpRequest.prototype.open = function(method, url) {
               if (isAdUrl(url)) {
                 this._isStormBlockedAd = true;
+                return origOpen.apply(this, arguments);
+              }
+              var strUrl = String(url || '');
+              if (strUrl.includes('/bnsi/') || strUrl.includes('/events') || strUrl.includes('stravers.live') || strUrl.includes('transfusion')) {
+                var fullTarget = strUrl.startsWith('http') ? strUrl : ('${baseOrigin}' + (strUrl.startsWith('/') ? '' : '/') + strUrl);
+                var proxied = '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
+                return origOpen.call(this, method, proxied, arguments[2], arguments[3], arguments[4]);
               }
               return origOpen.apply(this, arguments);
             };
@@ -4232,6 +4291,25 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }
               return origSend.apply(this, arguments);
             };
+
+            // Автоматическое снятие вечного лоадера при ошибке потока и переключение на следующий источник
+            (function() {
+              function checkErrorState() {
+                var errEl = document.querySelector('.error_message, .error_player, .error, .allplay--error');
+                var isErr = errEl && (errEl.offsetParent !== null || !errEl.classList.contains('hidden') || errEl.classList.contains('active') || errEl.classList.contains('allplay--error'));
+                if (isErr) {
+                  var ldrs = document.querySelectorAll('.loader, .allplay__control--loader, .allplay__ads--loader');
+                  for (var i = 0; i < ldrs.length; i++) {
+                    ldrs[i].classList.remove('active');
+                    ldrs[i].style.setProperty('display', 'none', 'important');
+                  }
+                  try {
+                    window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'FANFILM_STREAM_ERROR' }, '*');
+                  } catch (_) {}
+                }
+              }
+              setInterval(checkErrorState, 400);
+            })();
 
             // STORM AdBlock Engine: автоматический пропуск, уничтожение и глушение рекламы
             (function() {
@@ -4698,7 +4776,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           })();
           </script>
           <style>
-            .error_message:not(.active), .error_unsupported:not(.active), .error_player:not(.active), #bug-report-modal:not(.active), .modal.bug-report:not(.active), .bug-report-wrap:not(.active), .modal__content:not(.active) {
+            #bug-report-modal:not(.active), .modal.bug-report:not(.active), .bug-report-wrap:not(.active), .modal__content:not(.active) {
               display: none !important;
             }
             .pj_menu_item.pj_active, [class*="menu_item"][class*="active"], [class*="speed-item"][class*="active"] {
@@ -5225,6 +5303,7 @@ app.get('/api/player/series-options', async (req, res) => {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       });
+      const pageHtml = await pageRes.text();
       const isHdActive = pageHtml.includes('class="tab-btn is-active" data-tab="hdplayer"') || pageHtml.includes('data-tab="hdplayer" class="tab-btn is-active"');
       const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
       if (m && !isHdActive) {

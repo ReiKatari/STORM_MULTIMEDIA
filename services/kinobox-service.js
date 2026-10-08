@@ -187,59 +187,6 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         recommended_badge: (!isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
       });
 
-      // HDRezka Cinema (FHD и 4K) - официальные переводы HDRezka Studio
-      const rezkaUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=hdrezka${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
-      players.push({
-        id: 'rezka_cinema',
-        name: 'HDRezka Cinema (FHD и 4K)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'HDREZKA',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Студийный перевод HDRezka Studio',
-        speed: '⚡ Высокая скорость',
-        url: rezkaUrl
-      });
-    }
-
-    // Студии зарубежного дубляжа (LostFilm TV и Red Head Sound)
-    if (!isLandyshi) {
-      // Red Head Sound (Дубляж RHS)
-      const rhsUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rhs${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
-      players.push({
-        id: 'rhs_player',
-        name: 'Red Head Sound (Дубляж RHS)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'RHS',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальные голоса дубляжа студии RHS',
-        speed: '⚡ Премиум дубляж',
-        url: rhsUrl
-      });
-
-      // LostFilm TV (Официальный дубляж и релизы)
-      const lostfilmUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=lostfilm${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
-      players.push({
-        id: 'lostfilm_player',
-        name: 'LostFilm TV (Студийный перевод)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'LOSTFILM',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Фирменная многоголосая озвучка LostFilm',
-        speed: '⚡ Быстрый CDN',
-        url: lostfilmUrl
-      });
     }
 
     // Vidsrc Cinema (Original)
