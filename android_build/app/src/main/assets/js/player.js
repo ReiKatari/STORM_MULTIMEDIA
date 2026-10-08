@@ -1703,15 +1703,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
                 || currentPlayers[0];
             }
           }
+          selectPlayer(defaultPlayer);
+        } else {
+          selectPlayer({
+            is_upcoming: true,
+            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+          });
         }
-        selectPlayer(defaultPlayer);
-      } else {
-        selectPlayer({
-          is_upcoming: true,
-          upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
-        });
       }
-    }
 
     // Рендерим секцию «В ролях и создатели» в стиле Luno (горизонтальная карусель, фото w500, роли)
     renderCastAndCrewCarousel(currentMedia);

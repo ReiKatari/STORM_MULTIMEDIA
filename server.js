@@ -721,7 +721,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.28'
+    version: '1.0.29'
   });
 });
 
