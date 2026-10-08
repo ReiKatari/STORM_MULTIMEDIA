@@ -1222,8 +1222,45 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
   }
 
   const cleanTitle = cleanStr(title);
-  const cleanOrig = cleanStr(orig);
-  if (!cleanTitle && !cleanOrig) return null;
+  const KNOWN_VERIFIED_POSTERS = {
+    'мэйдэй': 'https://v17.fanfilm4k.media/uploads/posts/2026-09/w1500_57684498.jpg',
+    'mayday': 'https://v17.fanfilm4k.media/uploads/posts/2026-09/w1500_57684498.jpg',
+    'дюна часть вторая': 'https://image.tmdb.org/t/p/w500/3aLghRkuJc9cs770fxo4a6YWht3.jpg',
+    'дюна: часть вторая': 'https://image.tmdb.org/t/p/w500/3aLghRkuJc9cs770fxo4a6YWht3.jpg',
+    'dune part two': 'https://image.tmdb.org/t/p/w500/3aLghRkuJc9cs770fxo4a6YWht3.jpg',
+    'укрытие': 'https://image.tmdb.org/t/p/w500/gRkvq6FgiGRdtCwhVIozaUqhoDL.jpg',
+    'бункер': 'https://image.tmdb.org/t/p/w500/gRkvq6FgiGRdtCwhVIozaUqhoDL.jpg',
+    'silo': 'https://image.tmdb.org/t/p/w500/gRkvq6FgiGRdtCwhVIozaUqhoDL.jpg',
+    'человек паук паутина вселенных': 'https://image.tmdb.org/t/p/w500/wH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg',
+    'человек-паук: паутина вселенных': 'https://image.tmdb.org/t/p/w500/wH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg',
+    'across the spider verse': 'https://image.tmdb.org/t/p/w500/wH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg',
+    'бордерлендс': 'https://v17.fanfilm4k.media/uploads/posts/2024-08/fb3f49de1ca829a94ee2bf9cd8ec433c-min.jpg',
+    'borderlands': 'https://v17.fanfilm4k.media/uploads/posts/2024-08/fb3f49de1ca829a94ee2bf9cd8ec433c-min.jpg',
+    'интерстеллар': 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
+    'interstellar': 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
+    'оппенгеймер': 'https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
+    'oppenheimer': 'https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
+    'киберпанк бегущие по краю': 'https://image.tmdb.org/t/p/w500/w15qxusZtam6ipBGEWBcwg9WQNN.jpg',
+    'киберпанк: бегущие по краю': 'https://image.tmdb.org/t/p/w500/w15qxusZtam6ipBGEWBcwg9WQNN.jpg',
+    'cyberpunk edgerunners': 'https://image.tmdb.org/t/p/w500/w15qxusZtam6ipBGEWBcwg9WQNN.jpg',
+    'аркейн': 'https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg',
+    'arcane': 'https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg',
+    'джентльмены': 'https://image.tmdb.org/t/p/w500/bpy9uaV0oOlKnEoPzodwrSSUFXg.jpg',
+    'the gentlemen': 'https://image.tmdb.org/t/p/w500/bpy9uaV0oOlKnEoPzodwrSSUFXg.jpg',
+    'разделение': 'https://image.tmdb.org/t/p/w500/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg',
+    'severance': 'https://image.tmdb.org/t/p/w500/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg',
+    'одних из нас': 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
+    'одни из нас': 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
+    'the last of us': 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg'
+  };
+
+  const normKey1 = cleanTitle.toLowerCase();
+  const normKey2 = cleanOrig.toLowerCase();
+  const matchedPoster = KNOWN_VERIFIED_POSTERS[normKey1] || KNOWN_VERIFIED_POSTERS[normKey2];
+  if (matchedPoster) {
+    const img = await fetchImageBuffer(matchedPoster, 4000);
+    if (img) return img;
+  }
 
   const cacheKey = `universal_cover_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
   const cachedUrl = getCache('universal_covers', cacheKey);
@@ -1676,11 +1713,19 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
         year: String(yr),
         genres,
         media_type: mediaType,
-        category: i.category || categoryLabel,
+        category: categoryLabel,
         premiere: i.premiere || (yr ? `${yr} год` : ''),
         release_date: i.release_date || (yr ? `${yr}-01-01` : '')
       };
     });
+
+    // Строгая категоризация для разделов «Фильмы» и «Сериалы»
+    if (normCategory === 'movies') {
+      items = items.filter(i => i.media_type !== 'series' && i.media_type !== 'anime-series' && i.media_type !== 'cartoon-series');
+    } else if (normCategory === 'series') {
+      items = items.filter(i => i.media_type !== 'movie' && i.media_type !== 'anime-movie' && i.media_type !== 'cartoon');
+    }
+
     items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
   }
 
@@ -2997,26 +3042,8 @@ app.get('/api/media/item', async (req, res) => {
       }
     });
 
-    // Если нет ни одного плеера, гарантируем наличие промо/трейлера с YouTube
-    if (allPlayers.length === 0) {
-      const cleanSearchTitle = (mediaDetails.title || 'Фильм').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
-      const safeSearch = encodeURIComponent(`${cleanSearchTitle} официальный русский трейлер`);
-      allPlayers.push({
-        id: 'official_trailer_fallback',
-        name: 'Официальный трейлер и промо (HD)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'ТРЕЙЛЕР',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальный промо-трейлер',
-        speed: '⚡ YouTube',
-        url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
-        is_trailer: true,
-        is_recommended: true,
-        recommended_badge: '🔥 Рекомендуемый'
-      });
-    }
+    // Полностью исключаем трейлеры, тизеры и промо из доступных плееров
+    allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде!
     allPlayers.sort((a, b) => {

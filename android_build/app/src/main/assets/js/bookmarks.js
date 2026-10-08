@@ -374,13 +374,22 @@ export async function fetchUserBookmarks(status = null, type = null) {
       const k = String(it.media_id || it.id || '');
       if (k) map.set(k, it);
     });
-    // Из локального хранилища добавляем только неотправленные оффлайн-закладки (localOnly)
+    // Из локального хранилища сохраняем флаги is_favorite и локальные закладки
     localList.forEach(it => {
       const k = String(it.media_id || it.id || '');
-      if (k && !map.has(k) && it.localOnly) map.set(k, it);
+      if (k) {
+        if (map.has(k)) {
+          const srv = map.get(k);
+          if (it.is_favorite && !srv.is_favorite) srv.is_favorite = 1;
+        } else if (it.localOnly) {
+          map.set(k, it);
+        }
+      }
     });
     const merged = Array.from(map.values());
-    saveLocalBookmarksList(merged);
+    if (!status && !type) {
+      saveLocalBookmarksList(merged);
+    }
     setMemoryBookmarksCache(merged);
     return serverBookmarks;
   }
@@ -389,7 +398,13 @@ export async function fetchUserBookmarks(status = null, type = null) {
   const localBookmarks = getLocalBookmarksList();
   if (localBookmarks.length > 0) {
     let filtered = localBookmarks;
-    if (status) filtered = filtered.filter(b => b.status === status || b.user_status === status);
+    if (status) {
+      if (status === 'favorite') {
+        filtered = filtered.filter(b => b.status === 'favorite' || b.user_status === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
+      } else {
+        filtered = filtered.filter(b => b.status === status || b.user_status === status);
+      }
+    }
     if (type) filtered = filtered.filter(b => b.media_type === type);
     setMemoryBookmarksCache(filtered);
     return filtered;
@@ -548,7 +563,8 @@ export async function saveBookmarkStatus(mediaData, status) {
         poster_url: mediaData.poster || mediaData.poster_url || '',
         media_type: mediaData.media_type || mType || 'movie',
         year: mediaData.year || detectClientYear(mediaData) || '',
-        status: status
+        status: status,
+        is_favorite: (status === 'favorite' || mediaData.is_favorite === 1 || mediaData.is_favorite === true) ? 1 : (mediaData.is_favorite ? 1 : 0)
       })
     });
 
@@ -613,6 +629,16 @@ export function detectClientMediaType(item) {
   // 0. Обитель зла: Мутация - строго фильм, не анимация!
   if (t.includes('обитель зла') && (t.includes('мутация') || t.includes('мутиция'))) {
     return 'movie';
+  }
+
+  // Дюна и Дюна: Часть вторая - строго художественный фильм
+  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть')) {
+    return 'movie';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
+    return 'series';
   }
 
   // 1. Известные анимационные фильмы (Вырождение, Вендетта и др.)
@@ -730,7 +756,8 @@ export function detectClientMediaType(item) {
     'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
     'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
     'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
-    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
+    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge',
+    'кэрри', 'carrie'
   ];
 
   // Защита от мультфильмов со словом монстр/монстры

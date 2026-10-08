@@ -1553,6 +1553,9 @@ export function isPlaceholderImage(url) {
  */
 export function getSafePosterUrl(url, title = '') {
   if (!url || typeof url !== 'string' || isPlaceholderImage(url)) {
+    if (title && typeof title === 'string' && title.trim().length >= 2) {
+      return `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}`;
+    }
     return 'assets/favicon.svg';
   }
   let clean = url.trim();
@@ -1891,6 +1894,7 @@ async function loadCurrentTab() {
         media_type: b.media_type,
         year: b.year || '',
         user_status: b.status,
+        is_favorite: (b.is_favorite === 1 || b.is_favorite === true || b.status === 'favorite') ? 1 : 0,
         progress_percent: b.progress_percent,
         episodes_watched: b.episodes_watched,
         total_episodes: b.total_episodes,
@@ -2165,6 +2169,16 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
 
   if (title.includes('менталист') || title.includes('mentalist') || title.includes('дневники вампира') || title.includes('vampire diaries')) {
     return 'Сериал';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (title === 'кэрри' || title.startsWith('кэрри ') || title.startsWith('кэрри:') || title === 'carrie' || title.startsWith('carrie ') || title.startsWith('carrie:')) {
+    return 'Сериал';
+  }
+
+  // Дюна и Дюна: Часть вторая - строго художественный фильм
+  if (title.includes('дюна')) {
+    return 'Фильм';
   }
 
   if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
@@ -2601,6 +2615,7 @@ function createRailCardHtml(item, idx, isWide = false) {
     displayPercent = Math.min(100, Math.max(1, Math.round((ep / totalEp) * 100)));
   }
 
+  const isExplicitMovie = item.media_type === 'movie' || item.category === 'Фильм' || catLabel === 'Фильм' || tNorm.includes('дюна');
   return `
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
@@ -2612,7 +2627,7 @@ function createRailCardHtml(item, idx, isWide = false) {
             ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
             ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
             ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
-            ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
+            ${(!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал')) ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
           <div class="media-card-top-right">
@@ -2940,7 +2955,7 @@ function renderHomeView(items) {
         id: i.media_id || i.id,
         source: i.source || 'tmdb',
         title: i.title,
-        poster: i.poster_url || i.poster,
+        poster: getSafePosterUrl(i.poster_url || i.poster, i.title),
         media_type: mType,
         year: getMediaYear(i) || i.year || '',
         genres: i.genres || '',
@@ -2973,6 +2988,7 @@ function renderHomeView(items) {
   trendingItems = trendingItems.slice(0, 36);
 
   const EXPLICIT_KNOWN_SERIES = [
+    'кэрри', 'carrie',
     'король талсы', 'tulsa king', 'основание', 'foundation', 'целую, китти', 'целую китти', 'xo, kitty', 'xo kitty',
     'голяк', 'brassic', 'рыцарь семи королевств', 'a knight of the seven kingdoms', 'сорвиголова', 'daredevil',
     'гангстерленд', 'mobland', 'медленные лошади', 'slow horses', 'йеллоустоун', 'yellowstone',
@@ -5478,10 +5494,11 @@ export function renderFilteredCatalog() {
   });
 
   if (currentTab === 'bookmarks') {
+    const isFav = it => it.user_status === 'favorite' || it.status === 'favorite' || it.is_favorite === 1 || it.is_favorite === true || it.isFavorite === true;
     const counts = {
       all: rawCatalogItems.length,
       watching: rawCatalogItems.filter(it => it.user_status === 'watching').length,
-      favorite: rawCatalogItems.filter(it => it.user_status === 'favorite').length,
+      favorite: rawCatalogItems.filter(isFav).length,
       plan: rawCatalogItems.filter(it => it.user_status === 'plan' || it.user_status === 'planned').length,
       completed: rawCatalogItems.filter(it => it.user_status === 'completed').length,
       hold: rawCatalogItems.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold').length,
@@ -5505,6 +5522,8 @@ export function renderFilteredCatalog() {
         items = items.filter(it => it.user_status === 'plan' || it.user_status === 'planned');
       } else if (currentBookmarkSubTab === 'hold') {
         items = items.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold');
+      } else if (currentBookmarkSubTab === 'favorite') {
+        items = items.filter(isFav);
       } else {
         items = items.filter(it => it.user_status === currentBookmarkSubTab);
       }

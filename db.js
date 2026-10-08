@@ -15,6 +15,7 @@ db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
   PRAGMA foreign_keys = ON;
+  PRAGMA busy_timeout = 5000;
 
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,6 +167,7 @@ db.exec(`
 // Безопасные миграции схемы базы данных
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN year TEXT;'); } catch {}
 try { db.exec('ALTER TABLE watch_history ADD COLUMN year TEXT;'); } catch {}
+try { db.exec('ALTER TABLE bookmarks ADD COLUMN is_favorite INTEGER DEFAULT 0;'); } catch {}
 
 // Автоматическое заполнение отсутствующих годов в существующих закладках
 try {
@@ -682,8 +684,13 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
   const params = [userId];
 
   if (status) {
-    query += ' AND status = ?';
-    params.push(status);
+    if (status === 'favorite') {
+      query += ' AND (status = ? OR is_favorite = 1)';
+      params.push('favorite');
+    } else {
+      query += ' AND status = ?';
+      params.push(status);
+    }
   }
   if (mediaType) {
     query += ' AND media_type = ?';
@@ -805,6 +812,7 @@ export function setBookmark(userId, data) {
 
   if (duplicateRows.length > 0) {
     const primary = duplicateRows[0];
+    const isFav = status === 'favorite' || data.is_favorite === 1 || data.is_favorite === true ? 1 : (primary.is_favorite || 0);
     db.prepare(`
       UPDATE bookmarks SET
         media_id = ?,
@@ -815,6 +823,7 @@ export function setBookmark(userId, data) {
         media_type = ?,
         year = COALESCE(NULLIF(?, ''), year),
         status = ?,
+        is_favorite = ?,
         episodes_watched = ?,
         total_episodes = ?,
         progress_percent = ?,
@@ -830,6 +839,7 @@ export function setBookmark(userId, data) {
       media_type,
       year,
       status,
+      isFav,
       episodes_watched,
       total_episodes,
       progress_percent,
@@ -861,11 +871,12 @@ export function setBookmark(userId, data) {
   }
 
   // Новая закладка
+  const isFav = status === 'favorite' || data.is_favorite === 1 || data.is_favorite === true ? 1 : 0;
   const insert = db.prepare(`
     INSERT INTO bookmarks (
       user_id, media_id, source, title, original_title, poster_url, media_type, year,
-      status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      status, is_favorite, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   insert.run(
@@ -878,6 +889,7 @@ export function setBookmark(userId, data) {
     media_type,
     year,
     status,
+    isFav,
     episodes_watched,
     total_episodes,
     progress_percent,

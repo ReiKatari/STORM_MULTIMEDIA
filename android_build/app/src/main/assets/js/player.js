@@ -1220,32 +1220,14 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   }
 
   // 7. P2P WebTorrent (Торрент-стриминг)
-  if (!mediaItem.is_upcoming) {
-    suite.push({
-      id: 'webtorrent',
-      name: 'P2P WebTorrent (Торрент-стриминг)',
-      url: 'webtorrent://direct',
-      badge: 'P2P 4K',
-      quality: '4K UHD / 1080p',
-      status_label: '🟢 P2P Сеть',
-      audio_info: 'Многоголосый дубляж'
-    });
-  }
-
-  // 8. Официальный трейлер и промо (YouTube)
-  const safeSearch = encodeURIComponent(`${title} официальный русский трейлер`);
   suite.push({
-    id: 'official_trailer',
-    name: 'Официальный трейлер (4K / FHD)',
-    type: 'iframe',
+    id: 'webtorrent',
+    name: 'P2P WebTorrent (Торрент-стриминг)',
+    url: 'webtorrent://direct',
+    badge: 'P2P 4K',
     quality: '4K UHD / 1080p',
-    badge: 'ТРЕЙЛЕР',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Официальный промо-трейлер',
-    speed: '⚡ YouTube 4K',
-    url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
-    is_trailer: true
+    status_label: '🟢 P2P Сеть',
+    audio_info: 'Многоголосый дубляж'
   });
 
   if (!suite.some(p => p.is_recommended) && suite.length > 0) {
@@ -1625,48 +1607,57 @@ export async function openPlayerModal(mediaItem, options = {}) {
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
         if (!defaultPlayer) {
-          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-          const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-          const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
-          const preferStableKodik = itemYr < 2020;
+          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
+          const isStable = p => isWorking(p) && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+          const hasOnlineStream = currentPlayers.some(isWorking);
 
-          // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-          const fourKPlayer = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isWorking(p));
-          if (fourKPlayer) {
-            defaultPlayer = fourKPlayer;
-          } else if (isLandyshiItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
-          } else if (isDomesticItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
-              || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
-              || currentPlayers.find(p => p.is_recommended && isWorking(p))
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
-          } else if (preferStableKodik) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
-              || currentPlayers.find(p => p.is_recommended && isStable(p))
-              || currentPlayers.find(isStable)
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
+          if (!hasOnlineStream || currentMedia.is_upcoming) {
+            defaultPlayer = {
+              is_upcoming: true,
+              upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+            };
           } else {
-            defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
-              || currentPlayers.find(p => p.is_recommended && isWorking(p))
-              || currentPlayers.find(isStable)
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
+            const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
+            const preferStableKodik = itemYr < 2020;
+
+            // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
+            const fourKPlayer = currentPlayers.find(p => (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || (typeof p.name === 'string' && p.name.includes('4K'))) && isWorking(p));
+            if (fourKPlayer) {
+              defaultPlayer = fourKPlayer;
+            } else if (isLandyshiItem) {
+              defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            } else if (isDomesticItem) {
+              defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
+                || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+                || currentPlayers.find(p => p.is_recommended && isWorking(p))
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            } else if (preferStableKodik) {
+              defaultPlayer = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+                || currentPlayers.find(p => p.is_recommended && isStable(p))
+                || currentPlayers.find(isStable)
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            } else {
+              defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
+                || currentPlayers.find(p => p.is_recommended && isWorking(p))
+                || currentPlayers.find(isStable)
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            }
           }
         }
         selectPlayer(defaultPlayer);
-      } else if (currentMedia.is_upcoming) {
+      } else {
         selectPlayer({
           is_upcoming: true,
-          upcoming_notice: `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`
+          upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
         });
       }
     }
@@ -1793,6 +1784,8 @@ function renderPlayerSources(players) {
   let validPlayers = (players || []).filter(p => {
     if (!p || !p.url) return false;
     if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
+    if (p.is_trailer || p.id === 'official_trailer' || p.id === 'official_trailer_fallback') return false;
+    if (/трейлер|тизер|trailer|teaser/i.test(p.name || '') || /трейлер|тизер|trailer|teaser/i.test(p.badge || '')) return false;
     return true;
   });
 
@@ -1805,35 +1798,14 @@ function renderPlayerSources(players) {
     return 0;
   });
 
-  // Если список плееров пуст, гарантируем доступный промо-трейлер (YouTube)
-  if (validPlayers.length === 0 && currentMedia?.title) {
-    const cleanSearchTitle = cleanVideoTitle(currentMedia.title);
-    const safeSearch = encodeURIComponent(`${cleanSearchTitle} официальный русский трейлер`);
-    validPlayers.push({
-      id: 'official_trailer_fallback',
-      name: 'Официальный трейлер и промо (HD)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'ТРЕЙЛЕР',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальное промо релиза',
-      speed: '⚡ YouTube',
-      url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
-      is_trailer: true,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
-    });
-  }
-
   currentPlayers = validPlayers;
 
   if (validPlayers.length === 0) {
-    if (curName) curName.textContent = 'Плееры не найдены';
-    if (curBadge) curBadge.textContent = 'ОШИБКА';
+    if (curName) curName.textContent = 'Премьера ожидается';
+    if (curBadge) curBadge.textContent = 'РЕЛИЗ';
     if (curQuality) curQuality.textContent = '—';
-    if (curStatus) curStatus.textContent = '🔴 Недоступен';
-    list.innerHTML = '<div style="padding: 10px; color: var(--text-muted); font-size: 12px; text-align: center;">Плееры для данного видео временно недоступны</div>';
+    if (curStatus) curStatus.textContent = '🕒 Скоро';
+    list.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 13px; text-align: center;">Цифровой релиз фильма еще не состоялся</div>';
     return;
   }
 
@@ -2048,20 +2020,45 @@ function selectPlayer(player) {
   }
 
   // Если ссылки нет, отображаем статус ожидаемой премьеры
-  if (!player.url) {
-    if (player.upcoming_notice || currentMedia?.is_upcoming) {
-      const notice = player.upcoming_notice || `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`;
-      container.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.85);border-radius:12px;gap:14px;">
-          <div style="font-size:42px;">🎬</div>
-          <div style="font-size:18px;font-weight:800;color:var(--text-primary);">Премьера еще не состоялась</div>
-          <div style="max-width:560px;font-size:13px;line-height:1.6;color:var(--text-secondary);">${notice}</div>
+  if (!player || !player.url) {
+    const title = cleanVideoTitle(currentMedia?.title || 'Фильм');
+    const year = currentMedia?.year || '2026';
+    const notice = player?.upcoming_notice || `Официальная премьера «${title}» ожидается в ${year} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`;
+
+    container.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:36px 20px;background:rgba(10,12,18,0.85);border-radius:12px;gap:16px;">
+        <div style="font-size:48px;line-height:1;">🎬</div>
+        <div style="font-size:20px;font-weight:800;color:var(--text-primary);letter-spacing:0.5px;">Фильм ещё не вышел в цифровой прокат</div>
+        <div style="max-width:540px;font-size:13px;line-height:1.6;color:var(--text-secondary);">${notice}</div>
+        <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;justify-content:center;">
+          <button type="button" class="storm-btn storm-btn-primary" id="player-notice-add-planned-btn" style="padding:10px 18px;font-weight:700;">
+            📌 Добавить в «Буду смотреть»
+          </button>
+          <button type="button" class="storm-btn storm-btn-secondary" id="player-notice-webtorrent-btn" style="padding:10px 18px;">
+            🧲 Запустить в P2P WebTorrent
+          </button>
         </div>
-      `;
-      return;
+      </div>
+    `;
+
+    const addPlannedBtn = container.querySelector('#player-notice-add-planned-btn');
+    if (addPlannedBtn) {
+      addPlannedBtn.onclick = async () => {
+        if (currentMedia) {
+          await saveBookmarkStatus(currentMedia, 'planned');
+          addPlannedBtn.textContent = '✓ Добавлено в «В планах»';
+          addPlannedBtn.classList.remove('storm-btn-primary');
+          addPlannedBtn.classList.add('storm-btn-secondary');
+        }
+      };
     }
 
-    container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Ссылка на данный плеер временно недоступна</div>';
+    const wtBtn = container.querySelector('#player-notice-webtorrent-btn');
+    if (wtBtn) {
+      wtBtn.onclick = () => {
+        renderWebTorrentPlayer();
+      };
+    }
     return;
   }
 
@@ -6453,11 +6450,13 @@ export async function toggleAdvancedPiP() {
 // ==========================================
 const WEBTORRENT_TRACKERS = [
   'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz',
   'wss://tracker.webtorrent.dev',
+  'wss://tracker.files.fm:7073/announce',
+  'wss://sparta.cyberia.club:443/announce',
   'wss://tracker.fastcast.nz',
   'wss://tracker.sloppyta.co:443/announce',
-  'wss://tracker.ghostrr.com:443/announce',
-  'wss://tracker.btorrent.xyz'
+  'wss://tracker.ghostrr.com:443/announce'
 ];
 
 let webTorrentLoadPromise = null;
@@ -6466,12 +6465,19 @@ export async function ensureWebTorrentLoaded() {
   if (webTorrentLoadPromise) return webTorrentLoadPromise;
   webTorrentLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js';
+    script.src = '/vendor/webtorrent.min.js';
     script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => {
-      webTorrentLoadPromise = null;
-      reject(new Error('Не удалось загрузить WebTorrent модуль'));
+      const fallbackScript = document.createElement('script');
+      fallbackScript.src = 'https://cdn.bootcdn.net/ajax/libs/webtorrent/1.9.7/webtorrent.min.js';
+      fallbackScript.async = true;
+      fallbackScript.onload = () => resolve(true);
+      fallbackScript.onerror = () => {
+        webTorrentLoadPromise = null;
+        reject(new Error('Не удалось загрузить WebTorrent модуль'));
+      };
+      document.head.appendChild(fallbackScript);
     };
     document.head.appendChild(script);
   });
@@ -6484,12 +6490,19 @@ export async function ensureHlsLoaded() {
   if (hlsLoadPromise) return hlsLoadPromise;
   hlsLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+    script.src = '/vendor/hls.min.js';
     script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => {
-      hlsLoadPromise = null;
-      reject(new Error('Не удалось загрузить HLS модуль'));
+      const fallbackScript = document.createElement('script');
+      fallbackScript.src = 'https://unpkg.com/hls.js/dist/hls.min.js';
+      fallbackScript.async = true;
+      fallbackScript.onload = () => resolve(true);
+      fallbackScript.onerror = () => {
+        hlsLoadPromise = null;
+        reject(new Error('Не удалось загрузить HLS модуль'));
+      };
+      document.head.appendChild(fallbackScript);
     };
     document.head.appendChild(script);
   });
