@@ -6,14 +6,61 @@
 import { getCache, setCache } from '../db.js';
 import { resolveMediaYear, isAnimeLinkOrTitle } from './fanfilm-service.js';
 
-const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
-const TMDB_BASE = 'https://api.themoviedb.org/3';
-const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+import { Agent } from 'undici';
+import dns from 'node:dns';
 
-async function tmdbFetch(url, options = {}) {
+export const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
+export const TMDB_BASE = 'https://api.themoviedb.org/3';
+export const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
+// Официальные IP CloudFront для api.themoviedb.org для обхода блокировок DNS в РФ
+const TMDB_IPS = ['18.165.122.73', '18.165.122.87', '18.165.122.23', '18.165.122.27'];
+let activeTmdbIpIdx = 0;
+
+// Периодическое фоновое обновление через Cloudflare DoH (DNS over HTTPS)
+async function refreshTmdbDohIps() {
+  try {
+    const res = await fetch('https://1.1.1.1/dns-query?name=api.themoviedb.org', {
+      headers: { 'Accept': 'application/dns-json' },
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const fresh = (data.Answer || []).filter(a => a.type === 1 && a.data).map(a => a.data);
+      if (fresh.length > 0) {
+        TMDB_IPS.splice(0, TMDB_IPS.length, ...fresh);
+      }
+    }
+  } catch (_) {}
+}
+refreshTmdbDohIps();
+setInterval(refreshTmdbDohIps, 1000 * 60 * 60 * 6).unref();
+
+const tmdbDispatcher = new Agent({
+  connect: {
+    lookup: (hostname, options, callback) => {
+      if (typeof options === 'function') {
+        callback = options;
+        options = {};
+      }
+      if (hostname === 'api.themoviedb.org') {
+        const ip = TMDB_IPS[activeTmdbIpIdx % TMDB_IPS.length];
+        activeTmdbIpIdx++;
+        if (options && options.all) {
+          return callback(null, [{ address: ip, family: 4 }]);
+        }
+        return callback(null, ip, 4);
+      }
+      return dns.lookup(hostname, options, callback);
+    }
+  }
+});
+
+export async function tmdbFetch(url, options = {}) {
   const timeoutMs = options.timeout || 8000;
   return await fetch(url, {
     ...options,
+    dispatcher: tmdbDispatcher,
     signal: AbortSignal.timeout(timeoutMs),
     headers: {
       'User-Agent': 'STORM-Multimedia/1.0',

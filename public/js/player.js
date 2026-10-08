@@ -123,7 +123,7 @@ export function getSafeCleanStreamUrl(rawUrl) {
       }
     }
   } else {
-    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
+    if (streamUrl.includes('/api/player/kodik-embed?url=') || streamUrl.includes('/api/player/adblock-proxy?url=')) {
       try {
         const parsed = new URL(streamUrl, window.location.origin);
         const inner = parsed.searchParams.get('url');
@@ -3842,7 +3842,7 @@ function renderXRayCastTab(castTab, cast) {
     <div class="xray-cast-row">
       ${cast.length > 0 ? cast.map(c => `
         <div class="xray-actor-card" data-person-id="${c.id || ''}" data-person-name="${c.name || ''}" title="Нажмите, чтобы открыть фильмографию">
-          <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
+          <img src="${getSafePersonPhotoUrl(c.photo)}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/avatar_default.svg'">
           <div style="min-width: 0;">
             <div class="xray-actor-name">${c.name}</div>
             <div class="xray-actor-role">${c.character || 'В главных ролях'}</div>
@@ -3957,7 +3957,7 @@ function showXRayPanel(wrapper) {
       <div class="xray-crew-list">
         ${crewList.length > 0 ? crewList.map(person => `
           <div class="xray-crew-card" data-person-id="${person.id || ''}" data-person-name="${person.name || ''}" style="cursor: pointer;" title="Открыть фильмографию">
-            <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="xray-crew-img" onerror="this.src='assets/favicon.svg'">
+            <img src="${getSafePersonPhotoUrl(person.photo)}" alt="${person.name}" class="xray-crew-img" onerror="this.src='assets/avatar_default.svg'">
             <div>
               <div class="xray-crew-name">${person.name}</div>
               <div class="xray-crew-role">${person.role}</div>
@@ -7450,7 +7450,7 @@ async function renderInPlayerCastDrawer(body) {
         ${cast.map(c => `
           <div class="inplayer-cast-item-card" data-person-id="${escapeHtml(c.id || '')}" data-person-name="${escapeHtml(c.name || '')}">
             <div class="inplayer-cast-img-box">
-              <img src="${escapeHtml(c.photo || c.profile_path || 'assets/favicon.svg')}" alt="${escapeHtml(c.name || '')}" class="inplayer-cast-img" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              <img src="${getSafePersonPhotoUrl(c.photo || c.profile_path)}" alt="${escapeHtml(c.name || '')}" class="inplayer-cast-img" loading="lazy" onerror="this.src='assets/avatar_default.svg'">
             </div>
             <div class="inplayer-cast-name">${escapeHtml(c.name || 'Актер')}</div>
             <div class="inplayer-cast-role">${escapeHtml(c.character || 'В ролях')}</div>
@@ -7549,7 +7549,7 @@ function renderDrawerXRayView(body, onBack) {
         <div class="xray-crew-list">
           ${crewList.length > 0 ? crewList.map(person => `
             <div class="xray-crew-card" data-person-id="${escapeHtml(person.id || '')}" data-person-name="${escapeHtml(person.name || '')}" style="cursor: pointer;" title="Открыть фильмографию">
-              <img src="${escapeHtml(person.photo || 'assets/favicon.svg')}" alt="${escapeHtml(person.name)}" class="xray-crew-img" onerror="this.src='assets/favicon.svg'">
+              <img src="${getSafePersonPhotoUrl(person.photo)}" alt="${escapeHtml(person.name)}" class="xray-crew-img" onerror="this.src='assets/avatar_default.svg'">
               <div>
                 <div class="xray-crew-name">${escapeHtml(person.name)}</div>
                 <div class="xray-crew-role">${escapeHtml(person.role)}</div>
@@ -9804,7 +9804,7 @@ function renderDetailedMediaInfo(mediaDetails) {
               if (castSubtitle) castSubtitle.textContent = `В главных ролях (${data.cast.length})`;
               castScroll.innerHTML = data.cast.map(actor => `
                 <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
-                  <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+                  <img src="${getSafePersonPhotoUrl(actor.photo)}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/avatar_default.svg'">
                   <div class="cinema-actor-info">
                     <div class="cinema-actor-name">${actor.name}</div>
                     <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
@@ -9914,7 +9914,7 @@ function renderDetailedMediaInfo(mediaDetails) {
           <span style="font-weight: 800;">Режиссер</span>
         </div>
         <div class="cinema-director-card" data-director-id="${primaryDirector.id}" data-director-name="${primaryDirector.name}">
-          <img src="${primaryDirector.photo || 'assets/favicon.svg'}" alt="${primaryDirector.name}" class="cinema-director-photo" onerror="this.src='assets/favicon.svg'">
+          <img src="${getSafePersonPhotoUrl(primaryDirector.photo)}" alt="${primaryDirector.name}" class="cinema-director-photo" onerror="this.src='assets/avatar_default.svg'">
           <div class="cinema-director-info">
             <div class="cinema-director-name">${primaryDirector.name}</div>
             <div class="cinema-director-role">Постановщик кинокартины</div>
@@ -9935,7 +9935,7 @@ function renderDetailedMediaInfo(mediaDetails) {
       <div class="cinema-cast-scroll" id="cinema-side-cast-scroll">
         ${cast.length > 0 ? cast.map(actor => `
           <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
-            <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+            <img src="${getSafePersonPhotoUrl(actor.photo)}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/avatar_default.svg'">
             <div class="cinema-actor-info">
               <div class="cinema-actor-name">${actor.name}</div>
               <div class="cinema-actor-role">${actor.character || 'Роль'}</div>

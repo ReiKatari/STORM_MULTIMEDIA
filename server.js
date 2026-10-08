@@ -91,7 +91,11 @@ import {
   getTmdbSeasonEpisodes,
   getTmdbPersonMedia,
   getTmdbFranchise,
-  findTmdbTvId
+  findTmdbTvId,
+  tmdbFetch,
+  TMDB_BASE,
+  TMDB_API_KEY,
+  IMAGE_BASE
 } from './services/tmdb-service.js';
 
 import {
@@ -4826,7 +4830,7 @@ app.post(['/stats', '/api/player/kodik-stats'], (req, res) => {
 // Автоматическое перенаправление внутренних переходов Kodik (/seria/*, /video/*, /uv/*, /episode/*)
 app.get(['/seria/*', '/video/*', '/uv/*', '/episode/*', '/serial/*', '/season/*'], (req, res) => {
   const target = `https://kodikplayer.com${req.originalUrl}`;
-  return res.redirect(target);
+  return res.redirect(`/api/player/adblock-proxy?url=${encodeURIComponent(target)}`);
 });
 
 // STORM AdBlock & VPN Proxy: комплексное проксирование и очистка плееров (Kodik, HDRezka, LostFilm и др.) от рекламы
@@ -4841,6 +4845,18 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
     if (cleanUrl.startsWith('//')) cleanUrl = 'https:' + cleanUrl;
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       return res.status(400).type('text/plain; charset=utf-8').send('Некорректный URL');
+    }
+
+    // Сохраняем и восстанавливаем параметры сигнатуры балансера (d, d_sign, ref, ref_sign, season, episode и др.)
+    const extraParams = new URLSearchParams();
+    for (const [k, v] of Object.entries(req.query)) {
+      if (k !== 'url' && v !== undefined && v !== null && v !== '') {
+        extraParams.append(k, String(v));
+      }
+    }
+    const extraStr = extraParams.toString();
+    if (extraStr) {
+      cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + extraStr;
     }
 
     const targetParsed = new URL(cleanUrl);
@@ -4923,7 +4939,15 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         .replace(/\b(?:preroll|midroll|vast|vast_url)\s*=\s*[^;,\n]+/gi, '/* storm ad removed */')
         .replace(/<script[^>]*src=["'][^"']*(?:yandex|adfox|googleads|doubleclick|adsystem|adkernel|redclick|marketgid|casino|1xbet|betting|traff|banner|adv)[^"']*["'][^>]*><\/script>/gi, '');
 
-      // 2. В kodikplayer.com/find-player перенаправляем создаваемый внутренний iframe на наш adblock-proxy
+      // 2. В kodikplayer.com/find-player перенаправляем создаваемый внутренний iframe на наш adblock-proxy с сохранением всех подписей
+      html = html.replace(
+        /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link\s*\+\s*paramsSymbol\s*\+\s*["']([^"']+)["']/g,
+        (m, extra) => {
+          return `var fullTargetLink = (link.startsWith("//") ? "https:" + link : link) + paramsSymbol + "${extra}";
+var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent(fullTargetLink);
+player.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink`;
+        }
+      );
       html = html.replace(
         /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link/g,
         'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink'
