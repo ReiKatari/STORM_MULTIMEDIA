@@ -391,7 +391,14 @@ export function updateAuthUI() {
     if (loginBtn) loginBtn.style.display = 'none';
     if (headerProfileBtn) headerProfileBtn.style.display = 'none';
     if (profileBtn) profileBtn.style.display = 'flex';
-    if (avatarImg) avatarImg.src = currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`;
+    if (avatarImg) {
+      avatarImg.src = currentUser.avatar || 'assets/avatar_default.svg';
+      avatarImg.onerror = () => {
+        if (!avatarImg.src.endsWith('assets/avatar_default.svg')) {
+          avatarImg.src = 'assets/avatar_default.svg';
+        }
+      };
+    }
     if (userNameSpan) userNameSpan.textContent = currentUser.username;
 
     // Кнопка административного дашборда для ReiKatari или роли admin
@@ -495,11 +502,18 @@ export function openProfileModal() {
   const modal = document.getElementById('profile-modal');
   if (!modal) return;
 
-  const currentAvatar = currentUser
-    ? (currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`)
-    : 'assets/favicon.svg';
+  const currentAvatar = currentUser && currentUser.avatar
+    ? currentUser.avatar
+    : 'assets/avatar_default.svg';
   const avatarEl = document.getElementById('profile-avatar');
-  if (avatarEl) avatarEl.src = currentAvatar;
+  if (avatarEl) {
+    avatarEl.src = currentAvatar;
+    avatarEl.onerror = () => {
+      if (!avatarEl.src.endsWith('assets/avatar_default.svg')) {
+        avatarEl.src = 'assets/avatar_default.svg';
+      }
+    };
+  }
 
   const userEl = document.getElementById('profile-username');
   if (userEl) userEl.textContent = currentUser ? currentUser.username : 'Гость (Без авторизации)';

@@ -572,7 +572,7 @@ function renderDayGrid(grid, items, dayId, week) {
       <div class="cal-card storm-card" data-id="${it.id}">
         <!-- Постер с обложкой релиза -->
         <div class="cal-poster-wrap">
-          <img src="${posterUrl}" class="cal-poster-img" alt="${escapeHtml(it.title)}" loading="lazy" onerror="if(!this.dataset.triedDirect && this.src && this.src.includes('/api/media/image-proxy')){ this.dataset.triedDirect='1'; try { const u = new URLSearchParams(this.src.split('?')[1]).get('url'); if(u){ this.src=u; return; } }catch(_){} } this.onerror=null; this.src='${POSTER_FALLBACK_SVG}';">
+          <img src="${posterUrl}" class="cal-poster-img" alt="${escapeHtml(it.title)}" loading="lazy" onerror="if(!this.dataset.triedFallback){ this.dataset.triedFallback='1'; this.src='/api/media/image-proxy?title=' + encodeURIComponent('${escapeHtml(it.title)}') + '&orig=' + encodeURIComponent('${escapeHtml(it.original_title || '')}'); } else { this.onerror=null; this.src='${POSTER_FALLBACK_SVG}'; }">
           <span class="cal-poster-ep-badge">${epBadge}</span>
           ${is4K ? '<span class="cal-poster-4k-badge">4K UHD</span>' : ''}
         </div>

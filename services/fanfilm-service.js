@@ -505,14 +505,16 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
     let poster = el.find('img').first().attr('data-src') || el.find('img').first().attr('src') || '';
     if (poster && poster.startsWith('/')) poster = `${BASE_URL}${poster}`;
 
-    // Лейбл 4K / Качество (FanFilm4K специализирован на 4K UHD)
-    const isTS = el.text().includes('TS') || title.includes('TS');
-    const is4K = true;
-    const quality = isTS ? 'TS / Экранка' : '4K Ultra HD';
-
-    // Точный год выпуска
+    // Лейбл 4K / Качество (FanFilm4K специализирован на 4K UHD для вышедших релизов)
+    const elAllText = el.text().toLowerCase();
+    const isTS = elAllText.includes('ts') || title.toLowerCase().includes('ts');
+    const isUpcomingText = /ожидается|скоро|в кино|премьера|трейлер/i.test(elAllText) || /ожидается|скоро|премьера/i.test(title);
     const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
     const realYear = resolveCanonicalYear(title, link, poster, tagLeft);
+    const numYr = parseInt(realYear || '2026', 10);
+    const isUpcoming = Boolean(isUpcomingText || (numYr >= 2026 && (elAllText.includes('ожидается') || elAllText.includes('скоро'))));
+    const is4K = !isUpcoming;
+    const quality = isUpcoming ? 'Ожидается' : (isTS ? 'TS / Экранка' : '4K Ultra HD');
 
     // Рейтинг (строго из правого тега, без смешивания с годом)
     let ratingText = el.find('.tag.top-right').first().text().replace(/[^\d\.]/g, '').trim();
@@ -545,6 +547,7 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
         poster,
         quality,
         is4K,
+        is_upcoming: isUpcoming,
         year: realYear || '2026',
         rating: parseFloat(ratingText) || 0,
         genres,

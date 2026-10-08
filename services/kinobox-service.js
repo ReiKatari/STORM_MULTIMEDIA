@@ -50,15 +50,13 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const releaseYear = year ? String(year).trim() : '';
   const currentYear = new Date().getFullYear();
   const numYear = parseInt(releaseYear, 10);
-  const isUpcoming = is_upcoming === true ||
-    (numYear && numYear > currentYear) ||
-    (numYear && numYear >= currentYear && !kp_id && !fanfilm_4k_url);
+  const isUpcoming = is_upcoming === true || (numYear && numYear > currentYear);
   const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
     source === 'anilibria' || source === 'anixart' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('аним')) : String(genres).toLowerCase().includes('аним')));
   const isSeries = media_type === 'series' || media_type === 'cartoon-series' || media_type === 'anime-series';
   const typeFilter = isSeries ? '&types=foreign-serial,russian-serial,anime-serial' : '&types=foreign-movie,russian-movie,anime';
-  const yearParam = releaseYear ? `&year=${releaseYear}&strict=1` : '&strict=1';
+  const yearParam = releaseYear ? `&year=${releaseYear}` : '';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
   // 1. FanFilm 4K Ultra HD (если доступен)
@@ -79,12 +77,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
     });
   }
 
-  // Проверка отечественного контента (Россия, СССР, RuTube, VK Видео)
+  // Проверка эксклюзивного отечественного контента (например, сериал «Ландыши»)
   const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
-  const isDomestic = isLandyshi || source === 'rutube' || source === 'vkvideo' ||
-    (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) ||
-    (!imdb_id && /[\u0400-\u04FF]/.test(cleanTitle || rawTitle));
-  const isDomesticExclusive = (isDomestic && !kp_id) || isLandyshi;
+  const isDomestic = isLandyshi || (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) || source === 'rutube' || source === 'vkvideo';
+  const isDomesticExclusive = isLandyshi;
 
   // 3. Плееры для кино и сериалов
   if (!isAnime) {
@@ -153,8 +149,25 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       });
     }
 
-    // Kodik и HDRezka — строго исключаем для отечественных эксклюзивов без Kinopoisk ID
+    // Kodik, Kinobox и HDRezka — доступны для всех релизов кроме эксклюзива «Ландыши»
     if (!isDomesticExclusive) {
+      // Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka)
+      const kinoboxUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+      players.push({
+        id: 'kinobox_universal',
+        name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka)',
+        type: 'iframe',
+        quality: '1080p FHD / 4K',
+        badge: 'KINOBOX',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Универсальный мультиплеер: автоподбор доступного балансера',
+        speed: '⚡ Мульти-CDN',
+        url: kinoboxUrl
+      });
+
       // Kodik Плеер (проверенный балансер)
       const baseKodikUrl = kp_id
         ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
@@ -192,8 +205,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       });
     }
 
-    // Студии зарубежного дубляжа (LostFilm TV и Red Head Sound) - ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
-    if (!isDomestic) {
+    // Студии зарубежного дубляжа (LostFilm TV и Red Head Sound)
+    if (!isLandyshi) {
       // Red Head Sound (Дубляж RHS)
       const rhsUrl = kp_id
         ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rhs${typeFilter}${episodeParam}`
@@ -243,6 +256,18 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         audio_info: 'Оригинальный чистый английский звук',
         speed: '⚡ Международный CDN',
         url: `https://vidsrc.to/embed/${isTv ? 'tv' : 'movie'}/${imdb_id}`
+      });
+      players.push({
+        id: 'vidsrc_me_stream',
+        name: 'Vidsrc Me (Резервный английский поток)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'VIDSRC ME',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Оригинальная дорожка без цензуры',
+        speed: '⚡ Глобальный CDN',
+        url: `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?imdb=${imdb_id}`
       });
     }
   } else {

@@ -12,8 +12,14 @@ let activeEffectiveProfile = 'desktop';
 export function detectNativeDeviceType() {
   const ua = (navigator.userAgent || '').toLowerCase();
   
+  // Приоритетная защита для ПК: Windows, macOS, Desktop Linux
+  const isDesktopOs = /windows nt|macintosh|x11;\s*linux\s*x86_64/i.test(ua) && !/smart[-_]?tv|googletv|tizen|web0s|webos|netcast/i.test(ua);
+  if (isDesktopOs) {
+    return 'desktop';
+  }
+
   // 1. Сигнатуры Smart TV, Android TV, TV-приставок, Tizen, WebOS, FireTV, Apple TV, консолей
-  const isTvUa = /smart[-_]?tv|googletv|appletv|android[-_ ]?tv|tizen|web0s|webos|netcast|viera|roku|firetv|fire[-_]tv|aft[a-z0-9]|pov_tv|hbbtv|mibox|mi[-_ ]?box|chromecast|shield|bravia|philips|hisense|sharp|tcl|sony|kylo|crkey|dtv|boxee|tv[-_ ]?box|leanback/i.test(ua);
+  const isTvUa = /smart[-_]?tv|googletv|appletv|android[-_ ]?tv|tizen|web0s|webos|netcast|viera|roku|firetv|fire[-_]tv|\baft[a-z0-9]+\b|pov_tv|hbbtv|mibox|mi[-_ ]?box|chromecast|bravia|leanback/i.test(ua);
   
   // 2. Android-приставка или Smart TV без сенсорного экрана (Android + maxTouchPoints === 0)
   const isAndroidTvBox = /android/i.test(ua) && (navigator.maxTouchPoints === 0 || !('ontouchstart' in window));
@@ -146,6 +152,7 @@ export function openFormFactorModal() {
     modal.querySelectorAll('.form-factor-card').forEach(card => {
       card.addEventListener('click', () => {
         const p = card.dataset.profile;
+        localStorage.setItem('storm_form_factor_user_explicit', 'true');
         setFormFactorProfile(p, true);
         modal.classList.remove('is-open');
       });
@@ -162,12 +169,21 @@ export function openFormFactorModal() {
 }
 
 export function initFormFactorEngine() {
+  const native = detectNativeDeviceType();
   const saved = localStorage.getItem('storm_form_factor') || 'auto';
-  currentProfile = saved;
+  const isExplicitUserChoice = localStorage.getItem('storm_form_factor_user_explicit') === 'true';
 
-  if (saved === 'auto') {
-    activeEffectiveProfile = detectNativeDeviceType();
+  // Если на ПК был сохранен ошибочный профиль 'tv' без явного выбора пользователем через меню — сбрасываем на desktop
+  if (native === 'desktop' && saved === 'tv' && !isExplicitUserChoice) {
+    currentProfile = 'desktop';
+    activeEffectiveProfile = 'desktop';
+    localStorage.setItem('storm_form_factor', 'desktop');
+    localStorage.removeItem('storm_tv_mode');
+  } else if (saved === 'auto') {
+    currentProfile = 'auto';
+    activeEffectiveProfile = native;
   } else {
+    currentProfile = saved;
     activeEffectiveProfile = saved;
   }
 

@@ -1652,22 +1652,33 @@ export async function openPlayerModal(mediaItem, options = {}) {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
-          const isUpcomingMedia = Boolean(
-            currentMedia.is_upcoming ||
-            String(currentMedia.id || '').startsWith('tmdb_up_') ||
-            (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase())) ||
-            (currentMedia.year && parseInt(currentMedia.year, 10) >= 2026 && !currentMedia.kp_id)
-          );
-          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && (!isUpcomingMedia || (!p.url.includes('stravers.live') && !p.url.includes('transfusion')));
-          const isStable = p => isWorking(p) && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-          const hasOnlineStream = currentPlayers.some(isStable);
+        const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && (!p.url.includes('stravers.live') && !p.url.includes('transfusion'));
+        const isStable = p => isWorking(p) && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+        const hasOnlineStream = currentPlayers.some(isStable);
 
-          if (!hasOnlineStream || isUpcomingMedia) {
-            defaultPlayer = {
-              is_upcoming: true,
-              upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
-            };
-          } else {
+        // Релиз считается не вышедшим ТОЛЬКО если у него НЕТ рабочих онлайн потоков И присутствуют признаки будущей премьеры
+        const isUpcomingMedia = !hasOnlineStream && Boolean(
+          currentMedia.is_upcoming ||
+          String(currentMedia.id || '').startsWith('tmdb_up_') ||
+          (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase())) ||
+          (currentMedia.release_date && (() => {
+            const parts = String(currentMedia.release_date).split('.');
+            if (parts.length === 3) {
+              const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+              return !isNaN(d.getTime()) && d > new Date();
+            }
+            return false;
+          })())
+        );
+
+        if (isUpcomingMedia || (!hasOnlineStream && !defaultPlayer)) {
+          defaultPlayer = {
+            is_upcoming: true,
+            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+          };
+        } else {
+          currentMedia.is_upcoming = false;
+          if (!defaultPlayer) {
             const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
             const preferStableKodik = itemYr < 2020;
 
@@ -1691,25 +1702,41 @@ export async function openPlayerModal(mediaItem, options = {}) {
                 || currentPlayers[0];
             } else if (preferStableKodik) {
               defaultPlayer = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
                 || currentPlayers.find(p => p.is_recommended && isStable(p))
                 || currentPlayers.find(isStable)
                 || currentPlayers.find(isWorking)
                 || currentPlayers[0];
             } else {
-              defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
+              defaultPlayer = currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rezka_cinema' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rhs_player' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'lostfilm_player' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+                || currentPlayers.find(p => p.is_recommended && isStable(p))
                 || currentPlayers.find(p => p.is_recommended && isWorking(p))
                 || currentPlayers.find(isStable)
                 || currentPlayers.find(isWorking)
                 || currentPlayers[0];
             }
           }
-          selectPlayer(defaultPlayer);
-        } else {
-          selectPlayer({
-            is_upcoming: true,
-            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
-          });
         }
+        selectPlayer(defaultPlayer);
+      } else {
+        const isUpcomingMedia = Boolean(
+          currentMedia.is_upcoming ||
+          String(currentMedia.id || '').startsWith('tmdb_up_') ||
+          (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase()))
+        );
+        selectPlayer({
+          is_upcoming: isUpcomingMedia,
+          upcoming_notice: isUpcomingMedia
+            ? `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+            : `Стриминговые потоки для «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» обновляются. Вы можете запустить просмотр через P2P WebTorrent.`
+        });
+      }
       }
 
     // Рендерим секцию «В ролях и создатели» в стиле Luno (горизонтальная карусель, фото w500, роли)

@@ -3017,8 +3017,7 @@ app.get('/api/media/item', async (req, res) => {
         }
         return false;
       })()) ||
-      (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear()) ||
-      (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear() && !mediaDetails.kp_id && (!mediaDetails.players || !mediaDetails.players.some(p => p.id === 'fanfilm4k_uhd' && !p.url?.includes('stravers.live'))));
+      (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear());
 
     mediaDetails.is_upcoming = Boolean(isUpcoming);
 
@@ -3067,7 +3066,7 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.fanfilm_4k_url = fanfilmStreamUrl;
     mediaDetails.fanfilm_hd_url = fanfilmHdStreamUrl;
 
-    // Собираем расширенный список плееров (FanFilm 4K, HD, Kodik, RHS, LostFilm)
+    // Собираем расширенный список плееров (FanFilm 4K, HD, Kodik, RHS, LostFilm, Kinobox, Vidsrc, VK, RuTube)
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
@@ -3087,13 +3086,11 @@ app.get('/api/media/item', async (req, res) => {
       allPlayers.push(...mediaDetails.players);
     }
     const isLandyshiItem = String(mediaDetails.id || '').includes('landyshi') || String(mediaDetails.title || '').toLowerCase().includes('ландыши') || mediaDetails.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
-    const isDomesticItem = isLandyshiItem || mediaDetails.source === 'rutube' || mediaDetails.source === 'vkvideo' || (!mediaDetails.kp_id && /[\u0400-\u04FF]/.test(mediaDetails.title || ''));
 
     kinoboxPlayers.forEach(p => {
       // Исключаем дубли FanFilm, если fanfilm4k_uhd уже добавлен
       if (p.id === 'fanfilm_4k' && allPlayers.some(ap => ap.id === 'fanfilm4k_uhd')) return;
-      if (isLandyshiItem && (p.id === 'kodik_direct' || p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player')) return;
-      if (isDomesticItem && !mediaDetails.kp_id && (p.id === 'kodik_direct' || p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player')) return;
+      if (isLandyshiItem && (p.id === 'kodik_direct' || p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player' || p.id === 'kinobox_universal')) return;
       if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
         allPlayers.push(p);
       }
@@ -3101,6 +3098,12 @@ app.get('/api/media/item', async (req, res) => {
 
     // Полностью исключаем трейлеры, тизеры и промо из доступных плееров
     allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
+
+    // Если среди доступных плееров есть рабочие потоки — релиз гарантированно доступен для просмотра
+    const hasActiveOnlineStream = allPlayers.some(p => p && p.status === 'working' && p.url && !p.is_trailer && p.id !== 'webtorrent' && !p.url.includes('stravers.live') && !p.url.includes('transfusion'));
+    if (hasActiveOnlineStream) {
+      mediaDetails.is_upcoming = false;
+    }
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде!
     allPlayers.sort((a, b) => {

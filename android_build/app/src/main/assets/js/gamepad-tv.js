@@ -128,9 +128,14 @@ function handleAirMouseMove(e) {
 // 2. ИНИЦИАЛИЗАЦИЯ И РЕЖИМ ТЕЛЕВИЗОРА
 // ==========================================
 export function initGamepadAndTvMode() {
+  const formFactor = localStorage.getItem('storm_form_factor') || 'auto';
   const savedTv = localStorage.getItem('storm_tv_mode') === 'true';
-  if (savedTv) {
+  const isExplicitTv = formFactor === 'tv';
+  if (savedTv && isExplicitTv) {
     toggleTvMode(true);
+  } else if (savedTv && formFactor !== 'tv') {
+    // Сбрасываем ошибочно записанный ТВ-режим на ПК
+    localStorage.removeItem('storm_tv_mode');
   }
 
   window.addEventListener('gamepadconnected', (e) => {
@@ -785,27 +790,15 @@ function handleSpatialKeyboard(e) {
     166, 167, 176, 177, 178, 179, 227, 228, 403, 404, 405, 406, 10009, 461
   ].includes(c);
 
-  // 🚀 АВТОМАТИЧЕСКАЯ АКТИВАЦИЯ ТВ-РЕЖИМА:
-  // Если пользователь нажимает любую навигационную стрелку или клавишу пульта на телевизоре,
-  // мгновенно переключаем приложение в 10-foot ТВ-режим и инициализируем фокус без необходимости ручной настройки!
+  // Если ТВ-режим не активен — обычная работа браузера на ПК (стрелки прокручивают страницу, Escape закрывает модалки)
   if (!isTvModeActive) {
-    if (isDpadOrRemoteKey) {
-      toggleTvMode(true);
-      if (typeof window.setFormFactorProfile === 'function') {
-        window.setFormFactorProfile('tv', false);
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      if (document.querySelector('.storm-modal-backdrop.is-open')) {
+        e.preventDefault();
+        closeActiveModalOrBack();
       }
-      if (!currentFocusedElement || !document.body.contains(currentFocusedElement)) {
-        focusInitialElement();
-      }
-    } else {
-      if (e.key === 'Escape' || e.keyCode === 27) {
-        if (document.querySelector('.storm-modal-backdrop.is-open')) {
-          e.preventDefault();
-          closeActiveModalOrBack();
-        }
-      }
-      return;
     }
+    return;
   }
 
   const isDirectVideoFocus = currentFocusedElement && (

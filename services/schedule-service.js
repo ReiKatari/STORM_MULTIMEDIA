@@ -15,10 +15,31 @@ import * as cheerio from 'cheerio';
 import { getCache, setCache } from '../db.js';
 import { getAnixartDiscover } from './anixart-service.js';
 
-export function wrapPoster(url) {
-  if (!url) return 'assets/favicon.svg';
-  if (url.startsWith('/api/media/image-proxy') || url.startsWith('assets/')) return url;
-  return `/api/media/image-proxy?url=${encodeURIComponent(url)}`;
+export function wrapPoster(url, title = '', orig = '') {
+  const cleanTitle = (title || '').trim();
+  const cleanOrig = (orig || '').trim();
+
+  if (!url || url === 'assets/favicon.svg' || url === 'assets/avatar_default.svg') {
+    if (cleanTitle || cleanOrig) {
+      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`;
+    }
+    return 'assets/favicon.svg';
+  }
+
+  if (url.startsWith('/api/media/image-proxy')) {
+    if ((cleanTitle || cleanOrig) && !url.includes('title=')) {
+      const sep = url.includes('?') ? '&' : '?';
+      return `${url}${sep}title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`;
+    }
+    return url;
+  }
+
+  if (url.startsWith('assets/')) return url;
+
+  let res = `/api/media/image-proxy?url=${encodeURIComponent(url)}`;
+  if (cleanTitle) res += `&title=${encodeURIComponent(cleanTitle)}`;
+  if (cleanOrig) res += `&orig=${encodeURIComponent(cleanOrig)}`;
+  return res;
 }
 
 export const CURRENT_WEEK_ITEMS = [];
@@ -317,7 +338,7 @@ export async function getAniLibriaSchedule(weekStart, weekEnd) {
           id: `anilib_${r.id || Math.random().toString(36).substring(7)}`,
           title,
           original_title: r.name?.english || '',
-          poster: wrapPoster(poster),
+          poster: wrapPoster(poster, title, r.name?.english || ''),
           year: String(r.year || '2026'),
           season: 1,
           episode: ep,
@@ -395,7 +416,7 @@ export async function getShikimoriSchedule(weekStart, weekEnd) {
         id: `shiki_${anime.id}_ep${entry.next_episode || 1}`,
         title,
         original_title: anime.name || '',
-        poster: wrapPoster(poster),
+        poster: wrapPoster(poster, title, anime.name || ''),
         year: String(airDate.getFullYear() || '2026'),
         season: 1,
         episode: entry.next_episode || 1,
@@ -478,7 +499,7 @@ export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
         id: `tmdb_up_${m.id}`,
         title: m.title,
         original_title: m.original_title || '',
-        poster: wrapPoster(poster),
+        poster: wrapPoster(poster, m.title, m.original_title || ''),
         year: String(rDate.getFullYear() || '2026'),
         season: 1,
         episode: 1,
@@ -541,7 +562,7 @@ export async function getTmdbTvSchedule(weekStart, weekEnd) {
         id: `tmdb_tv_${s.id}`,
         title: s.name,
         original_title: s.original_name || '',
-        poster: wrapPoster(poster),
+        poster: wrapPoster(poster, s.name, s.original_name || ''),
         year: String(s.first_air_date ? s.first_air_date.substring(0, 4) : '2026'),
         season: 1,
         episode: 1,
@@ -615,7 +636,7 @@ export async function getTvMazeSchedule(weekStart, weekEnd) {
               id: `tvmaze_${show.id}_s${season}e${ep}`,
               title,
               original_title: show.name,
-              poster: wrapPoster(poster),
+              poster: wrapPoster(poster, title, show.name || ''),
               year: String(show.premiered ? show.premiered.substring(0, 4) : '2026'),
               season,
               episode: ep,
@@ -677,7 +698,7 @@ export async function getAnixartSchedule(weekStart, weekEnd) {
         id: `anix_${anime.id || idx}_ep${epNum}`,
         title: anime.title,
         original_title: anime.original_title || '',
-        poster: wrapPoster(anime.poster),
+        poster: wrapPoster(anime.poster, anime.title, anime.original_title || ''),
         year: String(anime.year || '2026'),
         season: 1,
         episode: epNum,
