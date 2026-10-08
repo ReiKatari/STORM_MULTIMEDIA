@@ -840,7 +840,31 @@ export async function getFanFilmDetails(idOrUrl) {
             const isTrailerOnly = chkText.includes('Трейлер') && !chkText.includes('.m3u8') && !chkText.includes('.mp4');
             const isExplicitError = (chkText.includes('<title>Ошибка!</title>') || chkText.includes('<div class="error">')) && !hasFileList;
             if ((hasFileList || hasConfig) && !isTrailerOnly && !isExplicitError) {
-              is4kStreamHealthy = true;
+              const fileIdMatch = chkText.match(/"active":\{[^}]*"id":(\d+)/) || chkText.match(/"id":(\d+)/);
+              if (fileIdMatch && fileIdMatch[1]) {
+                try {
+                  const borthMatch = chkText.match(/name=["']viewporti["']\s+content=["']([^"']+)["']/i);
+                  const straversOrigin = new URL(final4kUrl).origin;
+                  const bnsiCheck = await fetch(`${straversOrigin}/bnsi/movies/${fileIdMatch[1]}`, {
+                    method: 'POST',
+                    headers: {
+                      'Referer': 'https://v17.fanfilm4k.media/',
+                      'Borth': borthMatch ? borthMatch[1] : ''
+                    },
+                    signal: AbortSignal.timeout(2000)
+                  });
+                  if (bnsiCheck.status === 404 || bnsiCheck.status >= 500) {
+                    console.warn(`[FanFilm] 4K поток для ${url} вернул статус ${bnsiCheck.status} на файле ${fileIdMatch[1]}. Стрим недоступен.`);
+                    is4kStreamHealthy = false;
+                  } else {
+                    is4kStreamHealthy = true;
+                  }
+                } catch {
+                  is4kStreamHealthy = true;
+                }
+              } else {
+                is4kStreamHealthy = true;
+              }
             } else {
               is4kStreamHealthy = false;
             }

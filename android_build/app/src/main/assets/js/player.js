@@ -2083,6 +2083,10 @@ function selectPlayer(player) {
 }
 
 export function switchToNextSource(preferWorking = true) {
+  if (currentActivePlayer) {
+    currentActivePlayer.status = 'broken';
+    currentActivePlayer.status_label = '🔴 Недоступен';
+  }
   if (!currentPlayers || currentPlayers.length <= 1) {
     showToast('Нет других доступных источников', 'warning');
     return;

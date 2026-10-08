@@ -4227,6 +4227,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             try { window.alert = function() {}; } catch(e) {}
 
             // STORM AdBlock Engine & Stravers API Proxy
+            var stormOrigin = window.location.origin;
             var emptyVast = '<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"></VAST>';
             var isAdUrl = function(u) {
               var low = String(u || '').toLowerCase();
@@ -4236,6 +4237,35 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                      low.includes('clickunder') || low.includes('casino') || low.includes('1xbet') ||
                      low.includes('winline') || low.includes('melbet');
             };
+
+            // Защита AudioContext от InvalidStateError при повторном подключении MediaElementSourceNode в AllPlay
+            (function() {
+              try {
+                var Actx = window.AudioContext || window.webkitAudioContext;
+                if (!Actx) return;
+                var origCreateSource = Actx.prototype.createMediaElementSource;
+                var _mediaSourceNodes = new WeakMap();
+                Actx.prototype.createMediaElementSource = function(mediaEl) {
+                  if (mediaEl && _mediaSourceNodes.has(mediaEl)) {
+                    return _mediaSourceNodes.get(mediaEl);
+                  }
+                  try {
+                    var node = origCreateSource.apply(this, arguments);
+                    if (mediaEl) _mediaSourceNodes.set(mediaEl, node);
+                    return node;
+                  } catch (e) {
+                    if (mediaEl && _mediaSourceNodes.has(mediaEl)) {
+                      return _mediaSourceNodes.get(mediaEl);
+                    }
+                    try {
+                      return this.createGain();
+                    } catch (_) {
+                      return null;
+                    }
+                  }
+                };
+              } catch (_) {}
+            })();
 
             var origFetch = window.fetch;
             if (origFetch) {
@@ -4250,7 +4280,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 var strUrl = String(url || '');
                 if (strUrl.includes('/bnsi/') || strUrl.includes('/events') || strUrl.includes('stravers.live') || strUrl.includes('transfusion')) {
                   var fullTarget = strUrl.startsWith('http') ? strUrl : ('${baseOrigin}' + (strUrl.startsWith('/') ? '' : '/') + strUrl);
-                  var proxied = '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
+                  var proxied = stormOrigin + '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
                   if (typeof input === 'string') {
                     return origFetch.call(this, proxied, init);
                   } else {
@@ -4270,7 +4300,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               var strUrl = String(url || '');
               if (strUrl.includes('/bnsi/') || strUrl.includes('/events') || strUrl.includes('stravers.live') || strUrl.includes('transfusion')) {
                 var fullTarget = strUrl.startsWith('http') ? strUrl : ('${baseOrigin}' + (strUrl.startsWith('/') ? '' : '/') + strUrl);
-                var proxied = '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
+                var proxied = stormOrigin + '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
                 return origOpen.call(this, method, proxied, arguments[2], arguments[3], arguments[4]);
               }
               return origOpen.apply(this, arguments);
@@ -4294,21 +4324,62 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 
             // Автоматическое снятие вечного лоадера при ошибке потока и переключение на следующий источник
             (function() {
-              function checkErrorState() {
-                var errEl = document.querySelector('.error_message, .error_player, .error, .allplay--error');
-                var isErr = errEl && (errEl.offsetParent !== null || !errEl.classList.contains('hidden') || errEl.classList.contains('active') || errEl.classList.contains('allplay--error'));
-                if (isErr) {
+              var hasSwitched = false;
+              function triggerSwitch(reason) {
+                if (hasSwitched) return;
+                hasSwitched = true;
+                console.warn('FanFilm embed: автоматический сигнал переключения источника ->', reason);
+                try {
                   var ldrs = document.querySelectorAll('.loader, .allplay__control--loader, .allplay__ads--loader');
                   for (var i = 0; i < ldrs.length; i++) {
                     ldrs[i].classList.remove('active');
                     ldrs[i].style.setProperty('display', 'none', 'important');
                   }
-                  try {
-                    window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'FANFILM_STREAM_ERROR' }, '*');
-                  } catch (_) {}
+                } catch (_) {}
+                try {
+                  window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: reason }, '*');
+                } catch (_) {}
+              }
+
+              function checkErrorState() {
+                var errEl = document.querySelector('.error_message, .error_player, .error, .allplay--error');
+                var isErr = errEl && (errEl.offsetParent !== null || !errEl.classList.contains('hidden') || errEl.classList.contains('active') || errEl.classList.contains('allplay--error'));
+                if (isErr) {
+                  triggerSwitch('DOM_ERROR_CONTAINER');
                 }
               }
               setInterval(checkErrorState, 400);
+
+              // Перехват критических ошибок инициализации AllPlay в консоли
+              var origConsoleWarn = console.warn;
+              console.warn = function() {
+                var msg = Array.prototype.slice.call(arguments).join(' ');
+                if (msg.includes('error change file') || msg.includes('change file error')) {
+                  triggerSwitch('CHANGE_FILE_ERROR');
+                }
+                origConsoleWarn.apply(console, arguments);
+              };
+
+              var origConsoleErr = console.error;
+              console.error = function() {
+                var msg = Array.prototype.slice.call(arguments).join(' ');
+                if (msg.includes('error change file') || msg.includes('change file error') || msg.includes('ERR_FAILED')) {
+                  triggerSwitch('CONSOLE_STREAM_ERROR');
+                }
+                origConsoleErr.apply(console, arguments);
+              };
+
+              // Сторожевой таймер: если через 3.5 секунды видео не начало воспроизводиться и завис лоадер
+              setTimeout(function() {
+                var v = document.querySelector('video');
+                var isPlaying = v && !v.paused && v.currentTime > 0;
+                if (!isPlaying) {
+                  var ldr = document.querySelector('.loader.active, .allplay__ads--loader.active, .allplay__control--loader.active') || document.querySelector('.loader');
+                  if (ldr && ldr.offsetParent !== null) {
+                    triggerSwitch('LOADER_HANG_TIMEOUT');
+                  }
+                }
+              }, 3800);
             })();
 
             // STORM AdBlock Engine: автоматический пропуск, уничтожение и глушение рекламы
@@ -4392,13 +4463,18 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             }
 
             function initAudio(video) {
-              if (!video || sourceNode) return;
+              if (!video || sourceNode || video._stormAudioInitialized) return;
               try {
+                video._stormAudioInitialized = true;
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContext) return;
-                audioCtx = new AudioContext();
+                if (!audioCtx) audioCtx = new AudioContext();
 
-                sourceNode = audioCtx.createMediaElementSource(video);
+                try {
+                  sourceNode = audioCtx.createMediaElementSource(video);
+                } catch (sourceErr) {
+                  return;
+                }
 
                 delayNode = audioCtx.createDelay(2.0);
                 delayNode.delayTime.setValueAtTime(0, audioCtx.currentTime);
