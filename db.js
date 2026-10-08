@@ -1267,6 +1267,13 @@ export function setCache(source, cacheKey, data, ttlSeconds = 1800) {
   mariaSaveCache(source, cacheKey, dataJson, expiresAt);
 }
 
+export function deleteCache(source, cacheKey) {
+  try {
+    db.prepare('DELETE FROM media_cache WHERE source = ? AND cache_key = ?').run(source, cacheKey);
+    mariaDeleteCache(source, cacheKey);
+  } catch (e) {}
+}
+
 // ==========================================
 // 7. СИСТЕМА РЕЦЕНЗИЙ И ОТЗЫВОВ
 // ==========================================

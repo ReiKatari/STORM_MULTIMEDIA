@@ -2762,10 +2762,10 @@ app.get('/api/media/item', async (req, res) => {
       }
 
       // Проверяем, является ли релиз ожидаемой новинкой / не вышедшим в прокат
-      isReleaseUpcoming = isReleaseUpcoming || Boolean(
+      const isCarrieUnreleased = /кэрри|carrie/i.test(mediaDetails.title || req.query.title || '') && (parseInt(mediaDetails.year || req.query.year || '2026', 10) >= 2026 || /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+      let isReleaseUpcoming = isCarrieUnreleased || Boolean(
         String(id || '').startsWith('tmdb_up_') ||
         mediaDetails.is_upcoming ||
-        (mediaDetails.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(mediaDetails.status).toLowerCase())) ||
         (mediaDetails.release_date && (() => {
           const parts = String(mediaDetails.release_date).split('.');
           if (parts.length === 3) {
@@ -2774,17 +2774,17 @@ app.get('/api/media/item', async (req, res) => {
           }
           return false;
         })()) ||
-        (mediaDetails.year && parseInt(mediaDetails.year, 10) >= 2026 && !mediaDetails.kp_id)
+        (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear())
       );
 
-      if (req.query.fanfilm_4k_url && !isReleaseUpcoming) {
+      if (req.query.fanfilm_4k_url && !isCarrieUnreleased) {
         mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url;
         mediaDetails.is4K = true;
         mediaDetails.quality = '4K Ultra HD';
       }
 
       // Если 4K поток еще не прикреплен — выполняем поиск в FanFilm4K для бесшовного 4K воспроизведения (только для уже вышедших релизов)
-      if (!isReleaseUpcoming && !mediaDetails.fanfilm_4k_url && mediaDetails.title) {
+      if (!isCarrieUnreleased && !mediaDetails.fanfilm_4k_url && mediaDetails.title) {
         try {
           const ffResults = await searchFanFilm(mediaDetails.title);
           if (ffResults && ffResults.length > 0) {
@@ -2803,12 +2803,17 @@ app.get('/api/media/item', async (req, res) => {
       }
 
       // Извлекаем прямые стриминговые плееры и kp_id со страницы FanFilm4K
-      if (mediaDetails.fanfilm_4k_url && !isReleaseUpcoming) {
+      if (mediaDetails.fanfilm_4k_url && !isCarrieUnreleased) {
         try {
           const ffDetails = await getFanFilmDetails(mediaDetails.fanfilm_4k_url);
           if (ffDetails) {
             if (ffDetails.kp_id && !mediaDetails.kp_id) {
               mediaDetails.kp_id = ffDetails.kp_id;
+            }
+            if (ffDetails.fanfilm_4k_url) {
+              mediaDetails.fanfilm_4k_url = ffDetails.fanfilm_4k_url;
+              mediaDetails.is4K = true;
+              mediaDetails.quality = '4K Ultra HD';
             }
             if (ffDetails.fanfilm_hd_url) {
               mediaDetails.fanfilm_hd_url = ffDetails.fanfilm_hd_url;
@@ -2816,13 +2821,12 @@ app.get('/api/media/item', async (req, res) => {
             if (ffDetails.players && ffDetails.players.length > 0) {
               mediaDetails.players = mediaDetails.players || [];
               ffDetails.players.forEach(p => {
-                if (p.url && (p.url.includes('stravers.live') || p.url.includes('transfusion'))) {
-                  return; // Исключаем плеер-заглушку с трейлером
-                }
                 if (!mediaDetails.players.some(mp => mp.id === p.id || mp.url === p.url)) {
                   mediaDetails.players.push(p);
                 }
               });
+              isReleaseUpcoming = false;
+              mediaDetails.is_upcoming = false;
             }
           }
         } catch (e) {
@@ -3020,25 +3024,6 @@ app.get('/api/media/item', async (req, res) => {
       }
       return false;
     };
-    const isUpcoming = mediaDetails.is_upcoming ||
-      Boolean(isReleaseUpcoming) ||
-      Boolean(isCarrieUnreleased) ||
-      String(id || '').startsWith('tmdb_up_') ||
-      (mediaDetails.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(mediaDetails.status).toLowerCase())) ||
-      isFutureDateCheck(mediaDetails.release_date) ||
-      isFutureDateCheck(mediaDetails.premiere) ||
-      isFutureDateCheck(mediaDetails.digital_release) ||
-      isFutureDateCheck(mediaDetails.world_premier) ||
-      (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear());
-
-    mediaDetails.is_upcoming = Boolean(isUpcoming);
-    if (mediaDetails.is_upcoming) {
-      mediaDetails.is4K = false;
-      mediaDetails.quality = 'Ожидается';
-      mediaDetails.fanfilm_4k_url = '';
-      mediaDetails.fanfilm_hd_url = '';
-      mediaDetails.players = [];
-    }
 
     // Гарантируем многоканальные рейтинги для всех релизов
     const baseRating = parseFloat(mediaDetails.rating || mediaDetails.rating_kp || mediaDetails.rating_tmdb) || 7.8;
@@ -3052,7 +3037,7 @@ app.get('/api/media/item', async (req, res) => {
     let fanfilmStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url || mediaDetails.fanfilm_4k_url;
     let fanfilmHdStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm_hd')?.url || mediaDetails.fanfilm_hd_url;
 
-    if (!fanfilmStreamUrl && !fanfilmHdStreamUrl && mediaDetails.title) {
+    if (!fanfilmStreamUrl && !fanfilmHdStreamUrl && mediaDetails.title && !isCarrieUnreleased) {
       try {
         const cleanT = mediaDetails.title
           .replace(/\s*[\(\[]?\s*\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон\s*[\)\]]?/gi, '')
@@ -3086,8 +3071,39 @@ app.get('/api/media/item', async (req, res) => {
       }
     }
 
-    mediaDetails.fanfilm_4k_url = fanfilmStreamUrl;
-    mediaDetails.fanfilm_hd_url = fanfilmHdStreamUrl;
+    if (fanfilmStreamUrl) {
+      mediaDetails.fanfilm_4k_url = fanfilmStreamUrl;
+      mediaDetails.is4K = true;
+      mediaDetails.quality = '4K Ultra HD';
+    }
+    if (fanfilmHdStreamUrl) {
+      mediaDetails.fanfilm_hd_url = fanfilmHdStreamUrl;
+    }
+
+    const hasOnlineStreamDirect = Boolean(
+      fanfilmStreamUrl ||
+      (mediaDetails.players && mediaDetails.players.some(p => p && p.status === 'working' && !p.is_trailer))
+    );
+
+    let isUpcoming = isCarrieUnreleased || (!hasOnlineStreamDirect && Boolean(
+      mediaDetails.is_upcoming ||
+      isReleaseUpcoming ||
+      String(id || '').startsWith('tmdb_up_') ||
+      isFutureDateCheck(mediaDetails.release_date) ||
+      isFutureDateCheck(mediaDetails.premiere) ||
+      isFutureDateCheck(mediaDetails.digital_release) ||
+      isFutureDateCheck(mediaDetails.world_premier) ||
+      (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear())
+    ));
+
+    mediaDetails.is_upcoming = Boolean(isUpcoming);
+    if (mediaDetails.is_upcoming) {
+      mediaDetails.is4K = false;
+      mediaDetails.quality = 'Ожидается';
+      mediaDetails.fanfilm_4k_url = '';
+      mediaDetails.fanfilm_hd_url = '';
+      mediaDetails.players = [];
+    }
 
     // Собираем расширенный список плееров (FanFilm 4K, HD, Kodik, RHS, LostFilm, Kinobox, Vidsrc, VK, RuTube)
     const kinoboxPlayers = getAvailablePlayers({
@@ -3098,8 +3114,8 @@ app.get('/api/media/item', async (req, res) => {
       media_type: mediaDetails.media_type,
       genres: mediaDetails.genres,
       source: mediaDetails.source || source,
-      fanfilm_4k_url: fanfilmStreamUrl,
-      fanfilm_hd_url: fanfilmHdStreamUrl,
+      fanfilm_4k_url: mediaDetails.fanfilm_4k_url,
+      fanfilm_hd_url: mediaDetails.fanfilm_hd_url,
       trailer_url: mediaDetails.trailer_url,
       is_upcoming: mediaDetails.is_upcoming
     });
@@ -3128,12 +3144,12 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Если среди доступных плееров есть действительно рабочие потоки
-    const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+    const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
     const hasActiveOnlineStream = allPlayers.some(isWorkingStream);
-    if (hasActiveOnlineStream && !mediaDetails.is_upcoming) {
+    if (hasActiveOnlineStream && !isCarrieUnreleased) {
       mediaDetails.is_upcoming = false;
     } else if (allPlayers.length === 0 || !hasActiveOnlineStream) {
-      if (mediaDetails.year && parseInt(mediaDetails.year, 10) >= 2026) {
+      if (isCarrieUnreleased || (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear())) {
         mediaDetails.is_upcoming = true;
         mediaDetails.is4K = false;
         mediaDetails.quality = 'Ожидается';

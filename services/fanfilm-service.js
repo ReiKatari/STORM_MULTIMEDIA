@@ -840,32 +840,37 @@ export async function getFanFilmDetails(idOrUrl) {
             const hasFileList = chkText.includes('const fileList =') || chkText.includes('fileList') || chkText.includes('.m3u8') || chkText.includes('.mp4');
             const hasConfig = chkText.includes('const config =') || chkText.includes('mediaMetadata');
             const isTrailerOnly = chkText.includes('Трейлер') && !chkText.includes('.m3u8') && !chkText.includes('.mp4');
-            const isExplicitError = (chkText.includes('<title>Ошибка!</title>') || chkText.includes('<div class="error">')) && !hasFileList;
+            const isExplicitError = (chkText.includes('<title>Ошибка!</title>') || chkText.includes('<div class="error">')) && !hasFileList && !hasConfig;
             if ((hasFileList || hasConfig) && !isTrailerOnly && !isExplicitError) {
-              const fileIdMatch = chkText.match(/"active":\{[^}]*"id":(\d+)/) || chkText.match(/"id":(\d+)/);
-              if (fileIdMatch && fileIdMatch[1]) {
-                try {
-                  const borthMatch = chkText.match(/name=["']viewporti["']\s+content=["']([^"']+)["']/i);
-                  const straversOrigin = new URL(final4kUrl).origin;
-                  const bnsiCheck = await fetch(`${straversOrigin}/bnsi/movies/${fileIdMatch[1]}`, {
-                    method: 'POST',
-                    headers: {
-                      'Referer': 'https://v17.fanfilm4k.media/',
-                      'Borth': borthMatch ? borthMatch[1] : ''
-                    },
-                    signal: AbortSignal.timeout(2000)
-                  });
-                  if (bnsiCheck.status === 404 || bnsiCheck.status >= 500) {
-                    console.warn(`[FanFilm] 4K поток для ${url} вернул статус ${bnsiCheck.status} на файле ${fileIdMatch[1]}. Стрим недоступен.`);
-                    is4kStreamHealthy = false;
-                  } else {
+              const isSeriesPlayer = chkText.includes('seasonType') || chkText.includes('episodeType') || chkText.includes('class="selects');
+              if (isSeriesPlayer) {
+                is4kStreamHealthy = true;
+              } else {
+                const fileIdMatch = chkText.match(/"active":\{[^}]*"id":(\d+)/) || chkText.match(/"id":(\d+)/);
+                if (fileIdMatch && fileIdMatch[1]) {
+                  try {
+                    const borthMatch = chkText.match(/name=["']viewporti["']\s+content=["']([^"']+)["']/i);
+                    const straversOrigin = new URL(final4kUrl).origin;
+                    const bnsiCheck = await fetch(`${straversOrigin}/bnsi/movies/${fileIdMatch[1]}`, {
+                      method: 'POST',
+                      headers: {
+                        'Referer': 'https://v17.fanfilm4k.media/',
+                        'Borth': borthMatch ? borthMatch[1] : ''
+                      },
+                      signal: AbortSignal.timeout(2000)
+                    });
+                    if (bnsiCheck.status === 404 || bnsiCheck.status >= 500) {
+                      console.warn(`[FanFilm] 4K поток для ${url} вернул статус ${bnsiCheck.status} на файле ${fileIdMatch[1]}. Стрим недоступен.`);
+                      is4kStreamHealthy = false;
+                    } else {
+                      is4kStreamHealthy = true;
+                    }
+                  } catch {
                     is4kStreamHealthy = true;
                   }
-                } catch {
+                } else {
                   is4kStreamHealthy = true;
                 }
-              } else {
-                is4kStreamHealthy = true;
               }
             } else {
               is4kStreamHealthy = false;
@@ -881,7 +886,7 @@ export async function getFanFilmDetails(idOrUrl) {
     const numYr = parseInt(resolvedYear || '2026', 10);
     const isUnreleasedUpcoming = Boolean(
       (numYr > new Date().getFullYear()) ||
-      (!is4kStreamHealthy && (numYr >= 2026 || /кэрри.*2026|flanagan/i.test(title + ' ' + description)))
+      /кэрри.*2026|flanagan|флэнаган/i.test(title + ' ' + description)
     );
 
     // Плееры

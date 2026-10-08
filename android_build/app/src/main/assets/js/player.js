@@ -1640,12 +1640,13 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
         const isCarrieItem = /кэрри|carrie/i.test(currentMedia?.title || '') && parseInt(currentMedia?.year || '2026', 10) >= 2026;
         const isUpcomingMedia = Boolean(
-          currentMedia.is_upcoming ||
-          details?.is_upcoming ||
           isCarrieItem ||
-          String(currentMedia.id || '').startsWith('tmdb_up_') ||
-          (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase())) ||
-          (currentMedia.year && parseInt(currentMedia.year, 10) >= 2026 && !hasOnlineStream)
+          (!hasOnlineStream && (
+            currentMedia.is_upcoming ||
+            details?.is_upcoming ||
+            String(currentMedia.id || '').startsWith('tmdb_up_') ||
+            (currentMedia.year && parseInt(currentMedia.year, 10) > new Date().getFullYear())
+          ))
         );
 
         if (isUpcomingMedia) {
