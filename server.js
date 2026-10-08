@@ -4945,7 +4945,7 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         (m, extra) => {
           return `var fullTargetLink = (link.startsWith("//") ? "https:" + link : link) + paramsSymbol + "${extra}";
 var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent(fullTargetLink);
-player.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink`;
+player.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink + "\\""`;
         }
       );
       html = html.replace(
