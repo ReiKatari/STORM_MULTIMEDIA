@@ -10,9 +10,10 @@ export NODE_ENV=production
 PROJECT_DIR="/volume1/WEBSITES/STORM MULTIMEDIA"
 cd "$PROJECT_DIR" || exit 1
 
-# Завершаем старые процессы, если они зависли
-pkill -f "node.*server.js" || true
-pkill -f "node.*watchdog.js" || true
+# Завершаем старые процессы именно STORM MULTIMEDIA, не затрагивая другие проекты
+fuser -k 3900/tcp || true
+pkill -f "STORM MULTIMEDIA.*server.js" || true
+pkill -f "STORM MULTIMEDIA.*watchdog.js" || true
 sleep 1
 
 # Запуск вечного демона-сторожа в фоне с автоматическим восстановлением
