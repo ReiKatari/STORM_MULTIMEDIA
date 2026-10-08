@@ -671,7 +671,8 @@ export function normalizeMediaKey(title, originalTitle = '') {
   const raw = `${title || ''} ${originalTitle || ''}`.toLowerCase();
   return raw
     .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
-    .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
+    .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон|часть\s*\d+|\d+\s*часть)\s*[\)\]]?/gi, ' ')
+    .replace(/\s*[\(\[]?\s*(?:коллекционное(?:\s*издание)?|золотая\s*коллекция|расширенная\s*версия|режиссерская\s*версия|полная\s*версия|special\s*edition|collector'?s\s*edition|extended\s*(?:cut|version)?|director'?s\s*(?:cut|version)?|remastered|ремастер)\s*[\)\]]?/gi, ' ')
     .replace(/[^a-zа-я0-9]/gi, '')
     .trim();
 }

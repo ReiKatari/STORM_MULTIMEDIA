@@ -743,6 +743,23 @@ app.post('/api/admin/restart', (req, res) => {
   }, 400);
 });
 
+app.all('/api/admin/launch-minerva', async (req, res) => {
+  try {
+    const { exec } = await import('node:child_process');
+    const script = '/volume1/WEBSITES/STORM MINERVA/synology-daemon.sh';
+    exec(`bash "${script}"`, (err, stdout, stderr) => {
+      res.json({
+        success: !err,
+        stdout: String(stdout || ''),
+        stderr: String(stderr || ''),
+        error: err?.message || null
+      });
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/auth/logout', (req, res) => {
   if (req.token) {
     logoutUser(req.token);
@@ -958,6 +975,20 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
     return imageBinaryCache.get(normalized);
   }
 
+  const candidateUrls = [];
+  if (normalized.includes('image.tmdb.org')) {
+    // В РФ image.tmdb.org блокируется CloudFront (403 Forbidden / сертификат).
+    // Высокоскоростные CDN-зеркала wsrv.nl и images.weserv.nl отдают оригинальные постеры мгновенно
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
+    candidateUrls.push(`https://images.weserv.nl/?url=${encodeURIComponent(normalized)}`);
+    candidateUrls.push(normalized);
+  } else {
+    candidateUrls.push(normalized);
+    if (normalized.startsWith('http')) {
+      candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
+    }
+  }
+
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   };
@@ -971,46 +1002,47 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
     headers['Referer'] = 'https://v17.fanfilm4k.media/';
     headers['Origin'] = 'https://v17.fanfilm4k.media';
   } else if (normalized.includes('tmdb.org')) {
-    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
     headers['Referer'] = 'https://www.themoviedb.org/';
   }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(normalized, { headers, signal: controller.signal });
-    clearTimeout(timeout);
+  for (const candidate of candidateUrls) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(candidate, { headers, signal: controller.signal });
+      clearTimeout(timeout);
 
-    if (res.ok) {
-      const rawType = res.headers.get('content-type') || 'image/jpeg';
-      if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
-        let buffer = Buffer.from(await res.arrayBuffer());
-        let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
+      if (res.ok) {
+        const rawType = res.headers.get('content-type') || 'image/jpeg';
+        if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
+          let buffer = Buffer.from(await res.arrayBuffer());
+          let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
 
-        if (buffer.length > 100) {
-          if (sharp) {
-            try {
-              const webpBuf = await sharp(buffer)
-                .webp({ quality: 82, effort: 3 })
-                .toBuffer();
-              buffer = webpBuf;
-              contentType = 'image/webp';
-            } catch {
-              // Фолбэк на оригинальный формат, если sharp не смог обработать (например svg)
+          if (buffer.length > 100) {
+            if (sharp) {
+              try {
+                const webpBuf = await sharp(buffer)
+                  .webp({ quality: 82, effort: 3 })
+                  .toBuffer();
+                buffer = webpBuf;
+                contentType = 'image/webp';
+              } catch {
+                // Фолбэк на оригинальный формат, если sharp не смог обработать (например svg)
+              }
             }
-          }
 
-          const item = { buffer, contentType };
-          if (imageBinaryCache.size > 1000) {
-            const keysToDelete = Array.from(imageBinaryCache.keys()).slice(0, 150);
-            keysToDelete.forEach(k => imageBinaryCache.delete(k));
+            const item = { buffer, contentType };
+            if (imageBinaryCache.size > 1000) {
+              const keysToDelete = Array.from(imageBinaryCache.keys()).slice(0, 150);
+              keysToDelete.forEach(k => imageBinaryCache.delete(k));
+            }
+            imageBinaryCache.set(normalized, item);
+            return item;
           }
-          imageBinaryCache.set(normalized, item);
-          return item;
         }
       }
-    }
-  } catch {}
+    } catch {}
+  }
   return null;
 }
 
@@ -1180,6 +1212,60 @@ async function resolveAnimePosterBuffer(title, orig) {
   return null;
 }
 
+async function resolveUniversalMediaPosterBuffer(title, orig) {
+  function cleanStr(s) {
+    return (s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[«»"']/g, '')
+      .replace(/\s*\(\d{4}\)\s*$/, '')
+      .trim();
+  }
+
+  const cleanTitle = cleanStr(title);
+  const cleanOrig = cleanStr(orig);
+  if (!cleanTitle && !cleanOrig) return null;
+
+  const cacheKey = `universal_cover_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const cachedUrl = getCache('universal_covers', cacheKey);
+  if (cachedUrl && !isPlaceholderImage(cachedUrl)) {
+    const img = await fetchImageBuffer(cachedUrl, 4000);
+    if (img) return img;
+  }
+
+  // 1. Поиск через TMDB (мировая база фильмов, сериалов и мультфильмов)
+  for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
+    try {
+      const tmdbRes = await searchTmdb(term);
+      const poster = tmdbRes?.items?.[0]?.poster;
+      if (poster && !isPlaceholderImage(poster)) {
+        const img = await fetchImageBuffer(poster, 4000);
+        if (img) {
+          setCache('universal_covers', cacheKey, poster, 86400 * 30);
+          return img;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Поиск через FanFilm4K (4K кино и сериалы)
+  for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
+    try {
+      const ffRes = await searchFanFilm(term);
+      const poster = ffRes?.items?.[0]?.poster;
+      if (poster && !isPlaceholderImage(poster)) {
+        const img = await fetchImageBuffer(poster, 4000);
+        if (img) {
+          setCache('universal_covers', cacheKey, poster, 86400 * 30);
+          return img;
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Каскад для аниме
+  return await resolveAnimePosterBuffer(title, orig);
+}
+
 app.get('/api/media/image-proxy', async (req, res) => {
   try {
     const rawUrl = req.query.url || '';
@@ -1201,7 +1287,7 @@ app.get('/api/media/image-proxy', async (req, res) => {
 
     // 2. Если по переданной ссылке получить обложку не удалось — подключаем многоуровневый интеллектуальный каскад
     if (title || orig) {
-      const resolvedImg = await resolveAnimePosterBuffer(title, orig);
+      const resolvedImg = await resolveUniversalMediaPosterBuffer(title, orig);
       if (resolvedImg) {
         res.set('Content-Type', resolvedImg.contentType);
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
@@ -1209,8 +1295,9 @@ app.get('/api/media/image-proxy', async (req, res) => {
       }
     }
 
-    // 3. Крайний фолбэк: отдаём заглушку favicon.svg БЕЗ долгосрочного кэширования, чтобы браузер повторил попытку
+    // 3. Крайний фолбэк: отдаём заглушку favicon.svg со статусом 404 и БЕЗ кэширования, чтобы браузер повторил попытку
     if (faviconBuffer) {
+      res.status(404);
       res.set('Content-Type', 'image/svg+xml');
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       return res.send(faviconBuffer);
@@ -1219,6 +1306,7 @@ app.get('/api/media/image-proxy', async (req, res) => {
     return res.redirect(302, '/assets/favicon.svg');
   } catch {
     if (faviconBuffer) {
+      res.status(404);
       res.set('Content-Type', 'image/svg+xml');
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       return res.send(faviconBuffer);
@@ -1226,6 +1314,7 @@ app.get('/api/media/image-proxy', async (req, res) => {
     return res.redirect(302, '/assets/favicon.svg');
   }
 });
+
 
 // Вспомогательная функция для сбалансированного объединения результатов из разных источников
 function interleaveSources(arrays) {

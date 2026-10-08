@@ -822,8 +822,8 @@ body.tv-mode .rail-item-wide {
 
 body.tv-mode .media-card,
 body.tv-mode .rail-item .media-card {
-  scroll-margin-top: 175px !important;
-  scroll-margin-bottom: 95px !important;
+  scroll-margin-top: 230px !important;
+  scroll-margin-bottom: 115px !important;
   border-radius: 14px !important;
   outline-offset: 4px !important;
 }

@@ -62,28 +62,27 @@ export function showToast(message, type = 'info') {
 }
 
 export async function checkAuth() {
-  if (!currentToken) {
-    currentUser = null;
-    localStorage.removeItem('storm_token');
-    localStorage.removeItem('storm_user');
-    updateAuthUI();
-    notifyAuthChanged();
-    return null;
-  }
-
   try {
-    const res = await fetch('/api/auth/me', {
-      headers: {
-        'Authorization': `Bearer ${currentToken}`
-      }
-    });
+    const headers = {};
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
+    }
+
+    const res = await fetch('/api/auth/me', { headers });
 
     if (res.ok) {
       const data = await res.json();
-      currentUser = data.user;
-      if (currentUser) {
+      if (data && data.user) {
+        currentUser = data.user;
         currentUser.stats = data.stats;
+        if (data.token) {
+          currentToken = data.token;
+          localStorage.setItem('storm_token', currentToken);
+        }
         localStorage.setItem('storm_user', JSON.stringify(currentUser));
+        updateAuthUI();
+        notifyAuthChanged();
+        return currentUser;
       } else {
         currentToken = null;
         currentUser = null;
@@ -91,7 +90,7 @@ export async function checkAuth() {
         localStorage.removeItem('storm_user');
       }
     } else if (res.status === 401 || res.status === 403) {
-      if (!currentToken.startsWith('offline_') && !currentToken.startsWith('guest_')) {
+      if (!currentToken || (!currentToken.startsWith('offline_') && !currentToken.startsWith('guest_'))) {
         currentUser = null;
         currentToken = null;
         localStorage.removeItem('storm_token');
@@ -267,12 +266,12 @@ export function loginAsGuest() {
 
 export function loginOfflineAdmin(username = 'ReiKatari') {
   currentUser = {
-    id: 1,
+    id: 2,
     username: username,
-    email: '45316432+ReiKatari@users.noreply.github.com',
+    email: 'ReiKatari@outlook.com',
     role: 'admin',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=CyberRei',
-    created_at: new Date().toISOString(),
+    avatar: 'assets/favicon.svg',
+    created_at: 1789233981191,
     stats: { bookmarks_count: 5, history_count: 10 }
   };
   currentToken = 'offline_admin_token_' + Date.now();

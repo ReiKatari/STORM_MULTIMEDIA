@@ -365,17 +365,19 @@ export async function fetchUserBookmarks(status = null, type = null) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
   }
 
-  // 2. Если сервер вернул список, синхронизируем с локальным кэшем
+  // 2. Если сервер вернул список, синхронизируем с локальным кэшем (сервер - первоисточник)
   if (serverBookmarks.length > 0) {
     const localList = getLocalBookmarksList();
     const map = new Map();
-    localList.forEach(it => {
+    // Серверные данные являются эталонными (Single Source of Truth)
+    serverBookmarks.forEach(it => {
       const k = String(it.media_id || it.id || '');
       if (k) map.set(k, it);
     });
-    serverBookmarks.forEach(it => {
+    // Из локального хранилища добавляем только неотправленные оффлайн-закладки (localOnly)
+    localList.forEach(it => {
       const k = String(it.media_id || it.id || '');
-      if (k && !map.has(k)) map.set(k, it);
+      if (k && !map.has(k) && it.localOnly) map.set(k, it);
     });
     const merged = Array.from(map.values());
     saveLocalBookmarksList(merged);

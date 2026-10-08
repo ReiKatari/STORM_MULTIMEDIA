@@ -1076,12 +1076,23 @@ function moveFocus(direction) {
     }
   }
 
-  // Умный переход между зонами экрана (Шапка/Тулбар <-> Основной контент)
+  // Умный переход между зонами экрана (Шапка/Тулбар/Подменю закладок <-> Основной контент)
   if (!bestCandidate && direction === 'down') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
-    const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container');
+    const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container, .bookmarks-subnav-container, #bookmarks-subnav-container');
 
-    if (mainArea && isTopArea) {
+    // Если фокус в тулбаре или вкладках, а ниже открыто подменю закладок - переходим в него
+    const bSubnav = document.getElementById('bookmarks-subnav-container');
+    const isInsideSubnav = currentFocusedElement.closest('.bookmarks-subnav-container, #bookmarks-subnav-container');
+    if (!isInsideSubnav && bSubnav && bSubnav.style.display !== 'none' && bSubnav.offsetHeight > 0) {
+      const subnavChips = focusables.filter(el => bSubnav.contains(el));
+      if (subnavChips.length > 0) {
+        const activeChip = subnavChips.find(c => c.classList.contains('active')) || subnavChips[0];
+        bestCandidate = activeChip;
+      }
+    }
+
+    if (!bestCandidate && mainArea && isTopArea) {
       const candidates = focusables.filter(el => mainArea.contains(el));
       if (candidates.length > 0) {
         // Находим верхний видимый ряд контента (minTop + 60px)
@@ -1141,12 +1152,12 @@ function moveFocus(direction) {
         });
         bestCandidate = aboveCandidates[0];
       } else {
-        // Мы в верхнем ряду контента: бесшовный переход в тулбар или панель вкладок
-        const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
-        if (topArea) {
-          const candidates = focusables.filter(el => topArea.contains(el));
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => {
+        // Мы в верхнем ряду контента: если активно подменю закладок, переходим в него
+        const bSubnav = document.getElementById('bookmarks-subnav-container');
+        if (bSubnav && bSubnav.style.display !== 'none' && bSubnav.offsetHeight > 0) {
+          const subnavChips = focusables.filter(el => bSubnav.contains(el));
+          if (subnavChips.length > 0) {
+            subnavChips.sort((a, b) => {
               const ra = a.getBoundingClientRect();
               const rb = b.getBoundingClientRect();
               const aCenter = ra.left + ra.width / 2;
@@ -1154,7 +1165,26 @@ function moveFocus(direction) {
               const currCenter = currentRect.left + currentRect.width / 2;
               return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
             });
-            bestCandidate = candidates[0];
+            bestCandidate = subnavChips[0];
+          }
+        }
+
+        // Если подменю нет, бесшовный переход в тулбар или панель вкладок
+        if (!bestCandidate) {
+          const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
+          if (topArea) {
+            const candidates = focusables.filter(el => topArea.contains(el));
+            if (candidates.length > 0) {
+              candidates.sort((a, b) => {
+                const ra = a.getBoundingClientRect();
+                const rb = b.getBoundingClientRect();
+                const aCenter = ra.left + ra.width / 2;
+                const bCenter = rb.left + rb.width / 2;
+                const currCenter = currentRect.left + currentRect.width / 2;
+                return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
+              });
+              bestCandidate = candidates[0];
+            }
           }
         }
       }
@@ -1212,16 +1242,28 @@ function setFocusTo(element) {
       }
     }
   } else {
-    // В основном интерфейсе: защита от перекрытия фиксированной шапкой (~150px) и нижним плавающим HUD (~85px)
-    const headerHeight = 150;
-    const bottomSafe = 85;
-    const elRect = element.getBoundingClientRect();
-    const vh = window.innerHeight;
+    // В основном интерфейсе: динамический расчет высоты шапки и защищенной зоны
+    const stickyHeader = document.querySelector('.storm-sticky-header-container');
+    const bSubnav = document.getElementById('bookmarks-subnav-container');
+    let headerHeight = stickyHeader ? stickyHeader.getBoundingClientRect().height : 180;
+    if (bSubnav && bSubnav.style.display !== 'none' && bSubnav.offsetHeight > 0) {
+      const bRect = bSubnav.getBoundingClientRect();
+      if (bRect.bottom > headerHeight && bRect.bottom < 400) {
+        headerHeight = bRect.bottom;
+      }
+    }
 
-    if (elRect.top < headerHeight) {
-      window.scrollBy({ top: elRect.top - headerHeight - 16, behavior: 'smooth' });
-    } else if (elRect.bottom > vh - bottomSafe) {
-      window.scrollBy({ top: elRect.bottom - (vh - bottomSafe) + 16, behavior: 'smooth' });
+    const bottomSafe = 90;
+    const pad = 24;
+    const effectiveTop = headerHeight + pad;
+    const vh = window.innerHeight;
+    const effectiveBottom = vh - bottomSafe - pad;
+    const elRect = element.getBoundingClientRect();
+
+    if (elRect.top < effectiveTop) {
+      window.scrollBy({ top: elRect.top - effectiveTop, behavior: 'smooth' });
+    } else if (elRect.bottom > effectiveBottom) {
+      window.scrollBy({ top: elRect.bottom - effectiveBottom, behavior: 'smooth' });
     }
   }
 }
