@@ -728,7 +728,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.29',
+    version: '1.0.30',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -4941,16 +4941,16 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
 
       // 2. В kodikplayer.com/find-player перенаправляем создаваемый внутренний iframe на наш adblock-proxy с сохранением всех подписей
       html = html.replace(
-        /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link\s*\+\s*paramsSymbol\s*\+\s*["']([^"']+)["']/g,
+        /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link\s*\+\s*paramsSymbol\s*\+\s*["']([^"'\\\\]+)[^<]*<\/iframe>\\?["'];?/g,
         (m, extra) => {
           return `var fullTargetLink = (link.startsWith("//") ? "https:" + link : link) + paramsSymbol + "${extra}";
 var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent(fullTargetLink);
-player.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink + "\\""`;
+player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay *; fullscreen *"></iframe>';`;
         }
       );
       html = html.replace(
-        /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link/g,
-        'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = "<iframe id=\\"player-iframe\\" src=\\"" + safeInnerLink'
+        /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link[^<]*<\/iframe>\\?["'];?/g,
+        'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = \'<iframe id="player-iframe" src="\' + safeInnerLink + \'" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay *; fullscreen *"></iframe>\';'
       );
 
       const finalOrigin = new URL(proxyRes.url || cleanUrl).origin;
