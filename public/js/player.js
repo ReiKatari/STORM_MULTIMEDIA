@@ -1060,6 +1060,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const isLandyshiItem = mediaItem.id === 'rutube_landyshi' || title.toLowerCase().includes('ландыши') || rawRuId === '564f31c881b83373bfe0cb26979d44cf';
   const isDomesticExclusive = (isDomestic && !kpId) || isLandyshiItem;
 
+  const suite = [];
+
   const isCarrie = /кэрри|carrie/i.test(title) && (year === '2026' || parseInt(year || '2026', 10) >= 2026);
   if (mediaItem.is_upcoming || isCarrie) {
     if (mediaItem.trailer_url) {
