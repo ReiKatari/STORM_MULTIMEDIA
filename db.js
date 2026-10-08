@@ -537,111 +537,15 @@ export function changeUserPassword(userId, oldPassword, newPassword) {
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
-// Инициализация стартовых данных пользователя (закладки, списки, история) при первом входе
+// Инициализация стартовых данных пользователя
 export function ensureUserInitialData(userId) {
-  if (!userId) return;
-  const now = Date.now();
-  const bCount = db.prepare('SELECT count(*) as count FROM bookmarks WHERE user_id = ?').get(userId)?.count || 0;
-  if (bCount === 0) {
-    const seedBookmarks = [
-      // В процессе (watching)
-      { media_id: 'tmdb_gentlemen', source: 'fanfilm4k', title: 'Джентльмены', original_title: 'The Gentlemen', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', media_type: 'series', year: '2024', status: 'watching', episodes_watched: 5, total_episodes: 8, progress_percent: 62.5, last_time_seconds: 2800 },
-      { media_id: '693134', source: 'tmdb', title: 'Дюна: Часть вторая', original_title: 'Dune: Part Two', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', media_type: 'movie', year: '2024', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 78.5, last_time_seconds: 7800 },
-      { media_id: '94605', source: 'tmdb', title: 'Аркейн', original_title: 'Arcane', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', media_type: 'series', year: '2024', status: 'watching', episodes_watched: 6, total_episodes: 9, progress_percent: 66.0, last_time_seconds: 2400 },
-      { media_id: '569094', source: 'tmdb', title: 'Человек-паук: Паутина вселенных', original_title: 'Spider-Man: Across the Spider-Verse', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FwH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg', media_type: 'cartoons', year: '2023', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 45.0, last_time_seconds: 3800 },
-      { media_id: 'rhs_silo', source: 'tmdb', title: 'Укрытие / Бункер', original_title: 'Silo', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', media_type: 'series', year: '2023', status: 'watching', episodes_watched: 7, total_episodes: 10, progress_percent: 70.0, last_time_seconds: 3200 },
-
-      // В планах (planned)
-      { media_id: '533535', source: 'tmdb', title: 'Дэдпул и Росомаха', original_title: 'Deadpool & Wolverine', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8cdWjvZQUExUUTzyp4t6EDMubfO.jpg', media_type: 'movie', year: '2024', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'gladiator_2', source: 'tmdb', title: 'Гладиатор 2', original_title: 'Gladiator II', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F2cxhvwyEwRlysAmRH4iodkvo0z5.jpg', media_type: 'movie', year: '2024', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'severance_s2', source: 'tmdb', title: 'Разделение', original_title: 'Severance', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 10, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'last_of_us_s2', source: 'tmdb', title: 'Одни из нас', original_title: 'The Last of Us', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FuKvVjK19szUZ4t53vgvgXq65Hqv.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 8, progress_percent: 0, last_time_seconds: 0 },
-
-      // Завершено (completed)
-      { media_id: '872585', source: 'tmdb', title: 'Оппенгеймер', original_title: 'Oppenheimer', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8OQzw8keE6sDNH25sOqPRTxhFTO.jpg', media_type: 'movie', year: '2023', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10800 },
-      { media_id: '157336', source: 'tmdb', title: 'Интерстеллар', original_title: 'Interstellar', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', media_type: 'movie', year: '2014', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
-      { media_id: '105248', source: 'tmdb', title: 'Киберпанк: Бегущие по краю', original_title: 'Cyberpunk: Edgerunners', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', media_type: 'anime-series', year: '2022', status: 'completed', episodes_watched: 10, total_episodes: 10, progress_percent: 100.0, last_time_seconds: 14400 },
-      { media_id: '335984', source: 'tmdb', title: 'Бегущий по лезвию 2049', original_title: 'Blade Runner 2049', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', media_type: 'movie', year: '2017', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 9800 },
-
-      // Любимые (favorite)
-      { media_id: '120', source: 'tmdb', title: 'Властелин колец: Братство кольца', original_title: 'The Lord of the Rings: The Fellowship of the Ring', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F6oom5QYQ2yQTMJIbnvbkBL9cDK6.jpg', media_type: 'movie', year: '2001', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10680 },
-      { media_id: '603', source: 'tmdb', title: 'Матрица', original_title: 'The Matrix', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Ff89U3ADr1oiB1s9GkdPOEpXUk5H.jpg', media_type: 'movie', year: '1999', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 8160 },
-
-      // Отложено (on_hold)
-      { media_id: 'rings_power', source: 'tmdb', title: 'Властелин колец: Кольца власти', original_title: 'The Lord of the Rings: The Rings of Power', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FmYLOqiStMxDK3fYZFsCw9qwzW9.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 3, total_episodes: 8, progress_percent: 37.5, last_time_seconds: 3900 },
-      { media_id: 'house_dragon', source: 'tmdb', title: 'Дом Дракона', original_title: 'House of the Dragon', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F1X4h40fcB4WWUmIBK0auT4zZZga.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 4, total_episodes: 8, progress_percent: 50.0, last_time_seconds: 3600 },
-
-      // Заброшено (dropped)
-      { media_id: 'madame_web', source: 'tmdb', title: 'Мадам Паутина', original_title: 'Madame Web', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FjDQPkg0KDZhPQjNxMPz5vH0G2Xw.jpg', media_type: 'movie', year: '2024', status: 'dropped', episodes_watched: 0, total_episodes: 0, progress_percent: 22.0, last_time_seconds: 1500 },
-
-      // Не буду смотреть (wont_watch)
-      { media_id: 'borderlands_film', source: 'tmdb', title: 'Бордерлендс', original_title: 'Borderlands', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg', media_type: 'movie', year: '2024', status: 'wont_watch', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 }
-    ];
-
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, year, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    seedBookmarks.forEach(b => {
-      stmt.run(userId, b.media_id, b.source, b.title, b.original_title, b.poster_url, b.media_type, b.year || '2024', b.status, b.episodes_watched, b.total_episodes, b.progress_percent, b.last_time_seconds, now);
-    });
-  }
-
-  const lCount = db.prepare('SELECT count(*) as count FROM custom_lists WHERE user_id = ?').get(userId)?.count || 0;
-  if (lCount === 0) {
-    const listStmt = db.prepare(`
-      INSERT INTO custom_lists (user_id, title, description, color, is_public, created_at)
-      VALUES (?, ?, ?, ?, 1, ?)
-    `);
-    const l1 = Number(listStmt.run(userId, 'Избранные шедевры 4K', 'Коллекция лучших картин и сериалов в Ultra HD с многоканальным звуком', '#00d2ff', now).lastInsertRowid);
-    const l2 = Number(listStmt.run(userId, 'Аниме марафон', 'Лучшие тайтлы для просмотра на выходных', '#ff007f', now).lastInsertRowid);
-    const l3 = Number(listStmt.run(userId, 'Сериалы на выходные', 'Захватывающие онгоинги и новинки', '#10b981', now).lastInsertRowid);
-
-    const itemStmt = db.prepare(`
-      INSERT OR IGNORE INTO custom_list_items (list_id, media_id, source, title, poster_url, media_type, year, rating, added_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    itemStmt.run(l1, '693134', 'tmdb', 'Дюна: Часть вторая', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', 'movie', '2024', 8.5, now);
-    itemStmt.run(l1, '157336', 'tmdb', 'Интерстеллар', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', 'movie', '2014', 8.7, now);
-    itemStmt.run(l1, '872585', 'tmdb', 'Оппенгеймер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8OQzw8keE6sDNH25sOqPRTxhFTO.jpg', 'movie', '2023', 8.9, now);
-    itemStmt.run(l1, '335984', 'tmdb', 'Бегущий по лезвию 2049', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', 'movie', '2017', 8.1, now);
-
-    itemStmt.run(l2, '105248', 'tmdb', 'Киберпанк: Бегущие по краю', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', 'anime-series', '2022', 8.6, now);
-    itemStmt.run(l2, '94605', 'tmdb', 'Аркейн', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', 'series', '2024', 9.0, now);
-    itemStmt.run(l2, '1429', 'tmdb', 'Атака титанов', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F9whSxgqSW7dPIIMJyM4WG3BYVo7.jpg', 'anime-series', '2013', 9.1, now);
-
-    itemStmt.run(l3, 'tmdb_gentlemen', 'fanfilm4k', 'Джентльмены', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', 'series', '2024', 8.2, now);
-    itemStmt.run(l3, 'rhs_silo', 'tmdb', 'Укрытие / Бункер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', 'series', '2023', 8.1, now);
-    itemStmt.run(l3, 'severance_s2', 'tmdb', 'Разделение', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', 'series', '2022', 8.7, now);
-    itemStmt.run(l3, 'house_dragon', 'tmdb', 'Дом Дракона', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F1X4h40fcB4WWUmIBK0auT4zZZga.jpg', 'series', '2024', 8.4, now);
-  }
-
-  const hCount = db.prepare('SELECT count(*) as count FROM watch_history WHERE user_id = ?').get(userId)?.count || 0;
-  if (hCount === 0) {
-    const histStmt = db.prepare(`
-      INSERT OR REPLACE INTO watch_history (user_id, media_id, source, title, poster_url, media_type, season, episode, time_seconds, duration_seconds, progress_percent, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    histStmt.run(userId, '157336', 'tmdb', 'Интерстелlar', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', 'movie', 1, 1, 10140, 10140, 100.0, now - 86400000);
-    histStmt.run(userId, '872585', 'tmdb', 'Оппенгеймер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8OQzw8keE6sDNH25sOqPRTxhFTO.jpg', 'movie', 1, 1, 10800, 10800, 100.0, now - 172800000);
-    histStmt.run(userId, '693134', 'tmdb', 'Дюна: Часть вторая', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', 'movie', 1, 1, 7800, 9960, 78.5, now - 3600000);
-    histStmt.run(userId, 'tmdb_gentlemen', 'fanfilm4k', 'Джентльмены', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', 'series', 1, 5, 2800, 3600, 77.0, now - 7200000);
-    histStmt.run(userId, '94605', 'tmdb', 'Аркейн', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', 'series', 1, 6, 2400, 2600, 92.0, now - 14400000);
-    histStmt.run(userId, '105248', 'tmdb', 'Киберпанк: Бегущие по краю', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', 'anime-series', 1, 10, 14400, 14400, 100.0, now - 259200000);
-    histStmt.run(userId, 'rhs_silo', 'tmdb', 'Укрытие / Бункер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', 'series', 2, 7, 3200, 3600, 88.0, now - 28800000);
-    histStmt.run(userId, '335984', 'tmdb', 'Бегущий по лезвию 2049', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', 'movie', 1, 1, 9800, 9800, 100.0, now - 345600000);
-    histStmt.run(userId, '569094', 'tmdb', 'Человек-паук: Паутина вселенных', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FwH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg', 'cartoons', 1, 1, 3800, 8400, 45.0, now - 432000000);
-    histStmt.run(userId, '1429', 'tmdb', 'Атака титанов', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F9whSxgqSW7dPIIMJyM4WG3BYVo7.jpg', 'anime-series', 4, 28, 54000, 54000, 100.0, now - 518400000);
-    histStmt.run(userId, 'severance_s1', 'tmdb', 'Разделение', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', 'series', 1, 9, 32400, 32400, 100.0, now - 604800000);
-    histStmt.run(userId, 'the_boys_s4', 'tmdb', 'Пацаны', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg', 'series', 4, 8, 26000, 26000, 100.0, now - 691200000);
-  }
+  // Отключено автоматическое внедрение демонстрационных данных:
+  // Пользователь видит строго свои реальные закладки, подборки и историю
+  return;
 }
 
 // Статистика пользователя
 export function getUserStats(userId) {
-  if (userId) {
-    ensureUserInitialData(userId);
-  }
   const bookmarksCount = db.prepare('SELECT count(*) as count FROM bookmarks WHERE user_id = ?').get(userId)?.count || 0;
   const completedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId)?.count || 0;
   const watchingCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId)?.count || 0;
@@ -953,6 +857,8 @@ export function logWatchProgress(userId, data) {
     duration_seconds = 0,
     total_episodes = 1
   } = data;
+
+  const existingBookmark = getBookmark(userId, String(media_id), source, title);
 
   let progressPercent = 0.0;
   if (duration_seconds > 0) {

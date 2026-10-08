@@ -5423,7 +5423,7 @@ app.post('/api/bookmarks/set', requireAuth, (req, res) => {
   }
 });
 
-app.delete('/api/bookmarks/remove', requireAuth, (req, res) => {
+const handleRemoveBookmark = (req, res) => {
   try {
     const { media_id, source, title } = req.body;
     removeBookmark(req.user.id, media_id, source, title);
@@ -5431,7 +5431,9 @@ app.delete('/api/bookmarks/remove', requireAuth, (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+};
+app.delete('/api/bookmarks/remove', requireAuth, handleRemoveBookmark);
+app.post('/api/bookmarks/remove', requireAuth, handleRemoveBookmark);
 
 app.post('/api/media/progress', requireAuth, (req, res) => {
   try {
