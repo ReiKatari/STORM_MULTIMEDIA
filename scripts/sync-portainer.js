@@ -84,7 +84,11 @@ export async function syncToPortainer(options = {}) {
     'public/js/fanfilm-catalog-intel.js',
     'public/js/app.js',
     'public/js/player.js',
-    'public/js/bookmarks.js'
+    'public/js/bookmarks.js',
+    'public/js/gamepad-tv.js',
+    'public/styles/tv-mode.css',
+    'public/styles/main.css',
+    'public/styles/components.css'
   ];
 
   const tarFiles = [];

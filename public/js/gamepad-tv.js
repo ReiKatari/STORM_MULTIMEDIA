@@ -684,6 +684,7 @@ function handleGamepadInput(gp) {
         return;
       }
     }
+    return;
   }
 
   // 2. Управление в окне профиля пользователя
@@ -772,6 +773,14 @@ function handleSpatialKeyboard(e) {
     if (e.key === 'Escape' || e.keyCode === 4 || e.keyCode === 27) {
       e.target.blur();
       closeActiveModalOrBack();
+      return;
+    }
+    // Нажатие стрелки вниз переводит фокус из поисковой строки в результаты каталога
+    if (e.key === 'ArrowDown' || e.keyCode === 20 || e.keyCode === 40) {
+      e.target.blur();
+      e.preventDefault();
+      moveFocus('down');
+      return;
     }
     return;
   }
@@ -986,12 +995,17 @@ function getFocusableElements() {
     .episode-pill,
     .voiceover-pill,
     .filter-chip,
+    .cinema-actor-chip,
+    .quick-genre-chip,
     .profile-tab-link,
     .profile-avatar-preset-item,
     .action-sheet-btn,
     .cal-card,
     .rail-card,
     .hero-slide,
+    .hero-btn-play,
+    .hero-btn-bookmark,
+    .hero-btn-trailer,
     .storm-tab-btn,
     .storm-filters-toggle-btn,
     .quick-dropdown-trigger,
@@ -1027,49 +1041,52 @@ function moveFocus(direction) {
   let bestCandidate = null;
   let bestDistance = Infinity;
 
-  focusables.forEach(el => {
-    if (el === currentFocusedElement) return;
-    const rect = el.getBoundingClientRect();
-
-    let isMatch = false;
-    let dist = Infinity;
-
-    if (direction === 'up' && rect.bottom <= currentRect.top + 10) {
-      isMatch = true;
-      dist = Math.hypot(currentRect.left - rect.left, (currentRect.top - rect.bottom) * 2);
-    } else if (direction === 'down' && rect.top >= currentRect.bottom - 10) {
-      isMatch = true;
-      dist = Math.hypot(currentRect.left - rect.left, (rect.top - currentRect.bottom) * 2);
-    } else if (direction === 'left' && rect.right <= currentRect.left + 10) {
-      isMatch = true;
-      dist = Math.hypot((currentRect.top - rect.top) * 2, currentRect.left - rect.right);
-    } else if (direction === 'right' && rect.left >= currentRect.right - 10) {
-      isMatch = true;
-      dist = Math.hypot((currentRect.top - rect.top) * 2, rect.left - currentRect.right);
-    }
-
-    if (isMatch && dist < bestDistance) {
-      bestDistance = dist;
-      bestCandidate = el;
-    }
-  });
-
-  // Запасная последовательная навигация по горизонтальным лентам (табы, сезоны, серии, карусели)
-  if (!bestCandidate && (direction === 'left' || direction === 'right')) {
-    const parentRail = currentFocusedElement.closest('.storm-tabs-inner, .storm-tabs-bar, .bookmarks-subnav-container, .rail-carousel, .rail-carousel-wrap, .media-rail-slider, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links');
+  // 1. Приоритетная последовательная навигация по горизонтальным каруселям и лентам (Plex и Emby Style)
+  if (direction === 'left' || direction === 'right') {
+    const parentRail = currentFocusedElement.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll');
     if (parentRail) {
-      const items = focusables.filter(el => parentRail.contains(el));
-      const currIdx = items.indexOf(currentFocusedElement);
+      const railItems = focusables.filter(el => parentRail.contains(el));
+      const currIdx = railItems.indexOf(currentFocusedElement);
       if (currIdx !== -1) {
         const nextIdx = direction === 'right' ? currIdx + 1 : currIdx - 1;
-        if (nextIdx >= 0 && nextIdx < items.length) {
-          bestCandidate = items[nextIdx];
+        if (nextIdx >= 0 && nextIdx < railItems.length) {
+          bestCandidate = railItems[nextIdx];
         }
       }
     }
   }
 
-  // Умный переход между зонами экрана (Шапка/Тулбар/Подменю закладок <-> Основной контент)
+  // 2. Геометрический поиск кандидатов для перемещения фокуса
+  if (!bestCandidate) {
+    focusables.forEach(el => {
+      if (el === currentFocusedElement) return;
+      const rect = el.getBoundingClientRect();
+
+      let isMatch = false;
+      let dist = Infinity;
+
+      if (direction === 'up' && rect.bottom <= currentRect.top + 10) {
+        isMatch = true;
+        dist = Math.hypot(currentRect.left - rect.left, (currentRect.top - rect.bottom) * 2);
+      } else if (direction === 'down' && rect.top >= currentRect.bottom - 10) {
+        isMatch = true;
+        dist = Math.hypot(currentRect.left - rect.left, (rect.top - currentRect.bottom) * 2);
+      } else if (direction === 'left' && rect.right <= currentRect.left + 10) {
+        isMatch = true;
+        dist = Math.hypot((currentRect.top - rect.top) * 2, currentRect.left - rect.right);
+      } else if (direction === 'right' && rect.left >= currentRect.right - 10) {
+        isMatch = true;
+        dist = Math.hypot((currentRect.top - rect.top) * 2, rect.left - currentRect.right);
+      }
+
+      if (isMatch && dist < bestDistance) {
+        bestDistance = dist;
+        bestCandidate = el;
+      }
+    });
+  }
+
+  // 3. Умный переход между зонами экрана (Шапка/Тулбар/Подменю закладок <-> Основной контент)
   if (!bestCandidate && direction === 'down') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
     const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container, .bookmarks-subnav-container, #bookmarks-subnav-container');
@@ -1210,53 +1227,47 @@ function setFocusTo(element) {
   }
   element.focus();
 
-  // 1. Плавный горизонтальный скролл внутри каруселей и списков без рывков всего окна
-  const railContainer = element.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .inplayer-season-chips-bar, .profile-tab-links');
+  // 1. Плавный горизонтальный скролл внутри каруселей и списков: гарантированная центровка активной карточки
+  const railContainer = element.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll, .storm-quick-genres-container');
   if (railContainer) {
     const pRect = railContainer.getBoundingClientRect();
     const eRect = element.getBoundingClientRect();
-    if (eRect.left < pRect.left + 40 || eRect.right > pRect.right - 40) {
-      const scrollTarget = railContainer.scrollLeft + (eRect.left - pRect.left) - (pRect.width / 2) + (eRect.width / 2);
-      railContainer.scrollTo({ left: scrollTarget, behavior: 'smooth' });
-    }
+    const scrollTarget = railContainer.scrollLeft + (eRect.left - pRect.left) - (pRect.width / 2) + (eRect.width / 2);
+    railContainer.scrollTo({ left: Math.max(0, scrollTarget), behavior: 'smooth' });
   }
 
-  // 2. Интеллектуальный вертикальный скролл экрана ТВ с защитой от обрезания обложек
+  // 2. Интеллектуальный вертикальный скролл экрана ТВ с защитой от обрезания обложек (Plex & Emby Style)
   const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || document.querySelector('.storm-modal-backdrop.is-open'));
   if (isPlayerOpen) {
-    const modalBody = element.closest('.storm-modal-body, .cinema-modal-dialog, .profile-modal-dialog');
+    const modalBody = element.closest('.storm-modal-body, .cinema-modal-dialog, .profile-modal-dialog, .series-episodes-grid, .filter-sheet-container');
     if (modalBody) {
       const mbRect = modalBody.getBoundingClientRect();
       const elRect = element.getBoundingClientRect();
-      if (elRect.top < mbRect.top + 20) {
-        modalBody.scrollBy({ top: elRect.top - mbRect.top - 24, behavior: 'smooth' });
-      } else if (elRect.bottom > mbRect.bottom - 20) {
-        modalBody.scrollBy({ top: elRect.bottom - mbRect.bottom + 24, behavior: 'smooth' });
+      const deltaY = (elRect.top + elRect.height / 2) - (mbRect.top + mbRect.height / 2);
+      if (Math.abs(deltaY) > 16) {
+        modalBody.scrollBy({ top: deltaY, behavior: 'smooth' });
       }
     }
   } else {
-    // В основном интерфейсе: динамический расчет высоты шапки и защищенной зоны
-    const stickyHeader = document.querySelector('.storm-sticky-header-container');
-    const bSubnav = document.getElementById('bookmarks-subnav-container');
-    let headerHeight = stickyHeader ? stickyHeader.getBoundingClientRect().height : 180;
-    if (bSubnav && bSubnav.style.display !== 'none' && bSubnav.offsetHeight > 0) {
-      const bRect = bSubnav.getBoundingClientRect();
-      if (bRect.bottom > headerHeight && bRect.bottom < 400) {
-        headerHeight = bRect.bottom;
+    // В основном интерфейсе: если фокус в шапке или панели вкладок — прокручиваем на самый верх
+    const isTopHeader = Boolean(element.closest('.storm-sticky-header-container, .storm-navbar, .storm-tabs-bar, .storm-toolbar, #bookmarks-subnav-container'));
+    if (isTopHeader) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      // Для карточек каталога и лент: центрируем активную ленту/ряд ровно посередине экрана
+      const railOrCard = element.closest('.storm-media-rail, .hero-showcase-container, .media-detailed-card') || element;
+      const rRect = railOrCard.getBoundingClientRect();
+      const stickyHeader = document.querySelector('.storm-sticky-header-container');
+      const headerH = stickyHeader ? stickyHeader.getBoundingClientRect().height : 140;
+      const bottomSafe = 100; // Пространство под плавающий HUD ТВ-пульта
+      const vh = window.innerHeight;
+      const availableH = vh - headerH - bottomSafe;
+      const targetCenterY = headerH + (availableH / 2);
+      const currentCenterY = rRect.top + (rRect.height / 2);
+      const deltaY = currentCenterY - targetCenterY;
+      if (Math.abs(deltaY) > 12) {
+        window.scrollBy({ top: deltaY, behavior: 'smooth' });
       }
-    }
-
-    const bottomSafe = 90;
-    const pad = 24;
-    const effectiveTop = headerHeight + pad;
-    const vh = window.innerHeight;
-    const effectiveBottom = vh - bottomSafe - pad;
-    const elRect = element.getBoundingClientRect();
-
-    if (elRect.top < effectiveTop) {
-      window.scrollBy({ top: elRect.top - effectiveTop, behavior: 'smooth' });
-    } else if (elRect.bottom > effectiveBottom) {
-      window.scrollBy({ top: elRect.bottom - effectiveBottom, behavior: 'smooth' });
     }
   }
 }

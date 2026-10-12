@@ -51,10 +51,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const currentYear = new Date().getFullYear();
   const numYear = parseInt(releaseYear, 10);
   const isSourceFanfilm = source === 'fanfilm4k';
-  const isCarrieUnreleased = /кэрри|carrie/i.test(cleanTitle) && (numYear >= 2026 || releaseYear === '2026' || /flanagan|флэнаган/i.test(cleanTitle));
+  const isKnownUnreleased = /кэрри|carrie|чужая мама|other mommy/i.test(cleanTitle) && (numYear >= 2026 || releaseYear === '2026' || /flanagan|флэнаган|blake|savage/i.test(cleanTitle));
   const isUpcoming = !isSourceFanfilm && (is_upcoming === true ||
-    (numYear && numYear > 2026) ||
-    Boolean(isCarrieUnreleased));
+    (numYear && numYear > currentYear) ||
+    Boolean(isKnownUnreleased));
   const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
     source === 'anilibria' || source === 'anixart' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('аним')) : String(genres).toLowerCase().includes('аним')));
@@ -65,16 +65,11 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
 
   // 1. FanFilm 4K Ultra HD (Приоритет #1 для всех фильмов и сериалов)
   let resolvedFanfilmUrl = fanfilm_4k_url ? String(fanfilm_4k_url).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media') : '';
-  if (!resolvedFanfilmUrl && !isUpcoming) {
+  if (!resolvedFanfilmUrl && !isUpcoming && !isKnownUnreleased) {
     const rawId = String(kp_id || '').trim();
     if (source === 'fanfilm4k' && /^\d+$/.test(rawId)) {
       resolvedFanfilmUrl = `https://v17.fanfilm4k.media/${rawId}-.html`;
-    } else if (cleanTitle) {
-      resolvedFanfilmUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(cleanTitle)}`;
     }
-  }
-  if (!resolvedFanfilmUrl && cleanTitle && !isCarrieUnreleased) {
-    resolvedFanfilmUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(cleanTitle)}`;
   }
 
   // Проверка эксклюзивного отечественного контента (например, сериал «Ландыши»)
@@ -82,7 +77,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const isDomestic = isLandyshi || (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) || source === 'rutube' || source === 'vkvideo';
   const isDomesticExclusive = isLandyshi;
 
-  if (resolvedFanfilmUrl && !isUpcoming && !isLandyshi) {
+  if (resolvedFanfilmUrl && !isUpcoming && !isKnownUnreleased && !isLandyshi) {
     players.push({
       id: 'fanfilm4k_uhd',
       name: '4K Ultra HD Плеер (FanFilm4K)',

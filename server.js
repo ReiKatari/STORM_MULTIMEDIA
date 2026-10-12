@@ -2961,8 +2961,9 @@ app.get('/api/media/item', async (req, res) => {
       }
 
       // Проверяем, является ли релиз ожидаемой новинкой / не вышедшим в прокат
-      const isCarrieUnreleased = /кэрри|carrie/i.test(mediaDetails.title || req.query.title || '') && (parseInt(mediaDetails.year || req.query.year || '2026', 10) >= 2026 || /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
-      let isReleaseUpcoming = isCarrieUnreleased || Boolean(
+      const isKnownUnreleased = /кэрри|carrie|чужая мама|other mommy/i.test(mediaDetails.title || req.query.title || '') && (parseInt(mediaDetails.year || req.query.year || '2026', 10) >= 2026 || /flanagan|флэнаган|blake|savage/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+      const isCarrieUnreleased = isKnownUnreleased;
+      let isReleaseUpcoming = isKnownUnreleased || Boolean(
         String(id || '').startsWith('tmdb_up_') ||
         mediaDetails.is_upcoming ||
         (mediaDetails.release_date && (() => {
@@ -3105,31 +3106,33 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Всегда гарантируем наличие fanfilm_4k_url и плеера для fanfilm4k источника
-    if (source === 'fanfilm4k' || String(mediaDetails.id).match(/^\d+$/)) {
+    if (source === 'fanfilm4k') {
       const cleanRawId = String(id || mediaDetails.id || '').replace(/[^\d]/g, '');
-      const hasNumericId = cleanRawId && /^\d{2,7}$/.test(cleanRawId) && (source === 'fanfilm4k' || /^\d+$/.test(String(mediaDetails.id)));
+      const hasNumericId = cleanRawId && /^\d{2,7}$/.test(cleanRawId);
       if (!mediaDetails.fanfilm_4k_url) {
-        mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url || (url && String(url).startsWith('http') ? url : (hasNumericId ? `https://v17.fanfilm4k.media/${cleanRawId}-.html` : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(mediaDetails.title || '')}`));
+        mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url || (url && String(url).startsWith('http') ? url : (hasNumericId ? `https://v17.fanfilm4k.media/${cleanRawId}-.html` : ''));
       }
-      mediaDetails.is4K = true;
-      mediaDetails.quality = '4K Ultra HD';
-      mediaDetails.is_upcoming = false;
-      if (!mediaDetails.players) mediaDetails.players = [];
-      if (!mediaDetails.players.some(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')) {
-        mediaDetails.players.unshift({
-          id: 'fanfilm4k_uhd',
-          name: '4K Ultra HD Плеер (FanFilm4K)',
-          type: 'iframe',
-          quality: '4K UHD',
-          badge: 'FANFILM 4K',
-          status: 'working',
-          status_label: '🟢 Онлайн',
-          audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
-          speed: '💎 Премиум 4K CDN',
-          url: mediaDetails.fanfilm_4k_url,
-          is_recommended: true,
-          recommended_badge: '🔥 4K Рекомендуемый'
-        });
+      if (mediaDetails.fanfilm_4k_url) {
+        mediaDetails.is4K = true;
+        mediaDetails.quality = '4K Ultra HD';
+        mediaDetails.is_upcoming = false;
+        if (!mediaDetails.players) mediaDetails.players = [];
+        if (!mediaDetails.players.some(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')) {
+          mediaDetails.players.unshift({
+            id: 'fanfilm4k_uhd',
+            name: '4K Ultra HD Плеер (FanFilm4K)',
+            type: 'iframe',
+            quality: '4K UHD',
+            badge: 'FANFILM 4K',
+            status: 'working',
+            status_label: '🟢 Онлайн',
+            audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
+            speed: '💎 Премиум 4K CDN',
+            url: mediaDetails.fanfilm_4k_url,
+            is_recommended: true,
+            recommended_badge: '🔥 4K Рекомендуемый'
+          });
+        }
       }
     }
 
@@ -3302,8 +3305,9 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.trivia = uniqueTrivia;
     }
 
-    // Проверка на статус не вышедшего фильма
-    const isCarrieUnreleased = /кэрри|carrie/i.test(mediaDetails.title || '') && (parseInt(mediaDetails.year || '2026', 10) >= 2026 || /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+    // Проверка на статус не вышедшего в цифровой релиз фильма
+    const isKnownUnreleased = /кэрри|carrie|чужая мама|other mommy/i.test(mediaDetails.title || '') && (parseInt(mediaDetails.year || '2026', 10) >= 2026 || /flanagan|флэнаган|blake|savage/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+    const isCarrieUnreleased = isKnownUnreleased;
     const isFutureDateCheck = (dateStr) => {
       if (!dateStr) return false;
       const s = String(dateStr).trim();
@@ -3374,13 +3378,15 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.fanfilm_hd_url = fanfilmHdStreamUrl;
     }
 
-    const hasOnlineStreamDirect = Boolean(
-      fanfilmStreamUrl ||
-      mediaDetails.fanfilm_4k_url ||
-      (mediaDetails.players && mediaDetails.players.some(p => p && p.status === 'working' && !p.is_trailer))
+    const hasActualStream = Boolean(
+      (source === 'fanfilm4k' && mediaDetails.fanfilm_4k_url && !mediaDetails.fanfilm_4k_url.includes('830')) ||
+      (mediaDetails.vk_embed_url) ||
+      (mediaDetails.rutube_id && mediaDetails.rutube_id.length > 15) ||
+      (Array.isArray(mediaDetails.seasons) && mediaDetails.seasons.length > 0)
     );
 
-    let isUpcoming = isCarrieUnreleased || (!hasOnlineStreamDirect && Boolean(
+    const isFutureRelease = Boolean(
+      isKnownUnreleased ||
       mediaDetails.is_upcoming ||
       isReleaseUpcoming ||
       String(id || '').startsWith('tmdb_up_') ||
@@ -3388,12 +3394,10 @@ app.get('/api/media/item', async (req, res) => {
       isFutureDateCheck(mediaDetails.premiere) ||
       isFutureDateCheck(mediaDetails.digital_release) ||
       isFutureDateCheck(mediaDetails.world_premier) ||
-      (mediaDetails.year && parseInt(mediaDetails.year, 10) > 2026)
-    ));
+      (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear() && !mediaDetails.fanfilm_4k_url)
+    );
 
-    if (source === 'fanfilm4k' || mediaDetails.fanfilm_4k_url || (mediaDetails.players && mediaDetails.players.length > 0)) {
-      isUpcoming = false;
-    }
+    let isUpcoming = isFutureRelease && !hasActualStream;
 
     mediaDetails.is_upcoming = Boolean(isUpcoming);
     if (mediaDetails.is_upcoming) {
@@ -3437,6 +3441,23 @@ app.get('/api/media/item', async (req, res) => {
     if (mediaDetails.is_upcoming) {
       // Для ожидаемых релизов не допускаем спекулятивные стримы
       allPlayers = allPlayers.filter(p => p && p.is_trailer);
+      if (allPlayers.length === 0 && mediaDetails.trailer_url) {
+        allPlayers.push({
+          id: 'official_trailer',
+          name: 'Официальный трейлер',
+          type: 'iframe',
+          quality: '4K UHD / 1080p',
+          badge: 'ТРЕЙЛЕР',
+          status: 'working',
+          status_label: '🟢 Онлайн',
+          audio_info: 'Официальный дублированный промо-трейлер',
+          speed: '⚡ YouTube CDN',
+          url: mediaDetails.trailer_url,
+          is_trailer: true,
+          is_recommended: true,
+          recommended_badge: '🎬 Трейлер'
+        });
+      }
     } else {
       // Для вышедших релизов исключаем промо-трейлеры из списка плееров
       allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
@@ -3445,13 +3466,30 @@ app.get('/api/media/item', async (req, res) => {
     // Если среди доступных плееров есть действительно рабочие потоки
     const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
     const hasActiveOnlineStream = allPlayers.some(isWorkingStream);
-    if (hasActiveOnlineStream && !isCarrieUnreleased) {
+    if (hasActiveOnlineStream && !isKnownUnreleased) {
       mediaDetails.is_upcoming = false;
     } else if (allPlayers.length === 0 || !hasActiveOnlineStream) {
-      if (isCarrieUnreleased || (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear())) {
+      if (isKnownUnreleased || (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear())) {
         mediaDetails.is_upcoming = true;
         mediaDetails.is4K = false;
         mediaDetails.quality = 'Ожидается';
+        if (mediaDetails.trailer_url && !allPlayers.some(p => p.id === 'official_trailer')) {
+          allPlayers.unshift({
+            id: 'official_trailer',
+            name: 'Официальный трейлер',
+            type: 'iframe',
+            quality: '4K UHD / 1080p',
+            badge: 'ТРЕЙЛЕР',
+            status: 'working',
+            status_label: '🟢 Онлайн',
+            audio_info: 'Официальный дублированный промо-трейлер',
+            speed: '⚡ YouTube CDN',
+            url: mediaDetails.trailer_url,
+            is_trailer: true,
+            is_recommended: true,
+            recommended_badge: '🎬 Трейлер'
+          });
+        }
       }
     }
 
@@ -4434,7 +4472,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     // мгновенно перенаправляем на надежный балансер Kodik/Kinobox без черных экранов и сбоев
     if (directIframe.includes('fanfilm4k.media') && !directIframe.includes('stravers.live')) {
       if (fallbackKodik) {
-        return res.redirect(302, fallbackKodik);
+        return res.redirect(302, `/api/player/adblock-proxy?url=${encodeURIComponent(fallbackKodik)}`);
       }
     }
 
@@ -5440,7 +5478,7 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
 
       // Заменяем вывод "Плеер не найден" на автопереход STORM и красивую плашку
       html = html.replace(
-        /notFoundCallback:\s*function\s*\([^)]*\)\s*\{[\s\S]*?player\.innerHTML\s*=\s*["'][^"']*Плеер не найден[^"']*["'];?[\s\S]*?\}/g,
+        /notFoundCallback:\s*function\s*\([^)]*\)\s*\{[\s\S]*?Плеер не найден[\s\S]*?\}/g,
         `notFoundCallback: function(data) {
           if (player) {
             player.classList.remove("loading");
@@ -5451,7 +5489,7 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
             '</div>';
           }
           try {
-            window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'PLAYER_NOT_FOUND' }, '*');
+            window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'PLAYER_NOT_FOUND', user_initiated: true }, '*');
           } catch(e) {}
         }`
       );
@@ -5491,7 +5529,7 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
                   '</div>';
                 }
                 try {
-                  window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'PLAYER_NOT_FOUND' }, '*');
+                  window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'PLAYER_NOT_FOUND', user_initiated: true }, '*');
                 } catch(e) {}
               }
             };

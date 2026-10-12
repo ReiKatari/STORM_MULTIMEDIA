@@ -339,9 +339,8 @@ function initFullscreenControls() {
       // 2. Объектные сообщения от Kodik, Playerjs, Allplay, FanFilm и др.
       if (typeof data === 'object' && data) {
         if (data.type === 'STORM_SWITCH_NEXT_SOURCE' || data.type === 'STORM_PLAYER_FALLBACK') {
-          if (data.user_initiated === true || data.reason === 'FANFILM_MANUAL_SWITCH') {
-            switchToNextSource();
-          }
+          console.warn('[Player] Получен сигнал переключения на резервный плеер:', data.reason);
+          switchToNextSource(true);
         }
         if (data.type === 'STORM_SPEED_CHANGED') {
           const sp = parseFloat(data.speed);
@@ -1087,14 +1086,14 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       effective4kUrl = `https://v17.fanfilm4k.media/${rawId}-.html`;
     } else if (mediaItem.link || mediaItem.url) {
       effective4kUrl = String(mediaItem.link || mediaItem.url).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
-    } else if (cleanTitle && !isAnime && !isLandyshiItem) {
-      effective4kUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(cleanTitle)}`;
     }
   }
 
   const isCarrie = /кэрри|carrie/i.test(title) && (year === '2026' || parseInt(year || '2026', 10) >= 2026);
-  const hasAvailableStreams = Boolean(effective4kUrl || mediaItem.vk_embed_url || mediaItem.rutube_id || mediaItem.rutube_url || (mediaItem.seasons && mediaItem.seasons.length > 0));
-  const isTrulyUpcoming = (mediaItem.is_upcoming || isCarrie) && !hasAvailableStreams;
+  const isFutureYear = Boolean(year && parseInt(year, 10) > new Date().getFullYear());
+  const hasReal4kUrl = Boolean(effective4kUrl && !effective4kUrl.includes('do=search') && !effective4kUrl.includes('830'));
+  const hasAvailableStreams = Boolean(hasReal4kUrl || mediaItem.vk_embed_url || (mediaItem.rutube_id && mediaItem.rutube_id.length > 15) || (mediaItem.seasons && mediaItem.seasons.length > 0));
+  const isTrulyUpcoming = Boolean((mediaItem.is_upcoming || isCarrie || isFutureYear) && !hasAvailableStreams);
 
   if (isTrulyUpcoming) {
     if (mediaItem.trailer_url) {
@@ -2182,16 +2181,19 @@ function selectPlayer(player, isUserManual = false) {
 }
 
 export function switchToNextSource(preferWorking = true) {
-  if (Date.now() - lastUserManualSelectionTime < 15000) {
+  if (Date.now() - lastUserManualSelectionTime < 15000 && !preferWorking) {
     console.warn('[Player] Игнорируем авто-переключение источника: пользователь недавно вручную выбрал плеер');
     return;
   }
 
-  if (currentActivePlayer && currentActivePlayer.id !== 'fanfilm4k_uhd' && currentActivePlayer.id !== 'kinobox_universal') {
-    currentActivePlayer.status = 'broken';
-    currentActivePlayer.status_label = '🔴 Недоступен';
-    currentActivePlayer.is_recommended = false;
-    failedSourcesSession.add(currentActivePlayer.id);
+  const failedPlayerId = currentActivePlayer ? currentActivePlayer.id : null;
+  if (failedPlayerId) {
+    failedSourcesSession.add(failedPlayerId);
+    if (failedPlayerId !== 'fanfilm4k_uhd' && failedPlayerId !== 'kinobox_universal') {
+      currentActivePlayer.status = 'broken';
+      currentActivePlayer.status_label = '🔴 Недоступен';
+      currentActivePlayer.is_recommended = false;
+    }
   }
 
   // Обновляем список плееров в выпадающем меню UI
@@ -2204,7 +2206,7 @@ export function switchToNextSource(preferWorking = true) {
     return;
   }
 
-  const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && !failedSourcesSession.has(p.id);
+  const isWorking = p => p && p.id !== failedPlayerId && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && !failedSourcesSession.has(p.id);
 
   let nextPlayer = null;
   const isDom = isDomesticContent(currentMedia, currentMedia?.title || '');
@@ -2220,7 +2222,9 @@ export function switchToNextSource(preferWorking = true) {
     nextPlayer = currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isWorking(p))
       || currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
       || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
-      || currentPlayers.find(p => (p.id === 'rutube_stream' || p.id === 'vk_video_stream') && isWorking(p))
+      || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'vidsrc_player' && isWorking(p))
       || currentPlayers.find(isWorking)
       || null;
   }
@@ -2243,21 +2247,71 @@ export function switchToNextSource(preferWorking = true) {
   }
 }
 
+if (typeof window !== 'undefined') {
+  window.playTrailerDirectly = function() {
+    if (currentMedia?.trailer_url) {
+      playStreamUrl(currentMedia.trailer_url);
+      const curBadge = document.getElementById('player-current-badge');
+      if (curBadge) curBadge.textContent = 'ТРЕЙЛЕР';
+      const curName = document.getElementById('player-current-name');
+      if (curName) curName.textContent = 'Официальный трейлер';
+      const curQuality = document.getElementById('player-current-quality');
+      if (curQuality) curQuality.textContent = '4K UHD / 1080p';
+      showToast('🎬 Воспроизведение официального трейлера', 'info');
+    } else {
+      showToast('Официальный трейлер недоступен', 'warning');
+    }
+  };
+
+  window.addMediaToWatchlist = function(id) {
+    const targetId = id || currentMedia?.id;
+    if (typeof window.toggleBookmark === 'function') {
+      window.toggleBookmark(targetId, 'planned');
+    }
+    showToast('Добавлено в список «Буду смотреть»', 'success');
+  };
+
+  window.retryPlayerSources = function() {
+    failedSourcesSession.clear();
+    if (currentPlayers && currentPlayers.length > 0) {
+      currentPlayers.forEach(p => {
+        if (p.status === 'broken') {
+          p.status = 'working';
+          p.status_label = '🟢 Онлайн';
+        }
+      });
+      switchToNextSource(true);
+    }
+  };
+}
+
 export function stopPlayerFallbackLoop() {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
   const isCarrie = /кэрри|carrie/i.test(currentMedia?.title || '');
-  const hasStreamsOrSeasons = Boolean(currentMedia?.seasons?.length || currentMedia?.vk_embed_url || currentMedia?.rutube_id || (currentPlayers && currentPlayers.some(p => p.url && !p.is_trailer && p.id !== 'official_trailer')));
+  const isFutureYear = Boolean(currentMedia?.year && parseInt(currentMedia.year, 10) > new Date().getFullYear());
   const isUpcoming = Boolean(
-    (currentMedia?.is_upcoming ||
+    currentMedia?.is_upcoming ||
     isCarrie ||
-    /ожидается|скоро/i.test(currentMedia?.release_date || currentMedia?.premiere || '')) &&
-    !hasStreamsOrSeasons
+    isFutureYear ||
+    /ожидается|скоро/i.test(currentMedia?.release_date || currentMedia?.premiere || '')
   );
 
   const cleanTitle = cleanVideoTitle(currentMedia?.title || 'Кинорелиз');
   const yearText = currentMedia?.year || 'скоро';
+
+  if (isUpcoming && currentMedia?.trailer_url) {
+    playStreamUrl(currentMedia.trailer_url);
+    const curBadge = document.getElementById('player-current-badge');
+    if (curBadge) curBadge.textContent = 'ТРЕЙЛЕР';
+    const curName = document.getElementById('player-current-name');
+    if (curName) curName.textContent = 'Официальный трейлер';
+    const curQuality = document.getElementById('player-current-quality');
+    if (curQuality) curQuality.textContent = '4K UHD / 1080p';
+    showToast(`🎬 Цифровой релиз ожидается в ${yearText} году. Запущен официальный трейлер`, 'info');
+    return;
+  }
 
   if (isUpcoming) {
     container.innerHTML = `
@@ -3427,16 +3481,12 @@ async function checkAndAutoFallbackStream(rawUrl) {
 }
 
 window.addEventListener('message', (e) => {
-  if (e.data?.type === 'STORM_SWITCH_NEXT_SOURCE') {
-    if (Date.now() - lastUserManualSelectionTime < 30000 && !e.data?.user_initiated) {
+  if (e.data?.type === 'STORM_SWITCH_NEXT_SOURCE' || e.data?.type === 'STORM_PLAYER_FALLBACK') {
+    if (Date.now() - lastUserManualSelectionTime < 15000 && !e.data?.user_initiated && e.data?.reason !== 'PLAYER_NOT_FOUND' && e.data?.reason !== 'FANFILM_MANUAL_SWITCH') {
       console.warn('[Player] Игнорируем авто-переключение источника: плеер выбран пользователем вручную');
       return;
     }
-    if (!e.data?.user_initiated && e.data?.reason !== 'FANFILM_MANUAL_SWITCH') {
-      console.warn('[Player] Игнорируем неручной сигнал переключения источника:', e.data?.reason);
-      return;
-    }
-    console.warn('Получен сигнал переключения источника пользователем:', e.data?.reason);
+    console.warn('[Player] Запуск перехода к следующему источнику:', e.data?.reason);
     switchToNextSource(true);
   }
 });
