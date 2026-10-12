@@ -25,7 +25,7 @@ function getInitials(name = '') {
   return (name[0] || 'ST').toUpperCase();
 }
 
-// Парсер Markdown и скрытия спойлеров
+// Парсер Markdown, форматирования, списков, спойлеров и таймкодов
 export function parseReviewMarkdown(text) {
   if (!text) return '';
 
@@ -44,8 +44,27 @@ export function parseReviewMarkdown(text) {
   // Курсив: *текст*
   html = html.replace(/\*([\s\S]+?)\*/g, '<em>$1</em>');
 
+  // Подчеркнутый: <u>текст</u> или __текст__
+  html = html.replace(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/gi, '<u>$1</u>');
+  html = html.replace(/__([\s\S]+?)__/g, '<u>$1</u>');
+
+  // Зачеркнутый: ~~текст~~
+  html = html.replace(/~~([\s\S]+?)~~/g, '<s>$1</s>');
+
+  // Ссылки: [название](url)
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;font-weight:600;">$1</a>');
+
   // Цитаты: &gt; цитата
   html = html.replace(/^&gt;\s*(.+)$/gm, '<blockquote class="review-quote">$1</blockquote>');
+
+  // Интерактивные таймкоды: [hh:mm:ss] или [mm:ss]
+  html = html.replace(/\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g, '<span class="review-timecode-link" data-timecode="$1" title="Перемотать на $1">⏱️ $1</span>');
+
+  // Маркированные списки: - пункт
+  html = html.replace(/^[ \t]*[-*]\s+(.+)$/gm, '<li style="margin-left: 18px; margin-bottom: 3px;">$1</li>');
+
+  // Нумерованные списки: 1. пункт
+  html = html.replace(/^[ \t]*(\d+)\.\s+(.+)$/gm, '<li style="margin-left: 18px; margin-bottom: 3px;" value="$1">$2</li>');
 
   // Переносы строк
   html = html.replace(/\n/g, '<br>');
@@ -53,131 +72,9 @@ export function parseReviewMarkdown(text) {
   return html;
 }
 
-// База проверенных профессиональных рецензий кинокритиков и зрителей
+// Реальные рецензии пользователей (без генерации вымышленных данных)
 function getCuratedSeedReviews(mediaItem) {
-  const title = String(mediaItem?.title || '').toLowerCase();
-  const id = String(mediaItem?.id || '');
-
-  // 1. Эксклюзивный пул рецензий для сериала «Ландыши»
-  if (id === 'rutube_landyshi' || title.includes('ландыши')) {
-    return [
-      {
-        id: 'curated_landyshi_1',
-        user_id: 101,
-        username: 'Виктор Малинин',
-        role: 'critic',
-        role_label: '🏆 Кинокритик',
-        avatar: '',
-        rating: 9,
-        created_at: Date.now() - 86400000 * 3,
-        title: '«Ландыши»: Редкий случай искренней отечественной музыкальной драмы',
-        content: 'Сериал приятно удивляет с первых же сцен. В центре сюжета — простая, но необычайно цепляющая история любви Кати Орловой и Лехи Данилина. Химия между Никой Здорик и Сергеем Городничим ощущается в каждом взгляде.\n\n> Музыкальные номера здесь — не просто визуальное наполнение, а полноценный драматургический двигатель сюжета, раскрывающий скрытые мотивы героев.\n\nОсобенно удалась линия семейных тайн и борьбы за независимость: ||кульминационное признание на репетиционной базе в конце 6 серии переворачивает представление об истинных намерениях отца||. Мягкая цветокоррекция, первоклассный саундтрек и честная актерская игра делают этот проект заметным явлением.',
-        likes_count: 54,
-        dislikes_count: 2,
-        user_reaction: null
-      },
-      {
-        id: 'curated_landyshi_2',
-        user_id: 102,
-        username: 'Алина Воронова',
-        role: 'viewer',
-        role_label: '⭐ Киноман',
-        avatar: '',
-        rating: 8,
-        created_at: Date.now() - 86400000 * 6,
-        title: 'Смотрится на одном дыхании, отличные песни и живые персонажи',
-        content: 'Обычно скептически отношусь к современным романтическим сериалам, но создатели «Ландышей» попали прямо в яблочко. Музыкальные темы буквально заедают в голове, а за отношениями главных героев искренне переживаешь. Очень жду продолжения «Вторая весна» во втором сезоне!',
-        likes_count: 36,
-        dislikes_count: 1,
-        user_reaction: null
-      },
-      {
-        id: 'curated_landyshi_3',
-        user_id: 103,
-        username: 'Константин Белов',
-        role: 'critic',
-        role_label: '🏆 Кинокритик',
-        avatar: '',
-        rating: 7,
-        created_at: Date.now() - 86400000 * 10,
-        title: 'Крепкая мелодрама с ярким кастом, хотя и не без жанровых штампов',
-        content: 'С технической стороны сериал выверен до мелочей: плотный монтаж, качественный звук и отличный подбор актеров второго плана. ||Некоторые сюжетные интриги вокруг продюсерского контракта|| смотрятся немного наивно, однако энергетика Ники Здорик полностью перекрывает мелкие сценарные условности. Однозначно рекомендуется к вечернему просмотру.',
-        likes_count: 21,
-        dislikes_count: 4,
-        user_reaction: null
-      }
-    ];
-  }
-
-  // 2. Культовые шедевры мирового кино
-  if (title.includes('побег из шоушенка') || id === 'tmdb_278') {
-    return [
-      {
-        id: 'curated_shawshank_1',
-        user_id: 104,
-        username: 'Александр Рогов',
-        role: 'critic',
-        role_label: '🏆 Кинокритик',
-        avatar: '',
-        rating: 10,
-        created_at: Date.now() - 86400000 * 12,
-        title: 'Триумф человеческого духа и несокрушимой надежды',
-        content: 'Фрэнк Дарабонт сотворил кинематографическое чудо. Дуэт Тима Роббинса и Моргана Фримена — это вершина актерского мастерства.\n\n> Надежда — опасная штука. Надежда может свести человека с ума. Но в то же время надежда — это самое прекрасное, что есть у человека.\n\n||Гениальный план побега через стену при помощи крошечного геологического молотка|| навсегда останется в золотом фонде мирового кинематографа. Безупречные 10 баллов.',
-        likes_count: 142,
-        dislikes_count: 1,
-        user_reaction: null
-      },
-      {
-        id: 'curated_shawshank_2',
-        user_id: 105,
-        username: 'Елена Васильева',
-        role: 'viewer',
-        role_label: '⭐ Зритель',
-        avatar: '',
-        rating: 10,
-        created_at: Date.now() - 86400000 * 20,
-        title: 'Фильм, который обязательно нужно увидеть каждому',
-        content: 'Пересматриваю уже в пятый раз и каждый раз на финальных сценах мурашки по коже. Потрясающая глубина, философия и вера в добро.',
-        likes_count: 89,
-        dislikes_count: 0,
-        user_reaction: null
-      }
-    ];
-  }
-
-  // 3. Универсальные качественные рецензии для остальных картин
-  return [
-    {
-      id: `curated_gen_${id}_1`,
-      user_id: 110,
-      username: 'Михаил Соколов',
-      role: 'critic',
-      role_label: '🏆 Кинокритик',
-      avatar: '',
-      rating: 9,
-      created_at: Date.now() - 86400000 * 4,
-      title: 'Прекрасно выстроенная визуальная эстетика и режиссура',
-      content: 'Картина с первых минут погружает зрителя в свою уникальную атмосферу. Отличная работа художников-постановщиков и выверенный темпоритм повествования. Актерский ансамбль выкладывается на полную мощность, а финал оставляет приятное и глубокое послевкусие.',
-      likes_count: 45,
-      dislikes_count: 2,
-      user_reaction: null
-    },
-    {
-      id: `curated_gen_${id}_2`,
-      user_id: 111,
-      username: 'Дарья Семенова',
-      role: 'viewer',
-      role_label: '⭐ Киноман',
-      avatar: '',
-      rating: 8,
-      created_at: Date.now() - 86400000 * 8,
-      title: 'Захватывающий просмотр и отличные впечатления',
-      content: 'Смотрели всей семьей на одном дыхании. Качественный звук, яркие персонажи и продуманный сюжет. Однозначно заслуживает высокой оценки в STORM MULTIMEDIA!',
-      likes_count: 29,
-      dislikes_count: 1,
-      user_reaction: null
-    }
-  ];
+  return [];
 }
 
 export async function fetchReviews(mediaId, source, mediaItem = null) {
@@ -220,7 +117,7 @@ export async function fetchReviews(mediaId, source, mediaItem = null) {
   return combined;
 }
 
-export async function submitReview(mediaItem, { title, rating, content }) {
+export async function submitReview(mediaItem, { title, rating, content, tone }) {
   const user = getUser();
   if (!user) {
     showToast('Рецензии могут писать только зарегистрированные пользователи', 'warning');
@@ -242,6 +139,7 @@ export async function submitReview(mediaItem, { title, rating, content }) {
         source: mediaItem.source,
         title,
         rating,
+        tone: tone || (rating >= 8 ? 'positive' : (rating >= 5 ? 'neutral' : 'negative')),
         content
       })
     });
@@ -323,8 +221,8 @@ export async function renderReviewsSection(containerElement, mediaItem) {
     const total = reviews.length;
     if (total === 0) {
       return {
-        avg: (mediaItem.rating || 8.5).toFixed(1),
-        recPercent: 92,
+        avg: '—',
+        recPercent: 0,
         total: 0,
         dist: { excellent: 0, good: 0, average: 0, poor: 0 },
         distPerc: { excellent: 0, good: 0, average: 0, poor: 0 }
@@ -369,13 +267,14 @@ export async function renderReviewsSection(containerElement, mediaItem) {
     <div class="reviews-section">
       <div class="reviews-header">
         <h4 class="reviews-title">
-          <span>💬</span> Рецензии и мнения зрителей (${metrics.total})
+          <span>💬</span> Рецензии зрителей (${metrics.total})
         </h4>
         <button class="storm-btn storm-btn-primary storm-btn-sm" id="write-review-btn">
           ✍️ Написать рецензию
         </button>
       </div>
 
+      ${metrics.total > 0 ? `
       <!-- Сводная карточка аналитики оценок и гистограммы -->
       <div class="reviews-summary-card">
         <div class="reviews-score-box">
@@ -421,6 +320,17 @@ export async function renderReviewsSection(containerElement, mediaItem) {
           </div>
         </div>
       </div>
+      ` : `
+      <!-- Информационный блок при отсутствии рецензий -->
+      <div class="reviews-empty-callout" style="padding: 24px 20px; text-align: center; background: var(--bg-tertiary); border: 1px dashed var(--border-subtle); border-radius: 14px; margin-bottom: 20px;">
+        <div style="font-size: 34px; margin-bottom: 8px;">🎭</div>
+        <h5 style="margin: 0 0 6px 0; font-size: 15px; font-weight: 800; color: var(--text-primary);">Пока нет отзывов зрителей</h5>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">Поделитесь своими впечатлениями о картине первым! Нажмите кнопку ниже, чтобы опубликовать рецензию.</p>
+        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="empty-callout-write-btn">
+          ✍️ Написать рецензию
+        </button>
+      </div>
+      `}
 
       <!-- Панель фильтров по тональности и сортировки -->
       <div class="reviews-toolbar">
@@ -450,11 +360,24 @@ export async function renderReviewsSection(containerElement, mediaItem) {
         </div>
       </div>
 
-      <!-- Форма создания рецензии -->
+      <!-- Форма создания рецензии в стиле Luno с расширенным WYSIWYG -->
       <div class="review-compose-card" id="review-compose-card" style="display: none;">
-        <h5 style="margin: 0 0 14px 0; font-size: 16px; font-weight: 800; color: #00f0ff;">
-          ✍️ Ваша рецензия на «${mediaItem.title || 'релиз'}»
+        <h5 style="margin: 0 0 14px 0; font-size: 16px; font-weight: 800; color: #00f0ff; display: flex; align-items: center; gap: 8px;">
+          <span>✍️</span> Ваша рецензия на «${mediaItem.title || 'релиз'}»
         </h5>
+
+        <!-- Выбор тональности отзыва (Luno Tone Selector) -->
+        <div class="review-tone-selector" role="radiogroup" aria-label="Тон отзыва">
+          <button type="button" class="review-tone-btn positive active" data-tone="positive" title="Рекомендую к просмотру">
+            🟢 Рекомендует
+          </button>
+          <button type="button" class="review-tone-btn neutral" data-tone="neutral" title="Нейтральное впечатление">
+            ⚖️ Нейтрально
+          </button>
+          <button type="button" class="review-tone-btn negative" data-tone="negative" title="Не рекомендую к просмотру">
+            🔴 Не рекомендует
+          </button>
+        </div>
 
         <div class="rating-stars-picker" style="margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 13px; font-weight: 700;">Ваша оценка:</span>
@@ -466,33 +389,37 @@ export async function renderReviewsSection(containerElement, mediaItem) {
           <span id="star-rating-label" style="font-weight: 900; color: #ffb703; font-size: 16px;">10 / 10</span>
         </div>
 
-        <input type="text" class="storm-input" id="review-title-input" placeholder="Заголовок рецензии (например: Впечатляющая актерская игра и саундтрек)" style="margin-bottom: 12px;">
+        <input type="text" class="storm-input" id="review-title-input" placeholder="Заголовок рецензии (например: Впечатляющая актерская игра и режиссура)" style="margin-bottom: 12px;">
 
-        <div class="review-compose-toolbar" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
-          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-spoiler" title="Скрыть выделенный текст под спойлер">
-            ⚠️ Спойлер
-          </button>
-          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-bold" title="Жирный шрифт">
-            <strong>B</strong>
-          </button>
-          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-italic" title="Курсив">
-            <em>I</em>
-          </button>
-          <button type="button" class="storm-btn storm-btn-sm storm-btn-secondary" id="btn-insert-quote" title="Цитата">
-            ❝ Цитата
-          </button>
-        </div>
-
-        <div style="position: relative;">
-          <textarea class="storm-input review-textarea" id="review-content-input" placeholder="Поделитесь вашими мыслями о сюжете, актерской игре, музыкальном сопровождении и режиссуре... Для скрытия ключевых сюжетных поворотов выделите фразу и нажмите «⚠️ Спойлер»" rows="4"></textarea>
-          <div style="display: flex; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--text-muted);">
-            <span>💡 Подсказка: кнопка «⚠️ Спойлер» или <code>||спойлер||</code> скрывает сюжетные повороты под интерактивный блюр</span>
+        <!-- Контейнер расширенного WYSIWYG-редактора -->
+        <div class="wysiwyg-container">
+          <div class="wysiwyg-toolbar">
+            <button type="button" class="wysiwyg-btn" id="btn-insert-bold" title="Жирный шрифт (Ctrl+B)"><strong>B</strong></button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-italic" title="Курсив (Ctrl+I)"><em>I</em></button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-underline" title="Подчеркнутый"><u>U</u></button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-strike" title="Зачеркнутый"><s>S</s></button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-quote" title="Цитата">❝ Цитата</button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-spoiler" title="Скрыть сюжет под спойлер">⚠️ Спойлер</button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-link" title="Вставить ссылку">🔗 Ссылка</button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-list" title="Маркированный список">📋 Список</button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-numlist" title="Нумерованный список">🔢 1.2.3</button>
+            <button type="button" class="wysiwyg-btn" id="btn-insert-timecode" title="Вставить таймкод видео">⏱️ Таймкод</button>
+            
+            <div class="wysiwyg-tabs">
+              <button type="button" class="wysiwyg-tab-btn active" id="tab-editor-btn">Редактор</button>
+              <button type="button" class="wysiwyg-tab-btn" id="tab-preview-btn">Предпросмотр</button>
+            </div>
           </div>
+          <textarea class="storm-input wysiwyg-editor-area" id="review-content-input" placeholder="Поделитесь впечатлениями о сюжете, режиссуре, актерской игре и визуале... Для скрытия ключевых сюжетных поворотов выделите текст и нажмите «⚠️ Спойлер»" rows="5" maxlength="3000"></textarea>
+          <div class="wysiwyg-preview-area" id="review-preview-area"></div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="cancel-review-btn">Отмена</button>
-          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="submit-review-btn">Опубликовать отзыв</button>
+        <div class="review-compose-foot">
+          <span class="review-char-counter" id="review-char-counter">0 / 3000</span>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="cancel-review-btn">Отмена</button>
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="submit-review-btn">Опубликовать отзыв</button>
+          </div>
         </div>
       </div>
 
@@ -511,11 +438,11 @@ export async function renderReviewsSection(containerElement, mediaItem) {
 
     // Фильтрация
     if (activeFilter === 'positive') {
-      filtered = filtered.filter(r => Number(r.rating) >= 8);
+      filtered = filtered.filter(r => (r.tone === 'positive') || (!r.tone && Number(r.rating) >= 8));
     } else if (activeFilter === 'neutral') {
-      filtered = filtered.filter(r => Number(r.rating) >= 5 && Number(r.rating) <= 7);
+      filtered = filtered.filter(r => (r.tone === 'neutral') || (!r.tone && Number(r.rating) >= 5 && Number(r.rating) <= 7));
     } else if (activeFilter === 'negative') {
-      filtered = filtered.filter(r => Number(r.rating) < 5);
+      filtered = filtered.filter(r => (r.tone === 'negative') || (!r.tone && Number(r.rating) < 5));
     } else if (activeFilter === 'critics') {
       filtered = filtered.filter(r => r.role === 'critic');
     }
@@ -543,8 +470,8 @@ export async function renderReviewsSection(containerElement, mediaItem) {
 
     listContainer.innerHTML = filtered.map(rev => {
       const rating = Number(rev.rating) || 8;
-      const sentimentClass = rating >= 8 ? 'positive' : (rating >= 5 ? 'neutral' : 'negative');
-      const sentimentLabel = rating >= 8 ? '🟢 Рекомендует' : (rating >= 5 ? '🟡 Нейтрально' : '🔴 Не рекомендует');
+      const effectiveTone = rev.tone || (rating >= 8 ? 'positive' : (rating >= 5 ? 'neutral' : 'negative'));
+      const sentimentLabel = effectiveTone === 'positive' ? '🟢 Рекомендует' : (effectiveTone === 'neutral' ? '⚖️ Нейтрально' : '🔴 Не рекомендует');
       const roleBadgeClass = rev.role === 'critic' ? 'critic' : (rev.role === 'editorial' ? 'editorial' : 'viewer');
       const roleLabel = rev.role_label || (rev.role === 'critic' ? '🏆 Кинокритик' : '⭐ Зритель');
       const dateFormatted = formatStormDate(rev.created_at);
@@ -568,7 +495,7 @@ export async function renderReviewsSection(containerElement, mediaItem) {
             </div>
 
             <div class="review-badges-row">
-              <span class="review-sentiment-badge ${sentimentClass}">${sentimentLabel}</span>
+              <span class="review-tone-badge ${effectiveTone}">${sentimentLabel}</span>
               <div class="review-rating-badge">★ ${rating} / 10</div>
             </div>
           </div>
@@ -611,6 +538,19 @@ export async function renderReviewsSection(containerElement, mediaItem) {
         }
       };
     });
+
+    // Навешиваем обработчики кликов по таймкодам
+    listContainer.querySelectorAll('.review-timecode-link').forEach(tc => {
+      tc.onclick = (e) => {
+        e.stopPropagation();
+        const timecode = tc.dataset.timecode;
+        if (timecode && window.seekPlayerToTimecode) {
+          window.seekPlayerToTimecode(timecode);
+        } else if (timecode) {
+          showToast(`Таймкод: ${timecode}`, 'info');
+        }
+      };
+    });
   };
 
   // Первичная отрисовка списка
@@ -638,23 +578,30 @@ export async function renderReviewsSection(containerElement, mediaItem) {
   // Обработчики формы создания
   const writeBtn = containerElement.querySelector('#write-review-btn');
   const composeCard = containerElement.querySelector('#review-compose-card');
+  const emptyCalloutWriteBtn = containerElement.querySelector('#empty-callout-write-btn');
   const cancelBtn = containerElement.querySelector('#cancel-review-btn');
   const submitBtn = containerElement.querySelector('#submit-review-btn');
   let selectedRating = 10;
+  let selectedTone = 'positive';
+
+  const openCompose = () => {
+    if (!getUser()) {
+      showToast('Рецензии могут писать только зарегистрированные пользователи', 'warning');
+      const authModal = document.getElementById('auth-modal');
+      if (authModal) authModal.classList.add('is-open');
+      return;
+    }
+    composeCard.style.display = composeCard.style.display === 'none' ? 'block' : 'none';
+    if (composeCard.style.display === 'block') {
+      composeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
 
   if (writeBtn && composeCard) {
-    writeBtn.onclick = () => {
-      if (!getUser()) {
-        showToast('Рецензии могут писать только зарегистрированные пользователи', 'warning');
-        const authModal = document.getElementById('auth-modal');
-        if (authModal) authModal.classList.add('is-open');
-        return;
-      }
-      composeCard.style.display = composeCard.style.display === 'none' ? 'block' : 'none';
-      if (composeCard.style.display === 'block') {
-        composeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    };
+    writeBtn.onclick = openCompose;
+  }
+  if (emptyCalloutWriteBtn && composeCard) {
+    emptyCalloutWriteBtn.onclick = openCompose;
   }
 
   if (cancelBtn && composeCard) {
@@ -663,8 +610,50 @@ export async function renderReviewsSection(containerElement, mediaItem) {
     };
   }
 
+  // Выбор тональности отзыва (Luno style)
+  const toneBtns = containerElement.querySelectorAll('.review-tone-btn');
+  toneBtns.forEach(btn => {
+    btn.onclick = () => {
+      toneBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedTone = btn.dataset.tone;
+
+      // Автоматическая подсказка оценки по тональности
+      if (selectedTone === 'positive' && selectedRating < 8) {
+        updateRating(10);
+      } else if (selectedTone === 'neutral' && (selectedRating < 5 || selectedRating > 7)) {
+        updateRating(6);
+      } else if (selectedTone === 'negative' && selectedRating >= 5) {
+        updateRating(3);
+      }
+    };
+  });
+
   // Вспомогательная функция для вставки тегов
   const contentInput = containerElement.querySelector('#review-content-input');
+  const previewArea = containerElement.querySelector('#review-preview-area');
+  const charCounter = containerElement.querySelector('#review-char-counter');
+
+  function updateCharCount() {
+    if (!contentInput || !charCounter) return;
+    const len = contentInput.value.length;
+    charCounter.textContent = `${len} / 3000`;
+    charCounter.classList.toggle('near-limit', len >= 2800);
+  }
+
+  if (contentInput) {
+    contentInput.oninput = updateCharCount;
+    contentInput.onkeydown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        wrapTextSelection('**', '**', 'жирный текст');
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault();
+        wrapTextSelection('*', '*', 'курсив');
+      }
+    };
+  }
+
   function wrapTextSelection(prefix, suffix, placeholder) {
     if (!contentInput) return;
     const start = contentInput.selectionStart;
@@ -677,31 +666,78 @@ export async function renderReviewsSection(containerElement, mediaItem) {
     const selStart = start + prefix.length;
     const selEnd = selStart + selected.length;
     contentInput.setSelectionRange(selStart, selEnd);
+    updateCharCount();
   }
 
-  const spoilerBtn = containerElement.querySelector('#btn-insert-spoiler');
-  if (spoilerBtn) spoilerBtn.onclick = () => wrapTextSelection('||', '||', 'текст спойлера');
+  // Тулбар WYSIWYG
+  const bindClick = (id, fn) => {
+    const el = containerElement.querySelector(id);
+    if (el) el.onclick = fn;
+  };
 
-  const boldBtn = containerElement.querySelector('#btn-insert-bold');
-  if (boldBtn) boldBtn.onclick = () => wrapTextSelection('**', '**', 'жирный текст');
+  bindClick('#btn-insert-bold', () => wrapTextSelection('**', '**', 'жирный текст'));
+  bindClick('#btn-insert-italic', () => wrapTextSelection('*', '*', 'курсив'));
+  bindClick('#btn-insert-underline', () => wrapTextSelection('<u>', '</u>', 'подчеркнутый текст'));
+  bindClick('#btn-insert-strike', () => wrapTextSelection('~~', '~~', 'зачеркнутый текст'));
+  bindClick('#btn-insert-quote', () => wrapTextSelection('> ', '', 'цитата из фильма'));
+  bindClick('#btn-insert-spoiler', () => wrapTextSelection('||', '||', 'текст спойлера'));
+  bindClick('#btn-insert-link', () => wrapTextSelection('[', '](https://...)', 'текст ссылки'));
+  bindClick('#btn-insert-list', () => wrapTextSelection('\n- ', '', 'пункт списка'));
+  bindClick('#btn-insert-numlist', () => wrapTextSelection('\n1. ', '', 'нумерованный пункт'));
+  bindClick('#btn-insert-timecode', () => wrapTextSelection('[', ']', '01:24:00'));
 
-  const italicBtn = containerElement.querySelector('#btn-insert-italic');
-  if (italicBtn) italicBtn.onclick = () => wrapTextSelection('*', '*', 'курсив');
+  // Переключение вкладок Редактор / Предпросмотр
+  const tabEditor = containerElement.querySelector('#tab-editor-btn');
+  const tabPreview = containerElement.querySelector('#tab-preview-btn');
 
-  const quoteBtn = containerElement.querySelector('#btn-insert-quote');
-  if (quoteBtn) quoteBtn.onclick = () => wrapTextSelection('> ', '', 'цитата');
+  if (tabEditor && tabPreview && contentInput && previewArea) {
+    tabEditor.onclick = () => {
+      tabEditor.classList.add('active');
+      tabPreview.classList.remove('active');
+      contentInput.style.display = 'block';
+      previewArea.style.display = 'none';
+      contentInput.focus();
+    };
+
+    tabPreview.onclick = () => {
+      tabPreview.classList.add('active');
+      tabEditor.classList.remove('active');
+      contentInput.style.display = 'none';
+      previewArea.style.display = 'block';
+      const text = contentInput.value.trim();
+      previewArea.innerHTML = text ? parseReviewMarkdown(text) : '<span style="color:var(--text-muted);font-style:italic;">Начните писать в редакторе, чтобы увидеть форматирование...</span>';
+    };
+  }
 
   // Выбор звезд
   const starBtns = containerElement.querySelectorAll('.star-btn');
   const ratingLabel = containerElement.querySelector('#star-rating-label');
+
+  function updateRating(rating) {
+    selectedRating = rating;
+    if (ratingLabel) ratingLabel.textContent = `${selectedRating} / 10`;
+    starBtns.forEach(b => {
+      const val = parseInt(b.dataset.value, 10);
+      b.classList.toggle('selected', val <= selectedRating);
+    });
+  }
+
   starBtns.forEach(btn => {
     btn.onclick = () => {
-      selectedRating = parseInt(btn.dataset.value, 10);
-      if (ratingLabel) ratingLabel.textContent = `${selectedRating} / 10`;
-      starBtns.forEach(b => {
-        const val = parseInt(b.dataset.value, 10);
-        b.classList.toggle('selected', val <= selectedRating);
-      });
+      const val = parseInt(btn.dataset.value, 10);
+      updateRating(val);
+
+      // Синхронизация с тональностью
+      if (val >= 8 && selectedTone !== 'positive') {
+        toneBtns.forEach(b => b.classList.toggle('active', b.dataset.tone === 'positive'));
+        selectedTone = 'positive';
+      } else if (val >= 5 && val <= 7 && selectedTone !== 'neutral') {
+        toneBtns.forEach(b => b.classList.toggle('active', b.dataset.tone === 'neutral'));
+        selectedTone = 'neutral';
+      } else if (val < 5 && selectedTone !== 'negative') {
+        toneBtns.forEach(b => b.classList.toggle('active', b.dataset.tone === 'negative'));
+        selectedTone = 'negative';
+      }
     };
   });
 
@@ -719,6 +755,7 @@ export async function renderReviewsSection(containerElement, mediaItem) {
       const res = await submitReview(mediaItem, {
         title: titleInput ? titleInput.value.trim() : '',
         rating: selectedRating,
+        tone: selectedTone,
         content
       });
       submitBtn.disabled = false;

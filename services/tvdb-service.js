@@ -208,8 +208,8 @@ export async function resolveMediaPremiereAndYear({
 
   // 4. Запрос в TMDB API
   if (!resYear || !resPremiere || resPremiere === 'Не указана') {
-      const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
-      if (!TMDB_API_KEY) return;
+    try {
+      const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
       const cleanTitle = String(title || '')
         .replace(/\s*[\(\[]\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|19\d\d|20\d\d).*?[\)\]]/gi, '')
         .replace(/\s*4[kк]\s*$/gi, '')

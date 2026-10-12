@@ -61,16 +61,24 @@ export const KNOWN_RELEASE_YEARS = {
   'обезьяна': '2025',
 
   // Новинки 2024
+  'темная материя': '2024',
+  'тёмная материя': '2024',
+  'dark matter': '2024',
   'падение империи': '2024',
+  'civil war': '2024',
   'дюна часть вторая': '2024',
   'дюна: часть вторая': '2024',
+  'dune part two': '2024',
+  'dune: part two': '2024',
   'дэдпул и росомаха': '2024',
+  'deadpool & wolverine': '2024',
   'гладиатор 2': '2024',
   'дикий робот': '2024',
   'головоломка 2': '2024',
   'кунг фу панда 4': '2024',
   'кунг-фу панда 4': '2024',
   'субстанция': '2024',
+  'the substance': '2024',
   'ужасающий 3': '2024',
   'джокер безумие на двоих': '2024',
   'джокер: безумие на двоих': '2024',
@@ -78,6 +86,7 @@ export const KNOWN_RELEASE_YEARS = {
   'тихое место: день первый': '2024',
   'чужой ромул': '2024',
   'чужой: ромул': '2024',
+  'alien romulus': '2024',
   'соник 3 в кино': '2024',
   'муфаса король лев': '2024',
   'муфаса: король лев': '2024',
@@ -85,6 +94,8 @@ export const KNOWN_RELEASE_YEARS = {
   'веном последний танец': '2024',
   'веном: последний танец': '2024',
   'битлджус битлджус': '2024',
+  'фуриоса': '2024',
+  'furiosa': '2024',
   'фуриоса хроники безумного макса': '2024',
   'фуриоса: хроники безумного макса': '2024',
   'гадкий я 4': '2024',
@@ -160,9 +171,9 @@ export const KNOWN_RELEASE_YEARS = {
   'the mentalist': '2008',
   'дневники вампира': '2009',
   'the vampire diaries': '2009',
-  'корпорация монстров': '2001',
-  'монстры на каникулах': '2012',
   'одиссея': '2026',
+  'кэрри': '2026',
+  'carrie': '2026',
 
   // Аниме-сериалы
   'аркейн': '2021',
@@ -332,8 +343,28 @@ export const KNOWN_SERIES = [
   'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
   'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
   'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
-  'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
+  'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge',
+  'кэрри', 'carrie',
+  'темная материя', 'тёмная материя', 'dark matter'
 ];
+
+export const KNOWN_SERIES_SEASONS = {
+  'темная материя': 2,
+  'тёмная материя': 2,
+  'dark matter': 2,
+  'ландыши': 2,
+  'бункер': 2,
+  'укрытие': 2,
+  'silo': 2,
+  'разделение': 2,
+  'severance': 2,
+  'дом дракона': 2,
+  'house of the dragon': 2,
+  'игра в кальмара': 2,
+  'squid game': 2,
+  'ричер': 3,
+  'reacher': 3
+};
 
 // Реестр известных аниме (по умолчанию 'anime-series', если не фильм)
 export const KNOWN_ANIME_SERIES = [
@@ -418,6 +449,8 @@ export const KNOWN_MEDIA_GENRES = {
   'the mentalist': ['Сериал', 'Детектив', 'Драма', 'Криминал'],
   'дневники вампира': ['Сериал', 'Фэнтези', 'Драма', 'Мелодрама'],
   'the vampire diaries': ['Сериал', 'Фэнтези', 'Драма', 'Мелодрама'],
+  'кэрри': ['Сериал', 'Ужасы', 'Драма'],
+  'carrie': ['Сериал', 'Ужасы', 'Драма'],
   'одиссея': ['Фильм', 'Фантастика', 'Приключения', 'Боевик'],
   'корпорация монстров': ['Мультфильм', 'Комедия', 'Семейный', 'Фэнтези'],
   'монстры на каникулах': ['Мультфильм', 'Комедия', 'Семейный', 'Фэнтези'],
@@ -503,6 +536,7 @@ export const KNOWN_MEDIA_GENRES = {
 function normalizeTitle(title = '') {
   return String(title || '')
     .toLowerCase()
+    .replace(/ё/g, 'е')
     .replace(/[«»"'`]/g, '')
     .replace(/[:—–-]/g, ' ')
     .replace(/\s*[\(\[]?\s*(?:постер|4[kк]|uhd|fhd|сериал|фильм|\d+\s*сезон|сезон\s*\d+|19\d\d|20\d\d).*?[\)\]]?/gi, ' ')
@@ -520,9 +554,25 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
   const catStr = String(category || '').toLowerCase();
   const genStr = (Array.isArray(genres) ? genres.join(' ') : String(genres || '')).toLowerCase();
   const src = String(item?.source || item?.src || '').toLowerCase();
+
+  // Тёмная материя (Dark Matter) - сериал Apple TV+ (2 сезона)
+  if (norm === 'темная материя' || norm.startsWith('темная материя') || norm === 'dark matter' || norm.startsWith('dark matter')) {
+    return 'series';
+  }
+
   // 0. Обитель зла: Мутация - строго художественный фильм (movie), не анимация и не сериал!
   if (norm.includes('обитель зла') && (norm.includes('мутация') || norm.includes('мутиция'))) {
     return 'movie';
+  }
+
+  // Дюна и Дюна: Часть вторая - строго художественный фильм (movie), ни в коем случае не сериал!
+  if (norm === 'дюна' || norm.startsWith('дюна:') || norm.startsWith('дюна ') || norm.includes('дюна: часть') || norm.includes('дюна часть')) {
+    return 'movie';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (norm === 'кэрри' || norm.startsWith('кэрри ') || norm.startsWith('кэрри:') || norm === 'carrie' || norm.startsWith('carrie ') || norm.startsWith('carrie:')) {
+    return 'series';
   }
 
   // 1. Приоритетная проверка известных анимационных фильмов (Вырождение, Вендетта и др.)
@@ -618,6 +668,11 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
  */
 export function resolveCanonicalYear(title = '', link = '', poster = '', dateStr = '', existingYear = '') {
   const norm = normalizeTitle(title);
+
+  // 0. Тёмная материя (Dark Matter) - официальный релиз 2024 года
+  if (norm === 'темная материя' || norm.startsWith('темная материя') || norm === 'dark matter' || norm.startsWith('dark matter')) {
+    return '2024';
+  }
 
   const isMonsterCartoonOrMovie = [
     'корпорация монстров', 'университет монстров', 'монстры на каникулах', 
@@ -800,3 +855,123 @@ export function resolveCanonicalGenres(title = '', category = '', description = 
 
   return Array.from(detected).slice(0, 4);
 }
+
+/**
+ * Комплексная проверка медиа-объекта на принадлежность к трейлерам, тизерам, промо и фанатским концептам.
+ * Гарантирует 100% исключение любого рекламного, промо и незавершенного фанатского контента во всех каталогах и поиске.
+ */
+export function isTrailerMedia(item) {
+  if (!item) return false;
+
+  const title = typeof item === 'string' ? item : (item.title || item.name || '');
+  const originalTitle = typeof item === 'string' ? '' : (item.original_title || item.original_name || '');
+  const description = typeof item === 'string' ? '' : (item.description || item.overview || '');
+  const category = typeof item === 'string' ? '' : (item.category || '');
+  const genres = Array.isArray(item.genres) ? item.genres.join(' ') : String(item.genres || '');
+  const durationSec = parseInt(item.duration_seconds || item.durationSec || item.duration || 0, 10);
+  const source = item.source || '';
+
+  const cleanTitle = title.trim();
+  const cleanOriginalTitle = originalTitle.trim();
+  const combinedText = `${cleanTitle} ${cleanOriginalTitle} ${category} ${genres}`.toLowerCase();
+
+  // 1. Прямые маркеры трейлеров и промо в названии или категории
+  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
+
+  if (trailerWordsRegex.test(cleanTitle) || trailerWordsRegex.test(cleanOriginalTitle) || trailerWordsRegex.test(category)) {
+    return true;
+  }
+
+  // Маркеры в скобках, дефисах или составных фразах
+  const subPatterns = [
+    'трейлер', 'тизер', 'trailer', 'teaser',
+    'промо-ролик', 'промо ролик', 'официальный трейлер', 'русский трейлер',
+    'дублированный трейлер', 'финальный трейлер', 'тизер-трейлер', 'концепт-трейлер',
+    'concept trailer', 'fan trailer', 'фан-трейлер', 'фан трейлер',
+    'обзор сериала', 'обзор фильма', 'обзор премьеры', 'разбор сериала', 'разбор фильма',
+    'разбор концовки', 'разбор сюжета', 'лекция для сна', 'для сна', 'дата выхода',
+    'когда выйдет', 'что известно', 'расписание выхода', 'простыми словами',
+    'семихатов', 'сурдин', 'горбунов', 'постнаука', 'научпоп', 'visual facts',
+    'откуда мы знаем', 'до сих пор никто не понимает', 'которую мы не видим',
+    'нерешенных проблем', 'нерешённых проблем', 'теория всего', 'теория струн',
+    'дмитрий вибе', 'черные дыры и темная материя', 'темная эпоха вселенной',
+    'темная материя пронзает нас', 'пронзает нас'
+  ];
+  for (const p of subPatterns) {
+    if (combinedText.includes(p)) {
+      return true;
+    }
+  }
+
+  // Обзоры, разборы, лекции и вопросы в начале названия
+  if (/^(?:обзор|разбор|пересказ|рекап|сюжет|подробный разбор|честный обзор|лекция|доклад|что такое|почему|как устроена|как работает|в чем разница|95% вселенной)\b/i.test(cleanTitle)) {
+    return true;
+  }
+
+  // 2. Фанатские концепт-трейлеры несуществующих фильмов (например фейковый Человек-паук: Новый день)
+  const normTitle = cleanTitle.toLowerCase().replace(/[^a-zа-яё0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const normOriginal = cleanOriginalTitle.toLowerCase().replace(/[^a-zа-яё0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const hasSpiderman = normTitle.includes('человек паук') || normTitle.includes('spider man') || normOriginal.includes('spider man');
+  const hasNewDay = normTitle.includes('новый день') || normTitle.includes('brand new day') || normTitle.includes('a new day') || normOriginal.includes('brand new day') || normOriginal.includes('a new day');
+  if (hasSpiderman && hasNewDay) {
+    return true;
+  }
+  if (
+    normTitle.includes('человек паук новый день') ||
+    normTitle.includes('человек паук 4 новый день') ||
+    normTitle.includes('spider man brand new day') ||
+    normTitle.includes('spider man a new day') ||
+    normTitle.includes('spider man 4 new day') ||
+    normOriginal.includes('brand new day') ||
+    normOriginal.includes('a new day')
+  ) {
+    return true;
+  }
+
+  // 2.5 Игрофильмы, прохождения игр и геймплей-ролики
+  const author = (typeof item.author === 'string' ? item.author : '').toLowerCase();
+  const gameFootagePatterns = ['игрофильм', 'игро фильм', 'геймплей', 'gameplay', 'walkthrough', 'прохождение игры', 'прохождение без комментариев', 'летсплей', 'letsplay'];
+  for (const gp of gameFootagePatterns) {
+    if (combinedText.includes(gp) || author.includes(gp)) {
+      return true;
+    }
+  }
+  if ((source === 'rutube' || source === 'vkvideo') && genres.toLowerCase().includes('видеоигры')) {
+    return true;
+  }
+
+  // 3. Проверка длительности для RuTube и VK Видео: видео короче 10 минут (600 сек), позиционируемое как фильм
+  if ((source === 'rutube' || source === 'vkvideo') && durationSec > 0 && durationSec < 600) {
+    const isEpisode = /сери|сезон|эпизод|выпуск/i.test(cleanTitle);
+    if (!isEpisode) {
+      return true;
+    }
+  }
+
+  // 4. Описание, указывающее на промо-материал или трейлер
+  if (description) {
+    const descLower = description.toLowerCase();
+    if (
+      descLower.startsWith('трейлер') ||
+      descLower.startsWith('тизер') ||
+      descLower.startsWith('официальный трейлер') ||
+      descLower.startsWith('русский трейлер') ||
+      descLower.startsWith('дублированный трейлер') ||
+      /\b(смотреть трейлер|смотрите трейлер|официальный дублированный трейлер|главный трейлер|тизер-трейлер)\b/i.test(descLower)
+    ) {
+      if (durationSec > 0 && durationSec < 900) return true;
+      if (descLower.length < 220 && (descLower.includes('трейлер') || descLower.includes('тизер'))) return true;
+    }
+  }
+
+  return false;
+}
+
+export function resolveCanonicalSeriesSeasonsCount(title = '') {
+  const norm = normalizeTitle(title).replace(/ё/g, 'е');
+  for (const [k, v] of Object.entries(KNOWN_SERIES_SEASONS)) {
+    if (norm === k || norm.startsWith(k + ' ') || norm.includes(k)) return v;
+  }
+  return null;
+}
+

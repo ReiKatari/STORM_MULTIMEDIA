@@ -115,6 +115,24 @@ export function handleIncomingRemoteAction(data) {
         showToast(video.muted ? '🔇 Звук выключен' : '🔊 Звук включен', 'info');
       }
       break;
+    case 'volume':
+      if (video && data.level !== undefined) {
+        video.volume = Math.max(0, Math.min(1, parseFloat(data.level) / 100));
+        showToast(`🔊 Громкость: ${data.level}%`, 'info');
+      }
+      break;
+    case 'toggle_ambilight':
+      document.getElementById('toggle-ambilight-btn')?.click();
+      break;
+    case 'toggle_fullscreen':
+      try {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      } catch {}
+      break;
     case 'search':
       if (data.query) {
         const input = document.getElementById('global-search-input');

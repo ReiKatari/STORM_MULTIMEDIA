@@ -30,3 +30,21 @@ android_build/app/build/
 android_build/local.properties
 *.apk
 *.jks
+
+# Synology Drive Conflicts
+*_Conflict*
+*_Conflict.*
+
+# Scratch and debug files
+scratch/
+scratch*
+*.tmp
+local_embed_output.html
+edge_dump.html
+vk_sample.html
+test_lostfilm.html
+public/test-sync-probe.txt
+make_fix_hosts.js
+patch_nas.cjs
+scripts-clean-history.mjs
+scripts/svg.txt

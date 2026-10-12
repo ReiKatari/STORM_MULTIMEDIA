@@ -4,6 +4,7 @@
 
 import { getToken, showToast } from './auth.js';
 import { t } from './i18n.js';
+import { normalizeStatus } from './status-icons.js';
 
 let memoryBookmarksCache = [];
 
@@ -236,9 +237,9 @@ export function autoTransitionSeriesToWatching(item, nextSeason = 1, nextEpisode
 export function resolveMediaUserStatus(item) {
   if (!item) return null;
   const directStatus = item.user_status || item.bookmark_status;
-  if (directStatus && directStatus !== 'none') return directStatus;
-  if (item.status && ['completed', 'watching', 'planned', 'favorite', 'on_hold', 'dropped', 'wont_watch'].includes(item.status)) {
-    return item.status;
+  if (directStatus && directStatus !== 'none') return normalizeStatus(directStatus);
+  if (item.status && ['completed', 'watching', 'planned', 'plan', 'favorite', 'on_hold', 'hold', 'dropped', 'wont_watch'].includes(item.status)) {
+    return normalizeStatus(item.status);
   }
 
   const id = String(item.id || item.media_id || '');
@@ -266,6 +267,10 @@ export function resolveMediaUserStatus(item) {
     if (match?.status && match.status !== 'none') {
       resolved = match.status;
     }
+  }
+
+  if (resolved) {
+    resolved = normalizeStatus(resolved);
   }
 
   // Модель Emby и Plex:
@@ -339,9 +344,32 @@ export function syncLocalBookmarkItem(mediaData, status) {
   saveLocalBookmarksList(filtered);
 }
 
+const DB_CLEAN_REVISION = '2026-10-08-purge-v1';
+export function checkAndApplyClientPurge() {
+  try {
+    if (localStorage.getItem('storm_purge_rev') !== DB_CLEAN_REVISION) {
+      localStorage.setItem('storm_purge_rev', DB_CLEAN_REVISION);
+      localStorage.removeItem('storm_local_bookmarks');
+      localStorage.removeItem('storm_continue_watching');
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('storm_status_') || k.startsWith('storm_watched_') || k.startsWith('storm_season_status_'))) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      saveLocalBookmarksList([]);
+      setMemoryBookmarksCache([]);
+    }
+  } catch (_) {}
+}
+checkAndApplyClientPurge();
+
 export async function fetchUserBookmarks(status = null, type = null) {
   const token = getToken();
   let serverBookmarks = [];
+  let serverAnswered = false;
 
   // 1. Запрос к серверу
   try {
@@ -359,35 +387,42 @@ export async function fetchUserBookmarks(status = null, type = null) {
       const data = await res.json();
       if (Array.isArray(data)) {
         serverBookmarks = data;
+        serverAnswered = true;
       }
     }
   } catch (err) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
   }
 
-  // 2. Если сервер вернул список, синхронизируем с локальным кэшем
-  if (serverBookmarks.length > 0) {
-    const localList = getLocalBookmarksList();
-    const map = new Map();
-    localList.forEach(it => {
-      const k = String(it.media_id || it.id || '');
-      if (k) map.set(k, it);
-    });
-    serverBookmarks.forEach(it => {
-      const k = String(it.media_id || it.id || '');
-      if (k && !map.has(k)) map.set(k, it);
-    });
-    const merged = Array.from(map.values());
-    saveLocalBookmarksList(merged);
-    setMemoryBookmarksCache(merged);
-    return serverBookmarks;
+  // 2. Если сервер ответил, он является единственным источником истины (Single Source of Truth)
+  if (serverAnswered) {
+    if (serverBookmarks.length > 0) {
+      if (!status && !type) {
+        saveLocalBookmarksList(serverBookmarks);
+      }
+      setMemoryBookmarksCache(serverBookmarks);
+      return serverBookmarks;
+    } else {
+      if (!status && !type) {
+        saveLocalBookmarksList([]);
+      }
+      setMemoryBookmarksCache([]);
+      return [];
+    }
   }
 
-  // 3. Резервная отдача из локального хранилища storm_local_bookmarks
+  // 3. Резервная отдача из локального хранилища storm_local_bookmarks (только при отсутствии связи)
   const localBookmarks = getLocalBookmarksList();
   if (localBookmarks.length > 0) {
     let filtered = localBookmarks;
-    if (status) filtered = filtered.filter(b => b.status === status || b.user_status === status);
+    if (status) {
+      const normQuery = normalizeStatus(status);
+      if (normQuery === 'favorite') {
+        filtered = filtered.filter(b => normalizeStatus(b.status) === 'favorite' || normalizeStatus(b.user_status) === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
+      } else {
+        filtered = filtered.filter(b => normalizeStatus(b.status) === normQuery || normalizeStatus(b.user_status) === normQuery);
+      }
+    }
     if (type) filtered = filtered.filter(b => b.media_type === type);
     setMemoryBookmarksCache(filtered);
     return filtered;
@@ -494,40 +529,41 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
 
 export async function saveBookmarkStatus(mediaData, status) {
   if (!mediaData) return null;
+  const normStatus = normalizeStatus(status);
   const mediaId = String(mediaData.id || mediaData.media_id || '');
   const normTitle = String(mediaData.title || '').trim().toLowerCase();
 
   // Всегда локально сохраняем статус в localStorage для мгновенного отклика
   try {
     if (mediaId) {
-      localStorage.setItem(`storm_status_${mediaId}`, status);
+      localStorage.setItem(`storm_status_${mediaId}`, normStatus);
     }
     if (normTitle) {
-      localStorage.setItem(`storm_status_title_${normTitle}`, status);
+      localStorage.setItem(`storm_status_title_${normTitle}`, normStatus);
     }
-    syncLocalBookmarkItem(mediaData, status);
+    syncLocalBookmarkItem(mediaData, normStatus);
   } catch {}
 
   // Если статус завершён/брошен/не буду — немедленно удаляем из Продолжить просмотр
-  if (status === 'completed' || status === 'dropped' || status === 'wont_watch') {
+  if (normStatus === 'completed' || normStatus === 'dropped' || normStatus === 'wont_watch') {
     removeFromLocalContinueWatching(mediaId, mediaData.title);
   }
 
   // Если это сериал и статус «Просмотрено», каскадно помечаем все сезоны и серии
   const mType = detectClientMediaType(mediaData);
   const isSeries = mType === 'series' || mType === 'anime-series' || mType === 'cartoon-series';
-  if (isSeries && status === 'completed') {
+  if (isSeries && normStatus === 'completed') {
     markAllSeriesSeasonsAndEpisodes(mediaData, 'completed');
   }
 
   const token = getToken();
   if (!token) {
     showToast(t('msg_bookmark_saved'), 'success');
-    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status } }));
-    return { status, localOnly: true };
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status: normStatus } }));
+    return { status: normStatus, localOnly: true };
   }
 
-  if (!status || status === 'none') {
+  if (!status || status === 'none' || normStatus === 'not_started') {
     return await deleteBookmark(mediaData.id, mediaData.source, mediaData.title);
   }
 
@@ -546,7 +582,8 @@ export async function saveBookmarkStatus(mediaData, status) {
         poster_url: mediaData.poster || mediaData.poster_url || '',
         media_type: mediaData.media_type || mType || 'movie',
         year: mediaData.year || detectClientYear(mediaData) || '',
-        status: status
+        status: normStatus,
+        is_favorite: (normStatus === 'favorite' || mediaData.is_favorite === 1 || mediaData.is_favorite === true) ? 1 : (mediaData.is_favorite ? 1 : 0)
       })
     });
 
@@ -611,6 +648,16 @@ export function detectClientMediaType(item) {
   // 0. Обитель зла: Мутация - строго фильм, не анимация!
   if (t.includes('обитель зла') && (t.includes('мутация') || t.includes('мутиция'))) {
     return 'movie';
+  }
+
+  // Дюна и Дюна: Часть вторая - строго художественный фильм
+  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть')) {
+    return 'movie';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
+    return 'series';
   }
 
   // 1. Известные анимационные фильмы (Вырождение, Вендетта и др.)
@@ -728,7 +775,8 @@ export function detectClientMediaType(item) {
     'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
     'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
     'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
-    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
+    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge',
+    'кэрри', 'carrie'
   ];
 
   // Защита от мультфильмов со словом монстр/монстры
@@ -1201,17 +1249,25 @@ export async function fetchContinueWatching() {
   const token = getToken();
 
   let serverItems = [];
+  let serverAnswered = false;
   if (token) {
     try {
       const res = await fetch('/api/media/continue-watching', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(4000)
       });
       if (res.ok) {
         serverItems = await res.json();
+        serverAnswered = true;
       }
     } catch (err) {
       // Игнорируем сетевые сбои, отдавая локальный кэш
     }
+  }
+
+  if (serverAnswered && Array.isArray(serverItems) && serverItems.length === 0) {
+    localStorage.setItem('storm_continue_watching', JSON.stringify([]));
+    return [];
   }
 
   // Объединяем серверную и локальную историю, исключая дубликаты
@@ -1361,4 +1417,36 @@ export async function removeItemFromCollection(listId, mediaId, source) {
   } catch (err) {
     showToast('Ошибка при удалении', 'error');
   }
+}
+
+export async function fetchCustomListDetails(listId) {
+  const token = getToken();
+  if (!token) return null;
+
+  try {
+    const res = await fetch(`/api/custom-lists/${listId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function deleteCustomListApi(listId) {
+  const token = getToken();
+  if (!token) return false;
+
+  try {
+    const res = await fetch(`/api/custom-lists/${listId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      showToast('Коллекция удалена', 'info');
+      return true;
+    }
+  } catch (err) {}
+  return false;
 }

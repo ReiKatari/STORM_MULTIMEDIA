@@ -50,21 +50,41 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const releaseYear = year ? String(year).trim() : '';
   const currentYear = new Date().getFullYear();
   const numYear = parseInt(releaseYear, 10);
-  const isUpcoming = is_upcoming === true ||
-    (numYear && numYear > currentYear) ||
-    (numYear && numYear >= currentYear && !kp_id && !fanfilm_4k_url);
+  const isSourceFanfilm = source === 'fanfilm4k';
+  const isCarrieUnreleased = /кэрри|carrie/i.test(cleanTitle) && (numYear >= 2026 || releaseYear === '2026' || /flanagan|флэнаган/i.test(cleanTitle));
+  const isUpcoming = !isSourceFanfilm && (is_upcoming === true ||
+    (numYear && numYear > 2026) ||
+    Boolean(isCarrieUnreleased));
   const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
     source === 'anilibria' || source === 'anixart' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('аним')) : String(genres).toLowerCase().includes('аним')));
   const isSeries = media_type === 'series' || media_type === 'cartoon-series' || media_type === 'anime-series';
   const typeFilter = isSeries ? '&types=foreign-serial,russian-serial,anime-serial' : '&types=foreign-movie,russian-movie,anime';
-  const yearParam = releaseYear ? `&year=${releaseYear}&strict=1` : '&strict=1';
+  const yearParam = releaseYear ? `&year=${releaseYear}` : '';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
-  // 1. FanFilm 4K Ultra HD (если доступен)
-  if (fanfilm_4k_url) {
+  // 1. FanFilm 4K Ultra HD (Приоритет #1 для всех фильмов и сериалов)
+  let resolvedFanfilmUrl = fanfilm_4k_url ? String(fanfilm_4k_url).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media') : '';
+  if (!resolvedFanfilmUrl && !isUpcoming) {
+    const rawId = String(kp_id || '').trim();
+    if (source === 'fanfilm4k' && /^\d+$/.test(rawId)) {
+      resolvedFanfilmUrl = `https://v17.fanfilm4k.media/${rawId}-.html`;
+    } else if (cleanTitle) {
+      resolvedFanfilmUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(cleanTitle)}`;
+    }
+  }
+  if (!resolvedFanfilmUrl && cleanTitle && !isCarrieUnreleased) {
+    resolvedFanfilmUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(cleanTitle)}`;
+  }
+
+  // Проверка эксклюзивного отечественного контента (например, сериал «Ландыши»)
+  const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
+  const isDomestic = isLandyshi || (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) || source === 'rutube' || source === 'vkvideo';
+  const isDomesticExclusive = isLandyshi;
+
+  if (resolvedFanfilmUrl && !isUpcoming && !isLandyshi) {
     players.push({
-      id: 'fanfilm_4k',
+      id: 'fanfilm4k_uhd',
       name: '4K Ultra HD Плеер (FanFilm4K)',
       type: 'iframe',
       quality: '4K UHD',
@@ -73,18 +93,11 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       status_label: '🟢 Онлайн',
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
-      url: fanfilm_4k_url,
+      url: resolvedFanfilmUrl,
       is_recommended: true,
       recommended_badge: '🔥 4K Рекомендуемый'
     });
   }
-
-  // Проверка отечественного контента (Россия, СССР, RuTube, VK Видео)
-  const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
-  const isDomestic = isLandyshi || source === 'rutube' || source === 'vkvideo' ||
-    (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) ||
-    (!imdb_id && /[\u0400-\u04FF]/.test(cleanTitle || rawTitle));
-  const isDomesticExclusive = (isDomestic && !kp_id) || isLandyshi;
 
   // 3. Плееры для кино и сериалов
   if (!isAnime) {
@@ -119,22 +132,39 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         url: 'https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=1',
         is_recommended: false
       });
-    } else {
-      // RuTube (Официальный плеер и лицензионный каталог Wink / RuTube)
-      const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
+    } else if (!isUpcoming) {
+      // Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka) — Приоритет #2 сразу за 4K
+      const kinoboxUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
       players.push({
-        id: 'rutube_stream',
-        name: 'RuTube (Официальный поток / Wink)',
+        id: 'kinobox_universal',
+        name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka)',
         type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'RUTUBE',
+        quality: '1080p FHD / 4K',
+        badge: 'KINOBOX',
         status: 'working',
         status_label: '🟢 Онлайн',
-        audio_info: 'Официальный лицензионный каталог RuTube и Wink',
-        speed: '⚡ Российский CDN',
-        url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`,
-        is_recommended: isDomestic && !fanfilm_4k_url,
-        recommended_badge: (isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
+        audio_info: 'Универсальный мультиплеер: автоподбор доступного балансера',
+        speed: '⚡ Мульти-CDN',
+        url: kinoboxUrl
+      });
+
+      // Kodik Плеер (проверенный балансер озвучек)
+      const baseKodikUrl = kp_id
+        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
+        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+      players.push({
+        id: 'kodik_direct',
+        name: 'Kodik Плеер (сериалы и озвучки)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'KODIK',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Большой выбор студийных озвучек',
+        speed: '⚡ Быстрый поток',
+        url: baseKodikUrl
       });
 
       // VK Видео (Фильмы, сериалы и озвучки)
@@ -151,86 +181,27 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         speed: '⚡ Скоростной VK CDN',
         url: `https://vkvideo.ru/video_ext.php?q=${vkSearchQ}&autoplay=1&js_api=1&muted=0&mute=0`
       });
-    }
 
-    // Kodik и HDRezka — строго исключаем для отечественных эксклюзивов без Kinopoisk ID
-    if (!isDomesticExclusive) {
-      // Kodik Плеер (проверенный балансер)
-      const baseKodikUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+      // RuTube (Запасной поток)
+      const rutubeSearchQ = encodeURIComponent(`${cleanTitle} ${releaseYear || ''}`.trim());
       players.push({
-        id: 'kodik_direct',
-        name: 'Kodik Плеер (сериалы и озвучки)',
+        id: 'rutube_stream',
+        name: 'RuTube (Резервный поток / Wink)',
         type: 'iframe',
         quality: '1080p FHD',
-        badge: 'KODIK',
+        badge: 'RUTUBE',
         status: 'working',
         status_label: '🟢 Онлайн',
-        audio_info: 'Большой выбор студийных озвучек',
-        speed: '⚡ Быстрый поток',
-        url: baseKodikUrl,
-        is_recommended: !isDomestic && !fanfilm_4k_url,
-        recommended_badge: (!isDomestic && !fanfilm_4k_url) ? '🔥 Рекомендуемый' : undefined
-      });
-
-      // HDRezka Cinema (FHD и 4K) - официальные переводы HDRezka Studio
-      const rezkaUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=hdrezka${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
-      players.push({
-        id: 'rezka_cinema',
-        name: 'HDRezka Cinema (FHD и 4K)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'HDREZKA',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Студийный перевод HDRezka Studio',
-        speed: '⚡ Высокая скорость',
-        url: rezkaUrl
+        audio_info: 'Резервный каталог RuTube и Wink',
+        speed: '⚡ Российский CDN',
+        url: `https://rutube.ru/play/embed/search/?query=${rutubeSearchQ}&autoplay=1`,
+        is_recommended: false
       });
     }
 
-    // Студии зарубежного дубляжа (LostFilm TV и Red Head Sound) - ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
-    if (!isDomestic) {
-      // Red Head Sound (Дубляж RHS)
-      const rhsUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=rhs${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
-      players.push({
-        id: 'rhs_player',
-        name: 'Red Head Sound (Дубляж RHS)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'RHS',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальные голоса дубляжа студии RHS',
-        speed: '⚡ Премиум дубляж',
-        url: rhsUrl
-      });
-
-      // LostFilm TV (Официальный дубляж и релизы)
-      const lostfilmUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&translation=lostfilm${typeFilter}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
-      players.push({
-        id: 'lostfilm_player',
-        name: 'LostFilm TV (Студийный перевод)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'LOSTFILM',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Фирменная многоголосая озвучка LostFilm',
-        speed: '⚡ Быстрый CDN',
-        url: lostfilmUrl
-      });
-    }
 
     // Vidsrc Cinema (Original)
-    if (imdb_id) {
+    if (imdb_id && !isUpcoming) {
       const isTv = isSeries || media_type === 'series' || media_type === 'tv';
       players.push({
         id: 'vidsrc_player',
@@ -244,8 +215,20 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
         speed: '⚡ Международный CDN',
         url: `https://vidsrc.to/embed/${isTv ? 'tv' : 'movie'}/${imdb_id}`
       });
+      players.push({
+        id: 'vidsrc_me_stream',
+        name: 'Vidsrc Me (Резервный английский поток)',
+        type: 'iframe',
+        quality: '1080p FHD',
+        badge: 'VIDSRC ME',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Оригинальная дорожка без цензуры',
+        speed: '⚡ Глобальный CDN',
+        url: `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?imdb=${imdb_id}`
+      });
     }
-  } else {
+  } else if (!isUpcoming) {
     // 4. Плееры специально для Аниме
     // AniXart Stream - проверенный скоростной плеер со всеми студиями озвучки
     const anixartUrl = kp_id
@@ -320,10 +303,13 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
     });
   }
 
-  // Гарантируем, что ровно один плеер отмечен как рекомендуемый
+  // Гарантируем, что ровно один плеер отмечен как рекомендуемый (только среди рабочих)
   if (!players.some(p => p.is_recommended) && players.length > 0) {
-    players[0].is_recommended = true;
-    players[0].recommended_badge = '🔥 Рекомендуемый';
+    const targetP = players.find(p => p.status === 'working') || players[0];
+    if (targetP) {
+      targetP.is_recommended = true;
+      targetP.recommended_badge = targetP.is_trailer ? '🔥 Трейлер' : '🔥 Рекомендуемый';
+    }
   }
 
   return players;

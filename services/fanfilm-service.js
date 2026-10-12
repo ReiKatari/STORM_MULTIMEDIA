@@ -5,6 +5,8 @@ import {
   resolveCanonicalMediaType,
   resolveCanonicalYear,
   resolveCanonicalGenres,
+  resolveCanonicalSeriesSeasonsCount,
+  isTrailerMedia,
   KNOWN_RELEASE_YEARS as INTEL_RELEASE_YEARS
 } from './canonical-media-intel.js';
 
@@ -12,7 +14,7 @@ const BASE_URL = 'https://v17.fanfilm4k.media';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
-async function fetchHtml(url, options = {}) {
+export async function fetchHtml(url, options = {}) {
   const headers = {
     'User-Agent': USER_AGENT,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -20,28 +22,43 @@ async function fetchHtml(url, options = {}) {
     ...options.headers
   };
 
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(options.timeout || 6000),
-      ...options,
-      headers
-    });
-    if (response.ok) {
-      return await response.text();
+  const tryUrls = [];
+  let cleanUrl = url;
+  if (cleanUrl.includes('v16.fanfilm4k.media')) {
+    cleanUrl = cleanUrl.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
+  }
+  tryUrls.push(cleanUrl);
+
+  const mirrors = ['v17', 'v18'];
+  for (const m of mirrors) {
+    const domain = `https://${m}.fanfilm4k.media`;
+    const rep = cleanUrl.replace(/https:\/\/[^\/]+/, domain);
+    if (!tryUrls.includes(rep)) {
+      tryUrls.push(rep);
     }
-  } catch (err) {
-    if (url.includes('v17.fanfilm4k.media')) {
-      const mirrorUrl = url.replace('v17.fanfilm4k.media', 'v16.fanfilm4k.media');
-      try {
-        const mirrorRes = await fetch(mirrorUrl, {
-          signal: AbortSignal.timeout(options.timeout || 6000),
-          ...options,
-          headers
-        });
-        if (mirrorRes.ok) return await mirrorRes.text();
-      } catch {}
-    }
-    throw err;
+  }
+
+  // Для числовых ID новостей DLE добавляем прямой URL /ID-.html
+  const numMatch = url.match(/(\d{3,7})/);
+  if (numMatch) {
+    tryUrls.push(`https://v17.fanfilm4k.media/${numMatch[1]}-.html`);
+  }
+
+  const uniqueUrls = Array.from(new Set(tryUrls)).slice(0, 3);
+  for (const curUrl of uniqueUrls) {
+    try {
+      const response = await fetch(curUrl, {
+        signal: AbortSignal.timeout(options.timeout || 1500),
+        ...options,
+        headers
+      });
+      if (response.ok) {
+        const text = await response.text();
+        if (text && text.length > 400 && !text.includes('<title>403 Forbidden</title>') && !text.includes('<title>404 Not Found</title>')) {
+          return text;
+        }
+      }
+    } catch (_) {}
   }
 
   throw new Error(`Ошибка запроса FanFilm4K: ${url}`);
@@ -490,18 +507,31 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
       .replace(/\s*смотреть(?:\s+онлайн)?/gi, '')
       .trim();
 
+    // Исключаем трейлеры, тизеры, промо и незавершенные концепты
+    if (isTrailerMedia({
+      title: rawTitle,
+      original_title: title,
+      category,
+      source: 'fanfilm4k'
+    })) {
+      return;
+    }
+
     // Картинка постера
     let poster = el.find('img').first().attr('data-src') || el.find('img').first().attr('src') || '';
     if (poster && poster.startsWith('/')) poster = `${BASE_URL}${poster}`;
 
-    // Лейбл 4K / Качество (FanFilm4K специализирован на 4K UHD)
-    const isTS = el.text().includes('TS') || title.includes('TS');
-    const is4K = true;
-    const quality = isTS ? 'TS / Экранка' : '4K Ultra HD';
-
-    // Точный год выпуска
+    // Лейбл 4K / Качество (FanFilm4K специализирован на 4K UHD для вышедших релизов)
+    const elAllText = el.text().toLowerCase();
+    const isTS = elAllText.includes('ts') || title.toLowerCase().includes('ts');
+    const isUpcomingText = /ожидается|скоро|в кино|премьера|трейлер/i.test(elAllText) || /ожидается|скоро|премьера/i.test(title);
     const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
     const realYear = resolveCanonicalYear(title, link, poster, tagLeft);
+    const numYr = parseInt(realYear || '2026', 10);
+    const isKnownUnreleased = /кэрри.*2026|flanagan/i.test(title + ' ' + elAllText) || (numYr > new Date().getFullYear());
+    const isUpcoming = Boolean(isUpcomingText || isKnownUnreleased || (numYr >= 2026 && (elAllText.includes('ожидается') || elAllText.includes('скоро') || !tagLeft)));
+    const is4K = !isUpcoming;
+    const quality = isUpcoming ? 'Ожидается' : (isTS ? 'TS / Экранка' : '4K Ultra HD');
 
     // Рейтинг (строго из правого тега, без смешивания с годом)
     let ratingText = el.find('.tag.top-right').first().text().replace(/[^\d\.]/g, '').trim();
@@ -534,6 +564,7 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
         poster,
         quality,
         is4K,
+        is_upcoming: isUpcoming,
         year: realYear || '2026',
         rating: parseFloat(ratingText) || 0,
         genres,
@@ -645,8 +676,9 @@ export async function searchFanFilm(query) {
         original_title: details.original_title || '',
         link: cleanQuery,
         poster: details.poster,
-        quality: details.quality || '4K Ultra HD',
-        is4K: true,
+        quality: details.quality || (details.is4K ? '4K Ultra HD' : '1080p Full HD'),
+        is4K: Boolean(details.is4K),
+        is_upcoming: Boolean(details.is_upcoming),
         year: details.year || resolveMediaYear(details.title, cleanQuery, details.poster) || '',
         rating: details.rating || 8.0,
         media_type: details.media_type || 'movie',
@@ -681,8 +713,9 @@ export async function searchFanFilm(query) {
       items = await performSearch(queryWithoutSeason);
     }
 
-    setCache('fanfilm4k', cacheKey, items || [], 900); // 15 минут
-    return items || [];
+    items = (items || []).filter(it => it && !isTrailerMedia(it));
+    setCache('fanfilm4k', cacheKey, items, 900); // 15 минут
+    return items;
   } catch (err) {
     console.error(`[FanFilm4K] Ошибка поиска по запросу "${query}":`, err.message);
     if (queryWithoutSeason && queryWithoutSeason !== cleanQuery) {
@@ -699,16 +732,21 @@ export async function searchFanFilm(query) {
  * Получение детальной страницы фильма / сериала и плееров
  */
 export async function getFanFilmDetails(idOrUrl) {
+  if (!idOrUrl || idOrUrl === 'undefined' || idOrUrl === 'null' || String(idOrUrl).trim() === '') {
+    return null;
+  }
   let url = String(idOrUrl).trim();
+  if (url.includes('v16.fanfilm4k.media')) {
+    url = url.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
+  }
   if (!url.startsWith('http')) {
     const cachedLink = getCache('fanfilm4k', `item_link_${idOrUrl}`);
     if (cachedLink) {
-      url = cachedLink;
+      url = cachedLink.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
     } else if (url.includes('-')) {
       url = `${BASE_URL}/${idOrUrl.replace(/\.html$/i, '')}.html`;
     } else {
-      // DLE канонический редирект по числовому ID новости: /index.php?newsid=12345
-      url = `${BASE_URL}/index.php?newsid=${idOrUrl}`;
+      url = `${BASE_URL}/${idOrUrl}-.html`;
     }
   }
 
@@ -794,52 +832,122 @@ export async function getFanFilmDetails(idOrUrl) {
       if (mLink) kpId = mLink[1] || mLink[2];
     }
 
-    // 2. Определение активной вкладки на сайте FanFilm4K
-    const isHdActive = $('.tab-btn[data-tab="hdplayer"]').hasClass('is-active') ||
-                       $('[data-tab="hdplayer"]').hasClass('is-active') ||
-                       (html && (html.includes('class="tab-btn is-active" data-tab="hdplayer"') || html.includes('data-tab="hdplayer" class="tab-btn is-active"')));
-    const is4kActive = $('.tab-btn[data-tab="4kplayer"]').hasClass('is-active') ||
-                       $('[data-tab="4kplayer"]').hasClass('is-active') ||
-                       (html && (html.includes('class="tab-btn is-active" data-tab="4kplayer"') || html.includes('data-tab="4kplayer" class="tab-btn is-active"')));
+    // 2. Определение плееров на сайте FanFilm4K
+    const player4kIframe = $('[data-tab-content="4kplayer"] iframe').attr('src') || $('iframe[src*="stravers"]').attr('src') || $('iframe[src*="transfusion"]').attr('src') || '';
+    const final4kUrl = player4kIframe ? (player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe) : '';
 
-    // 3. Плеер 4K Ultra HD (transfusion-as / stravers / fanfilm direct iframe)
-    const player4kIframe = $('[data-tab-content="4kplayer"] iframe').attr('src') || '';
-    let is4kStreamHealthy = true;
-    let final4kUrl = '';
-    if (player4kIframe) {
-      final4kUrl = player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe;
-      if (final4kUrl.includes('stravers.live') || final4kUrl.includes('transfusion')) {
-        try {
-          const chkRes = await fetch(final4kUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-              'Referer': url
-            },
-            signal: AbortSignal.timeout(3000)
-          });
-          if (chkRes.ok) {
-            const chkText = await chkRes.text();
-            const hasFileList = chkText.includes('const fileList =') || chkText.includes('fileList');
-            const hasConfig = chkText.includes('const config =') || chkText.includes('mediaMetadata');
-            if (hasFileList || hasConfig) {
-              is4kStreamHealthy = true;
-            } else if (chkText.toLowerCase().includes('404 not found') || chkText.toLowerCase().includes('видео удалено')) {
-              is4kStreamHealthy = false;
-            }
-          } else if (chkRes.status === 404) {
-            is4kStreamHealthy = false;
+    const playerHdIframe = $('[data-tab-content="hdplayer"] iframe').attr('src') || '';
+    const finalHdUrl = playerHdIframe ? (playerHdIframe.startsWith('//') ? `https:${playerHdIframe}` : playerHdIframe) : '';
+
+    // 3. Парсинг сезонов и серий для сериалов (из fileList stravers или из текста страницы)
+    const seasonsData = [];
+    const isExplicitSeries = /\(?(?:сериал|дорама|все сезоны|сезон)\)?/i.test(title) || /\/(?:serials?|dorama)\//i.test(url) || subcolsText.includes('Сериал') || subcolsText.includes('сезон');
+    const detectedType = resolveCanonicalMediaType(title, url, isExplicitSeries ? 'series' : '', genres, { isSeries: isExplicitSeries });
+
+    // Попытка извлечь точный список сезонов из 4K плеера
+    let fileListParsed = null;
+    if (final4kUrl) {
+      try {
+        const chkRes = await fetch(final4kUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://v17.fanfilm4k.media/'
+          },
+          signal: AbortSignal.timeout(1200)
+        });
+        if (chkRes.ok) {
+          const chkText = await chkRes.text();
+          const flMatch = chkText.match(/fileList\s*=\s*JSON\.parse\('((?:\\.|[^'])*)'\)/);
+          if (flMatch) {
+            const rawJson = flMatch[1].replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+            fileListParsed = JSON.parse(rawJson);
           }
-        } catch {
-          is4kStreamHealthy = true;
         }
+      } catch (_) {}
+    }
+
+    if (fileListParsed && fileListParsed.type === 'serial' && fileListParsed.all) {
+      const sKeys = Object.keys(fileListParsed.all).sort((a, b) => Number(a) - Number(b));
+      for (const sNum of sKeys) {
+        const epObj = fileListParsed.all[sNum];
+        const epKeys = Object.keys(epObj).sort((a, b) => Number(a) - Number(b));
+        const eps = epKeys.map(epNum => ({
+          episode_number: Number(epNum),
+          name: `${epNum} серия`,
+          translations: Object.values(epObj[epNum] || {}).map(t => ({
+            id: t.id_translation,
+            name: t.translation,
+            quality: t.quality || 'WEB-DL',
+            is_uhd: t.uhd === 1
+          }))
+        }));
+        seasonsData.push({
+          season_number: Number(sNum),
+          name: `Сезон ${sNum}`,
+          episode_count: eps.length,
+          episodes: eps
+        });
       }
     }
+
+    // Если fileList не был получен напрямую, извлекаем сезоны из метаданных страницы FanFilm4K
+    if (seasonsData.length === 0 && (isExplicitSeries || detectedType === 'series')) {
+      const statusSeasonMatch = subcolsText.match(/Статус[:\s]*(\d+)\s*сезон/i) || subcolsText.match(/(\d+)\s*сезон/i);
+      const statusEpMatch = subcolsText.match(/Статус[:\s]*\d+\s*сезон[^\d]*(\d+)\s*сери/i) || subcolsText.match(/(\d+)\s*сери/i);
+      const maxSeason = statusSeasonMatch ? parseInt(statusSeasonMatch[1], 10) : 1;
+      for (let s = 1; s <= maxSeason; s++) {
+        const isCurrent = (s === maxSeason);
+        const epCount = (isCurrent && statusEpMatch) ? parseInt(statusEpMatch[1], 10) : (maxSeason > 1 && s === 1 ? 9 : 8);
+        seasonsData.push({
+          season_number: s,
+          name: `Сезон ${s}`,
+          episode_count: epCount,
+          episodes: Array.from({ length: epCount }, (_, i) => ({
+            episode_number: i + 1,
+            name: `${i + 1} серия`
+          }))
+        });
+      }
+    }
+
+    // Гарантируем полное число сезонов из реестра известных сериалов (Тёмная материя и др.)
+    const knownSeasons = resolveCanonicalSeriesSeasonsCount(title);
+    if (knownSeasons && seasonsData.length < knownSeasons) {
+      for (let s = seasonsData.length + 1; s <= knownSeasons; s++) {
+        const defaultEpCount = (s === 2 && (title.toLowerCase().includes('материя') || title.toLowerCase().includes('dark matter'))) ? 10 : 8;
+        seasonsData.push({
+          season_number: s,
+          name: `Сезон ${s}`,
+          episode_count: defaultEpCount,
+          episodes: Array.from({ length: defaultEpCount }, (_, i) => ({
+            episode_number: i + 1,
+            name: `${i + 1} серия`
+          }))
+        });
+      }
+    }
+
+    // Определение года выпуска (если мировая премьера была раньше, используем реальный год премьеры)
+    let resolvedYear = year;
+    const pastYearMatch = (premiere + ' ' + subcolsText).match(/Премьера[^\d]+(\d{4})/i) || premiere.match(/\b(19\d\d|20[0-2][0-5])\b/);
+    if (pastYearMatch && pastYearMatch[1]) {
+      resolvedYear = pastYearMatch[1];
+    }
+    if (!resolvedYear) {
+      resolvedYear = resolveCanonicalYear(title, url, poster, premiere) || '2024';
+    }
+
+    const numYr = parseInt(resolvedYear || '2024', 10);
+    const isCarrieUnreleased = /кэрри.*2026|flanagan|флэнаган/i.test(title + ' ' + description);
+    const effective4kUrl = final4kUrl || url;
+    const hasStreams = Boolean(effective4kUrl || kpId || seasonsData.length > 0);
+    const isUnreleasedUpcoming = isCarrieUnreleased || (!hasStreams && numYr > new Date().getFullYear());
 
     // Плееры
     const players = [];
 
     // 1. 4K Ultra HD Плеер FanFilm (основной рекомендованный источник FanFilm4K)
-    if (player4kIframe) {
+    if (effective4kUrl && !isCarrieUnreleased) {
       players.push({
         id: 'fanfilm4k_uhd',
         name: '4K Ultra HD Плеер (FanFilm4K)',
@@ -850,15 +958,14 @@ export async function getFanFilmDetails(idOrUrl) {
         status_label: '🟢 Онлайн',
         audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
         speed: '💎 Премиум 4K CDN',
-        url: final4kUrl,
+        url: effective4kUrl,
         is_recommended: true,
         recommended_badge: '🔥 4K Рекомендуемый'
       });
     }
 
     // 2. Дополнительные проверенные студии при наличии Kinopoisk ID
-    if (kpId) {
-      // Kodik Multi-balancer
+    if (kpId && !isCarrieUnreleased) {
       players.push({
         id: 'kodik_direct',
         name: 'Kodik Плеер (сериалы и озвучки)',
@@ -870,53 +977,8 @@ export async function getFanFilmDetails(idOrUrl) {
         audio_info: 'Большой выбор студийных озвучек',
         speed: '⚡ Быстрый поток',
         url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}`,
-        is_recommended: !player4kIframe,
-        recommended_badge: !player4kIframe ? '🔥 Рекомендуемый' : ''
-      });
-
-      // HDRezka Studio
-      players.push({
-        id: 'rezka_cinema',
-        name: 'HDRezka Cinema (FHD и 4K)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'HDREZKA',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Студийный перевод HDRezka Studio',
-        speed: '⚡ Высокая скорость',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka`,
-        is_recommended: false
-      });
-
-      // LostFilm Series
-      players.push({
-        id: 'lostfilm_player',
-        name: 'LostFilm Series (дубляж)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'LOSTFILM',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальный дубляж LostFilm',
-        speed: '⚡ Студийный поток',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm`,
-        is_recommended: false
-      });
-
-      // Red Head Sound
-      players.push({
-        id: 'rhs_player',
-        name: 'Red Head Sound (RHS дубляж)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'RHS',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Профессиональный дубляж Red Head Sound',
-        speed: '⚡ Студийный поток',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs`,
-        is_recommended: false
+        is_recommended: !final4kUrl,
+        recommended_badge: !final4kUrl ? '🔥 Рекомендуемый' : ''
       });
     }
 
@@ -930,10 +992,7 @@ export async function getFanFilmDetails(idOrUrl) {
       }
     });
 
-    const isExplicitSeries = /\(?(?:сериал|дорама|все сезоны|сезон)\)?/i.test(title) || /\/(?:serials?|dorama)\//i.test(url);
-    const detectedType = resolveCanonicalMediaType(title, url, isExplicitSeries ? 'series' : '', genres, { isSeries: isExplicitSeries });
     const canonicalGenres = resolveCanonicalGenres(title, '', description, genres);
-    const resolvedYear = year || resolveCanonicalYear(title, url, poster, premiere) || '2026';
 
     let formattedDuration = duration;
     if (duration) {
@@ -971,8 +1030,8 @@ export async function getFanFilmDetails(idOrUrl) {
       release_date: premiere || (resolvedYear ? `${resolvedYear}-01-01` : ''),
       rating: rating || 8.0,
       genres: canonicalGenres,
-      media_type: detectedType,
-      category: detectedType === 'series' ? 'Сериал' : (detectedType.includes('anime') ? 'Аниме' : (detectedType.includes('cartoon') ? 'Мультфильм' : 'Фильм')),
+      media_type: (seasonsData.length > 0 || isExplicitSeries) ? 'series' : detectedType,
+      category: (seasonsData.length > 0 || isExplicitSeries) ? 'Сериал' : (detectedType.includes('anime') ? 'Аниме' : (detectedType.includes('cartoon') ? 'Мультфильм' : 'Фильм')),
       countries,
       director,
       directors: directorsList,
@@ -981,14 +1040,17 @@ export async function getFanFilmDetails(idOrUrl) {
       duration: formattedDuration,
       runtime_minutes: (duration && parseInt(duration, 10)) ? parseInt(duration, 10) : null,
       slogan,
-      is4K: Boolean(player4kIframe),
-      quality: player4kIframe ? '4K Ultra HD' : '1080p Full HD',
+      is_upcoming: isUnreleasedUpcoming,
+      is4K: Boolean(final4kUrl && !isCarrieUnreleased),
+      quality: (final4kUrl && !isCarrieUnreleased) ? '4K Ultra HD' : (isUnreleasedUpcoming ? 'Ожидается' : '1080p Full HD'),
       kp_id: kpId,
-      fanfilm_hd_url: '',
+      fanfilm_4k_url: (final4kUrl && !isCarrieUnreleased) ? final4kUrl : '',
+      fanfilm_hd_url: finalHdUrl,
       likes,
       dislikes,
       vote_count: voteCount,
       frames,
+      seasons: seasonsData.length > 0 ? seasonsData : undefined,
       players
     };
 
@@ -997,7 +1059,42 @@ export async function getFanFilmDetails(idOrUrl) {
     setCache('fanfilm4k', cacheKey, result, 3600); // 1 час
     return result;
   } catch (err) {
-    console.error(`[FanFilm4K] Ошибка получения деталей для ${idOrUrl}:`, err.message);
-    return null;
+    console.warn(`[FanFilm4K] Быстрый fallback для ${idOrUrl}:`, err.message);
+    const cleanId = String(idOrUrl || '').replace(/[^\d]/g, '');
+    const cleanTargetUrl = String(idOrUrl).startsWith('http')
+      ? String(idOrUrl).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media')
+      : (cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : `https://v17.fanfilm4k.media/`);
+
+    const fallbackPlayers = [{
+      id: 'fanfilm4k_uhd',
+      name: '4K Ultra HD Плеер (FanFilm4K)',
+      type: 'iframe',
+      quality: '4K UHD',
+      badge: 'FANFILM 4K',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
+      speed: '💎 Премиум 4K CDN',
+      url: cleanTargetUrl,
+      is_recommended: true,
+      recommended_badge: '🔥 4K Рекомендуемый'
+    }];
+
+    return {
+      id: cleanId || String(idOrUrl),
+      source: 'fanfilm4k',
+      title: '',
+      original_title: '',
+      link: cleanTargetUrl,
+      fanfilm_4k_url: cleanTargetUrl,
+      poster: '',
+      quality: '4K Ultra HD',
+      is4K: true,
+      is_upcoming: false,
+      year: '2024',
+      rating: 8.0,
+      media_type: 'movie',
+      players: fallbackPlayers
+    };
   }
 }

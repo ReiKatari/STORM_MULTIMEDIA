@@ -1,11 +1,13 @@
 {
   "name": "storm-multimedia",
-  "version": "1.0.28",
+  "version": "1.0.30",
   "description": "STORM MULTIMEDIA - Премиальный мультимедийный кинотеатр, агрегатор и медиакомбайн",
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node watchdog.js",
+    "server": "node server.js",
+    "watchdog": "node watchdog.js",
     "dev": "node --watch server.js"
   },
   "keywords": [
@@ -22,11 +24,19 @@
   "license": "MIT",
   "dependencies": {
     "anixapi": "^0.3.2",
-    "cheerio": "^1.0.0",
+    "cheerio": "^1.2.0",
     "compression": "^1.8.2",
     "cors": "^2.8.5",
+    "domhandler": "^6.0.1",
+    "domutils": "^4.0.2",
     "express": "^4.21.2",
+    "mysql2": "^3.24.5",
+    "parse5": "^8.0.1",
     "sharp": "^0.35.4",
     "ws": "^8.21.3"
+  },
+  "optionalDependencies": {
+    "@img/sharp-linux-x64": "^0.35.5",
+    "@img/sharp-linuxmusl-x64": "^0.35.5"
   }
 }

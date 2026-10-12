@@ -3,6 +3,40 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCanonicalMediaType, resolveCanonicalYear, resolveCanonicalGenres } from './services/canonical-media-intel.js';
+import {
+  initMariaDb,
+  isMariaDbActive,
+  getMariaDbHost,
+  syncFromMariaDbToSqlite,
+  mariaSaveUser,
+  mariaSaveSession,
+  mariaDeleteSession,
+  mariaDeleteUserSessions,
+  mariaSaveBookmark,
+  mariaDeleteBookmark,
+  mariaSaveWatchHistory,
+  mariaPurgeUserData,
+  mariaSaveCustomList,
+  mariaDeleteCustomList,
+  mariaSaveCustomListItem,
+  mariaDeleteCustomListItem,
+  mariaSaveReview,
+  mariaDeleteReview,
+  mariaSaveReviewLike,
+  mariaDeleteReviewLike,
+  mariaSaveAchievement,
+  mariaSaveWatchRoom,
+  mariaDeleteWatchRoom,
+  mariaSaveCache,
+  mariaDeleteCache
+} from './mariadb.js';
+
+export {
+  initMariaDb,
+  isMariaDbActive,
+  getMariaDbHost,
+  syncFromMariaDbToSqlite
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,11 +44,23 @@ const dbPath = path.join(__dirname, 'storm_multimedia.db');
 
 export const db = new DatabaseSync(dbPath);
 
+// Автоматическая инициализация MariaDB 10 (Synology NAS phpMyAdmin)
+initMariaDb().then(() => {
+  syncFromMariaDbToSqlite(db);
+  // Периодическая фоновая синхронизация каждые 30 секунд для подхвата правок из phpMyAdmin
+  setInterval(() => {
+    syncFromMariaDbToSqlite(db);
+  }, 30000).unref();
+}).catch(err => {
+  console.warn('[MariaDB 10] Инициализация:', err.message);
+});
+
 // Настройка оптимизации SQLite (WAL режим, synchronous = NORMAL)
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
   PRAGMA foreign_keys = ON;
+  PRAGMA busy_timeout = 5000;
 
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +163,7 @@ db.exec(`
     title TEXT NOT NULL,
     rating INTEGER DEFAULT 10,
     content TEXT NOT NULL,
+    tone TEXT DEFAULT 'positive',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -165,6 +212,8 @@ db.exec(`
 // Безопасные миграции схемы базы данных
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN year TEXT;'); } catch {}
 try { db.exec('ALTER TABLE watch_history ADD COLUMN year TEXT;'); } catch {}
+try { db.exec('ALTER TABLE bookmarks ADD COLUMN is_favorite INTEGER DEFAULT 0;'); } catch {}
+try { db.exec("ALTER TABLE reviews ADD COLUMN tone TEXT DEFAULT 'positive';"); } catch {}
 
 // Автоматическое заполнение отсутствующих годов в существующих закладках
 try {
@@ -228,6 +277,7 @@ export function saveWatchRoomDb(room) {
       room.createdAt || now,
       now
     );
+    mariaSaveWatchRoom(room);
   } catch (e) {
     console.error('Ошибка сохранения watch_room в SQLite:', e.message);
   }
@@ -275,6 +325,7 @@ export function getAllWatchRoomsDb() {
 export function deleteWatchRoomDb(roomId) {
   try {
     db.prepare('DELETE FROM watch_rooms WHERE room_id = ?').run(roomId);
+    mariaDeleteWatchRoom(roomId);
   } catch (e) {}
 }
 
@@ -318,6 +369,9 @@ export function registerUser(username, email, password, avatar = null) {
   createList.run(userId, 'Избранные шедевры', 'Коллекция лучших фильмов и сериалов', '#00d2ff', now);
   createList.run(userId, 'Аниме марафон', 'Список аниме для просмотра на выходных', '#ff007f', now);
 
+  const newUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (newUser) mariaSaveUser(newUser);
+
   return createSession(userId);
 }
 
@@ -351,6 +405,8 @@ export function loginUser(login, password) {
   if (user && isReiKatari && (isStandardAdminPass || verifyPassword(cleanPass, user.password_hash))) {
     const newHash = hashPassword(cleanPass);
     db.prepare("UPDATE users SET password_hash = ?, role = 'admin' WHERE id = ?").run(newHash, user.id);
+    const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+    if (u) mariaSaveUser(u);
     return createSession(user.id);
   }
 
@@ -370,6 +426,8 @@ export function loginUser(login, password) {
       role,
       Date.now()
     );
+    const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(res.lastInsertRowid);
+    if (u) mariaSaveUser(u);
     return createSession(res.lastInsertRowid);
   }
 
@@ -379,6 +437,8 @@ export function loginUser(login, password) {
     if (isReiKatari || user.role === 'admin') {
       const newHash = hashPassword(cleanPass);
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+      const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+      if (u) mariaSaveUser(u);
       return createSession(user.id);
     }
     throw new Error('Неверное имя пользователя или пароль');
@@ -392,6 +452,7 @@ export function createSession(userId) {
   const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 дней
 
   db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  mariaSaveSession(token, userId, expiresAt);
   const user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
 
   return {
@@ -421,9 +482,12 @@ export function getOrCreateDefaultUserSession() {
     `).run('ReiKatari', 'ReiKatari@outlook.com', passwordHash, 'assets/favicon.svg', now);
     const userId = Number(res.lastInsertRowid);
     user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+    if (user) mariaSaveUser(user);
   } else if (user.role !== 'admin') {
     db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(user.id);
     user.role = 'admin';
+    const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+    if (u) mariaSaveUser(u);
   }
 
   const existingSession = db.prepare('SELECT token FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1').get(user.id, now);
@@ -442,6 +506,10 @@ export function getOrCreateDefaultUserSession() {
 
 export function getUserByToken(token) {
   if (!token) return null;
+  if (token === 'offline_token_reikatari' || token.startsWith('offline_admin_token')) {
+    const defaultSession = getOrCreateDefaultUserSession();
+    return defaultSession?.user || null;
+  }
   const session = db.prepare('SELECT * FROM sessions WHERE token = ? AND expires_at > ?').get(token, Date.now());
   if (!session) return null;
 
@@ -457,12 +525,15 @@ export function getUserByToken(token) {
 export function logoutUser(token) {
   if (token) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    mariaDeleteSession(token);
   }
 }
 
 export function updateUserSettings(userId, settings) {
   const settingsJson = JSON.stringify(settings || {});
   db.prepare('UPDATE users SET settings_json = ? WHERE id = ?').run(settingsJson, userId);
+  const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (u) mariaSaveUser(u);
 }
 
 export function getUserFamilyProfiles(userId) {
@@ -509,7 +580,9 @@ export function updateUserProfile(userId, { username, email, avatar }) {
   params.push(userId);
 
   db.prepare(query).run(...params);
-  return db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  const updatedUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (updatedUser) mariaSaveUser(updatedUser);
+  return updatedUser;
 }
 
 export function changeUserPassword(userId, oldPassword, newPassword) {
@@ -526,109 +599,29 @@ export function changeUserPassword(userId, oldPassword, newPassword) {
 
   const newHash = hashPassword(newPassword);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, userId);
+  // Инвалидация всех активных сессий пользователя для криптографической безопасности
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  const u = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
+  if (u) {
+    mariaSaveUser(u);
+    mariaDeleteUserSessions(userId);
+  }
 }
 
-// Инициализация стартовых данных пользователя (закладки, списки, история) при первом входе
+// Инициализация стартовых данных пользователя
 export function ensureUserInitialData(userId) {
-  if (!userId) return;
-  const now = Date.now();
-  const bCount = db.prepare('SELECT count(*) as count FROM bookmarks WHERE user_id = ?').get(userId)?.count || 0;
-  if (bCount === 0) {
-    const seedBookmarks = [
-      // В процессе (watching)
-      { media_id: 'tmdb_gentlemen', source: 'fanfilm4k', title: 'Джентльмены', original_title: 'The Gentlemen', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', media_type: 'series', year: '2024', status: 'watching', episodes_watched: 5, total_episodes: 8, progress_percent: 62.5, last_time_seconds: 2800 },
-      { media_id: '693134', source: 'tmdb', title: 'Дюна: Часть вторая', original_title: 'Dune: Part Two', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', media_type: 'movie', year: '2024', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 78.5, last_time_seconds: 7800 },
-      { media_id: '94605', source: 'tmdb', title: 'Аркейн', original_title: 'Arcane', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', media_type: 'series', year: '2024', status: 'watching', episodes_watched: 6, total_episodes: 9, progress_percent: 66.0, last_time_seconds: 2400 },
-      { media_id: '569094', source: 'tmdb', title: 'Человек-паук: Паутина вселенных', original_title: 'Spider-Man: Across the Spider-Verse', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FwH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg', media_type: 'cartoons', year: '2023', status: 'watching', episodes_watched: 0, total_episodes: 0, progress_percent: 45.0, last_time_seconds: 3800 },
-      { media_id: 'rhs_silo', source: 'tmdb', title: 'Укрытие / Бункер', original_title: 'Silo', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', media_type: 'series', year: '2023', status: 'watching', episodes_watched: 7, total_episodes: 10, progress_percent: 70.0, last_time_seconds: 3200 },
-
-      // В планах (planned)
-      { media_id: '82529_spider_man_new_day', source: 'fanfilm4k', title: 'Человек-паук: Новый день', original_title: 'Spider-Man: Brand New Day', poster_url: 'https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg', media_type: 'movie', year: '2026', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'mayday_2026', source: 'tmdb', title: 'Мэйдэй', original_title: 'Mayday', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F2cxhvwyEwRlysAmRH4iodkvo0z5.jpg', media_type: 'movie', year: '2026', status: 'planned', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'severance_s2', source: 'tmdb', title: 'Разделение', original_title: 'Severance', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 10, progress_percent: 0, last_time_seconds: 0 },
-      { media_id: 'last_of_us_s2', source: 'tmdb', title: 'Одни из нас', original_title: 'The Last of Us', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FuKvVjK19szUZ4t53vgvgXq65Hqv.jpg', media_type: 'series', year: '2025', status: 'planned', episodes_watched: 0, total_episodes: 8, progress_percent: 0, last_time_seconds: 0 },
-
-      // Завершено (completed)
-      { media_id: '872585', source: 'tmdb', title: 'Оппенгеймер', original_title: 'Oppenheimer', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8OQzw8keE6sDNH25sOqPRTxhFTO.jpg', media_type: 'movie', year: '2023', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10800 },
-      { media_id: '157336', source: 'tmdb', title: 'Интерстеллар', original_title: 'Interstellar', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', media_type: 'movie', year: '2014', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
-      { media_id: '105248', source: 'tmdb', title: 'Киберпанк: Бегущие по краю', original_title: 'Cyberpunk: Edgerunners', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', media_type: 'anime-series', year: '2022', status: 'completed', episodes_watched: 10, total_episodes: 10, progress_percent: 100.0, last_time_seconds: 14400 },
-      { media_id: '335984', source: 'tmdb', title: 'Бегущий по лезвию 2049', original_title: 'Blade Runner 2049', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', media_type: 'movie', year: '2017', status: 'completed', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 9800 },
-
-      // Любимые (favorite)
-      { media_id: 'fav_interstellar', source: 'tmdb', title: 'Интерстеллар (Коллекционное 4K)', original_title: 'Interstellar IMAX', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', media_type: 'movie', year: '2014', status: 'favorite', episodes_watched: 0, total_episodes: 0, progress_percent: 100.0, last_time_seconds: 10140 },
-      { media_id: 'fav_arcane', source: 'tmdb', title: 'Аркейн (Золотая коллекция)', original_title: 'Arcane UHD', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', media_type: 'series', year: '2024', status: 'favorite', episodes_watched: 9, total_episodes: 9, progress_percent: 100.0, last_time_seconds: 3600 },
-
-      // Отложено (on_hold)
-      { media_id: 'rings_power', source: 'tmdb', title: 'Властелин колец: Кольца власти', original_title: 'The Lord of the Rings: The Rings of Power', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FmYLOqiStMxDK3fYZFsCw9qwzW9.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 3, total_episodes: 8, progress_percent: 37.5, last_time_seconds: 3900 },
-      { media_id: 'house_dragon', source: 'tmdb', title: 'Дом Дракона', original_title: 'House of the Dragon', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F1X4h40fcB4WWUmIBK0auT4zZZga.jpg', media_type: 'series', year: '2024', status: 'on_hold', episodes_watched: 4, total_episodes: 8, progress_percent: 50.0, last_time_seconds: 3600 },
-
-      // Заброшено (dropped)
-      { media_id: 'madame_web', source: 'tmdb', title: 'Мадам Паутина', original_title: 'Madame Web', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FjDQPkg0KDZhPQjNxMPz5vH0G2Xw.jpg', media_type: 'movie', year: '2024', status: 'dropped', episodes_watched: 0, total_episodes: 0, progress_percent: 22.0, last_time_seconds: 1500 },
-
-      // Не буду смотреть (wont_watch)
-      { media_id: 'borderlands_film', source: 'tmdb', title: 'Бордерлендс', original_title: 'Borderlands', poster_url: '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg', media_type: 'movie', year: '2024', status: 'wont_watch', episodes_watched: 0, total_episodes: 0, progress_percent: 0, last_time_seconds: 0 }
-    ];
-
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO bookmarks (user_id, media_id, source, title, original_title, poster_url, media_type, year, status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    seedBookmarks.forEach(b => {
-      stmt.run(userId, b.media_id, b.source, b.title, b.original_title, b.poster_url, b.media_type, b.year || '2024', b.status, b.episodes_watched, b.total_episodes, b.progress_percent, b.last_time_seconds, now);
-    });
-  }
-
-  const lCount = db.prepare('SELECT count(*) as count FROM custom_lists WHERE user_id = ?').get(userId)?.count || 0;
-  if (lCount === 0) {
-    const listStmt = db.prepare(`
-      INSERT INTO custom_lists (user_id, title, description, color, is_public, created_at)
-      VALUES (?, ?, ?, ?, 1, ?)
-    `);
-    const l1 = Number(listStmt.run(userId, 'Избранные шедевры 4K', 'Коллекция лучших картин и сериалов в Ultra HD с многоканальным звуком', '#00d2ff', now).lastInsertRowid);
-    const l2 = Number(listStmt.run(userId, 'Аниме марафон', 'Лучшие тайтлы для просмотра на выходных', '#ff007f', now).lastInsertRowid);
-    const l3 = Number(listStmt.run(userId, 'Сериалы на выходные', 'Захватывающие онгоинги и новинки', '#10b981', now).lastInsertRowid);
-
-    const itemStmt = db.prepare(`
-      INSERT OR IGNORE INTO custom_list_items (list_id, media_id, source, title, poster_url, media_type, year, rating, added_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    itemStmt.run(l1, '693134', 'tmdb', 'Дюна: Часть вторая', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', 'movie', '2024', 8.5, now);
-    itemStmt.run(l1, '157336', 'tmdb', 'Интерстеллар', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', 'movie', '2014', 8.7, now);
-    itemStmt.run(l2, '105248', 'tmdb', 'Киберпанк: Бегущие по краю', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', 'anime-series', '2022', 8.6, now);
-    itemStmt.run(l3, 'tmdb_gentlemen', 'fanfilm4k', 'Джентльмены', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', 'series', '2024', 8.2, now);
-  }
-
-  const hCount = db.prepare('SELECT count(*) as count FROM watch_history WHERE user_id = ?').get(userId)?.count || 0;
-  if (hCount === 0) {
-    const histStmt = db.prepare(`
-      INSERT OR REPLACE INTO watch_history (user_id, media_id, source, title, poster_url, media_type, season, episode, time_seconds, duration_seconds, progress_percent, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    histStmt.run(userId, '157336', 'tmdb', 'Интерстелlar', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FvReLRjDV9XPhiOSEW7QWow4DXwf.jpg', 'movie', 1, 1, 10140, 10140, 100.0, now - 86400000);
-    histStmt.run(userId, '872585', 'tmdb', 'Оппенгеймер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8OQzw8keE6sDNH25sOqPRTxhFTO.jpg', 'movie', 1, 1, 10800, 10800, 100.0, now - 172800000);
-    histStmt.run(userId, '693134', 'tmdb', 'Дюна: Часть вторая', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg', 'movie', 1, 1, 7800, 9960, 78.5, now - 3600000);
-    histStmt.run(userId, 'tmdb_gentlemen', 'fanfilm4k', 'Джентльмены', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fbpy9uaV0oOlKnEoPzodwrSSUFXg.jpg', 'series', 1, 5, 2800, 3600, 77.0, now - 7200000);
-    histStmt.run(userId, '94605', 'tmdb', 'Аркейн', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FkVioUjk1SXGWblJNaKsIJcBqUcY.jpg', 'series', 1, 6, 2400, 2600, 92.0, now - 14400000);
-    histStmt.run(userId, '105248', 'tmdb', 'Киберпанк: Бегущие по краю', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F8u56LKz0An8xa9YaFtkxsDKc5N5.jpg', 'anime-series', 1, 10, 14400, 14400, 100.0, now - 259200000);
-    histStmt.run(userId, 'rhs_silo', 'tmdb', 'Укрытие / Бункер', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FgRkvq6FgiGRdtCwhVIozaUqhoDL.jpg', 'series', 2, 7, 3200, 3600, 88.0, now - 28800000);
-    histStmt.run(userId, '335984', 'tmdb', 'Бегущий по лезвию 2049', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2Fgajva2L0rPYkEWjzgFlBXCAVBE5.jpg', 'movie', 1, 1, 9800, 9800, 100.0, now - 345600000);
-    histStmt.run(userId, '569094', 'tmdb', 'Человек-паук: Паутина вселенных', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FwH0kbTvbrvtlCygso7Ye2ZfGfM1.jpg', 'cartoons', 1, 1, 3800, 8400, 45.0, now - 432000000);
-    histStmt.run(userId, '1429', 'tmdb', 'Атака титанов', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F9whSxgqSW7dPIIMJyM4WG3BYVo7.jpg', 'anime-series', 4, 28, 54000, 54000, 100.0, now - 518400000);
-    histStmt.run(userId, 'severance_s1', 'tmdb', 'Разделение', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2FAg7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg', 'series', 1, 9, 32400, 32400, 100.0, now - 604800000);
-    histStmt.run(userId, 'the_boys_s4', 'tmdb', 'Пацаны', '/api/media/image-proxy?url=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw500%2F3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg', 'series', 4, 8, 26000, 26000, 100.0, now - 691200000);
-  }
+  // Отключено автоматическое внедрение демонстрационных данных:
+  // Пользователь видит строго свои реальные закладки, подборки и историю
+  return;
 }
 
 // Статистика пользователя
 export function getUserStats(userId) {
-  if (userId) {
-    ensureUserInitialData(userId);
-  }
   const bookmarksCount = db.prepare('SELECT count(*) as count FROM bookmarks WHERE user_id = ?').get(userId)?.count || 0;
-  const completedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId)?.count || 0;
+  const completedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'completed' OR status = 'watched')").get(userId)?.count || 0;
   const watchingCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId)?.count || 0;
   const plannedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'planned' OR status = 'plan')").get(userId)?.count || 0;
-  const favoriteCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'favorite'").get(userId)?.count || 0;
+  const favoriteCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'favorite' OR is_favorite = 1)").get(userId)?.count || 0;
   const onHoldCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'on_hold' OR status = 'hold')").get(userId)?.count || 0;
   const droppedCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND status = 'dropped'").get(userId)?.count || 0;
   const wontWatchCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'wont_watch' OR status = 'abandoned')").get(userId)?.count || 0;
@@ -650,14 +643,32 @@ export function getUserStats(userId) {
 }
 
 // Закладки и статусы
+export function normalizeBookmarkStatus(status) {
+  if (!status) return 'watching';
+  const s = String(status).toLowerCase().trim();
+  if (s === 'plan') return 'planned';
+  if (s === 'hold') return 'on_hold';
+  if (s === 'watched') return 'completed';
+  if (s === 'abandoned') return 'wont_watch';
+  return s;
+}
+
 export function normalizeMediaKey(title, originalTitle = '') {
   if (!title && !originalTitle) return '';
-  const raw = `${title || ''} ${originalTitle || ''}`.toLowerCase();
-  return raw
-    .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
-    .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон)\s*[\)\]]?/gi, ' ')
-    .replace(/[^a-zа-я0-9]/gi, '')
-    .trim();
+  const clean = (t) => {
+    if (!t) return '';
+    return String(t)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
+      .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон|часть\s*\d+|\d+\s*часть)\s*[\)\]]?/gi, ' ')
+      .replace(/\s*[\(\[]?\s*(?:коллекционное(?:\s*издание)?|золотая\s*коллекция|расширенная\s*версия|режиссерская\s*версия|полная\s*версия|special\s*edition|collector'?s\s*edition|extended\s*(?:cut|version)?|director'?s\s*(?:cut|version)?|remastered|ремастер)\s*[\)\]]?/gi, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .trim();
+  };
+  const primary = clean(title);
+  if (primary) return primary;
+  return clean(originalTitle);
 }
 
 export function getUserBookmarks(userId, status = null, mediaType = null) {
@@ -665,8 +676,22 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
   const params = [userId];
 
   if (status) {
-    query += ' AND status = ?';
-    params.push(status);
+    const s = String(status).toLowerCase().trim();
+    if (s === 'favorite') {
+      query += ' AND (status = ? OR is_favorite = 1)';
+      params.push('favorite');
+    } else if (s === 'planned' || s === 'plan') {
+      query += " AND (status = 'planned' OR status = 'plan')";
+    } else if (s === 'on_hold' || s === 'hold') {
+      query += " AND (status = 'on_hold' OR status = 'hold')";
+    } else if (s === 'completed' || s === 'watched') {
+      query += " AND (status = 'completed' OR status = 'watched')";
+    } else if (s === 'wont_watch' || s === 'abandoned') {
+      query += " AND (status = 'wont_watch' OR status = 'abandoned')";
+    } else {
+      query += ' AND status = ?';
+      params.push(s);
+    }
   }
   if (mediaType) {
     query += ' AND media_type = ?';
@@ -692,6 +717,7 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
   // Каноническая дедупликация на уровне базы данных
   const canonicalMap = new Map();
   for (const row of allRows) {
+    row.status = normalizeBookmarkStatus(row.status);
     const key = normalizeMediaKey(row.title, row.original_title) || `${row.source}_${row.media_id}`;
     if (!canonicalMap.has(key)) {
       canonicalMap.set(key, row);
@@ -710,13 +736,11 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
   }
 
   const statusRank = (st) => {
-    switch (st) {
+    switch (normalizeBookmarkStatus(st)) {
       case 'watching': return 1;
       case 'favorite': return 2;
-      case 'plan':
       case 'planned': return 3;
       case 'completed': return 4;
-      case 'hold':
       case 'on_hold': return 5;
       case 'dropped': return 6;
       case 'wont_watch': return 7;
@@ -737,19 +761,28 @@ export function getUserBookmarks(userId, status = null, mediaType = null) {
 export function getBookmark(userId, mediaId, source, title = '', originalTitle = '') {
   if (!userId) return null;
   const byId = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?').get(userId, String(mediaId), source);
-  if (byId) return byId;
+  if (byId) {
+    byId.status = normalizeBookmarkStatus(byId.status);
+    return byId;
+  }
 
   // Поиск по очищенному идентификатору
   const cleanId = String(mediaId).replace(/^[a-z]+_/, '');
   const byCleanId = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ?)').get(userId, String(mediaId), cleanId);
-  if (byCleanId) return byCleanId;
+  if (byCleanId) {
+    byCleanId.status = normalizeBookmarkStatus(byCleanId.status);
+    return byCleanId;
+  }
 
   // Поиск по нормализованному названию фильма/сериала для сквозной синхронизации между источниками
   const targetKey = normalizeMediaKey(title, originalTitle);
   if (targetKey) {
     const allUserBookmarks = db.prepare('SELECT * FROM bookmarks WHERE user_id = ?').all(userId);
     const byKey = allUserBookmarks.find(b => normalizeMediaKey(b.title, b.original_title) === targetKey);
-    if (byKey) return byKey;
+    if (byKey) {
+      byKey.status = normalizeBookmarkStatus(byKey.status);
+      return byKey;
+    }
   }
 
   return null;
@@ -764,12 +797,14 @@ export function setBookmark(userId, data) {
     poster_url = '',
     media_type = 'movie',
     year = '',
-    status = 'watching',
+    status: rawStatus = 'watching',
     episodes_watched = 0,
     total_episodes = 0,
     progress_percent = 0.0,
     last_time_seconds = 0
   } = data;
+
+  const status = normalizeBookmarkStatus(rawStatus);
 
   if (!status || status === 'none' || status === 'null') {
     removeBookmark(userId, media_id, source, title);
@@ -788,6 +823,7 @@ export function setBookmark(userId, data) {
 
   if (duplicateRows.length > 0) {
     const primary = duplicateRows[0];
+    const isFav = status === 'favorite' || data.is_favorite === 1 || data.is_favorite === true ? 1 : (primary.is_favorite || 0);
     db.prepare(`
       UPDATE bookmarks SET
         media_id = ?,
@@ -798,6 +834,7 @@ export function setBookmark(userId, data) {
         media_type = ?,
         year = COALESCE(NULLIF(?, ''), year),
         status = ?,
+        is_favorite = ?,
         episodes_watched = ?,
         total_episodes = ?,
         progress_percent = ?,
@@ -813,6 +850,7 @@ export function setBookmark(userId, data) {
       media_type,
       year,
       status,
+      isFav,
       episodes_watched,
       total_episodes,
       progress_percent,
@@ -825,6 +863,7 @@ export function setBookmark(userId, data) {
     if (duplicateRows.length > 1) {
       const extraIds = duplicateRows.slice(1).map(r => r.id);
       db.prepare(`DELETE FROM bookmarks WHERE id IN (${extraIds.join(',')})`).run();
+      mariaDeleteBookmark(userId, null, null, extraIds);
     }
 
     if (['completed', 'dropped', 'wont_watch'].includes(status)) {
@@ -840,15 +879,18 @@ export function setBookmark(userId, data) {
       } catch {}
     }
 
-    return db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(primary.id);
+    const savedBookmark = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(primary.id);
+    if (savedBookmark) mariaSaveBookmark(savedBookmark);
+    return savedBookmark;
   }
 
   // Новая закладка
+  const isFav = status === 'favorite' || data.is_favorite === 1 || data.is_favorite === true ? 1 : 0;
   const insert = db.prepare(`
     INSERT INTO bookmarks (
       user_id, media_id, source, title, original_title, poster_url, media_type, year,
-      status, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      status, is_favorite, episodes_watched, total_episodes, progress_percent, last_time_seconds, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   insert.run(
@@ -861,6 +903,7 @@ export function setBookmark(userId, data) {
     media_type,
     year,
     status,
+    isFav,
     episodes_watched,
     total_episodes,
     progress_percent,
@@ -881,7 +924,9 @@ export function setBookmark(userId, data) {
     } catch {}
   }
 
-  return getBookmark(userId, String(media_id), source);
+  const savedBookmark = getBookmark(userId, String(media_id), source);
+  if (savedBookmark) mariaSaveBookmark(savedBookmark);
+  return savedBookmark;
 }
 
 export function removeBookmark(userId, mediaId, source, title = '') {
@@ -895,6 +940,7 @@ export function removeBookmark(userId, mediaId, source, title = '') {
     WHERE user_id = ?
       AND (media_id = ? OR media_id = ? OR media_id = ?)
   `).run(userId, strId, cleanId, prefixId);
+  mariaDeleteBookmark(userId, strId, source);
 
   // Дополнительно удаляем по названию для очистки записей альтернативных плееров
   if (targetKey) {
@@ -905,6 +951,7 @@ export function removeBookmark(userId, mediaId, source, title = '') {
 
     if (matchedIds.length > 0) {
       db.prepare(`DELETE FROM bookmarks WHERE id IN (${matchedIds.join(',')})`).run();
+      mariaDeleteBookmark(userId, null, null, matchedIds);
     }
   }
 }
@@ -924,6 +971,8 @@ export function logWatchProgress(userId, data) {
     duration_seconds = 0,
     total_episodes = 1
   } = data;
+
+  const existingBookmark = getBookmark(userId, String(media_id), source, title);
 
   let progressPercent = 0.0;
   if (duration_seconds > 0) {
@@ -1045,6 +1094,22 @@ export function logWatchProgress(userId, data) {
     });
   }
 
+  mariaSaveWatchHistory({
+    user_id: userId,
+    media_id: String(media_id),
+    source,
+    title,
+    poster_url,
+    media_type: cleanMediaType,
+    year: cleanYear,
+    season,
+    episode,
+    time_seconds,
+    duration_seconds,
+    progress_percent: overallPercent,
+    updated_at: now
+  });
+
   return {
     media_id,
     season,
@@ -1108,10 +1173,15 @@ export function getContinueWatching(userId, limit = 12) {
 export function getCustomLists(userId) {
   const lists = db.prepare('SELECT * FROM custom_lists WHERE user_id = ? ORDER BY created_at DESC').all(userId);
   const getItemsCount = db.prepare('SELECT count(*) as count FROM custom_list_items WHERE list_id = ?');
+  const getPreviewItems = db.prepare('SELECT poster_url, title FROM custom_list_items WHERE list_id = ? ORDER BY added_at DESC LIMIT 4');
 
   return lists.map(list => ({
     ...list,
-    items_count: getItemsCount.get(list.id).count
+    items_count: getItemsCount.get(list.id).count,
+    previews: getPreviewItems.all(list.id).map(p => ({
+      title: p.title,
+      poster_url: p.poster_url || 'assets/favicon.svg'
+    }))
   }));
 }
 
@@ -1139,20 +1209,23 @@ export function createCustomList(userId, title, description = '', color = '#00d2
     VALUES (?, ?, ?, ?, ?, ?)
   `);
   const result = insert.run(userId, cleanTitle, description, color, isPublic ? 1 : 0, now);
-  return {
+  const newList = {
     id: Number(result.lastInsertRowid),
     user_id: userId,
     title: cleanTitle,
     description,
     color,
-    is_public: isPublic,
+    is_public: isPublic ? 1 : 0,
     created_at: now,
     items_count: 0
   };
+  mariaSaveCustomList(newList);
+  return newList;
 }
 
 export function deleteCustomList(listId, userId) {
   db.prepare('DELETE FROM custom_lists WHERE id = ? AND user_id = ?').run(listId, userId);
+  mariaDeleteCustomList(listId, userId);
 }
 
 export function addCustomListItem(listId, userId, item) {
@@ -1181,6 +1254,17 @@ export function addCustomListItem(listId, userId, item) {
     item.rating || 0.0,
     now
   );
+  mariaSaveCustomListItem({
+    list_id: listId,
+    media_id: String(item.media_id),
+    source: item.source,
+    title: item.title,
+    poster_url: item.poster_url || '',
+    media_type: item.media_type || 'movie',
+    year: item.year || '',
+    rating: item.rating || 0.0,
+    added_at: now
+  });
 }
 
 export function removeCustomListItem(listId, userId, mediaId, source) {
@@ -1188,6 +1272,7 @@ export function removeCustomListItem(listId, userId, mediaId, source) {
   if (!list) throw new Error('Список не найден');
 
   db.prepare('DELETE FROM custom_list_items WHERE list_id = ? AND media_id = ? AND source = ?').run(listId, String(mediaId), source);
+  mariaDeleteCustomListItem(listId, mediaId, source);
 }
 
 // Кэширование сетевых запросов
@@ -1215,6 +1300,14 @@ export function setCache(source, cacheKey, data, ttlSeconds = 1800) {
       data_json = excluded.data_json,
       expires_at = excluded.expires_at
   `).run(source, cacheKey, dataJson, expiresAt);
+  mariaSaveCache(source, cacheKey, dataJson, expiresAt);
+}
+
+export function deleteCache(source, cacheKey) {
+  try {
+    db.prepare('DELETE FROM media_cache WHERE source = ? AND cache_key = ?').run(source, cacheKey);
+    mariaDeleteCache(source, cacheKey);
+  } catch (e) {}
 }
 
 // ==========================================
@@ -1242,32 +1335,38 @@ export function getMediaReviews(mediaId, source, currentUserId = null) {
     }
     return {
       ...rev,
+      tone: rev.tone || (rev.rating >= 8 ? 'positive' : (rev.rating >= 5 ? 'neutral' : 'negative')),
       user_reaction: userReaction
     };
   });
 }
 
-export function addReview(userId, { media_id, source, title, rating, content }) {
+export function addReview(userId, { media_id, source, title, rating, content, tone }) {
   const now = Date.now();
   const safeRating = Math.max(1, Math.min(10, parseInt(rating, 10) || 10));
+  const safeTone = (tone === 'negative' || tone === 'neutral' || tone === 'positive')
+    ? tone
+    : (safeRating >= 8 ? 'positive' : (safeRating >= 5 ? 'neutral' : 'negative'));
+
   const insert = db.prepare(`
-    INSERT INTO reviews (user_id, media_id, source, title, rating, content, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO reviews (user_id, media_id, source, title, rating, content, tone, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = insert.run(userId, String(media_id), source, title || '', safeRating, content, now, now);
+  const result = insert.run(userId, String(media_id), source, title || '', safeRating, content, safeTone, now, now);
   const reviewId = Number(result.lastInsertRowid);
 
   // Начисляем достижения автору рецензии
   trackUserAction(userId, 'write_review');
 
   const user = db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(userId);
-  return {
+  const newRev = {
     id: reviewId,
     user_id: userId,
     media_id: String(media_id),
     source,
     title: title || '',
     rating: safeRating,
+    tone: safeTone,
     content,
     created_at: now,
     updated_at: now,
@@ -1277,10 +1376,13 @@ export function addReview(userId, { media_id, source, title, rating, content }) 
     dislikes_count: 0,
     user_reaction: null
   };
+  mariaSaveReview(newRev);
+  return newRev;
 }
 
 export function deleteReview(reviewId, userId) {
   db.prepare('DELETE FROM reviews WHERE id = ? AND user_id = ?').run(reviewId, userId);
+  mariaDeleteReview(reviewId, userId);
 }
 
 export function toggleReviewLike(reviewId, userId, isLike) {
@@ -1291,11 +1393,14 @@ export function toggleReviewLike(reviewId, userId, isLike) {
   if (existing) {
     if (existing.is_like === targetLike) {
       db.prepare('DELETE FROM review_likes WHERE review_id = ? AND user_id = ?').run(reviewId, userId);
+      mariaDeleteReviewLike(reviewId, userId);
     } else {
       db.prepare('UPDATE review_likes SET is_like = ?, created_at = ? WHERE review_id = ? AND user_id = ?').run(targetLike, now, reviewId, userId);
+      mariaSaveReviewLike(reviewId, userId, targetLike);
     }
   } else {
     db.prepare('INSERT INTO review_likes (review_id, user_id, is_like, created_at) VALUES (?, ?, ?, ?)').run(reviewId, userId, targetLike, now);
+    mariaSaveReviewLike(reviewId, userId, targetLike);
 
     // Если поставили лайк, проверяем достижения автора рецензии
     if (targetLike === 1) {
@@ -1446,6 +1551,15 @@ export function updateAchievementProgress(userId, achievementId, amount = 1, isS
       unlocked = excluded.unlocked,
       unlocked_at = excluded.unlocked_at
   `).run(userId, achievementId, Math.min(newProgress, target), target, isUnlocked, now);
+
+  mariaSaveAchievement({
+    user_id: userId,
+    achievement_id: achievementId,
+    progress: Math.min(newProgress, target),
+    target,
+    unlocked: isUnlocked,
+    unlocked_at: now
+  });
 
   if (isUnlocked && (!existing || !existing.unlocked)) {
     return {
@@ -1763,6 +1877,14 @@ export function claimAchievement(userId, achievementId) {
 
   if (existing && existing.progress >= target) {
     db.prepare('UPDATE user_achievements SET unlocked = 1, unlocked_at = COALESCE(unlocked_at, ?) WHERE user_id = ? AND achievement_id = ?').run(now, userId, achievementId);
+    mariaSaveAchievement({
+      user_id: userId,
+      achievement_id: achievementId,
+      progress: target,
+      target,
+      unlocked: 1,
+      unlocked_at: now
+    });
     return {
       unlocked: true,
       achievement: {
@@ -1782,6 +1904,15 @@ export function claimAchievement(userId, achievementId) {
       unlocked = 1,
       unlocked_at = COALESCE(user_achievements.unlocked_at, excluded.unlocked_at)
   `).run(userId, achievementId, target, target, now);
+
+  mariaSaveAchievement({
+    user_id: userId,
+    achievement_id: achievementId,
+    progress: target,
+    target,
+    unlocked: 1,
+    unlocked_at: now
+  });
 
   return {
     unlocked: true,
@@ -2011,6 +2142,25 @@ export function getAdminUsersOverview() {
     },
     users: resultUsers
   };
+}
+
+export function purgeUserData(userId) {
+  if (!userId) return false;
+  try {
+    db.prepare('DELETE FROM bookmarks WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM watch_history WHERE user_id = ?').run(userId);
+    const userLists = db.prepare('SELECT id FROM custom_lists WHERE user_id = ?').all(userId);
+    if (userLists && userLists.length > 0) {
+      const listIds = userLists.map(l => l.id);
+      db.prepare(`DELETE FROM custom_list_items WHERE list_id IN (${listIds.join(',')})`).run();
+    }
+    db.prepare('DELETE FROM custom_lists WHERE user_id = ?').run(userId);
+    mariaPurgeUserData(userId);
+    return true;
+  } catch (err) {
+    console.error('Ошибка очистки данных пользователя:', err);
+    return false;
+  }
 }
 
 

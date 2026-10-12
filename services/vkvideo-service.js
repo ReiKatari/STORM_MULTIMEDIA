@@ -4,7 +4,7 @@
  */
 
 import { getCache, setCache } from '../db.js';
-import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType, isTrailerMedia } from './canonical-media-intel.js';
 
 async function vkFetch(url, options = {}) {
   const timeoutMs = options.timeout || 4000;
@@ -27,18 +27,31 @@ function formatVkVideoItem(item) {
   if (!item || !item.id) return null;
 
   const title = (item.title || 'VK Видео').trim();
+  const durationSec = parseInt(item.duration, 10) || 0;
+  const description = (item.description || '').trim();
+
+  // Исключаем трейлеры, промо и короткие ролики
+  if (isTrailerMedia({
+    title,
+    original_title: title,
+    description,
+    duration_seconds: durationSec,
+    source: 'vkvideo'
+  })) {
+    return null;
+  }
+
   const rawYear = item.year || (item.date ? new Date(item.date * 1000).getFullYear() : '');
   const resolvedYear = resolveCanonicalYear(title, item.player || '', '', rawYear, String(rawYear || '')) || String(rawYear || new Date().getFullYear());
 
   const poster = item.image || item.photo_800 || item.photo_320 || 'assets/favicon.svg';
-  const durationSec = parseInt(item.duration, 10) || 0;
   const durationMin = durationSec > 0 ? Math.round(durationSec / 60) : 0;
   const durationStr = durationMin > 0 ? `${durationMin} мин` : '';
 
   const lowerTitle = title.toLowerCase();
   const isSeries = lowerTitle.includes('серия') || lowerTitle.includes('сезон') || lowerTitle.includes('эпизод') || lowerTitle.includes('выпуск');
   const mediaType = isSeries ? 'series' : resolveCanonicalMediaType(title, item.player || '', 'movie', []);
-  const genres = resolveCanonicalGenres(title, isSeries ? 'Сериал' : 'Фильм', item.description || '', []);
+  const genres = resolveCanonicalGenres(title, isSeries ? 'Сериал' : 'Фильм', description, []);
 
   return {
     id: `vk_${item.owner_id || 0}_${item.id}`,
@@ -57,7 +70,7 @@ function formatVkVideoItem(item) {
     duration: durationStr,
     duration_seconds: durationSec,
     genres,
-    description: (item.description || 'Видеоматериал из открытой медиатеки VK Видео.').trim(),
+    description: (description || 'Видеоматериал из открытой медиатеки VK Видео.').trim(),
     embed_url: item.player || `https://vkvideo.ru/video_ext.php?oid=${item.owner_id}&id=${item.id}`,
     views: item.views || 0
   };
@@ -113,6 +126,16 @@ export async function searchVkVideo(query, page = 1) {
           const durationStr = typeof it[5] === 'string' ? it[5] : '';
           const durationSec = typeof it[18] === 'number' ? it[18] : 0;
           const views = typeof it[10] === 'number' ? it[10] : 0;
+
+          // Исключаем трейлеры, тизеры и короткие рекламные клипы
+          if (isTrailerMedia({
+            title,
+            original_title: title,
+            duration_seconds: durationSec,
+            source: 'vkvideo'
+          })) {
+            continue;
+          }
 
           const rawYear = title.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '';
           const resolvedYear = resolveCanonicalYear(title, `vk_${ownerId}_${videoId}`, '', rawYear, rawYear) || String(new Date().getFullYear());
@@ -245,7 +268,7 @@ export async function getVkVideoCatalog(category = 'popular', page = 1) {
   if (category === 'series') queryTag = 'сериалы';
   else if (category === 'cartoons') queryTag = 'мультфильмы';
 
-  const items = await searchVkVideo(queryTag, pageNum);
+  const items = (await searchVkVideo(queryTag, pageNum)).filter(it => it && !isTrailerMedia(it));
   setCache('vkvideo', cacheKey, items, 30 * 60);
   return items;
 }

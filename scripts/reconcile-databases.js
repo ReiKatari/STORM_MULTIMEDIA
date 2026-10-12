@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 async function queryTmdb(query) {
