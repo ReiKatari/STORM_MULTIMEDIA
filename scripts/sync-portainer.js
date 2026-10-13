@@ -74,6 +74,7 @@ export async function syncToPortainer(options = {}) {
   const filePaths = [
     'server.js',
     'db.js',
+    'public/index.html',
     'public/js/catalog-baseline.js',
     'services/catalog-fallback.js',
     'services/fanfilm-service.js',
@@ -84,6 +85,9 @@ export async function syncToPortainer(options = {}) {
     'public/js/fanfilm-catalog-intel.js',
     'public/js/app.js',
     'public/js/player.js',
+    'public/js/auth.js',
+    'public/js/ad-shield.js',
+    'public/js/smart-skip.js',
     'public/js/bookmarks.js',
     'public/js/gamepad-tv.js',
     'public/styles/tv-mode.css',

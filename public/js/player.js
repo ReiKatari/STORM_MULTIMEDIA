@@ -99,12 +99,28 @@ let vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
 export let adblockEnabled = localStorage.getItem('storm_adblock_enabled') !== 'false';
 
 export function isAdblockEnabled() {
+  adblockEnabled = localStorage.getItem('storm_adblock_enabled') !== 'false';
   return adblockEnabled;
 }
 
 export function setAdblockEnabled(val) {
   adblockEnabled = Boolean(val);
   localStorage.setItem('storm_adblock_enabled', adblockEnabled ? 'true' : 'false');
+  try {
+    const rawClean = localStorage.getItem('storm_cleanview_settings');
+    const cleanObj = rawClean ? JSON.parse(rawClean) : {};
+    cleanObj.adblockEnabled = adblockEnabled;
+    localStorage.setItem('storm_cleanview_settings', JSON.stringify(cleanObj));
+  } catch (_) {}
+}
+
+export function getPreferredDefaultPlayerId() {
+  return localStorage.getItem('storm_default_player') || 'fanfilm4k_uhd';
+}
+
+export function setPreferredDefaultPlayerId(playerId) {
+  const cleanId = String(playerId || 'fanfilm4k_uhd').trim();
+  localStorage.setItem('storm_default_player', cleanId);
 }
 
 export function getSafePersonPhotoUrl(photo) {
@@ -125,12 +141,17 @@ export function getSafeCleanStreamUrl(rawUrl) {
     streamUrl = streamUrl.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
   }
 
-  if (adblockEnabled) {
+  const currentAdblock = isAdblockEnabled();
+  vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
+
+  if (currentAdblock) {
     if (!streamUrl.startsWith('/api/') && !streamUrl.includes('.m3u8')) {
       if (streamUrl.includes('fanfilm4k') || streamUrl.includes('stravers')) {
         const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
         const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
-        streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(streamUrl)}${titleParam}${yearParam}`;
+        const kpVal = currentMedia?.kp_id || currentMedia?.kinopoisk_id || '';
+        const kpParam = kpVal ? `&kp_id=${encodeURIComponent(kpVal)}` : '';
+        streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(streamUrl)}${titleParam}${yearParam}${kpParam}`;
       } else if (streamUrl.includes('kodik') || streamUrl.includes('rezka') || streamUrl.includes('lostfilm') || streamUrl.includes('anixart')) {
         streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
       } else if (streamUrl.includes('rutube.ru')) {
@@ -1116,6 +1137,10 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     return suite;
   }
 
+  if (!effective4kUrl && !isTrulyUpcoming && !isLandyshiItem && !isAnime && safeTitle) {
+    effective4kUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
+  }
+
   if (effective4kUrl && !isTrulyUpcoming && !isLandyshiItem) {
     suite.push({
       id: 'fanfilm4k_uhd',
@@ -1129,7 +1154,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       speed: '💎 Премиум 4K CDN',
       url: effective4kUrl,
       is_recommended: !isAnime,
-      recommended_badge: !isAnime ? '🔥 4K Рекомендуемый' : ''
+      recommended_badge: !isAnime ? '🔥 4K По умолчанию' : ''
     });
   }
 
@@ -1526,11 +1551,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const preferStableKodik = itemYr < 2020;
 
   const isLandyshiMedia = mediaItem.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || mediaItem.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
+  const preferredId = getPreferredDefaultPlayerId();
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
+  if (!initialChoice && preferredId && preferredId !== 'fanfilm4k_uhd' && !isLandyshiMedia) {
+    initialChoice = currentPlayers.find(p => p.id === preferredId && isStable(p)) || null;
+  }
   if (!initialChoice) {
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
     const fourKInitial = currentPlayers.find(p => isReal4k(p) && isStable(p));
-    if (fourKInitial) {
+    if (fourKInitial && !isLandyshiMedia) {
       initialChoice = fourKInitial;
     } else if (isLandyshiMedia) {
       initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
@@ -1544,12 +1573,6 @@ export async function openPlayerModal(mediaItem, options = {}) {
         || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.is_recommended && isWorking(p))
-        || currentPlayers.find(isWorking)
-        || currentPlayers[0];
-    } else if (preferStableKodik) {
-      initialChoice = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
-        || currentPlayers.find(p => p.is_recommended && isStable(p))
-        || currentPlayers.find(isStable)
         || currentPlayers.find(isWorking)
         || currentPlayers[0];
     } else {
@@ -1708,12 +1731,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
         } else {
           currentMedia.is_upcoming = false;
           if (!defaultPlayer) {
-            const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
-            const preferStableKodik = itemYr < 2020;
-
+            const prefPlayerId = getPreferredDefaultPlayerId();
+            if (prefPlayerId && prefPlayerId !== 'fanfilm4k_uhd' && !isLandyshiItem) {
+              defaultPlayer = currentPlayers.find(p => p.id === prefPlayerId && isStable(p)) || null;
+            }
+          }
+          if (!defaultPlayer) {
             // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
             const fourKPlayer = currentPlayers.find(p => isReal4k(p) && isStable(p));
-            if (fourKPlayer) {
+            if (fourKPlayer && !isLandyshiItem) {
               defaultPlayer = fourKPlayer;
             } else if (isLandyshiItem) {
               defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))

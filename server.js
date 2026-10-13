@@ -1802,6 +1802,50 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
       items = items.filter(i => i.media_type !== 'movie' && i.media_type !== 'anime-movie' && i.media_type !== 'cartoon');
     }
 
+    // Серверная дедупликация карточек из разных источников (FanFilm4K + TMDB + Аниме-источники)
+    const catalogDedupMap = new Map();
+    const normCatalogKey = (t) => String(t || '')
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
+      .replace(/[«»“”"'`]/g, ' ')
+      .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
+      .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
+      .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
+      .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
+      .replace(/(?<!\p{L})(?:\d+\s*сезон[а-я]*|\d+\s*сери[а-я]*|сезон[а-я]*\s*\d+|сери[а-я]*\s*\d+|s\d+\s*e\d+|s\d+|e\d+)(?!\p{L})/giu, ' ')
+      .replace(/(?<!\p{L})(?:19\d\d|20\d\d)(?!\p{L})/gu, ' ')
+      .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .trim();
+
+    for (const item of items) {
+      if (!item || !item.title) continue;
+      const k = normCatalogKey(item.title) || normCatalogKey(item.original_title) || `id_${item.id}`;
+      const resolved4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title) || '';
+      if (!catalogDedupMap.has(k)) {
+        catalogDedupMap.set(k, {
+          ...item,
+          fanfilm_4k_url: resolved4k || item.fanfilm_4k_url || null,
+          is4K: Boolean(item.is4K || resolved4k),
+          quality: (item.is4K || resolved4k) ? '4K Ultra HD' : (item.quality || '1080p FHD')
+        });
+      } else {
+        const prev = catalogDedupMap.get(k);
+        const combined4k = prev.fanfilm_4k_url || resolved4k || null;
+        const has4K = Boolean(prev.is4K || item.is4K || combined4k);
+        const preferNew = (item.source === 'tmdb' && prev.source !== 'tmdb') || (!prev.poster && item.poster);
+        const merged = preferNew ? { ...prev, ...item } : { ...item, ...prev };
+        merged.fanfilm_4k_url = combined4k;
+        merged.is4K = has4K;
+        merged.quality = has4K ? '4K Ultra HD' : (merged.quality || '1080p FHD');
+        merged.poster = prev.poster || item.poster;
+        merged.rating = Math.max(parseFloat(prev.rating) || 0, parseFloat(item.rating) || 0) || prev.rating || item.rating;
+        catalogDedupMap.set(k, merged);
+      }
+    }
+    items = Array.from(catalogDedupMap.values());
+
     items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
   }
 
@@ -2080,8 +2124,11 @@ async function executeUnifiedSearch(query, source = 'all') {
       .toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
-      .replace(/\s*[«“"][^»”"]*[»”"]/gi, ' ')
+      .replace(/[«»“”"'`]/g, ' ')
       .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
+      .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
+      .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
+      .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
       .replace(/(?:все\s*серии|все\s*сезоны|полный\s*сезон|русская\s*озвучка|субтитры|озвучка)/gi, ' ')
       .replace(/(?<!\p{L})(?:\d+[\.\s]+сезон[а-я]*|\d+[\.\s]+сери[а-я]*|сезон[а-я]*[\.\s]+\d+|сери[а-я]*[\.\s]+\d+|s\d+\s*e\d+|s\d+|e\d+)(?!\p{L})/giu, ' ')
       .replace(/(?:фантастический\s*сериал|художественный\s*фильм|документальный\s*фильм|сериал|фильм|т\/с|д\/ф)/gi, ' ')
@@ -4442,13 +4489,18 @@ app.all('/api/player/stravers-api-proxy', express.raw({ type: '*/*', limit: '10m
 // Проксирующий плеер FanFilm4K / Stravers без встроенных селектов и трейлеров
 app.get('/api/player/fanfilm-embed', async (req, res) => {
   try {
-    let { url: targetUrl, season, episode, translation, hidden, title, year } = req.query;
+    let { url: targetUrl, season, episode, translation, hidden, title, year, kp_id } = req.query;
+    const fallbackTitle = (title || '').trim();
+    if (!targetUrl && fallbackTitle) {
+      targetUrl = resolveFanFilmUrl(fallbackTitle) || `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(fallbackTitle)}`;
+    }
     if (!targetUrl) {
       return res.status(400).send('URL плеера не указан');
     }
 
-    const fallbackTitle = title || '';
-    const fallbackKodik = fallbackTitle ? `https://kodikplayer.com/find-player?title=${encodeURIComponent(fallbackTitle)}${year ? `&year=${year}` : ''}` : '';
+    const fallbackKodik = kp_id
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${encodeURIComponent(kp_id)}&title=${encodeURIComponent(fallbackTitle)}`
+      : (fallbackTitle ? `https://kodikplayer.com/find-player?title=${encodeURIComponent(fallbackTitle)}${year ? `&year=${year}` : ''}` : '');
 
     if (!targetUrl.includes('stravers.live') && !targetUrl.includes('fanfilm4k')) {
       // Для сторонних плееров делаем прямой безопасный редирект
@@ -4457,19 +4509,44 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 
     let directIframe = targetUrl;
 
-    if (targetUrl.includes('fanfilm4k.media') && !targetUrl.includes('stravers.live')) {
+    // 1. Если передан поисковый URL FanFilm4K, сначала проверяем канонический словарь и быстрый поиск
+    if (directIframe.includes('fanfilm4k') && (directIframe.includes('do=search') || directIframe.endsWith('fanfilm4k.media/'))) {
+      const knownDirect = fallbackTitle ? resolveFanFilmUrl(fallbackTitle) : null;
+      if (knownDirect) {
+        directIframe = knownDirect;
+      } else if (fallbackTitle) {
+        try {
+          const searchResults = await Promise.race([
+            searchFanFilm(fallbackTitle),
+            new Promise(r => setTimeout(() => r([]), 2200))
+          ]);
+          if (Array.isArray(searchResults) && searchResults.length > 0) {
+            const bestMatch = searchResults[0];
+            if (bestMatch && (bestMatch.link || bestMatch.url)) {
+              directIframe = bestMatch.link || bestMatch.url;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. Извлекаем прямой iframe 4K / HD плеера со страницы релиза FanFilm4K
+    if (directIframe.includes('fanfilm4k.media') && !directIframe.includes('stravers.live') && !directIframe.includes('do=search')) {
       try {
-        const pageHtml = await fetchHtml(targetUrl, { timeout: 2500 });
-        const m = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
-        const fourKIframe = m ? (m[1].startsWith('//') ? 'https:' + m[1] : m[1]) : '';
-        if (fourKIframe) {
-          directIframe = fourKIframe;
+        const pageHtml = await fetchHtml(directIframe, { timeout: 2500 });
+        const m4k = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+        const mHd = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
+        const mAny = pageHtml.match(/<iframe[^>]*src=["']([^"']*(?:stravers\.live|allplay|kodik|videocdn|collaps|alloha)[^"']*)["']/i);
+        const rawSrc = (m4k && m4k[1]) || (mHd && mHd[1]) || (mAny && mAny[1]) || '';
+        const extractedIframe = rawSrc ? (rawSrc.startsWith('//') ? 'https:' + rawSrc : rawSrc) : '';
+        if (extractedIframe) {
+          directIframe = extractedIframe;
         }
       } catch (_) {}
     }
 
-    // Если со страницы FanFilm4K не удалось извлечь iframe плеера (сайт недоступен или блокирует),
-    // мгновенно перенаправляем на надежный балансер Kodik/Kinobox без черных экранов и сбоев
+    // 3. Если со страницы FanFilm4K не удалось извлечь iframe плеера (сайт недоступен или релиза нет на зеркале),
+    // мгновенно перенаправляем на чистый проксируемый поток без черных экранов и сбоев
     if (directIframe.includes('fanfilm4k.media') && !directIframe.includes('stravers.live')) {
       if (fallbackKodik) {
         return res.redirect(302, `/api/player/adblock-proxy?url=${encodeURIComponent(fallbackKodik)}`);

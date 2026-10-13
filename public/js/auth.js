@@ -577,6 +577,89 @@ export function openProfileModal() {
     };
   }
 
+  // Настройки плеера по умолчанию, AdShield, CleanView, Smart Skip и Ambilight
+  const defaultPlayerSelect = document.getElementById('profile-default-player-select');
+  if (defaultPlayerSelect) {
+    defaultPlayerSelect.value = localStorage.getItem('storm_default_player') || 'fanfilm4k_uhd';
+    defaultPlayerSelect.onchange = (e) => {
+      const val = e.target.value || 'fanfilm4k_uhd';
+      localStorage.setItem('storm_default_player', val);
+      import('./player.js').then(m => {
+        if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
+      }).catch(() => {});
+      showToast('Плеер по умолчанию сохранен', 'success');
+    };
+  }
+
+  const adblockToggle = document.getElementById('profile-adblock-toggle');
+  if (adblockToggle) {
+    adblockToggle.checked = localStorage.getItem('storm_adblock_enabled') !== 'false';
+    adblockToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
+      import('./player.js').then(m => {
+        if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
+      }).catch(() => {});
+      import('./ad-shield.js').then(m => {
+        if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
+      }).catch(() => {});
+      showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
+    };
+  }
+
+  const cleanviewToggle = document.getElementById('profile-cleanview-toggle');
+  if (cleanviewToggle) {
+    try {
+      const rawClean = localStorage.getItem('storm_cleanview_settings');
+      const parsedClean = rawClean ? JSON.parse(rawClean) : {};
+      cleanviewToggle.checked = Boolean(parsedClean.watermarkMaskEnabled);
+    } catch (_) {
+      cleanviewToggle.checked = false;
+    }
+    cleanviewToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      import('./ad-shield.js').then(m => {
+        if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
+      }).catch(() => {});
+      showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
+    };
+  }
+
+  const autoskipToggle = document.getElementById('profile-autoskip-toggle');
+  if (autoskipToggle) {
+    autoskipToggle.checked = localStorage.getItem('storm_autoskip_intro') !== 'false';
+    autoskipToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
+      import('./smart-skip.js').then(m => {
+        if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
+      }).catch(() => {});
+      showToast(enabled ? '⏩ Автопропуск заставок включен' : '⚪ Автопропуск заставок выключен', 'info');
+    };
+  }
+
+  const autonextToggle = document.getElementById('profile-autonext-toggle');
+  if (autonextToggle) {
+    autonextToggle.checked = localStorage.getItem('storm_autonext_enabled') !== 'false';
+    autonextToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
+      showToast(enabled ? '⏭ Автопереключение серий включено' : '⚪ Автопереключение серий выключено', 'info');
+    };
+  }
+
+  const ambilightToggle = document.getElementById('profile-ambilight-toggle');
+  if (ambilightToggle) {
+    ambilightToggle.checked = localStorage.getItem('storm_ambilight') !== 'false';
+    ambilightToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_ambilight', enabled ? 'true' : 'false');
+      const ambiGlow = document.getElementById('player-ambilight-glow');
+      if (ambiGlow) ambiGlow.style.opacity = enabled ? '0.65' : '0';
+      showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
+    };
+  }
+
   // Заполняем форму редактирования профиля
   const inputUser = document.getElementById('edit-profile-username');
   if (inputUser) inputUser.value = currentUser ? currentUser.username : '';

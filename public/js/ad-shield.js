@@ -578,10 +578,26 @@ function mountFloatingCleanViewBadge(videoBox) {
   if (badge) badge.remove();
 }
 
+export function setCleanViewMaskEnabled(val) {
+  loadCleanViewSettings();
+  currentSettings.watermarkMaskEnabled = Boolean(val);
+  saveCleanViewSettings();
+  applyMaskSettings();
+  updateShieldButtonState();
+}
+
+export function setAdShieldEnabled(val) {
+  loadCleanViewSettings();
+  currentSettings.adSkipperEnabled = Boolean(val);
+  saveCleanViewSettings();
+  updateShieldButtonState();
+}
+
 /**
  * Переключение модального окна / шторки управления CleanView
  */
 export function toggleCleanViewModal() {
+  loadCleanViewSettings();
   const cinemaModal = document.getElementById('cinema-modal');
   const targetParent = cinemaModal || document.body;
 

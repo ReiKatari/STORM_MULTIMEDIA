@@ -77,6 +77,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const isDomestic = isLandyshi || (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('российск')) : String(genres).toLowerCase().includes('российск'))) || source === 'rutube' || source === 'vkvideo';
   const isDomesticExclusive = isLandyshi;
 
+  if (!resolvedFanfilmUrl && !isUpcoming && !isKnownUnreleased && !isLandyshi && !isAnime && safeTitle) {
+    resolvedFanfilmUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
+  }
+
   if (resolvedFanfilmUrl && !isUpcoming && !isKnownUnreleased && !isLandyshi) {
     players.push({
       id: 'fanfilm4k_uhd',
@@ -90,7 +94,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       speed: '💎 Премиум 4K CDN',
       url: resolvedFanfilmUrl,
       is_recommended: true,
-      recommended_badge: '🔥 4K Рекомендуемый'
+      recommended_badge: '🔥 4K По умолчанию'
     });
   }
 

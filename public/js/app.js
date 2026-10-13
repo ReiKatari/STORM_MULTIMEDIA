@@ -2033,9 +2033,13 @@ function normalizeMediaTitle(title, originalTitle = '') {
     let s = String(t).toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
-      .replace(/\s*[«“"][^»”"]*[»”"]/gi, ' ')
+      .replace(/[«»“”"'`]/g, ' ')
       .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
-      .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф)\)?\s*[:\-–—]?\s*/gi, '')
+      .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф|м\/ф|м\/с)\)?\s*[:\-–—]?\s*/gi, '')
+      .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
+      .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
+      .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
+      .replace(/(?<!\p{L})(?:часть\s+четвертая|part\s+four|part\s+iv)(?!\p{L})/giu, ' 4 ')
       .replace(/(?<!\p{L})(?:\d+\s*сезон[а-я]*|\d+\s*сери[а-я]*|сезон[а-я]*\s*\d+|сери[а-я]*\s*\d+|s\d+\s*e\d+|s\d+|e\d+)(?!\p{L})/giu, ' ')
       .replace(/(?<!\p{L})(?:19\d\d|20\d\d)(?!\p{L})/gu, ' ')
       .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
@@ -2212,6 +2216,7 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
 function deduplicateMediaList(items) {
   if (!Array.isArray(items)) return [];
   const itemMap = new Map();
+  const aliasToKey = new Map();
 
   for (const item of items) {
     if (!item || (!item.title && !item.name)) continue;
@@ -2219,8 +2224,30 @@ function deduplicateMediaList(items) {
     if (isTrailerMedia(item)) continue;
 
     const itemTitle = item.title || item.name || '';
-    const normKey = normalizeMediaTitle(itemTitle, item.original_title || item.original_name);
-    const key = normKey || `id_${item.id || item.media_id || ''}_${item.source || ''}`;
+    const origTitle = item.original_title || item.original_name || '';
+    const normKey = normalizeMediaTitle(itemTitle, origTitle);
+    const origKey = origTitle ? normalizeMediaTitle(origTitle, '') : '';
+    const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
+    const kpKey = (item.kp_id || item.kinopoisk_id) ? `kp_${item.kp_id || item.kinopoisk_id}` : '';
+
+    const candidateKeys = [normKey, origKey, tmdbKey, kpKey].filter(Boolean);
+    let key = '';
+    for (const ck of candidateKeys) {
+      if (itemMap.has(ck)) {
+        key = ck;
+        break;
+      }
+      if (aliasToKey.has(ck)) {
+        key = aliasToKey.get(ck);
+        break;
+      }
+    }
+    if (!key) {
+      key = normKey || origKey || tmdbKey || kpKey || `id_${item.id || item.media_id || ''}_${item.source || ''}`;
+    }
+    for (const ck of candidateKeys) {
+      aliasToKey.set(ck, key);
+    }
 
     if (!itemMap.has(key)) {
       itemMap.set(key, {
@@ -2231,7 +2258,7 @@ function deduplicateMediaList(items) {
       const existing = itemMap.get(key);
       const fanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
         (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
-      const has4K = item.is4K || existing.is4K;
+      const has4K = item.is4K || existing.is4K || Boolean(fanfilmUrl);
 
       const isNewBetter =
         (item.source === 'tmdb' && existing.source !== 'tmdb') ||
@@ -3014,15 +3041,19 @@ function renderHomeView(items) {
   });
   if (trendingItems.length < 28) {
     const baseNew = getBaselineCatalog('new') || [];
-    const existingIds = new Set(trendingItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseNew) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        trendingItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
+    trendingItems = deduplicateMediaList([...trendingItems, ...baseNew]);
+  } else {
+    trendingItems = deduplicateMediaList(trendingItems);
   }
   trendingItems = trendingItems.slice(0, 36);
+
+  const trendingNormKeys = new Set();
+  for (const ti of trendingItems) {
+    const k1 = normalizeMediaTitle(ti.title || ti.name || '', ti.original_title || ti.original_name || '');
+    const k2 = (ti.original_title || ti.original_name) ? normalizeMediaTitle(ti.original_title || ti.original_name, '') : '';
+    if (k1) trendingNormKeys.add(k1);
+    if (k2) trendingNormKeys.add(k2);
+  }
 
   const EXPLICIT_KNOWN_SERIES = [
     'кэрри', 'carrie',
@@ -3048,7 +3079,7 @@ function renderHomeView(items) {
     'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
   ];
 
-  // Рейл 3: Популярные фильмы (строго исключаем сериалы и аниме)
+  // Рейл 3: Популярные фильмы (строго исключаем сериалы, аниме и дубли из Горячих премьер)
   let movieItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
@@ -3065,19 +3096,19 @@ function renderHomeView(items) {
     if (EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s))) return false;
     return true;
   });
-  if (movieItems.length < 28) {
-    const baseMovies = getBaselineCatalog('movies') || [];
-    const existingIds = new Set(movieItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseMovies) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        movieItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
+  const baseMovies = getBaselineCatalog('movies') || [];
+  movieItems = deduplicateMediaList([...movieItems, ...baseMovies]);
+  const uniqueMoviesNotInTrending = movieItems.filter(m => {
+    const mk = normalizeMediaTitle(m.title || m.name || '', m.original_title || m.original_name || '');
+    return !mk || !trendingNormKeys.has(mk);
+  });
+  if (uniqueMoviesNotInTrending.length >= 16) {
+    movieItems = uniqueMoviesNotInTrending.slice(0, 36);
+  } else {
+    movieItems = deduplicateMediaList([...uniqueMoviesNotInTrending, ...movieItems]).slice(0, 36);
   }
-  movieItems = movieItems.slice(0, 36);
 
-  // Рейл 4: Лучшие сериалы
+  // Рейл 4: Лучшие сериалы (дедупликация + приоритет уникальных карточек вне Горячих премьер)
   let seriesItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
@@ -3090,17 +3121,17 @@ function renderHomeView(items) {
     const isExplicit = isMonsterSeries || normTitle.includes('менталист') || normTitle.includes('mentalist') || normTitle.includes('дневники вампира') || normTitle.includes('vampire diaries') || EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s));
     return (mType === 'series' || i.category === 'series' || i.category === 'Сериал' || i.type === 'series' || i.media_type === 'series' || i.seasons || isExplicit || normTitle.includes('сериал') || normTitle.includes('сезон'));
   });
-  if (seriesItems.length < 28) {
-    const baseSeries = getBaselineCatalog('series') || [];
-    const existingIds = new Set(seriesItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseSeries) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        seriesItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
+  const baseSeries = getBaselineCatalog('series') || [];
+  seriesItems = deduplicateMediaList([...seriesItems, ...baseSeries]);
+  const uniqueSeriesNotInTrending = seriesItems.filter(s => {
+    const sk = normalizeMediaTitle(s.title || s.name || '', s.original_title || s.original_name || '');
+    return !sk || !trendingNormKeys.has(sk);
+  });
+  if (uniqueSeriesNotInTrending.length >= 16) {
+    seriesItems = uniqueSeriesNotInTrending.slice(0, 36);
+  } else {
+    seriesItems = deduplicateMediaList([...uniqueSeriesNotInTrending, ...seriesItems]).slice(0, 36);
   }
-  seriesItems = seriesItems.slice(0, 36);
 
   // Рейл 5: Топ аниме
   let animeItems = items.filter(i => {
@@ -3108,17 +3139,8 @@ function renderHomeView(items) {
            (typeof i.genres === 'string' && i.genres.toLowerCase().includes('аниме')) ||
            (Array.isArray(i.genres) && i.genres.some(g => String(g).toLowerCase().includes('аниме')));
   });
-  if (animeItems.length < 28) {
-    const baseAnime = getBaselineCatalog('anime-series') || getBaselineCatalog('anime') || [];
-    const existingIds = new Set(animeItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseAnime) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        animeItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
-  }
-  animeItems = animeItems.slice(0, 36);
+  const baseAnime = getBaselineCatalog('anime-series') || getBaselineCatalog('anime') || [];
+  animeItems = deduplicateMediaList([...animeItems, ...baseAnime]).slice(0, 36);
 
   // Рейл 6: Шедевры мирового кино (Культовые фильмы и сериалы мирового кинематографа)
   const WORLD_CINEMA_LEGENDS = [
@@ -3681,23 +3703,7 @@ function renderHomeView(items) {
 
   const sortedCandidateMovies = candidateMovies.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
 
-  const topRatedItems = [];
-  const addedMovieTitles = new Set();
-  for (const leg of WORLD_CINEMA_LEGENDS) {
-    const k = leg.title.toLowerCase().trim();
-    if (!addedMovieTitles.has(k)) {
-      addedMovieTitles.add(k);
-      topRatedItems.push(leg);
-    }
-  }
-  for (const m of sortedCandidateMovies) {
-    const k = (m.title || '').toLowerCase().trim();
-    if (k && !addedMovieTitles.has(k)) {
-      addedMovieTitles.add(k);
-      topRatedItems.push(m);
-    }
-  }
-  topRatedItems.splice(36);
+  const topRatedItems = deduplicateMediaList([...WORLD_CINEMA_LEGENDS, ...sortedCandidateMovies]).slice(0, 36);
 
   const rails = [];
 
