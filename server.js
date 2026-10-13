@@ -193,14 +193,58 @@ function generateRoomCode() {
   return code;
 }
 
-wss.on('connection', (ws) => {
+const remoteSessions = new Map();
+
+function registerRemoteSocket(sessionCode, ws, role = 'client') {
+  if (!sessionCode) return;
+  const code = String(sessionCode).trim();
+  if (!remoteSessions.has(code)) {
+    remoteSessions.set(code, new Set());
+  }
+  ws.__remoteSession = code;
+  ws.__remoteRole = role;
+  const clients = remoteSessions.get(code);
+  clients.add(ws);
+
+  if (role === 'remote') {
+    const connectedMsg = JSON.stringify({
+      type: 'remote_connected',
+      session: code,
+      timestamp: Date.now()
+    });
+    for (const c of clients) {
+      if (c !== ws && c.readyState === 1) {
+        c.send(connectedMsg);
+      }
+    }
+  }
+}
+
+wss.on('connection', (ws, req) => {
   let currentRoomCode = null;
   let currentUser = null;
+
+  try {
+    const reqUrl = new URL(req?.url || '/', 'http://localhost');
+    const urlSession = reqUrl.searchParams.get('code') || reqUrl.searchParams.get('session');
+    const role = reqUrl.searchParams.get('role') || 'remote';
+    if (urlSession) {
+      registerRemoteSocket(urlSession, ws, role);
+    }
+  } catch (_) {}
 
   ws.on('message', (raw) => {
     try {
       const data = JSON.parse(raw.toString());
       switch (data.type) {
+        case 'join_remote_session': {
+          const sess = data.session || data.roomCode;
+          if (sess) {
+            registerRemoteSocket(sess, ws, data.role || 'host');
+            ws.send(JSON.stringify({ type: 'remote_session_joined', session: sess }));
+          }
+          break;
+        }
         case 'join_room': {
           const roomCode = (data.roomCode || '').toUpperCase().trim();
           let room = watchRooms.get(roomCode);
@@ -375,21 +419,33 @@ wss.on('connection', (ws) => {
         }
 
         case 'storm_remote_action': {
-          const targetRoomCode = data.session || currentRoomCode;
+          const targetRoomCode = String(data.session || currentRoomCode || ws.__remoteSession || '').trim();
           if (!targetRoomCode) return;
-          const room = watchRooms.get(targetRoomCode);
-          if (!room) return;
 
           const remoteMsg = JSON.stringify({
             type: 'storm_remote_action',
             action: data.action,
             query: data.query,
+            level: data.level,
+            delta: data.delta,
             sender: currentUser?.username || 'Пульт'
           });
 
-          for (const [client] of room.participants) {
-            if (client !== ws && client.readyState === 1) {
-              client.send(remoteMsg);
+          const sessClients = remoteSessions.get(targetRoomCode);
+          if (sessClients) {
+            for (const client of sessClients) {
+              if (client !== ws && client.readyState === 1) {
+                client.send(remoteMsg);
+              }
+            }
+          }
+
+          const room = watchRooms.get(targetRoomCode) || watchRooms.get(targetRoomCode.toUpperCase());
+          if (room) {
+            for (const [client] of room.participants) {
+              if (client !== ws && client.readyState === 1) {
+                client.send(remoteMsg);
+              }
             }
           }
           break;
@@ -445,6 +501,15 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (ws.__remoteSession) {
+      const sessSet = remoteSessions.get(ws.__remoteSession);
+      if (sessSet) {
+        sessSet.delete(ws);
+        if (sessSet.size === 0) {
+          remoteSessions.delete(ws.__remoteSession);
+        }
+      }
+    }
     if (currentRoomCode) {
       const room = watchRooms.get(currentRoomCode);
       if (room) {
@@ -477,6 +542,48 @@ app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Информационный и командный шлюз для мобильного пульта STORM REMOTE 2.0
+app.get('/api/remote/info', (req, res) => {
+  let lanIp = '192.168.1.154';
+  try {
+    const hostHeader = String(req.headers.host || '').split(':')[0];
+    if (hostHeader && hostHeader !== 'localhost' && hostHeader !== '127.0.0.1') {
+      lanIp = hostHeader;
+    }
+  } catch (_) {}
+  res.json({
+    lanIp,
+    port: PORT || 3900,
+    baseUrl: `http://${lanIp}:${PORT || 3900}`
+  });
+});
+
+app.post('/api/remote/command', (req, res) => {
+  const { session, action, query, level, delta } = req.body || {};
+  if (!session || !action) {
+    return res.status(400).json({ error: 'Сессия или команда не указана' });
+  }
+  const remoteMsg = JSON.stringify({
+    type: 'storm_remote_action',
+    action,
+    query,
+    level,
+    delta,
+    sender: 'Пульт'
+  });
+  let delivered = 0;
+  const sessClients = remoteSessions.get(String(session).trim());
+  if (sessClients) {
+    for (const c of sessClients) {
+      if (c.readyState === 1) {
+        c.send(remoteMsg);
+        delivered++;
+      }
+    }
+  }
+  res.json({ success: true, delivered });
+});
 
 // Раздача статических файлов с интеллектуальным кэшированием
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -734,7 +841,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.30',
+    version: '1.0.31',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -1408,20 +1515,54 @@ app.get('/api/media/image-proxy', async (req, res) => {
       }
     }
 
-    // 3. Крайний фолбэк: отдаём заглушку favicon.svg со статусом 404 и БЕЗ кэширования, чтобы браузер повторил попытку
-    if (faviconBuffer) {
-      res.status(404);
-      res.set('Content-Type', 'image/svg+xml');
-      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      return res.send(faviconBuffer);
+    // 3. Безотказная генерация стильного кинематографического SVG-постера 600x900 (0 ошибок 404)
+    const fallbackTitle = String(title || orig || 'STORM MULTIMEDIA')
+      .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+      .slice(0, 64);
+    const words = fallbackTitle.split(/\s+/);
+    const lines = [];
+    let curLine = '';
+    for (const w of words) {
+      if ((curLine + ' ' + w).trim().length > 18 && lines.length < 3) {
+        if (curLine) lines.push(curLine);
+        curLine = w;
+      } else {
+        curLine = (curLine + ' ' + w).trim();
+      }
     }
+    if (curLine) lines.push(curLine);
 
-    return res.redirect(302, '/assets/favicon.svg');
+    const svgPoster = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0b1120"/>
+          <stop offset="50%" stop-color="#131c33"/>
+          <stop offset="100%" stop-color="#070a12"/>
+        </linearGradient>
+        <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#00d2ff"/>
+          <stop offset="100%" stop-color="#3b82f6"/>
+        </linearGradient>
+      </defs>
+      <rect width="600" height="900" fill="url(#bg)"/>
+      <circle cx="300" cy="280" r="180" fill="#00d2ff" opacity="0.06"/>
+      <rect x="28" y="28" width="544" height="844" rx="24" fill="none" stroke="#00d2ff" stroke-opacity="0.25" stroke-width="2"/>
+      <rect x="210" y="90" width="180" height="38" rx="19" fill="url(#accent)" opacity="0.18"/>
+      <text x="300" y="115" text-anchor="middle" fill="#00d2ff" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="800" letter-spacing="2">4K ULTRA HD</text>
+      <circle cx="300" cy="310" r="64" fill="#00d2ff" opacity="0.12" stroke="#00d2ff" stroke-opacity="0.4" stroke-width="2"/>
+      <polygon points="282,280 282,340 334,310" fill="#00d2ff"/>
+      ${lines.map((ln, idx) => `<text x="300" y="${510 + idx * 46}" text-anchor="middle" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-weight="800">${ln}</text>`).join('')}
+      <text x="300" y="810" text-anchor="middle" fill="#64748b" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" letter-spacing="3">STORM MULTIMEDIA</text>
+    </svg>`;
+
+    res.status(200);
+    res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.send(svgPoster);
   } catch {
     if (faviconBuffer) {
-      res.status(404);
+      res.status(200);
       res.set('Content-Type', 'image/svg+xml');
-      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       return res.send(faviconBuffer);
     }
     return res.redirect(302, '/assets/favicon.svg');

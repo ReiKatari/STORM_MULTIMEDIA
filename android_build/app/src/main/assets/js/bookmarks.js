@@ -4,6 +4,7 @@
 
 import { getToken, showToast } from './auth.js';
 import { t } from './i18n.js';
+import { normalizeStatus } from './status-icons.js';
 
 let memoryBookmarksCache = [];
 
@@ -236,9 +237,9 @@ export function autoTransitionSeriesToWatching(item, nextSeason = 1, nextEpisode
 export function resolveMediaUserStatus(item) {
   if (!item) return null;
   const directStatus = item.user_status || item.bookmark_status;
-  if (directStatus && directStatus !== 'none') return directStatus;
-  if (item.status && ['completed', 'watching', 'planned', 'favorite', 'on_hold', 'dropped', 'wont_watch'].includes(item.status)) {
-    return item.status;
+  if (directStatus && directStatus !== 'none') return normalizeStatus(directStatus);
+  if (item.status && ['completed', 'watching', 'planned', 'plan', 'favorite', 'on_hold', 'hold', 'dropped', 'wont_watch'].includes(item.status)) {
+    return normalizeStatus(item.status);
   }
 
   const id = String(item.id || item.media_id || '');
@@ -266,6 +267,10 @@ export function resolveMediaUserStatus(item) {
     if (match?.status && match.status !== 'none') {
       resolved = match.status;
     }
+  }
+
+  if (resolved) {
+    resolved = normalizeStatus(resolved);
   }
 
   // Модель Emby и Plex:
@@ -339,9 +344,39 @@ export function syncLocalBookmarkItem(mediaData, status) {
   saveLocalBookmarksList(filtered);
 }
 
-export async function fetchUserBookmarks(status = null, type = null) {
+const DB_CLEAN_REVISION = '2026-10-08-purge-v1';
+export function checkAndApplyClientPurge() {
+  try {
+    if (localStorage.getItem('storm_purge_rev') !== DB_CLEAN_REVISION) {
+      localStorage.setItem('storm_purge_rev', DB_CLEAN_REVISION);
+      localStorage.removeItem('storm_local_bookmarks');
+      localStorage.removeItem('storm_continue_watching');
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('storm_status_') || k.startsWith('storm_watched_') || k.startsWith('storm_season_status_'))) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      saveLocalBookmarksList([]);
+      setMemoryBookmarksCache([]);
+    }
+  } catch (_) {}
+}
+checkAndApplyClientPurge();
+
+function buildAuthHeaders(json = false) {
+  const headers = {};
+  if (json) headers['Content-Type'] = 'application/json';
   const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+export async function fetchUserBookmarks(status = null, type = null) {
   let serverBookmarks = [];
+  let serverAnswered = false;
 
   // 1. Запрос к серверу
   try {
@@ -351,49 +386,83 @@ export async function fetchUserBookmarks(status = null, type = null) {
     if (type) params.append('type', type);
     if (params.toString()) url += `?${params.toString()}`;
 
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
+    const res = await fetch(url, {
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin',
+      signal: AbortSignal.timeout(4000)
+    });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
         serverBookmarks = data;
+        serverAnswered = true;
       }
     }
   } catch (err) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
   }
 
-  // 2. Если сервер вернул список, синхронизируем с локальным кэшем
-  if (serverBookmarks.length > 0) {
-    const localList = getLocalBookmarksList();
-    const map = new Map();
-    localList.forEach(it => {
-      const k = String(it.media_id || it.id || '');
-      if (k) map.set(k, it);
-    });
-    serverBookmarks.forEach(it => {
-      const k = String(it.media_id || it.id || '');
-      if (k && !map.has(k)) map.set(k, it);
-    });
-    const merged = Array.from(map.values());
-    saveLocalBookmarksList(merged);
-    setMemoryBookmarksCache(merged);
-    return serverBookmarks;
-  }
-
-  // 3. Резервная отдача из локального хранилища storm_local_bookmarks
   const localBookmarks = getLocalBookmarksList();
-  if (localBookmarks.length > 0) {
-    let filtered = localBookmarks;
-    if (status) filtered = filtered.filter(b => b.status === status || b.user_status === status);
-    if (type) filtered = filtered.filter(b => b.media_type === type);
-    setMemoryBookmarksCache(filtered);
-    return filtered;
+
+  // 2. Объединяем серверные и локальные закладки без потери данных
+  const mergedMap = new Map();
+  for (const b of serverBookmarks) {
+    if (!b) continue;
+    const key = (b.title ? String(b.title).toLowerCase().trim() : '') || `${b.source || ''}_${b.media_id || b.id || ''}`;
+    if (key) mergedMap.set(key, b);
+  }
+  for (const lb of localBookmarks) {
+    if (!lb) continue;
+    const key = (lb.title ? String(lb.title).toLowerCase().trim() : '') || `${lb.source || ''}_${lb.media_id || lb.id || ''}`;
+    if (!key) continue;
+    if (!mergedMap.has(key)) {
+      mergedMap.set(key, lb);
+      // Если закладка есть локально, но ещё не на сервере — фоново синхронизируем на сервер
+      if (serverAnswered && !status && !type) {
+        fetch('/api/bookmarks/set', {
+          method: 'POST',
+          headers: buildAuthHeaders(true),
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            media_id: lb.media_id || lb.id,
+            source: lb.source || 'tmdb',
+            title: lb.title,
+            original_title: lb.original_title || '',
+            poster_url: lb.poster_url || lb.poster || '',
+            media_type: lb.media_type || 'movie',
+            year: lb.year || '',
+            status: normalizeStatus(lb.status || lb.user_status || 'planned'),
+            is_favorite: lb.is_favorite ? 1 : 0
+          })
+        }).catch(() => {});
+      }
+    } else {
+      const existing = mergedMap.get(key);
+      if ((lb.updated_at || 0) > (existing.updated_at || 0)) {
+        mergedMap.set(key, { ...existing, ...lb });
+      }
+    }
   }
 
-  return [];
+  let combined = Array.from(mergedMap.values());
+  if (!status && !type && combined.length > 0) {
+    saveLocalBookmarksList(combined);
+  }
+
+  if (status) {
+    const normQuery = normalizeStatus(status);
+    if (normQuery === 'favorite') {
+      combined = combined.filter(b => normalizeStatus(b.status) === 'favorite' || normalizeStatus(b.user_status) === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
+    } else {
+      combined = combined.filter(b => normalizeStatus(b.status) === normQuery || normalizeStatus(b.user_status) === normQuery);
+    }
+  }
+  if (type) {
+    combined = combined.filter(b => b.media_type === type);
+  }
+
+  setMemoryBookmarksCache(combined);
+  return combined;
 }
 
 export function removeFromLocalContinueWatching(mediaId, title = '') {
@@ -494,50 +563,42 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
 
 export async function saveBookmarkStatus(mediaData, status) {
   if (!mediaData) return null;
+  const normStatus = normalizeStatus(status);
   const mediaId = String(mediaData.id || mediaData.media_id || '');
   const normTitle = String(mediaData.title || '').trim().toLowerCase();
 
   // Всегда локально сохраняем статус в localStorage для мгновенного отклика
   try {
     if (mediaId) {
-      localStorage.setItem(`storm_status_${mediaId}`, status);
+      localStorage.setItem(`storm_status_${mediaId}`, normStatus);
     }
     if (normTitle) {
-      localStorage.setItem(`storm_status_title_${normTitle}`, status);
+      localStorage.setItem(`storm_status_title_${normTitle}`, normStatus);
     }
-    syncLocalBookmarkItem(mediaData, status);
+    syncLocalBookmarkItem(mediaData, normStatus);
   } catch {}
 
   // Если статус завершён/брошен/не буду — немедленно удаляем из Продолжить просмотр
-  if (status === 'completed' || status === 'dropped' || status === 'wont_watch') {
+  if (normStatus === 'completed' || normStatus === 'dropped' || normStatus === 'wont_watch') {
     removeFromLocalContinueWatching(mediaId, mediaData.title);
   }
 
   // Если это сериал и статус «Просмотрено», каскадно помечаем все сезоны и серии
   const mType = detectClientMediaType(mediaData);
   const isSeries = mType === 'series' || mType === 'anime-series' || mType === 'cartoon-series';
-  if (isSeries && status === 'completed') {
+  if (isSeries && normStatus === 'completed') {
     markAllSeriesSeasonsAndEpisodes(mediaData, 'completed');
   }
 
-  const token = getToken();
-  if (!token) {
-    showToast(t('msg_bookmark_saved'), 'success');
-    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status } }));
-    return { status, localOnly: true };
-  }
-
-  if (!status || status === 'none') {
+  if (!status || status === 'none' || normStatus === 'not_started') {
     return await deleteBookmark(mediaData.id, mediaData.source, mediaData.title);
   }
 
   try {
     const res = await fetch('/api/bookmarks/set', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: buildAuthHeaders(true),
+      credentials: 'same-origin',
       body: JSON.stringify({
         media_id: mediaData.id,
         source: mediaData.source,
@@ -546,18 +607,24 @@ export async function saveBookmarkStatus(mediaData, status) {
         poster_url: mediaData.poster || mediaData.poster_url || '',
         media_type: mediaData.media_type || mType || 'movie',
         year: mediaData.year || detectClientYear(mediaData) || '',
-        status: status
+        status: normStatus,
+        is_favorite: (normStatus === 'favorite' || mediaData.is_favorite === 1 || mediaData.is_favorite === true) ? 1 : (mediaData.is_favorite ? 1 : 0)
       })
     });
 
-    if (!res.ok) throw new Error('Ошибка сохранения закладки');
+    if (!res.ok) {
+      showToast(t('msg_bookmark_saved'), 'success');
+      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status: normStatus } }));
+      return { status: normStatus, localOnly: true };
+    }
     const updated = await res.json();
     showToast(t('msg_bookmark_saved'), 'success');
     window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status } }));
     return updated;
   } catch (err) {
-    showToast(err.message, 'error');
-    return null;
+    showToast(t('msg_bookmark_saved'), 'success');
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaData, status: normStatus } }));
+    return { status: normStatus, localOnly: true };
   }
 }
 
@@ -569,31 +636,20 @@ export async function deleteBookmark(mediaId, source, title = '') {
     syncLocalBookmarkItem({ id: mediaId, title }, 'none');
   } catch {}
 
-  const token = getToken();
-  if (!token) {
-    showToast('Удалено из закладок', 'info');
-    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, title, deleted: true } }));
-    return { success: true, deleted: true };
-  }
-
   try {
     const res = await fetch('/api/bookmarks/remove', {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: buildAuthHeaders(true),
+      credentials: 'same-origin',
       body: JSON.stringify({ media_id: mediaId, source, title })
     });
-    if (res.ok) {
-      showToast('Удалено из закладок', 'info');
-      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, title, deleted: true } }));
-      return { success: true, deleted: true };
-    }
-    return false;
+    showToast('Удалено из закладок', 'info');
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, title, deleted: true } }));
+    return { success: true, deleted: true };
   } catch (err) {
-    showToast('Ошибка удаления закладки', 'error');
-    return false;
+    showToast('Удалено из закладок', 'info');
+    window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { mediaId, source, title, deleted: true } }));
+    return { success: true, deleted: true };
   }
 }
 
@@ -611,6 +667,16 @@ export function detectClientMediaType(item) {
   // 0. Обитель зла: Мутация - строго фильм, не анимация!
   if (t.includes('обитель зла') && (t.includes('мутация') || t.includes('мутиция'))) {
     return 'movie';
+  }
+
+  // Дюна и Дюна: Часть вторая - строго художественный фильм
+  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть')) {
+    return 'movie';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
+    return 'series';
   }
 
   // 1. Известные анимационные фильмы (Вырождение, Вендетта и др.)
@@ -728,7 +794,8 @@ export function detectClientMediaType(item) {
     'сыны анархии', 'sons of anarchy', 'щит', 'the shield', 'блудливая калифорния', 'californication',
     'безумцы', 'mad men', 'родина', 'homeland', '24 часа', '24', 'герои', 'heroes', 'сотня', 'the 100',
     'стрела', 'arrow', 'флэш', 'the flash', 'готэм', 'gotham', 'тайны смолвиля', 'smallville',
-    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
+    'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge',
+    'кэрри', 'carrie'
   ];
 
   // Защита от мультфильмов со словом монстр/монстры
@@ -1179,16 +1246,11 @@ export async function syncWatchProgress(data) {
   // Всегда сохраняем локально, гарантируя фиксацию для гостей и локального режима
   saveLocalWatchProgress(data);
 
-  const token = getToken();
-  if (!token) return;
-
   try {
     await fetch('/api/media/progress', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: buildAuthHeaders(true),
+      credentials: 'same-origin',
       body: JSON.stringify(data)
     });
   } catch (e) {
@@ -1198,20 +1260,22 @@ export async function syncWatchProgress(data) {
 
 export async function fetchContinueWatching() {
   const localItems = getLocalContinueWatching();
-  const token = getToken();
 
   let serverItems = [];
-  if (token) {
-    try {
-      const res = await fetch('/api/media/continue-watching', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        serverItems = await res.json();
+  try {
+    const res = await fetch('/api/media/continue-watching', {
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin',
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const parsed = await res.json();
+      if (Array.isArray(parsed)) {
+        serverItems = parsed;
       }
-    } catch (err) {
-      // Игнорируем сетевые сбои, отдавая локальный кэш
     }
+  } catch (err) {
+    // Игнорируем сетевые сбои, отдавая локальный кэш
   }
 
   // Объединяем серверную и локальную историю, исключая дубликаты
@@ -1274,12 +1338,10 @@ export async function fetchContinueWatching() {
 // -------------------------------------------------------------
 
 export async function fetchCustomLists() {
-  const token = getToken();
-  if (!token) return [];
-
   try {
     const res = await fetch('/api/custom-lists', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin'
     });
     if (!res.ok) return [];
     return await res.json();
@@ -1289,16 +1351,11 @@ export async function fetchCustomLists() {
 }
 
 export async function createCustomCollection(title, description = '', color = '#00d2ff') {
-  const token = getToken();
-  if (!token) return null;
-
   try {
     const res = await fetch('/api/custom-lists/create', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: buildAuthHeaders(true),
+      credentials: 'same-origin',
       body: JSON.stringify({ title, description, color })
     });
 
@@ -1316,16 +1373,11 @@ export async function createCustomCollection(title, description = '', color = '#
 }
 
 export async function addItemToCollection(listId, item) {
-  const token = getToken();
-  if (!token) return;
-
   try {
     const res = await fetch(`/api/custom-lists/${listId}/items`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: buildAuthHeaders(true),
+      credentials: 'same-origin',
       body: JSON.stringify({
         media_id: item.id,
         source: item.source,
@@ -1349,16 +1401,42 @@ export async function addItemToCollection(listId, item) {
 }
 
 export async function removeItemFromCollection(listId, mediaId, source) {
-  const token = getToken();
-  if (!token) return;
-
   try {
     await fetch(`/api/custom-lists/${listId}/items/${mediaId}?source=${source}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin'
     });
     showToast('Удалено из коллекции', 'info');
   } catch (err) {
     showToast('Ошибка при удалении', 'error');
   }
+}
+
+export async function fetchCustomListDetails(listId) {
+  try {
+    const res = await fetch(`/api/custom-lists/${listId}`, {
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin'
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function deleteCustomListApi(listId) {
+  try {
+    const res = await fetch(`/api/custom-lists/${listId}`, {
+      method: 'DELETE',
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin'
+    });
+    if (res.ok) {
+      showToast('Коллекция удалена', 'info');
+      return true;
+    }
+  } catch (err) {}
+  return false;
 }

@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.24"
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.31"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
@@ -199,8 +199,11 @@ class MainActivity : ComponentActivity() {
                     if (path == "/" || path == "/index.html") {
                         return createAssetResponse("text/html", "index.html") ?: super.shouldInterceptRequest(view, request)
                     }
+                    if (path == "/remote.html") {
+                        return createAssetResponse("text/html", "remote.html") ?: super.shouldInterceptRequest(view, request)
+                    }
 
-                    if (path.startsWith("/styles/") || path.startsWith("/js/") || path.startsWith("/assets/") || path == "/manifest.json") {
+                    if (path.startsWith("/styles/") || path.startsWith("/js/") || path.startsWith("/assets/") || path.startsWith("/vendor/") || path == "/manifest.json") {
                         val assetPath = path.removePrefix("/")
                         val cleanPath = assetPath.substringBefore("?")
                         val mimeType = when {

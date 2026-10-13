@@ -10603,4 +10603,59 @@ body.cinema-focus-active::-webkit-scrollbar,
   opacity: 0.92;
 }
 
+/* ==========================================================================
+   АДАПТИВНОСТЬ МОДАЛЬНЫХ ОКОН, СОВЕТНИКА, КАЛЕНДАРЯ И ПЛЕЕРА (MOBILE / TABLET / TV)
+   ========================================================================== */
+.player-studio-btn-grid {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) !important;
+}
 
+@media (max-width: 640px) {
+  .neural-recs-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .cal-items-grid {
+    grid-template-columns: 1fr !important;
+  }
+  #neural-recommender-modal .storm-modal,
+  #release-calendar-modal .storm-modal,
+  #storm-remote-qr-modal .storm-modal {
+    width: 98% !important;
+    max-height: 92vh !important;
+    margin: 4vh auto !important;
+  }
+  #neural-recommender-body,
+  #release-calendar-body {
+    padding: 12px !important;
+  }
+  .cal-days-navbar {
+    display: flex !important;
+    overflow-x: auto !important;
+    gap: 6px !important;
+    padding-bottom: 6px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .cal-day-pill {
+    flex: 0 0 auto !important;
+    min-width: 82px !important;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .neural-recs-grid {
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)) !important;
+  }
+  .cal-items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  }
+}
+
+@media (min-width: 1920px) {
+  #neural-recommender-modal .storm-modal,
+  #release-calendar-modal .storm-modal {
+    max-width: 1380px !important;
+  }
+  .neural-recs-grid {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)) !important;
+  }
+}

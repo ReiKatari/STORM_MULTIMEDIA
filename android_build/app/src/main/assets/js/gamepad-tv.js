@@ -96,35 +96,75 @@ function playTvBackSound() {
   } catch {}
 }
 
+let airMouseTimer = null;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+function handleAirMouseMove(e) {
+  pokeTvHud();
+
+  // Отсекаем естественный микро-дрейф гироскопа неподвижной аэромышки
+  const dx = Math.abs(e.clientX - lastMouseX);
+  const dy = Math.abs(e.clientY - lastMouseY);
+  if (dx < 3 && dy < 3) return;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+
+  // Включаем активный режим аэромышки (показываем видимый курсор)
+  if (!document.body.classList.contains('air-mouse-active')) {
+    document.body.classList.add('air-mouse-active');
+  }
+
+  // При активном перемещении курсора аэромышки снимаем неоновый фокус D-Pad
+  clearFocusRing();
+
+  if (airMouseTimer) clearTimeout(airMouseTimer);
+  airMouseTimer = setTimeout(() => {
+    document.body.classList.remove('air-mouse-active');
+  }, 5000);
+}
+
 // ==========================================
 // 2. ИНИЦИАЛИЗАЦИЯ И РЕЖИМ ТЕЛЕВИЗОРА
 // ==========================================
 export function initGamepadAndTvMode() {
+  const formFactor = localStorage.getItem('storm_form_factor') || 'auto';
   const savedTv = localStorage.getItem('storm_tv_mode') === 'true';
-  if (savedTv) {
+  const isExplicitTv = formFactor === 'tv';
+  if (savedTv && isExplicitTv) {
     toggleTvMode(true);
+  } else if (savedTv && formFactor !== 'tv') {
+    // Сбрасываем ошибочно записанный ТВ-режим на ПК
+    localStorage.removeItem('storm_tv_mode');
   }
 
   window.addEventListener('gamepadconnected', (e) => {
-    showToast(`🎮 Подключен контроллер: ${e.gamepad.id.split('(')[0].trim()}`, 'success');
+    const padName = (e.gamepad?.id || 'Геймпад').split('(')[0].trim();
     trackClientAction('use_gamepad');
-    if (!isTvModeActive) {
-      toggleTvMode(true);
+    if (isTvModeActive) {
+      showToast(`🎮 Подключен контроллер: ${padName}`, 'success');
+      startGamepadPolling();
+    } else {
+      showToast(`🎮 Подключен контроллер: ${padName}. Управление активируется при включении ТВ-режима`, 'info');
     }
-    startGamepadPolling();
   });
 
   window.addEventListener('gamepaddisconnected', (e) => {
-    showToast(`🎮 Контроллер отключен: ${e.gamepad.id.split('(')[0].trim()}`, 'info');
+    const padName = (e.gamepad?.id || 'Геймпад').split('(')[0].trim();
+    showToast(`🎮 Контроллер отключен: ${padName}`, 'info');
   });
 
-  startGamepadPolling();
+  // Запускаем опрос только если ТВ-режим уже был активен из настроек
+  if (isTvModeActive) {
+    startGamepadPolling();
+  }
 
   // Клавиатурная навигация и клавиши ТВ-пульта (Стрелки, Enter, Esc, MediaKeys, Цвета)
   window.addEventListener('keydown', handleSpatialKeyboard);
 
-  // Глобальное пробуждение панели HUD при действиях пользователя
-  window.addEventListener('mousemove', pokeTvHud, { passive: true });
+  // Глобальное пробуждение панели HUD и отслеживание курсора аэромышки
+  window.addEventListener('mousemove', handleAirMouseMove, { passive: true });
+  window.addEventListener('pointermove', handleAirMouseMove, { passive: true });
   window.addEventListener('touchstart', pokeTvHud, { passive: true });
 
   // Автоматический трекер модальных окон для HUD и фокуса
@@ -142,16 +182,30 @@ export function toggleTvMode(forceState = null) {
     tvBtn.innerHTML = isTvModeActive ? '<span>📺</span> ТВ-режим: Вкл' : '<span>📺</span> ТВ-режим';
   }
 
+  const drawerTvBtn = document.getElementById('drawer-tv-mode-btn');
+  if (drawerTvBtn) {
+    drawerTvBtn.classList.toggle('active', isTvModeActive);
+    const titleEl = drawerTvBtn.querySelector('.mobile-nav-title');
+    if (titleEl) {
+      titleEl.textContent = isTvModeActive ? 'ТВ-режим (Включен)' : 'ТВ-режим';
+    }
+  }
+
   if (isTvModeActive) {
     showToast('📺 Активирован режим Smart TV (Leanback HUD 2.0)', 'info');
     renderTvHudBar();
     focusInitialElement();
+    startGamepadPolling();
     trackClientAction('use_gamepad');
     playTvSelectSound();
   } else {
     showToast('Режим Smart TV выключен', 'info');
     removeTvHudBar();
     clearFocusRing();
+    if (gamepadLoopId) {
+      cancelAnimationFrame(gamepadLoopId);
+      gamepadLoopId = null;
+    }
     playTvBackSound();
   }
 }
@@ -491,9 +545,20 @@ function switchAdjacentProfileTab(direction) {
 // 5. ЦИКЛ ОПРОСА ГЕЙМПАДА
 // ==========================================
 function startGamepadPolling() {
+  if (!isTvModeActive) {
+    if (gamepadLoopId) {
+      cancelAnimationFrame(gamepadLoopId);
+      gamepadLoopId = null;
+    }
+    return;
+  }
   if (gamepadLoopId) return;
 
   function poll() {
+    if (!isTvModeActive) {
+      gamepadLoopId = null;
+      return;
+    }
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (let i = 0; i < gamepads.length; i++) {
       const gp = gamepads[i];
@@ -509,6 +574,7 @@ function startGamepadPolling() {
 }
 
 function handleGamepadInput(gp) {
+  if (!isTvModeActive) return;
   const now = Date.now();
   const deadzone = 0.45;
 
@@ -618,6 +684,7 @@ function handleGamepadInput(gp) {
         return;
       }
     }
+    return;
   }
 
   // 2. Управление в окне профиля пользователя
@@ -688,6 +755,15 @@ function handleGamepadInput(gp) {
 function handleSpatialKeyboard(e) {
   pokeTvHud();
 
+  // При нажатии любых клавиш пульта/клавиатуры сбрасываем режим парения аэромышки
+  if (document.body.classList.contains('air-mouse-active')) {
+    document.body.classList.remove('air-mouse-active');
+  }
+  if (airMouseTimer) {
+    clearTimeout(airMouseTimer);
+    airMouseTimer = null;
+  }
+
   const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
   const isProfileOpen = Boolean(document.getElementById('profile-modal')?.classList.contains('is-open'));
 
@@ -697,11 +773,42 @@ function handleSpatialKeyboard(e) {
     if (e.key === 'Escape' || e.keyCode === 4 || e.keyCode === 27) {
       e.target.blur();
       closeActiveModalOrBack();
+      return;
+    }
+    // Нажатие стрелки вниз переводит фокус из поисковой строки в результаты каталога
+    if (e.key === 'ArrowDown' || e.keyCode === 20 || e.keyCode === 40) {
+      e.target.blur();
+      e.preventDefault();
+      moveFocus('down');
+      return;
     }
     return;
   }
 
-  if (!isTvModeActive && !document.querySelector('.storm-modal-backdrop.is-open')) return;
+  const k = e.key;
+  const c = e.keyCode;
+
+  // Определение клавиш пульта ТВ / D-Pad
+  const isDpadOrRemoteKey = [
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Up', 'Down', 'Left', 'Right',
+    'Select', 'GoBack', 'Back', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
+    'ChannelUp', 'ChannelDown', 'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
+    'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'MediaTrackPrevious'
+  ].includes(k) || [
+    19, 20, 21, 22, 23, 66, 4, 13, 27, 8, 85, 126, 127, 86, 87, 88, 89, 90,
+    166, 167, 176, 177, 178, 179, 227, 228, 403, 404, 405, 406, 10009, 461
+  ].includes(c);
+
+  // Если ТВ-режим не активен — обычная работа браузера на ПК (стрелки прокручивают страницу, Escape закрывает модалки)
+  if (!isTvModeActive) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      if (document.querySelector('.storm-modal-backdrop.is-open')) {
+        e.preventDefault();
+        closeActiveModalOrBack();
+      }
+    }
+    return;
+  }
 
   const isDirectVideoFocus = currentFocusedElement && (
     currentFocusedElement.tagName === 'VIDEO' ||
@@ -712,31 +819,28 @@ function handleSpatialKeyboard(e) {
     currentFocusedElement.id === 'cinema-modal'
   );
 
-  const k = e.key;
-  const c = e.keyCode;
-
-  // 1. Выделенные аппаратные мультимедийные клавиши ТВ-пультов
-  if (k === 'AudioVolumeUp') {
+  // 1. Выделенные аппаратные мультимедийные клавиши ТВ-пультов и громкость
+  if (k === 'AudioVolumeUp' || c === 24) {
     e.preventDefault();
     handlePlayerTvVolume(0.1);
     return;
   }
-  if (k === 'AudioVolumeDown') {
+  if (k === 'AudioVolumeDown' || c === 25) {
     e.preventDefault();
     handlePlayerTvVolume(-0.1);
     return;
   }
-  if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause' || c === 179 || c === 126 || c === 127) {
+  if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause' || c === 85 || c === 179 || c === 126 || c === 127) {
     e.preventDefault();
     handlePlayerTvPlayPause();
     return;
   }
-  if (k === 'MediaFastForward' || k === 'MediaTrackNext' || c === 228 || c === 176) {
+  if (k === 'MediaFastForward' || k === 'MediaTrackNext' || c === 228 || c === 176 || c === 90 || c === 87) {
     e.preventDefault();
     if (isPlayerOpen) handlePlayerTvSeek(10);
     return;
   }
-  if (k === 'MediaRewind' || k === 'MediaTrackPrevious' || c === 227 || c === 177) {
+  if (k === 'MediaRewind' || k === 'MediaTrackPrevious' || c === 227 || c === 177 || c === 89 || c === 88) {
     e.preventDefault();
     if (isPlayerOpen) handlePlayerTvSeek(-10);
     return;
@@ -780,14 +884,14 @@ function handleSpatialKeyboard(e) {
   }
 
   // 3. Клавиши каналов (ChannelUp / ChannelDown) и PageUp / PageDown
-  if (k === 'ChannelUp' || k === 'PageUp' || c === 33) {
+  if (k === 'ChannelUp' || k === 'PageUp' || c === 33 || c === 166) {
     e.preventDefault();
     if (isProfileOpen) switchAdjacentProfileTab(1);
     else if (isPlayerOpen) switchAdjacentPlayerEpisode(1);
     else switchAdjacentTab(1);
     return;
   }
-  if (k === 'ChannelDown' || k === 'PageDown' || c === 34) {
+  if (k === 'ChannelDown' || k === 'PageDown' || c === 34 || c === 167) {
     e.preventDefault();
     if (isProfileOpen) switchAdjacentProfileTab(-1);
     else if (isPlayerOpen) switchAdjacentPlayerEpisode(-1);
@@ -795,8 +899,8 @@ function handleSpatialKeyboard(e) {
     return;
   }
 
-  // 4. Кнопка меню ТВ-пульта (Menu / ContextMenu)
-  if (k === 'ContextMenu' || k === 'Menu' || c === 93 || c === 18) {
+  // 4. Кнопка меню ТВ-пульта (Menu / ContextMenu / KEYCODE_MENU 82)
+  if (k === 'ContextMenu' || k === 'Menu' || c === 93 || c === 82 || c === 18) {
     e.preventDefault();
     if (isPlayerOpen) {
       document.getElementById('player-source-trigger')?.click();
@@ -807,7 +911,7 @@ function handleSpatialKeyboard(e) {
     return;
   }
 
-  // 5. Навигационные стрелки пульта и D-Pad
+  // 5. Навигационные стрелки пульта и D-Pad (Вверх, Вниз, Влево, Вправо)
   if (k === 'ArrowUp' || k === 'Up' || c === 19 || c === 38) {
     e.preventDefault();
     if (isPlayerOpen && isDirectVideoFocus) handlePlayerTvVolume(0.1);
@@ -842,22 +946,22 @@ function handleSpatialKeyboard(e) {
     }
   }
 
-  // 7. Подтверждение / Клик (Enter, Select, DPAD_CENTER)
+  // 7. Подтверждение / Клик (Enter, Select, DPAD_CENTER / KEYCODE_ENTER 66, KEYCODE_DPAD_CENTER 23)
   if (k === 'Enter' || k === 'Select' || c === 13 || c === 23 || c === 66) {
     e.preventDefault();
     pressFocusedElement();
     return;
   }
 
-  // 8. Назад (Escape, Backspace, GoBack, Android Key 4)
-  if (k === 'Escape' || k === 'Backspace' || k === 'GoBack' || c === 27 || c === 8 || c === 4 || c === 10009) {
+  // 8. Назад (Escape, Backspace, GoBack, Back, Android KeyCode 4, Tizen 10009, WebOS 461)
+  if (k === 'Escape' || k === 'Backspace' || k === 'GoBack' || k === 'Back' || c === 27 || c === 8 || c === 4 || c === 10009 || c === 461) {
     e.preventDefault();
     closeActiveModalOrBack();
     return;
   }
 
-  // 9. Полноэкранный режим
-  if (k === 'f' || k === 'F') {
+  // 9. Полноэкранный режим (Клавиша F)
+  if (k === 'f' || k === 'F' || k === 'а' || k === 'А') {
     if (isTvModeActive) {
       e.preventDefault();
       toggleFullscreen();
@@ -891,17 +995,23 @@ function getFocusableElements() {
     .episode-pill,
     .voiceover-pill,
     .filter-chip,
+    .cinema-actor-chip,
+    .quick-genre-chip,
     .profile-tab-link,
     .profile-avatar-preset-item,
     .action-sheet-btn,
     .cal-card,
     .rail-card,
     .hero-slide,
+    .hero-btn-play,
+    .hero-btn-bookmark,
+    .hero-btn-trailer,
     .storm-tab-btn,
     .storm-filters-toggle-btn,
     .quick-dropdown-trigger,
     .player-dropdown-trigger,
     .player-dropdown-item,
+    .player-fallback-btn,
     .storm-modal-tool-btn,
     .storm-modal-fullscreen-btn,
     .storm-modal-close,
@@ -911,6 +1021,7 @@ function getFocusableElements() {
   `;
 
   return Array.from(root.querySelectorAll(selector)).filter(el => {
+    if (el.classList.contains('media-card-menu-btn')) return false;
     return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
   });
 }
@@ -930,42 +1041,86 @@ function moveFocus(direction) {
   let bestCandidate = null;
   let bestDistance = Infinity;
 
-  focusables.forEach(el => {
-    if (el === currentFocusedElement) return;
-    const rect = el.getBoundingClientRect();
-
-    let isMatch = false;
-    let dist = Infinity;
-
-    if (direction === 'up' && rect.bottom <= currentRect.top + 10) {
-      isMatch = true;
-      dist = Math.hypot(currentRect.left - rect.left, (currentRect.top - rect.bottom) * 2);
-    } else if (direction === 'down' && rect.top >= currentRect.bottom - 10) {
-      isMatch = true;
-      dist = Math.hypot(currentRect.left - rect.left, (rect.top - currentRect.bottom) * 2);
-    } else if (direction === 'left' && rect.right <= currentRect.left + 10) {
-      isMatch = true;
-      dist = Math.hypot((currentRect.top - rect.top) * 2, currentRect.left - rect.right);
-    } else if (direction === 'right' && rect.left >= currentRect.right - 10) {
-      isMatch = true;
-      dist = Math.hypot((currentRect.top - rect.top) * 2, rect.left - currentRect.right);
+  // 1. Приоритетная последовательная навигация по горизонтальным каруселям и лентам (Plex и Emby Style)
+  if (direction === 'left' || direction === 'right') {
+    const parentRail = currentFocusedElement.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll');
+    if (parentRail) {
+      const railItems = focusables.filter(el => parentRail.contains(el));
+      const currIdx = railItems.indexOf(currentFocusedElement);
+      if (currIdx !== -1) {
+        const nextIdx = direction === 'right' ? currIdx + 1 : currIdx - 1;
+        if (nextIdx >= 0 && nextIdx < railItems.length) {
+          bestCandidate = railItems[nextIdx];
+        }
+      }
     }
+  }
 
-    if (isMatch && dist < bestDistance) {
-      bestDistance = dist;
-      bestCandidate = el;
-    }
-  });
+  // 2. Геометрический поиск кандидатов для перемещения фокуса
+  if (!bestCandidate) {
+    focusables.forEach(el => {
+      if (el === currentFocusedElement) return;
+      const rect = el.getBoundingClientRect();
 
-  // Умный запасной переход между зонами экрана (Header/Toolbar <-> Content Container)
+      let isMatch = false;
+      let dist = Infinity;
+
+      if (direction === 'up' && rect.bottom <= currentRect.top + 10) {
+        isMatch = true;
+        dist = Math.hypot(currentRect.left - rect.left, (currentRect.top - rect.bottom) * 2);
+      } else if (direction === 'down' && rect.top >= currentRect.bottom - 10) {
+        isMatch = true;
+        dist = Math.hypot(currentRect.left - rect.left, (rect.top - currentRect.bottom) * 2);
+      } else if (direction === 'left' && rect.right <= currentRect.left + 10) {
+        isMatch = true;
+        dist = Math.hypot((currentRect.top - rect.top) * 2, currentRect.left - rect.right);
+      } else if (direction === 'right' && rect.left >= currentRect.right - 10) {
+        isMatch = true;
+        dist = Math.hypot((currentRect.top - rect.top) * 2, rect.left - currentRect.right);
+      }
+
+      if (isMatch && dist < bestDistance) {
+        bestDistance = dist;
+        bestCandidate = el;
+      }
+    });
+  }
+
+  // 3. Умный переход между зонами экрана (Шапка/Тулбар/Подменю закладок <-> Основной контент)
   if (!bestCandidate && direction === 'down') {
     const mainArea = document.querySelector('.storm-main-container') || document.getElementById('media-render-container');
-    const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container');
+    const isTopArea = currentFocusedElement.closest('.storm-navbar, .storm-sticky-header-container, .storm-header, .storm-tabs-bar, .storm-toolbar, .storm-filters-collapsible, .storm-quick-genres-container, .bookmarks-subnav-container, #bookmarks-subnav-container');
 
-    if (mainArea && isTopArea) {
+    // Если фокус в тулбаре или вкладках, а ниже открыто подменю закладок - переходим в него
+    const bSubnav = document.getElementById('bookmarks-subnav-container');
+    const isInsideSubnav = currentFocusedElement.closest('.bookmarks-subnav-container, #bookmarks-subnav-container');
+    if (!isInsideSubnav && bSubnav && bSubnav.style.display !== 'none' && bSubnav.offsetHeight > 0) {
+      const subnavChips = focusables.filter(el => bSubnav.contains(el));
+      if (subnavChips.length > 0) {
+        const activeChip = subnavChips.find(c => c.classList.contains('active')) || subnavChips[0];
+        bestCandidate = activeChip;
+      }
+    }
+
+    if (!bestCandidate && mainArea && isTopArea) {
       const candidates = focusables.filter(el => mainArea.contains(el));
       if (candidates.length > 0) {
-        bestCandidate = candidates[0];
+        // Находим верхний видимый ряд контента (minTop + 60px)
+        let minTop = Infinity;
+        candidates.forEach(c => {
+          const t = c.getBoundingClientRect().top;
+          if (t < minTop) minTop = t;
+        });
+        const topRowCandidates = candidates.filter(c => c.getBoundingClientRect().top <= minTop + 60);
+        topRowCandidates.sort((a, b) => {
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          const aCenter = ra.left + ra.width / 2;
+          const bCenter = rb.left + rb.width / 2;
+          const currCenter = currentRect.left + currentRect.width / 2;
+          return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
+        });
+        bestCandidate = topRowCandidates[0];
         if (typeof window.toggleFiltersCollapsible === 'function' && document.body.classList.contains('tv-mode')) {
           window.toggleFiltersCollapsible(true);
         }
@@ -973,9 +1128,14 @@ function moveFocus(direction) {
     } else if (mainArea && mainArea.contains(currentFocusedElement)) {
       const belowCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().top > currentRect.top + 15);
       if (belowCandidates.length > 0) {
+        belowCandidates.sort((a, b) => {
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          return Math.hypot(ra.left - currentRect.left, ra.top - currentRect.top) - Math.hypot(rb.left - currentRect.left, rb.top - currentRect.top);
+        });
         bestCandidate = belowCandidates[0];
       } else {
-        window.scrollBy({ top: 380, behavior: 'smooth' });
+        window.scrollBy({ top: 320, behavior: 'smooth' });
       }
     } else if (isPlayerOpen) {
       const modalBody = document.querySelector('#cinema-modal .storm-modal-body') || document.querySelector('#cinema-modal .cinema-modal-dialog');
@@ -984,7 +1144,7 @@ function moveFocus(direction) {
         if (modalBelow.length > 0) {
           bestCandidate = modalBelow[0];
         } else {
-          modalBody.scrollBy({ top: 260, behavior: 'smooth' });
+          modalBody.scrollBy({ top: 240, behavior: 'smooth' });
         }
       }
     }
@@ -995,16 +1155,48 @@ function moveFocus(direction) {
     if (mainArea && mainArea.contains(currentFocusedElement)) {
       const aboveCandidates = focusables.filter(el => mainArea.contains(el) && el.getBoundingClientRect().bottom < currentRect.bottom - 15);
       if (aboveCandidates.length > 0) {
-        bestCandidate = aboveCandidates[aboveCandidates.length - 1];
+        aboveCandidates.sort((a, b) => {
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          return Math.hypot(ra.left - currentRect.left, currentRect.bottom - ra.bottom) - Math.hypot(rb.left - currentRect.left, currentRect.bottom - ra.bottom);
+        });
+        bestCandidate = aboveCandidates[0];
       } else {
-        const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
-        if (topArea) {
-          const candidates = focusables.filter(el => topArea.contains(el));
-          if (candidates.length > 0) {
-            bestCandidate = candidates[0];
+        // Мы в верхнем ряду контента: если активно подменю закладок, переходим в него
+        const bSubnav = document.getElementById('bookmarks-subnav-container');
+        if (bSubnav && bSubnav.style.display !== 'none' && bSubnav.offsetHeight > 0) {
+          const subnavChips = focusables.filter(el => bSubnav.contains(el));
+          if (subnavChips.length > 0) {
+            subnavChips.sort((a, b) => {
+              const ra = a.getBoundingClientRect();
+              const rb = b.getBoundingClientRect();
+              const aCenter = ra.left + ra.width / 2;
+              const bCenter = rb.left + rb.width / 2;
+              const currCenter = currentRect.left + currentRect.width / 2;
+              return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
+            });
+            bestCandidate = subnavChips[0];
           }
         }
-        window.scrollBy({ top: -380, behavior: 'smooth' });
+
+        // Если подменю нет, бесшовный переход в тулбар или панель вкладок
+        if (!bestCandidate) {
+          const topArea = document.querySelector('.storm-toolbar') || document.querySelector('.storm-tabs-bar') || document.querySelector('.storm-navbar');
+          if (topArea) {
+            const candidates = focusables.filter(el => topArea.contains(el));
+            if (candidates.length > 0) {
+              candidates.sort((a, b) => {
+                const ra = a.getBoundingClientRect();
+                const rb = b.getBoundingClientRect();
+                const aCenter = ra.left + ra.width / 2;
+                const bCenter = rb.left + rb.width / 2;
+                const currCenter = currentRect.left + currentRect.width / 2;
+                return Math.abs(aCenter - currCenter) - Math.abs(bCenter - currCenter);
+              });
+              bestCandidate = candidates[0];
+            }
+          }
+        }
       }
     } else if (isPlayerOpen) {
       const modalBody = document.querySelector('#cinema-modal .storm-modal-body') || document.querySelector('#cinema-modal .cinema-modal-dialog');
@@ -1013,7 +1205,7 @@ function moveFocus(direction) {
         if (modalAbove.length > 0) {
           bestCandidate = modalAbove[modalAbove.length - 1];
         } else {
-          modalBody.scrollBy({ top: -260, behavior: 'smooth' });
+          modalBody.scrollBy({ top: -240, behavior: 'smooth' });
         }
       }
     }
@@ -1034,7 +1226,50 @@ function setFocusTo(element) {
     element.setAttribute('tabindex', '0');
   }
   element.focus();
-  element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+
+  // 1. Плавный горизонтальный скролл внутри каруселей и списков: гарантированная центровка активной карточки
+  const railContainer = element.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll, .storm-quick-genres-container');
+  if (railContainer) {
+    const pRect = railContainer.getBoundingClientRect();
+    const eRect = element.getBoundingClientRect();
+    const scrollTarget = railContainer.scrollLeft + (eRect.left - pRect.left) - (pRect.width / 2) + (eRect.width / 2);
+    railContainer.scrollTo({ left: Math.max(0, scrollTarget), behavior: 'smooth' });
+  }
+
+  // 2. Интеллектуальный вертикальный скролл экрана ТВ с защитой от обрезания обложек (Plex & Emby Style)
+  const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || document.querySelector('.storm-modal-backdrop.is-open'));
+  if (isPlayerOpen) {
+    const modalBody = element.closest('.storm-modal-body, .cinema-modal-dialog, .profile-modal-dialog, .series-episodes-grid, .filter-sheet-container');
+    if (modalBody) {
+      const mbRect = modalBody.getBoundingClientRect();
+      const elRect = element.getBoundingClientRect();
+      const deltaY = (elRect.top + elRect.height / 2) - (mbRect.top + mbRect.height / 2);
+      if (Math.abs(deltaY) > 16) {
+        modalBody.scrollBy({ top: deltaY, behavior: 'smooth' });
+      }
+    }
+  } else {
+    // В основном интерфейсе: если фокус в шапке или панели вкладок — прокручиваем на самый верх
+    const isTopHeader = Boolean(element.closest('.storm-sticky-header-container, .storm-navbar, .storm-tabs-bar, .storm-toolbar, #bookmarks-subnav-container'));
+    if (isTopHeader) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      // Для карточек каталога и лент: центрируем активную ленту/ряд ровно посередине экрана
+      const railOrCard = element.closest('.storm-media-rail, .hero-showcase-container, .media-detailed-card') || element;
+      const rRect = railOrCard.getBoundingClientRect();
+      const stickyHeader = document.querySelector('.storm-sticky-header-container');
+      const headerH = stickyHeader ? stickyHeader.getBoundingClientRect().height : 140;
+      const bottomSafe = 100; // Пространство под плавающий HUD ТВ-пульта
+      const vh = window.innerHeight;
+      const availableH = vh - headerH - bottomSafe;
+      const targetCenterY = headerH + (availableH / 2);
+      const currentCenterY = rRect.top + (rRect.height / 2);
+      const deltaY = currentCenterY - targetCenterY;
+      if (Math.abs(deltaY) > 12) {
+        window.scrollBy({ top: deltaY, behavior: 'smooth' });
+      }
+    }
+  }
 }
 
 function focusInitialElement() {

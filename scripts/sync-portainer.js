@@ -2,7 +2,6 @@
  * STORM MULTIMEDIA - Автоматическая синхронизация файлов в контейнер Synology NAS (Portainer Docker API)
  */
 import fs from 'fs';
-import path from 'path';
 
 function createTar(files) {
   const chunks = [];
@@ -72,9 +71,12 @@ export async function syncToPortainer(options = {}) {
   console.log(`[Portainer Sync] Найден контейнер: ${stormContainer.Id.slice(0, 12)} (${stormContainer.State})`);
 
   const filePaths = [
+    'package.json',
     'server.js',
     'db.js',
     'public/index.html',
+    'public/remote.html',
+    'public/sw.js',
     'public/js/catalog-baseline.js',
     'services/catalog-fallback.js',
     'services/fanfilm-service.js',
@@ -90,6 +92,11 @@ export async function syncToPortainer(options = {}) {
     'public/js/smart-skip.js',
     'public/js/bookmarks.js',
     'public/js/gamepad-tv.js',
+    'public/js/storm-remote.js',
+    'public/js/release-calendar.js',
+    'public/js/neural-recommender.js',
+    'public/js/updater.js',
+    'public/js/form-factor.js',
     'public/styles/tv-mode.css',
     'public/styles/main.css',
     'public/styles/components.css'

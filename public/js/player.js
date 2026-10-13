@@ -7926,6 +7926,10 @@ function renderPlayerUtilityButtons() {
               <span class="studio-tab-icon">🛡️</span>
               <span class="studio-tab-text">CleanView</span>
             </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-franchise" title="Хронология франшизы, сиквелы, приквелы и связанные фильмы">
+              <span class="studio-tab-icon">🧬</span>
+              <span class="studio-tab-text">Франшиза</span>
+            </button>
           </div>
         </div>
 
@@ -8257,6 +8261,61 @@ function renderPlayerUtilityButtons() {
     tabCast.onclick = () => {
       openDrawerTab('cast', '🎭', 'В ролях и съемочная группа', (body) => {
         renderInPlayerCastDrawer(body);
+      });
+    };
+  }
+
+  // 9. Хронология франшизы и связанные части
+  const tabFranchise = container.querySelector('#studio-tab-franchise');
+  if (tabFranchise) {
+    tabFranchise.onclick = () => {
+      openDrawerTab('franchise', '🧬', `Хронология франшизы: ${currentMedia?.title || ''}`, async (body) => {
+        body.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">⏳ Построение хронологического графа франшизы...</div>`;
+        try {
+          const qTitle = encodeURIComponent(currentMedia?.title || '');
+          const res = await fetch(`/api/media/franchise?title=${qTitle}`);
+          const data = await res.json();
+          const items = Array.isArray(data?.items) ? data.items : [];
+          if (items.length === 0) {
+            body.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">Для «${escapeHtml(currentMedia?.title || '')}» дополнительных частей франшизы не найдено.</div>`;
+            return;
+          }
+          body.innerHTML = `
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+              Все части и связанные релизы вселенной <strong>«${escapeHtml(data.franchise || currentMedia?.title || '')}»</strong> в хронологическом порядке:
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;">
+              ${items.map((it, idx) => {
+                const pUrl = it.poster ? (it.poster.startsWith('/api/media/image-proxy') ? it.poster : `/api/media/image-proxy?url=${encodeURIComponent(it.poster)}&title=${encodeURIComponent(it.title || '')}`) : `/api/media/image-proxy?title=${encodeURIComponent(it.title || '')}`;
+                const isCur = String(it.title || '').toLowerCase() === String(currentMedia?.title || '').toLowerCase();
+                return `
+                  <div class="storm-card franchise-item-card" data-idx="${idx}" style="display: flex; gap: 10px; padding: 10px; border-radius: 10px; cursor: pointer; border: 1px solid ${isCur ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}; background: ${isCur ? 'rgba(0,210,255,0.08)' : 'rgba(255,255,255,0.03)'};">
+                    <img src="${pUrl}" alt="${escapeHtml(it.title)}" style="width: 54px; height: 78px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" onerror="this.src='assets/favicon.svg'">
+                    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                      <div>
+                        <div style="font-size: 10px; color: var(--accent); font-weight: 800;">Часть #${idx + 1} • ${it.year || ''}</div>
+                        <div style="font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">★ ${it.rating || '8.0'} • ${escapeHtml(it.quality || '4K UHD')}</div>
+                      </div>
+                      <span style="font-size: 11px; color: ${isCur ? '#10b981' : 'var(--accent)'}; font-weight: 700;">${isCur ? '● Сейчас открыто' : '▶ Переключить'}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+          body.querySelectorAll('.franchise-item-card').forEach(card => {
+            card.onclick = () => {
+              const picked = items[parseInt(card.dataset.idx, 10)];
+              if (picked) {
+                closeDrawer();
+                openPlayerModal(picked);
+              }
+            };
+          });
+        } catch (err) {
+          body.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--color-red);">Не удалось загрузить хронологию: ${escapeHtml(err.message)}</div>`;
+        }
       });
     };
   }
@@ -9485,9 +9544,14 @@ function renderScreenshotsGallery(mediaItem, details) {
   }
 
   container.style.display = 'block';
-  gallery.innerHTML = screenshots.map((src, idx) => `
-    <img class="cinema-screenshot-thumb" src="${src}" alt="Кадр ${idx + 1}" loading="lazy" onerror="this.style.display='none';" onclick="window.open('${src}', '_blank')">
-  `).join('');
+  gallery.innerHTML = screenshots.map((src, idx) => {
+    const rawSrc = typeof src === 'string' ? src.trim() : '';
+    if (!rawSrc) return '';
+    const proxiedSrc = (rawSrc.startsWith('http://') || rawSrc.startsWith('https://'))
+      ? `/api/media/image-proxy?url=${encodeURIComponent(rawSrc)}&title=${encodeURIComponent(mediaItem?.title || '')}`
+      : rawSrc;
+    return `<img class="cinema-screenshot-thumb" src="${proxiedSrc}" alt="Кадр ${idx + 1}" loading="lazy" onerror="this.style.display='none';" onclick="window.open('${proxiedSrc}', '_blank')">`;
+  }).join('');
 }
 
 function initProgressSlider() {

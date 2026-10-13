@@ -104,7 +104,7 @@
 
         <!-- Профиль авторизованного пользователя -->
         <button class="user-profile-btn" id="user-profile-btn" style="display: none;">
-          <img src="assets/favicon.svg" alt="Avatar" class="user-avatar-img" id="user-avatar-img">
+          <img src="assets/avatar_default.svg" alt="Avatar" class="user-avatar-img" id="user-avatar-img" onerror="this.src='assets/avatar_default.svg'">
           <span id="user-name-label">Пользователь</span>
         </button>
 
@@ -660,7 +660,7 @@
         <!-- 1. Обзор и статистика -->
         <div id="ptab-content-overview">
           <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
-            <img src="assets/favicon.svg" alt="Avatar" id="profile-avatar" style="width: 68px; height: 68px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow); object-fit: cover;">
+            <img src="assets/avatar_default.svg" alt="Avatar" id="profile-avatar" style="width: 68px; height: 68px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow); object-fit: cover;" onerror="this.src='assets/avatar_default.svg'">
             <div>
               <h4 id="profile-username" style="font-size: 19px; margin: 0; font-weight: 800;">Пользователь</h4>
               <div id="profile-email" style="font-size: 12px; color: var(--text-muted);">user@example.com</div>
@@ -750,11 +750,87 @@
             </select>
           </div>
 
+          <!-- Настройки плеера по умолчанию, блокировки рекламы и воспроизведения -->
+          <div style="background: var(--bg-tertiary); padding: 16px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="font-weight: 800; font-size: 13px; color: var(--accent-primary); display: flex; align-items: center; gap: 8px;">
+              <span>🎬</span> Плеер, качество и защита от рекламы
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Плеер по умолчанию</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Приоритетный источник при открытии фильмов и сериалов</div>
+              </div>
+              <select class="storm-select" id="profile-default-player-select" style="min-width: 230px;">
+                <option value="fanfilm4k_uhd">💎 4K Ultra HD Плеер (FanFilm4K)</option>
+                <option value="kinobox_universal">⚡ Kinobox Мультиплеер (FHD)</option>
+                <option value="kodik_direct">🎙️ Kodik (Озвучки и субтитры)</option>
+                <option value="vk_video_stream">🚀 VK Видео (Скоростной CDN)</option>
+                <option value="rutube_direct_hls">📺 RuTube (Прямой HLS поток)</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Блокировка рекламы и VAST-вставок (AdShield)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Вырезание рекламных роликов, баннеров и ускорение вставок в 16 раз</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-adblock-toggle" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Маскирование водяных знаков (CleanView)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Бесшовное оптическое скрытие вшитых логотипов букмекеров</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-cleanview-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Автопропуск заставок и титров (Smart Skip)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Автоматический переход через опенинги и показ кнопки пропуска</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-autoskip-toggle" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Автопереключение серий и резервный плеер</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Бесшовный переход к следующей серии и автозамена при сбое источника</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-autonext-toggle" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Кинотеатральная подсветка Ambilight</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Динамическое фоновое свечение вокруг экрана плеера</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-ambilight-toggle" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
           <!-- Проверка обновлений STORM MULTIMEDIA -->
           <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.5 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.31 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -1220,7 +1296,7 @@
   </button>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.29"></script>
+  <script type="module" src="/js/app.js?v=1.0.31"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
   <script>

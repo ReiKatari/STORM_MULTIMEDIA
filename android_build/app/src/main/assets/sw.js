@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v3.1';
+const CACHE_NAME = 'storm-multimedia-v3.2-1.0.31';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -13,6 +13,7 @@ const STATIC_ASSETS = [
   '/styles/tv-mode.css',
   '/js/status-icons.js',
   '/js/catalog-baseline.js',
+  '/js/form-factor.js',
   '/js/app.js',
   '/js/auth.js',
   '/js/bookmarks.js',

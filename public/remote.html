@@ -244,6 +244,23 @@
       <span style="font-size: 16px;">🌈</span>
       <span>Аура</span>
     </button>
+
+    <button class="remote-ctrl-btn" data-action="prev_ep">
+      <span style="font-size: 16px;">⏮</span>
+      <span>Пред. серия</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="next_ep">
+      <span style="font-size: 16px;">⏭</span>
+      <span>След. серия</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="cycle_player">
+      <span style="font-size: 16px;">🔄</span>
+      <span>Плеер</span>
+    </button>
+    <button class="remote-ctrl-btn" data-action="toggle_tv_mode">
+      <span style="font-size: 16px;">📺</span>
+      <span>ТВ-режим</span>
+    </button>
   </div>
 
   <div class="remote-search-wrap">
@@ -267,6 +284,13 @@
           badge.textContent = '🟢 В сети';
           badge.style.color = '#00ff66';
         }
+        try {
+          ws.send(JSON.stringify({
+            type: 'join_remote_session',
+            session,
+            role: 'controller'
+          }));
+        } catch (_) {}
       };
 
       ws.onclose = () => {
@@ -280,13 +304,20 @@
     }
 
     function sendRemoteAction(action, extra = {}) {
+      const payload = {
+        type: 'storm_remote_action',
+        session,
+        action,
+        ...extra
+      };
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'storm_remote_action',
-          session,
-          action,
-          ...extra
-        }));
+        ws.send(JSON.stringify(payload));
+      } else {
+        fetch('/api/remote/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).catch(() => {});
       }
       if (navigator.vibrate) navigator.vibrate(20);
     }

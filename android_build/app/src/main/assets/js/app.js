@@ -54,8 +54,8 @@
 
 import { initTheme, setTheme } from './theme.js';
 import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, createCustomCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
 import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js';
 import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
 import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
@@ -69,6 +69,7 @@ import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js'
 import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js';
 import { getStatusIconSvg } from './status-icons.js';
 import { checkForUpdates } from './updater.js';
+import { initFormFactorEngine } from './form-factor.js';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -79,6 +80,9 @@ let currentCountry = 'all';
 let currentYear = 'all';
 let currentRating = 0;
 let currentStatusFilter = 'all';
+let currentBookmarkSubTab = 'all';
+let cachedCustomLists = [];
+let activeViewingCustomList = null;
 let currentPage = 1;
 let totalCatalogItems = 0;
 let totalCatalogPages = 1;
@@ -196,10 +200,9 @@ async function startStormApp() {
   // Динамическое автоматическое обновление закладок и списков без перезагрузки
   try {
     window.addEventListener('storm:bookmarks-updated', (e) => {
+      lastRenderedHomeKey = '';
       const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-      if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
-        loadCurrentTab();
-      } else if (e.detail?.deleted) {
+      if (e.detail?.deleted) {
         const deletedId = String(e.detail.mediaId || '');
         const deletedTitle = normalizeMediaTitle(e.detail.title || '');
         rawCatalogItems.forEach(x => {
@@ -207,15 +210,24 @@ async function startStormApp() {
             x.user_status = null;
           }
         });
-        renderFilteredCatalog();
+        updateCardsInDOM(deletedId, e.detail.title, null, false);
       } else if (e.detail?.mediaData && e.detail?.status) {
         const updatedId = String(e.detail.mediaData.id || e.detail.mediaData.media_id);
         const updatedTitle = normalizeMediaTitle(e.detail.mediaData.title || '');
+        const st = e.detail.status;
         rawCatalogItems.forEach(x => {
           if (String(x.id) === updatedId || (updatedTitle && normalizeMediaTitle(x.title, x.original_title) === updatedTitle)) {
-            x.user_status = e.detail.status;
+            x.user_status = st;
           }
         });
+        updateCardsInDOM(updatedId, e.detail.mediaData.title, st, st === 'completed');
+      }
+
+      if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
+        loadCurrentTab();
+      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+        renderHomeView(rawCatalogItems);
+      } else {
         renderFilteredCatalog();
       }
     });
@@ -223,14 +235,19 @@ async function startStormApp() {
     window.addEventListener('storm:series-status-changed', (e) => {
       const { mediaId, status } = e.detail || {};
       if (!mediaId || !status) return;
+      lastRenderedHomeKey = '';
       const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
       rawCatalogItems.forEach(x => {
         if (String(x.id) === String(mediaId)) {
           x.user_status = status;
         }
       });
+      updateCardsInDOM(mediaId, '', status, status === 'completed');
+
       if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
+      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
+        renderHomeView(rawCatalogItems);
       } else {
         renderFilteredCatalog();
       }
@@ -565,6 +582,18 @@ export function switchTab(tab) {
 
   if (tab !== 'home') {
     hideHeroShowcase();
+  }
+
+  if (tab === 'bookmarks') {
+    resetAllFilters();
+    currentBookmarkSubTab = 'all';
+    activeViewingCustomList = null;
+  } else {
+    const bSubnav = document.getElementById('bookmarks-subnav-container');
+    if (bSubnav) {
+      bSubnav.style.display = 'none';
+      bSubnav.innerHTML = '';
+    }
   }
 
   // Тактильный виброотклик на смартфонах
@@ -1511,6 +1540,157 @@ export function cleanVideoTitle(str) {
   return s.replace(/\s{2,}/g, ' ').trim();
 }
 
+export function isPlaceholderImage(url) {
+  if (!url || typeof url !== 'string') return true;
+  const lower = url.toLowerCase();
+  return lower.includes('missing') || lower.includes('404') || lower.includes('placeholder') || lower.includes('default') || lower.includes('favicon.svg');
+}
+
+/**
+ * Получение безопасного и гарантированно доступного URL обложки/постера.
+ * Все внешние изображения (TMDB, FanFilm4K, AniXart, VK, RuTube) маршрутизируются через
+ * локальный высокоскоростной серверный прокси /api/media/image-proxy.
+ */
+export function getSafePosterUrl(url, title = '') {
+  if (!url || typeof url !== 'string' || isPlaceholderImage(url)) {
+    if (title && typeof title === 'string' && title.trim().length >= 2) {
+      return `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}`;
+    }
+    return 'assets/favicon.svg';
+  }
+  let clean = url.trim();
+  if (clean.startsWith('data:') || clean.startsWith('blob:') || clean.startsWith('assets/') || clean.startsWith('/assets/')) {
+    return clean;
+  }
+  if (clean.startsWith('/api/media/image-proxy') || clean.startsWith('api/media/image-proxy')) {
+    return clean.startsWith('/') ? clean : `/${clean}`;
+  }
+  if (clean.startsWith('//')) clean = `https:${clean}`;
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    const titleParam = title ? `&title=${encodeURIComponent(title)}` : '';
+    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}`;
+  }
+  return clean;
+}
+
+export function getPosterSrcset(posterUrl) {
+  return '';
+}
+
+export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
+  const safePoster = getSafePosterUrl(posterUrl, title);
+  const cleanTitle = escapeHtml(title || '');
+  const encodedTitle = encodeURIComponent(title || '').replace(/'/g, '%27');
+  const classAttr = extraClass ? ` class="${extraClass}"` : '';
+  return `<img${classAttr} src="${safePoster}" alt="${cleanTitle}" loading="lazy" onerror="if(!this.dataset.triedTitle && '${encodedTitle}'){ this.dataset.triedTitle='1'; this.src='/api/media/image-proxy?title=${encodedTitle}'; } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src = this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">`;
+}
+
+/**
+ * Комплексная проверка медиа-элемента на стороне клиента на принадлежность к трейлерам/тизерам.
+ * Полностью исключает появление любых карточек с трейлерами в каталогах, каруселях и закладках.
+ */
+export function isTrailerMedia(item) {
+  if (!item) return false;
+
+  const title = typeof item === 'string' ? item : (item.title || item.name || '');
+  const originalTitle = typeof item === 'string' ? '' : (item.original_title || item.original_name || '');
+  const description = typeof item === 'string' ? '' : (item.description || item.overview || '');
+  const category = typeof item === 'string' ? '' : (item.category || '');
+  const genres = Array.isArray(item.genres) ? item.genres.join(' ') : String(item.genres || '');
+  const durationSec = parseInt(item.duration_seconds || item.durationSec || item.duration || 0, 10);
+  const source = item.source || '';
+
+  const cleanTitle = title.trim();
+  const cleanOriginalTitle = originalTitle.trim();
+  const combinedText = `${cleanTitle} ${cleanOriginalTitle} ${category} ${genres}`.toLowerCase();
+
+  // 1. Прямые маркеры трейлеров и промо в названии или категории
+  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
+
+  if (trailerWordsRegex.test(cleanTitle) || trailerWordsRegex.test(cleanOriginalTitle) || trailerWordsRegex.test(category)) {
+    return true;
+  }
+
+  // Маркеры в скобках, дефисах или составных фразах
+  const subPatterns = [
+    'трейлер', 'тизер', 'trailer', 'teaser',
+    'промо-ролик', 'промо ролик', 'официальный трейлер', 'русский трейлер',
+    'дублированный трейлер', 'финальный трейлер', 'тизер-трейлер', 'концепт-трейлер',
+    'concept trailer', 'fan trailer', 'фан-трейлер', 'фан трейлер',
+    'обзор сериала', 'обзор фильма', 'обзор премьеры', 'разбор сериала', 'разбор фильма',
+    'разбор концовки', 'разбор сюжета', 'лекция для сна', 'для сна', 'дата выхода',
+    'когда выйдет', 'что известно', 'расписание выхода', 'простыми словами'
+  ];
+  for (const p of subPatterns) {
+    if (combinedText.includes(p)) {
+      return true;
+    }
+  }
+
+  // Обзоры и разборы в начале названия
+  if (/^(?:обзор|разбор|пересказ|рекап|сюжет|подробный разбор|честный обзор)\b/i.test(cleanTitle)) {
+    return true;
+  }
+
+  // 2. Фанатские концепт-трейлеры несуществующих фильмов
+  const normTitle = cleanTitle.toLowerCase().replace(/[^a-zа-яё0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const normOriginal = cleanOriginalTitle.toLowerCase().replace(/[^a-zа-яё0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const hasSpiderman = normTitle.includes('человек паук') || normTitle.includes('spider man') || normOriginal.includes('spider man');
+  const hasNewDay = normTitle.includes('новый день') || normTitle.includes('brand new day') || normTitle.includes('a new day') || normOriginal.includes('brand new day') || normOriginal.includes('a new day');
+  if (hasSpiderman && hasNewDay) {
+    return true;
+  }
+  if (
+    normTitle.includes('человек паук новый день') ||
+    normTitle.includes('человек паук 4 новый день') ||
+    normTitle.includes('spider man brand new day') ||
+    normTitle.includes('spider man a new day') ||
+    normTitle.includes('spider man 4 new day') ||
+    normOriginal.includes('brand new day') ||
+    normOriginal.includes('a new day')
+  ) {
+    return true;
+  }
+
+  // 2.5 Игрофильмы, прохождения игр и геймплей-ролики
+  const author = (typeof item.author === 'string' ? item.author : '').toLowerCase();
+  const gameFootagePatterns = ['игрофильм', 'игро фильм', 'геймплей', 'gameplay', 'walkthrough', 'прохождение игры', 'прохождение без комментариев', 'летсплей', 'letsplay'];
+  for (const gp of gameFootagePatterns) {
+    if (combinedText.includes(gp) || author.includes(gp)) {
+      return true;
+    }
+  }
+  if ((source === 'rutube' || source === 'vkvideo') && genres.toLowerCase().includes('видеоигры')) {
+    return true;
+  }
+
+  // 3. Проверка длительности для RuTube и VK Видео: видео короче 10 минут (600 сек)
+  if ((source === 'rutube' || source === 'vkvideo') && durationSec > 0 && durationSec < 600) {
+    const isEpisode = /сери|сезон|эпизод|выпуск/i.test(cleanTitle);
+    if (!isEpisode) {
+      return true;
+    }
+  }
+
+  // 4. Описание, указывающее на трейлер
+  if (description) {
+    const descLower = description.toLowerCase();
+    if (
+      descLower.startsWith('трейлер') ||
+      descLower.startsWith('тизер') ||
+      descLower.startsWith('официальный трейлер') ||
+      descLower.startsWith('русский трейлер') ||
+      descLower.startsWith('дублированный трейлер') ||
+      /\b(смотреть трейлер|смотрите трейлер|официальный дублированный трейлер|главный трейлер|тизер-трейлер)\b/i.test(descLower)
+    ) {
+      if (durationSec > 0 && durationSec < 900) return true;
+      if (descLower.length < 220 && (descLower.includes('трейлер') || descLower.includes('тизер'))) return true;
+    }
+  }
+
+  return false;
+}
+
 export function formatMediaTitle(item) {
   if (!item) return '';
   let rawTitle = cleanVideoTitle(item.title || item.original_title || '');
@@ -1695,22 +1875,33 @@ async function loadCurrentTab() {
 
   if (currentTab === 'bookmarks') {
     renderSkeletonGrid();
-    const bookmarks = await fetchUserBookmarks();
-    const rawItems = bookmarks.map(b => ({
-      id: b.media_id,
-      source: b.source,
-      title: b.title,
-      original_title: b.original_title,
-      poster: b.poster_url,
-      media_type: b.media_type,
-      year: b.year || '',
-      user_status: b.status,
-      progress_percent: b.progress_percent,
-      episodes_watched: b.episodes_watched,
-      total_episodes: b.total_episodes,
-      updated_at: b.updated_at
-    }));
-    rawCatalogItems = deduplicateMediaList(rawItems);
+    try {
+      const [bookmarks, customLists] = await Promise.all([
+        fetchUserBookmarks().catch(() => []),
+        fetchCustomLists().catch(() => [])
+      ]);
+      cachedCustomLists = Array.isArray(customLists) ? customLists : [];
+      const rawItems = (bookmarks || []).map(b => ({
+        id: b.media_id,
+        source: b.source,
+        title: b.title,
+        original_title: b.original_title,
+        poster: getSafePosterUrl(b.poster_url, b.title),
+        media_type: b.media_type,
+        year: b.year || '',
+        user_status: b.status,
+        is_favorite: (b.is_favorite === 1 || b.is_favorite === true || b.status === 'favorite') ? 1 : 0,
+        progress_percent: b.progress_percent,
+        episodes_watched: b.episodes_watched,
+        total_episodes: b.total_episodes,
+        updated_at: b.updated_at
+      }));
+      rawCatalogItems = deduplicateMediaList(rawItems);
+    } catch (err) {
+      console.warn('Error loading bookmarks:', err);
+      rawCatalogItems = [];
+      cachedCustomLists = [];
+    }
     renderFilteredCatalog();
     return;
   }
@@ -1840,12 +2031,23 @@ function normalizeMediaTitle(title, originalTitle = '') {
   const clean = (t) => {
     if (!t) return '';
     let s = String(t).toLowerCase()
-      .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d)\s*[\)\]]?/g, ' ')
-      .replace(/\s*[\(\[]?\s*(постер|постер\s*4[kк]|4[kк]\s*uhd|4[kк]|uhd|fhd|1080p|720p|сериал|фильм|мультфильм|сезон\s*\d+|\d+\s*сезон|часть\s*\d+|\d+\s*часть)\s*[\)\]]?/gi, ' ');
+      .replace(/ё/g, 'е')
+      .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
+      .replace(/[«»“”"'`]/g, ' ')
+      .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
+      .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф|м\/ф|м\/с)\)?\s*[:\-–—]?\s*/gi, '')
+      .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
+      .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
+      .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
+      .replace(/(?<!\p{L})(?:часть\s+четвертая|part\s+four|part\s+iv)(?!\p{L})/giu, ' 4 ')
+      .replace(/(?<!\p{L})(?:\d+\s*сезон[а-я]*|\d+\s*сери[а-я]*|сезон[а-я]*\s*\d+|сери[а-я]*\s*\d+|s\d+\s*e\d+|s\d+|e\d+)(?!\p{L})/giu, ' ')
+      .replace(/(?<!\p{L})(?:19\d\d|20\d\d)(?!\p{L})/gu, ' ')
+      .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
+      .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
     if (s.includes('дандадан') || s.includes('dandadan')) {
       s = 'дандадан';
     }
-    return s.replace(/[^a-zа-я0-9]/gi, '').trim();
+    return s.replace(/[^\p{L}\p{N}]+/gu, '').trim();
   };
 
   const primary = clean(title);
@@ -1975,6 +2177,16 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
     return 'Сериал';
   }
 
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (title === 'кэрри' || title.startsWith('кэрри ') || title.startsWith('кэрри:') || title === 'carrie' || title.startsWith('carrie ') || title.startsWith('carrie:')) {
+    return 'Сериал';
+  }
+
+  // Дюна и Дюна: Часть вторая - строго художественный фильм
+  if (title.includes('дюна')) {
+    return 'Фильм';
+  }
+
   if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
     return 'Аниме-сериал';
   }
@@ -2004,20 +2216,49 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
 function deduplicateMediaList(items) {
   if (!Array.isArray(items)) return [];
   const itemMap = new Map();
+  const aliasToKey = new Map();
 
   for (const item of items) {
     if (!item || (!item.title && !item.name)) continue;
+    // 100% исключение трейлеров, промо и фанатских концептов
+    if (isTrailerMedia(item)) continue;
+
     const itemTitle = item.title || item.name || '';
-    const normKey = normalizeMediaTitle(itemTitle, item.original_title || item.original_name);
-    const key = normKey || `id_${item.id || item.media_id || ''}_${item.source || ''}`;
+    const origTitle = item.original_title || item.original_name || '';
+    const normKey = normalizeMediaTitle(itemTitle, origTitle);
+    const origKey = origTitle ? normalizeMediaTitle(origTitle, '') : '';
+    const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
+    const kpKey = (item.kp_id || item.kinopoisk_id) ? `kp_${item.kp_id || item.kinopoisk_id}` : '';
+
+    const candidateKeys = [normKey, origKey, tmdbKey, kpKey].filter(Boolean);
+    let key = '';
+    for (const ck of candidateKeys) {
+      if (itemMap.has(ck)) {
+        key = ck;
+        break;
+      }
+      if (aliasToKey.has(ck)) {
+        key = aliasToKey.get(ck);
+        break;
+      }
+    }
+    if (!key) {
+      key = normKey || origKey || tmdbKey || kpKey || `id_${item.id || item.media_id || ''}_${item.source || ''}`;
+    }
+    for (const ck of candidateKeys) {
+      aliasToKey.set(ck, key);
+    }
 
     if (!itemMap.has(key)) {
-      itemMap.set(key, item);
+      itemMap.set(key, {
+        ...item,
+        poster: getSafePosterUrl(item.poster || item.poster_url, itemTitle)
+      });
     } else {
       const existing = itemMap.get(key);
       const fanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
         (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
-      const has4K = item.is4K || existing.is4K;
+      const has4K = item.is4K || existing.is4K || Boolean(fanfilmUrl);
 
       const isNewBetter =
         (item.source === 'tmdb' && existing.source !== 'tmdb') ||
@@ -2054,6 +2295,23 @@ function deduplicateMediaList(items) {
         user_status: existing.user_status || item.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       };
+
+      // Объединение плееров и ссылок на источники
+      const mergedPlayers = [];
+      const seenP = new Set();
+      for (const p of [...(existing.players || []), ...(item.players || [])]) {
+        if (!p || !p.id) continue;
+        const pKey = `${p.id}_${p.url || ''}`;
+        if (!seenP.has(pKey)) {
+          seenP.add(pKey);
+          mergedPlayers.push(p);
+        }
+      }
+      if (mergedPlayers.length > 0) {
+        merged.players = mergedPlayers;
+      }
+      merged.vk_embed_url = item.vk_embed_url || existing.vk_embed_url || (item.source === 'vkvideo' ? (item.embed_url || item.url) : null);
+      merged.rutube_id = item.rutube_id || existing.rutube_id || (item.source === 'rutube' ? item.id : null);
 
       if (key === 'дандадан') {
         merged.title = 'Дандадан';
@@ -2353,14 +2611,31 @@ function renderHeroShowcase(items) {
 // ГОРИЗОНТАЛЬНЫЕ КАРУСЕЛИ РЕЙЛОВ (EMBY & PLEX HOME VIEW)
 // -------------------------------------------------------------
 function createRailCardHtml(item, idx, isWide = false) {
-  const poster = item.poster || 'assets/favicon.svg';
+  const poster = getSafePosterUrl(item.poster || 'assets/favicon.svg', item.title);
   const formattedTitle = formatMediaTitle(item);
-  const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
-  const is1080p = !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
-  const hasHdr = item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr'));
-  const hasAtmos = item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos'));
-  const has60Fps = item.fps === 60 || (item.quality && item.quality.includes('60'));
-  const hasDub = Boolean(item.voiceover || (item.translations && item.translations.length > 0) || item.source === 'fanfilm4k');
+  const isUpcoming = Boolean(
+    item.is_upcoming || item.isUpcoming ||
+    String(item.id || '').startsWith('tmdb_up_') ||
+    (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) ||
+    (item.premiere && /ожидается|скоро|в кино/i.test(item.premiere)) ||
+    (item.quality && /ожидается|скоро/i.test(item.quality)) ||
+    /кэрри.*2026|flanagan/i.test(String(item.title || '') + ' ' + String(item.link || '')) ||
+    (item.release_date && (() => {
+      const parts = String(item.release_date).split('-');
+      if (parts.length === 3) {
+        const d = new Date(item.release_date);
+        return !isNaN(d.getTime()) && d > new Date();
+      }
+      return false;
+    })()) ||
+    (item.year && parseInt(item.year, 10) > new Date().getFullYear())
+  );
+  const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K') && !item.quality.includes('Ожидается')));
+  const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || (item.source === 'fanfilm4k' && !isUpcoming && item.is4K !== false));
+  const hasHdr = !isUpcoming && (item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr')));
+  const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
+  const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
+  const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming && item.is4K !== false && !/ожидается|скоро/i.test(item.quality || '')));
   const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
   const yr = getMediaYear(item);
   const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
@@ -2403,18 +2678,20 @@ function createRailCardHtml(item, idx, isWide = false) {
     displayPercent = Math.min(100, Math.max(1, Math.round((ep / totalEp) * 100)));
   }
 
+  const isExplicitMovie = item.media_type === 'movie' || item.category === 'Фильм' || catLabel === 'Фильм' || tNorm.includes('дюна');
   return `
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          ${getMediaCardImgHtml(poster, item.title)}
           <div class="media-card-badges">
+            ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>' : ''}
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
             ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
             ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
             ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
             ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
-            ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
+            ${(!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал')) ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
             ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
           </div>
           <div class="media-card-top-right">
@@ -2583,13 +2860,71 @@ export function openHomeSectionsModal() {
   modal.classList.add('is-open');
 }
 
+export function updateCardsInDOM(mediaId, title = '', status = null, isWatched = false) {
+  if (!mediaId && !title) return;
+  const mIdStr = String(mediaId || '');
+  const normTitle = normalizeMediaTitle(title || '');
+
+  const cards = document.querySelectorAll('.media-card, .media-detailed-card');
+  cards.forEach(card => {
+    const cardId = String(card.dataset.id || '');
+    let matches = (mIdStr && cardId === mIdStr);
+    if (!matches && normTitle) {
+      const cardTitleEl = card.querySelector('.media-card-title, .media-detailed-title');
+      if (cardTitleEl && normalizeMediaTitle(cardTitleEl.textContent || '') === normTitle) {
+        matches = true;
+      }
+    }
+    if (!matches) return;
+
+    // 1. Обновляем плашку статуса (В планах, Смотрю, Просмотрено и т.д.)
+    const cardPoster = card.querySelector('.media-card-poster');
+    if (cardPoster) {
+      const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
+      if (oldCardBadge) oldCardBadge.remove();
+      if (status && status !== 'none') {
+        const overlay = cardPoster.querySelector('.media-card-overlay');
+        const badgeHtml = `<div class="media-card-status-badge">${getStatusBadge(status)}</div>`;
+        if (overlay) {
+          overlay.insertAdjacentHTML('beforebegin', badgeHtml);
+        } else {
+          cardPoster.insertAdjacentHTML('beforeend', badgeHtml);
+        }
+      }
+    }
+
+    const detailedHeaderDiv = card.querySelector('.media-detailed-header > div:last-child');
+    if (detailedHeaderDiv) {
+      const oldBadge = detailedHeaderDiv.querySelector('.media-card-status-badge');
+      if (oldBadge) oldBadge.remove();
+      if (status && status !== 'none') {
+        detailedHeaderDiv.insertAdjacentHTML('beforeend', `<div class="media-card-status-badge">${getStatusBadge(status)}</div>`);
+      }
+    }
+
+    // 2. Обновляем галочку просмотрено (✓)
+    const topRight = card.querySelector('.media-card-top-right');
+    if (topRight) {
+      const oldTag = topRight.querySelector('.media-card-watched-tag');
+      const shouldBeWatched = isWatched || status === 'completed';
+      if (shouldBeWatched) {
+        if (!oldTag) {
+          topRight.insertAdjacentHTML('afterbegin', '<span class="media-card-watched-tag" title="Просмотрено">✓</span>');
+        }
+      } else {
+        if (oldTag) oldTag.remove();
+      }
+    }
+  });
+}
+
 let lastRenderedHomeKey = '';
 
 function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
-  const currentHomeKey = `${(items || []).map(x => String(x.id || x.media_id)).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}`;
+  const currentHomeKey = `${(items || []).map(x => `${x.id || x.media_id}:${x.user_status || ''}`).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}`;
   if (container.dataset.renderedView === 'home' && lastRenderedHomeKey === currentHomeKey) {
     return;
   }
@@ -2684,7 +3019,7 @@ function renderHomeView(items) {
         id: i.media_id || i.id,
         source: i.source || 'tmdb',
         title: i.title,
-        poster: i.poster_url || i.poster,
+        poster: getSafePosterUrl(i.poster_url || i.poster, i.title),
         media_type: mType,
         year: getMediaYear(i) || i.year || '',
         genres: i.genres || '',
@@ -2706,17 +3041,22 @@ function renderHomeView(items) {
   });
   if (trendingItems.length < 28) {
     const baseNew = getBaselineCatalog('new') || [];
-    const existingIds = new Set(trendingItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseNew) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        trendingItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
+    trendingItems = deduplicateMediaList([...trendingItems, ...baseNew]);
+  } else {
+    trendingItems = deduplicateMediaList(trendingItems);
   }
   trendingItems = trendingItems.slice(0, 36);
 
+  const trendingNormKeys = new Set();
+  for (const ti of trendingItems) {
+    const k1 = normalizeMediaTitle(ti.title || ti.name || '', ti.original_title || ti.original_name || '');
+    const k2 = (ti.original_title || ti.original_name) ? normalizeMediaTitle(ti.original_title || ti.original_name, '') : '';
+    if (k1) trendingNormKeys.add(k1);
+    if (k2) trendingNormKeys.add(k2);
+  }
+
   const EXPLICIT_KNOWN_SERIES = [
+    'кэрри', 'carrie',
     'король талсы', 'tulsa king', 'основание', 'foundation', 'целую, китти', 'целую китти', 'xo, kitty', 'xo kitty',
     'голяк', 'brassic', 'рыцарь семи королевств', 'a knight of the seven kingdoms', 'сорвиголова', 'daredevil',
     'гангстерленд', 'mobland', 'медленные лошади', 'slow horses', 'йеллоустоун', 'yellowstone',
@@ -2739,7 +3079,7 @@ function renderHomeView(items) {
     'доктор кто', 'doctor who', 'лютер', 'luther', 'мост', 'the bridge'
   ];
 
-  // Рейл 3: Популярные фильмы (строго исключаем сериалы и аниме)
+  // Рейл 3: Популярные фильмы (строго исключаем сериалы, аниме и дубли из Горячих премьер)
   let movieItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
@@ -2756,19 +3096,19 @@ function renderHomeView(items) {
     if (EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s))) return false;
     return true;
   });
-  if (movieItems.length < 28) {
-    const baseMovies = getBaselineCatalog('movies') || [];
-    const existingIds = new Set(movieItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseMovies) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        movieItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
+  const baseMovies = getBaselineCatalog('movies') || [];
+  movieItems = deduplicateMediaList([...movieItems, ...baseMovies]);
+  const uniqueMoviesNotInTrending = movieItems.filter(m => {
+    const mk = normalizeMediaTitle(m.title || m.name || '', m.original_title || m.original_name || '');
+    return !mk || !trendingNormKeys.has(mk);
+  });
+  if (uniqueMoviesNotInTrending.length >= 16) {
+    movieItems = uniqueMoviesNotInTrending.slice(0, 36);
+  } else {
+    movieItems = deduplicateMediaList([...uniqueMoviesNotInTrending, ...movieItems]).slice(0, 36);
   }
-  movieItems = movieItems.slice(0, 36);
 
-  // Рейл 4: Лучшие сериалы
+  // Рейл 4: Лучшие сериалы (дедупликация + приоритет уникальных карточек вне Горячих премьер)
   let seriesItems = items.filter(i => {
     if (i.source === 'anixart' || i.source === 'shikimori' || i.source === 'anilibria') return false;
     const mType = detectClientMediaType(i);
@@ -2781,17 +3121,17 @@ function renderHomeView(items) {
     const isExplicit = isMonsterSeries || normTitle.includes('менталист') || normTitle.includes('mentalist') || normTitle.includes('дневники вампира') || normTitle.includes('vampire diaries') || EXPLICIT_KNOWN_SERIES.some(s => normTitle === s || normTitle.startsWith(s + ' ') || normTitle.includes(s));
     return (mType === 'series' || i.category === 'series' || i.category === 'Сериал' || i.type === 'series' || i.media_type === 'series' || i.seasons || isExplicit || normTitle.includes('сериал') || normTitle.includes('сезон'));
   });
-  if (seriesItems.length < 28) {
-    const baseSeries = getBaselineCatalog('series') || [];
-    const existingIds = new Set(seriesItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseSeries) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        seriesItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
+  const baseSeries = getBaselineCatalog('series') || [];
+  seriesItems = deduplicateMediaList([...seriesItems, ...baseSeries]);
+  const uniqueSeriesNotInTrending = seriesItems.filter(s => {
+    const sk = normalizeMediaTitle(s.title || s.name || '', s.original_title || s.original_name || '');
+    return !sk || !trendingNormKeys.has(sk);
+  });
+  if (uniqueSeriesNotInTrending.length >= 16) {
+    seriesItems = uniqueSeriesNotInTrending.slice(0, 36);
+  } else {
+    seriesItems = deduplicateMediaList([...uniqueSeriesNotInTrending, ...seriesItems]).slice(0, 36);
   }
-  seriesItems = seriesItems.slice(0, 36);
 
   // Рейл 5: Топ аниме
   let animeItems = items.filter(i => {
@@ -2799,17 +3139,8 @@ function renderHomeView(items) {
            (typeof i.genres === 'string' && i.genres.toLowerCase().includes('аниме')) ||
            (Array.isArray(i.genres) && i.genres.some(g => String(g).toLowerCase().includes('аниме')));
   });
-  if (animeItems.length < 28) {
-    const baseAnime = getBaselineCatalog('anime-series') || getBaselineCatalog('anime') || [];
-    const existingIds = new Set(animeItems.map(x => String(x.id || x.media_id)));
-    for (const b of baseAnime) {
-      if (!existingIds.has(String(b.id || b.media_id))) {
-        animeItems.push(b);
-        existingIds.add(String(b.id || b.media_id));
-      }
-    }
-  }
-  animeItems = animeItems.slice(0, 36);
+  const baseAnime = getBaselineCatalog('anime-series') || getBaselineCatalog('anime') || [];
+  animeItems = deduplicateMediaList([...animeItems, ...baseAnime]).slice(0, 36);
 
   // Рейл 6: Шедевры мирового кино (Культовые фильмы и сериалы мирового кинематографа)
   const WORLD_CINEMA_LEGENDS = [
@@ -3372,23 +3703,7 @@ function renderHomeView(items) {
 
   const sortedCandidateMovies = candidateMovies.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
 
-  const topRatedItems = [];
-  const addedMovieTitles = new Set();
-  for (const leg of WORLD_CINEMA_LEGENDS) {
-    const k = leg.title.toLowerCase().trim();
-    if (!addedMovieTitles.has(k)) {
-      addedMovieTitles.add(k);
-      topRatedItems.push(leg);
-    }
-  }
-  for (const m of sortedCandidateMovies) {
-    const k = (m.title || '').toLowerCase().trim();
-    if (k && !addedMovieTitles.has(k)) {
-      addedMovieTitles.add(k);
-      topRatedItems.push(m);
-    }
-  }
-  topRatedItems.splice(36);
+  const topRatedItems = deduplicateMediaList([...WORLD_CINEMA_LEGENDS, ...sortedCandidateMovies]).slice(0, 36);
 
   const rails = [];
 
@@ -3665,14 +3980,30 @@ function renderMediaItems(items) {
   // 1 и 2. Сетка и компактная сетка
   if (currentViewMode === 'grid' || currentViewMode === 'compact-grid') {
     container.innerHTML = items.map((item, idx) => {
-      const poster = item.poster || 'assets/favicon.svg';
+      const poster = getSafePosterUrl(item.poster || 'assets/favicon.svg', item.title);
       const formattedTitle = formatMediaTitle(item);
-      const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
-      const is1080p = !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
-      const hasHdr = item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr'));
-      const hasAtmos = item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos'));
-      const has60Fps = item.fps === 60 || (item.quality && item.quality.includes('60'));
-      const hasDub = Boolean(item.voiceover || (item.translations && item.translations.length > 0) || item.source === 'fanfilm4k');
+      const isUpcoming = Boolean(
+        item.is_upcoming || item.isUpcoming ||
+        String(item.id || '').startsWith('tmdb_up_') ||
+        (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) ||
+        (item.premiere && /ожидается|скоро|в кино/i.test(item.premiere)) ||
+        (item.quality && /ожидается|скоро/i.test(item.quality)) ||
+        (item.release_date && (() => {
+          const parts = String(item.release_date).split('-');
+          if (parts.length === 3) {
+            const d = new Date(item.release_date);
+            return !isNaN(d.getTime()) && d > new Date();
+          }
+          return false;
+        })()) ||
+        (item.year && parseInt(item.year, 10) > new Date().getFullYear())
+      );
+      const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K')));
+      const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
+      const hasHdr = !isUpcoming && (item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr')));
+      const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
+      const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
+      const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming));
       const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
       const yr = getMediaYear(item);
       const catLabel = getMediaCategoryLabel(item, currentTab);
@@ -3681,8 +4012,9 @@ function renderMediaItems(items) {
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          ${getMediaCardImgHtml(poster, item.title)}
           <div class="media-card-badges">
+            ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>' : ''}
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
             ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
             ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
@@ -3800,22 +4132,39 @@ function renderMediaItems(items) {
   // 3. ДЕТАЛЬНЫЙ СПИСОК
   if (currentViewMode === 'detailed-list') {
     container.innerHTML = items.map((item, idx) => {
-      const poster = item.poster || 'assets/favicon.svg';
+      const poster = getSafePosterUrl(item.poster || 'assets/favicon.svg', item.title);
       const sourceName = getSourceName(item);
       const formattedTitle = formatMediaTitle(item);
-      const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
-      const is1080p = !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
-      const hasHdr = item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr'));
-      const hasAtmos = item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos'));
-      const has60Fps = item.fps === 60 || (item.quality && item.quality.includes('60'));
-      const hasDub = Boolean(item.voiceover || (item.translations && item.translations.length > 0) || item.source === 'fanfilm4k');
+      const isUpcoming = Boolean(
+        item.is_upcoming || item.isUpcoming ||
+        String(item.id || '').startsWith('tmdb_up_') ||
+        (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) ||
+        (item.premiere && /ожидается|скоро|в кино/i.test(item.premiere)) ||
+        (item.quality && /ожидается|скоро/i.test(item.quality)) ||
+        (item.release_date && (() => {
+          const parts = String(item.release_date).split('-');
+          if (parts.length === 3) {
+            const d = new Date(item.release_date);
+            return !isNaN(d.getTime()) && d > new Date();
+          }
+          return false;
+        })()) ||
+        (item.year && parseInt(item.year, 10) > new Date().getFullYear())
+      );
+      const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K')));
+      const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
+      const hasHdr = !isUpcoming && (item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr')));
+      const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
+      const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
+      const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming));
       const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
 
       return `
       <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
         <div class="media-detailed-poster">
-          <img src="${poster}" alt="${formattedTitle}" loading="lazy" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">
+          ${getMediaCardImgHtml(poster, item.title)}
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
+            ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>' : ''}
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
             ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
             ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
@@ -3921,11 +4270,11 @@ function renderMediaItems(items) {
         </thead>
         <tbody>
           ${items.map((item, idx) => {
-            const poster = item.poster || 'assets/favicon.svg';
+            const poster = getSafePosterUrl(item.poster || 'assets/favicon.svg', item.title);
             const formattedTitle = formatMediaTitle(item);
             return `
             <tr data-idx="${idx}" class="storm-focusable" tabindex="0" role="button" style="cursor:pointer;">
-              <td class="td-center"><img class="media-table-thumb" src="${poster}" onerror="if(!this.dataset.triedProxy && this.src && !this.src.includes('/api/media/image-proxy')){ this.dataset.triedProxy='1'; this.src='/api/media/image-proxy?url='+encodeURIComponent(this.src)+'&title='+encodeURIComponent('${encodeURIComponent(item.title || '')}'); } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src=this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }"></td>
+              <td class="td-center">${getMediaCardImgHtml(poster, item.title, 'media-table-thumb')}</td>
               <td><strong>${formattedTitle}</strong>${item.next_up ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up}</span>` : ''}</td>
               <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
               <td class="td-center">${getMediaYear(item) || '—'}</td>
@@ -4861,6 +5210,347 @@ export function resetAllFilters() {
   }
 }
 
+export function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderBookmarksSubNav(counts) {
+  const container = document.getElementById('bookmarks-subnav-container');
+  if (!container) return;
+
+  if (currentTab !== 'bookmarks') {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'flex';
+
+  const subTabs = [
+    { id: 'all', icon: '⭐', label: t('bookmarks_subtab_all') || 'Все', count: counts.all || 0 },
+    { id: 'watching', icon: '▶', label: t('bookmarks_subtab_watching') || 'Смотрю', count: counts.watching || 0 },
+    { id: 'favorite', icon: '❤️', label: t('bookmarks_subtab_favorite') || 'Любимое', count: counts.favorite || 0 },
+    { id: 'plan', icon: '📅', label: t('bookmarks_subtab_plan') || 'В планах', count: counts.plan || 0 },
+    { id: 'completed', icon: '✓', label: t('bookmarks_subtab_completed') || 'Просмотрено', count: counts.completed || 0 },
+    { id: 'hold', icon: '⏸️', label: t('bookmarks_subtab_hold') || 'Отложено', count: counts.hold || 0 },
+    { id: 'dropped', icon: '❌', label: t('bookmarks_subtab_dropped') || 'Заброшено', count: counts.dropped || 0 },
+    { id: 'lists', icon: '📁', label: t('bookmarks_subtab_lists') || 'Мои коллекции', count: counts.lists || 0 }
+  ];
+
+  container.innerHTML = subTabs.map(st => `
+    <button type="button" class="bookmarks-subnav-chip storm-focusable ${currentBookmarkSubTab === st.id ? 'active' : ''}" data-subtab="${st.id}">
+      <span class="chip-label">${st.icon} ${st.label}</span>
+      <span class="chip-count">${st.count}</span>
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.bookmarks-subnav-chip').forEach(btn => {
+    btn.onclick = () => {
+      const subtab = btn.dataset.subtab;
+      if (currentBookmarkSubTab === subtab && !activeViewingCustomList) return;
+      currentBookmarkSubTab = subtab;
+      activeViewingCustomList = null;
+      renderFilteredCatalog();
+    };
+  });
+}
+
+function renderCustomListsGrid(lists) {
+  const container = document.getElementById('media-render-container');
+  if (!container) return;
+
+  hideHeroShowcase();
+  hideCardHoverPreview();
+  renderCatalogPagination(0);
+
+  const listsHtml = (lists || []).map(list => {
+    const count = list.items_count || (Array.isArray(list.items) ? list.items.length : 0);
+    const previews = Array.isArray(list.previews) ? list.previews : [];
+
+    let collageHtml = '';
+    if (previews.length > 0) {
+      collageHtml = `
+        <div class="custom-list-collage">
+          ${previews.slice(0, 4).map(p => `
+            <img src="${getSafePosterUrl(p.poster_url, p.title)}" alt="${escapeHtml(p.title || '')}" loading="lazy" onerror="this.onerror=null; this.removeAttribute('srcset'); this.src='assets/favicon.svg';">
+          `).join('')}
+          ${Array(Math.max(0, 4 - previews.length)).fill(0).map(() => `
+            <div style="background: rgba(255,255,255,0.03); display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--text-muted);">🎬</div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      collageHtml = `
+        <div class="custom-list-collage empty-collage">
+          <div style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 4px;">📁</div>
+            <span style="font-size: 12px; color: var(--text-muted);">${t('custom_list_empty') || 'Коллекция пуста'}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="custom-list-card storm-focusable" data-list-id="${list.id}" tabindex="0" role="button" aria-label="${escapeHtml(list.title)}">
+        <div style="position: relative;">
+          ${collageHtml}
+          <div class="custom-list-badge storm-badge">
+            ${count} ${t('media_items') || 'фильмов'}
+          </div>
+        </div>
+        <div class="custom-list-content">
+          <h3 class="custom-list-title">${escapeHtml(list.title)}</h3>
+          ${list.description ? `<p class="custom-list-desc">${escapeHtml(list.description)}</p>` : `<p class="custom-list-desc" style="opacity: 0.5;">Персональная коллекция</p>`}
+          <div class="custom-list-actions">
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm open-list-btn" data-list-id="${list.id}">
+              Открыть
+            </button>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm delete-list-btn" data-list-id="${list.id}" title="Удалить">
+              🗑️
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const createCardHtml = `
+    <div class="custom-list-card custom-list-create-card storm-focusable" id="create-new-custom-list-card" tabindex="0" role="button">
+      <div style="font-size: 36px; margin-bottom: 8px; color: var(--accent);">＋</div>
+      <h3 style="margin: 0 0 6px; font-size: 16px; color: var(--text-main); font-weight: 700;">${t('custom_list_create_title') || 'Создать коллекцию'}</h3>
+      <p style="margin: 0; font-size: 12px; color: var(--text-muted);">Соберите свою подборку фильмов или сериалов</p>
+    </div>
+  `;
+
+  container.innerHTML = `
+    <div class="custom-lists-grid" style="grid-column: 1 / -1;">
+      ${createCardHtml}
+      ${listsHtml}
+    </div>
+  `;
+
+  bindCustomListsEvents();
+}
+
+function bindCustomListsEvents() {
+  const createCard = document.getElementById('create-new-custom-list-card');
+  if (createCard) {
+    createCard.onclick = () => openCreateCustomListModal();
+  }
+
+  document.querySelectorAll('.custom-list-card[data-list-id]').forEach(card => {
+    const listId = parseInt(card.dataset.listId, 10);
+    card.onclick = async (e) => {
+      if (e.target.closest('.delete-list-btn')) return;
+      const details = await fetchCustomListDetails(listId);
+      if (details) {
+        activeViewingCustomList = details;
+        renderFilteredCatalog();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+
+    const delBtn = card.querySelector('.delete-list-btn');
+    if (delBtn) {
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const list = cachedCustomLists.find(l => l.id === listId);
+        const title = list ? list.title : 'Коллекция';
+        if (confirm(`Удалить коллекцию «${title}»?`)) {
+          await deleteCustomListApi(listId);
+          cachedCustomLists = cachedCustomLists.filter(l => l.id !== listId);
+          renderFilteredCatalog();
+        }
+      };
+    }
+  });
+}
+
+function renderCustomListDetailView(listData) {
+  const container = document.getElementById('media-render-container');
+  if (!container) return;
+
+  hideHeroShowcase();
+  hideCardHoverPreview();
+
+  const items = (listData.items || []).map(it => ({
+    id: it.media_id,
+    source: it.source || 'all',
+    title: it.title,
+    poster: getSafePosterUrl(it.poster_url, it.title),
+    media_type: it.media_type || 'movie',
+    year: it.year || '',
+    rating: it.rating || ''
+  }));
+
+  if (items.length === 0) {
+    renderCatalogPagination(0);
+    container.innerHTML = `
+      <div class="custom-list-header-banner" style="grid-column: 1 / -1;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm storm-focusable" id="back-to-custom-lists-btn">
+            ← ${t('custom_list_back') || 'Ко всем коллекциям'}
+          </button>
+          <div>
+            <h2 class="custom-list-header-title" style="margin: 0; display: flex; align-items: center; gap: 10px;">
+              <span>📁 ${escapeHtml(listData.title || '')}</span>
+              <span class="storm-badge" style="font-size: 13px; font-weight: 700; background: rgba(0, 210, 255, 0.15); border-color: var(--accent); color: var(--accent);">
+                0 ${t('media_items') || 'фильмов'}
+              </span>
+            </h2>
+            ${listData.description ? `<p style="margin: 4px 0 0; font-size: 13px; color: var(--text-muted);">${escapeHtml(listData.description)}</p>` : ''}
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="storm-btn storm-btn-danger storm-btn-sm storm-focusable" id="delete-current-custom-list-btn" title="Удалить коллекцию">
+            🗑️
+          </button>
+        </div>
+      </div>
+      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
+        <div style="font-size: 42px; margin-bottom: 12px;">📂</div>
+        <h3>${t('custom_list_empty') || 'В этой коллекции пока нет фильмов'}</h3>
+        <p>Добавляйте фильмы и сериалы в эту коллекцию через меню «⋮» на любой карточке.</p>
+      </div>
+    `;
+    const backBtn = document.getElementById('back-to-custom-lists-btn');
+    if (backBtn) backBtn.onclick = () => { activeViewingCustomList = null; renderFilteredCatalog(); };
+    const delBtn = document.getElementById('delete-current-custom-list-btn');
+    if (delBtn) delBtn.onclick = async () => {
+      if (confirm(`Удалить коллекцию «${listData.title}»?`)) {
+        await deleteCustomListApi(listData.id);
+        cachedCustomLists = cachedCustomLists.filter(l => l.id !== listData.id);
+        activeViewingCustomList = null;
+        renderFilteredCatalog();
+      }
+    };
+    return;
+  }
+
+  renderMediaItems(items);
+
+  const banner = document.createElement('div');
+  banner.className = 'custom-list-header-banner';
+  banner.style.gridColumn = '1 / -1';
+  banner.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm storm-focusable" id="back-to-custom-lists-btn">
+        ← ${t('custom_list_back') || 'Ко всем коллекциям'}
+      </button>
+      <div>
+        <h2 class="custom-list-header-title" style="margin: 0; display: flex; align-items: center; gap: 10px;">
+          <span>📁 ${escapeHtml(listData.title || '')}</span>
+          <span class="storm-badge" style="font-size: 13px; font-weight: 700; background: rgba(0, 210, 255, 0.15); border-color: var(--accent); color: var(--accent);">
+            ${items.length} ${t('media_items') || 'фильмов'}
+          </span>
+        </h2>
+        ${listData.description ? `<p style="margin: 4px 0 0; font-size: 13px; color: var(--text-muted);">${escapeHtml(listData.description)}</p>` : ''}
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="storm-btn storm-btn-danger storm-btn-sm storm-focusable" id="delete-current-custom-list-btn" title="Удалить коллекцию">
+        🗑️
+      </button>
+    </div>
+  `;
+  container.insertBefore(banner, container.firstChild);
+
+  const backBtn = document.getElementById('back-to-custom-lists-btn');
+  if (backBtn) backBtn.onclick = () => { activeViewingCustomList = null; renderFilteredCatalog(); };
+  const delBtn = document.getElementById('delete-current-custom-list-btn');
+  if (delBtn) delBtn.onclick = async () => {
+    if (confirm(`Удалить коллекцию «${listData.title}»?`)) {
+      await deleteCustomListApi(listData.id);
+      cachedCustomLists = cachedCustomLists.filter(l => l.id !== listData.id);
+      activeViewingCustomList = null;
+      renderFilteredCatalog();
+    }
+  };
+}
+
+export function openCreateCustomListModal() {
+  let modal = document.getElementById('storm-create-list-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'storm-create-list-modal';
+    modal.className = 'storm-modal-backdrop';
+    modal.innerHTML = `
+      <div class="storm-exit-modal-card" style="max-width: 440px;" role="dialog" aria-modal="true">
+        <div class="storm-exit-modal-icon">📁</div>
+        <div class="storm-exit-modal-title">${t('custom_list_create_title') || 'Новая коллекция'}</div>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin: 16px 0; text-align: left;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">
+              ${t('custom_list_title') || 'Название коллекции'} *
+            </label>
+            <input type="text" id="create-list-input-title" class="storm-input" placeholder="Например: Любимые фильмы в 4K" maxlength="100" style="width: 100%;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">
+              ${t('custom_list_desc') || 'Описание'}
+            </label>
+            <textarea id="create-list-input-desc" class="storm-input" placeholder="Краткое описание коллекции..." rows="2" maxlength="250" style="width: 100%; resize: none;"></textarea>
+          </div>
+        </div>
+        <div class="storm-exit-modal-actions">
+          <button type="button" class="storm-exit-btn-cancel" id="create-list-btn-cancel">${t('btn_cancel') || 'Отмена'}</button>
+          <button type="button" class="storm-exit-btn-confirm" id="create-list-btn-confirm">${t('btn_create') || 'Создать'}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.remove('is-open');
+    });
+
+    const cancelBtn = modal.querySelector('#create-list-btn-cancel');
+    if (cancelBtn) cancelBtn.onclick = () => modal.classList.remove('is-open');
+
+    const confirmBtn = modal.querySelector('#create-list-btn-confirm');
+    if (confirmBtn) {
+      confirmBtn.onclick = async () => {
+        const titleInput = modal.querySelector('#create-list-input-title');
+        const descInput = modal.querySelector('#create-list-input-desc');
+        const title = (titleInput?.value || '').trim();
+        const desc = (descInput?.value || '').trim();
+        if (!title) {
+          showToast('Введите название коллекции', 'warning');
+          return;
+        }
+        const created = await createCustomCollection(title, desc);
+        if (created) {
+          modal.classList.remove('is-open');
+          if (titleInput) titleInput.value = '';
+          if (descInput) descInput.value = '';
+          const updatedLists = await fetchCustomLists().catch(() => []);
+          cachedCustomLists = Array.isArray(updatedLists) ? updatedLists : [];
+          currentBookmarkSubTab = 'lists';
+          activeViewingCustomList = null;
+          renderFilteredCatalog();
+        }
+      };
+    }
+  }
+
+  const titleInput = modal.querySelector('#create-list-input-title');
+  if (titleInput) titleInput.value = '';
+  const descInput = modal.querySelector('#create-list-input-desc');
+  if (descInput) descInput.value = '';
+  modal.classList.add('is-open');
+  setTimeout(() => titleInput?.focus(), 50);
+}
+
+if (typeof window !== 'undefined') {
+  window.openCreateCustomListModal = openCreateCustomListModal;
+}
+
 export function renderFilteredCatalog() {
   const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
   const isFiltered = (!isSearching && (currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentStatusFilter !== 'all')) || currentSort !== 'newest';
@@ -4879,6 +5569,49 @@ export function renderFilteredCatalog() {
     const st = resolveMediaUserStatus(it);
     if (st) it.user_status = st;
   });
+
+  if (currentTab === 'bookmarks') {
+    const isFav = it => it.user_status === 'favorite' || it.status === 'favorite' || it.is_favorite === 1 || it.is_favorite === true || it.isFavorite === true;
+    const counts = {
+      all: rawCatalogItems.length,
+      watching: rawCatalogItems.filter(it => it.user_status === 'watching').length,
+      favorite: rawCatalogItems.filter(isFav).length,
+      plan: rawCatalogItems.filter(it => it.user_status === 'plan' || it.user_status === 'planned').length,
+      completed: rawCatalogItems.filter(it => it.user_status === 'completed').length,
+      hold: rawCatalogItems.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold').length,
+      dropped: rawCatalogItems.filter(it => it.user_status === 'dropped').length,
+      lists: cachedCustomLists.length
+    };
+    renderBookmarksSubNav(counts);
+
+    if (currentBookmarkSubTab === 'lists') {
+      if (activeViewingCustomList) {
+        renderCustomListDetailView(activeViewingCustomList);
+        return;
+      } else {
+        renderCustomListsGrid(cachedCustomLists);
+        return;
+      }
+    }
+
+    if (currentBookmarkSubTab !== 'all') {
+      if (currentBookmarkSubTab === 'plan') {
+        items = items.filter(it => it.user_status === 'plan' || it.user_status === 'planned');
+      } else if (currentBookmarkSubTab === 'hold') {
+        items = items.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold');
+      } else if (currentBookmarkSubTab === 'favorite') {
+        items = items.filter(isFav);
+      } else {
+        items = items.filter(it => it.user_status === currentBookmarkSubTab);
+      }
+    }
+  } else {
+    const bSubnav = document.getElementById('bookmarks-subnav-container');
+    if (bSubnav) {
+      bSubnav.style.display = 'none';
+      bSubnav.innerHTML = '';
+    }
+  }
   if (currentPage > 1) {
     items = filterPageDuplicates(items, currentTab === 'home' ? 'popular' : currentTab, currentPage);
   }
@@ -5217,6 +5950,7 @@ function initModals() {
           closePlayerModal();
         } else {
           backdrop.classList.remove('is-open');
+          if (backdrop.id === 'auth-modal') stopTvDeviceCodeSession();
         }
       }
     });
@@ -5231,6 +5965,7 @@ function initModals() {
           closePlayerModal();
         } else {
           modal.classList.remove('is-open');
+          if (modal.id === 'auth-modal') stopTvDeviceCodeSession();
         }
       }
     });
@@ -5243,23 +5978,56 @@ function initModals() {
     loginModalBtn.onclick = () => authModal.classList.add('is-open');
   }
 
-  // Переключение Вход / Регистрация
+  // Переключение Вход / Регистрация / ТВ-код
   const switchToRegister = document.getElementById('switch-to-register');
   const switchToLogin = document.getElementById('switch-to-login');
   const loginForm = document.getElementById('login-form');
   const registerForm = document.getElementById('register-form');
   const authModalTitle = document.getElementById('auth-modal-title');
+  const openTvCodeBtn = document.getElementById('open-tv-code-btn');
+  const tvCodeContainer = document.getElementById('tv-code-container');
+  const tvCodeRefreshBtn = document.getElementById('tv-code-refresh-btn');
+  const tvCodeBackBtn = document.getElementById('tv-code-back-btn');
 
   if (switchToRegister && switchToLogin) {
     switchToRegister.onclick = () => {
+      stopTvDeviceCodeSession();
+      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
       loginForm.style.display = 'none';
       registerForm.style.display = 'block';
       authModalTitle.textContent = t('auth_register');
     };
     switchToLogin.onclick = () => {
+      stopTvDeviceCodeSession();
+      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
       registerForm.style.display = 'none';
       loginForm.style.display = 'block';
       authModalTitle.textContent = t('auth_login');
+    };
+  }
+
+  if (openTvCodeBtn && tvCodeContainer) {
+    openTvCodeBtn.onclick = () => {
+      if (loginForm) loginForm.style.display = 'none';
+      if (registerForm) registerForm.style.display = 'none';
+      tvCodeContainer.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = 'Вход по коду с ТВ';
+      startTvDeviceCodeSession();
+    };
+  }
+
+  if (tvCodeBackBtn && tvCodeContainer) {
+    tvCodeBackBtn.onclick = () => {
+      stopTvDeviceCodeSession();
+      tvCodeContainer.style.display = 'none';
+      if (loginForm) loginForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = t('auth_login');
+    };
+  }
+
+  if (tvCodeRefreshBtn) {
+    tvCodeRefreshBtn.onclick = () => {
+      startTvDeviceCodeSession();
     };
   }
 
@@ -5401,11 +6169,33 @@ function showCardHoverPreview(card, item) {
   const previewYr = getMediaYear(item) || item.year || '';
   const previewCat = getMediaCategoryLabel(item, item.media_type);
 
+  const isUpcoming = Boolean(
+    item.is_upcoming || item.isUpcoming ||
+    String(item.id || '').startsWith('tmdb_up_') ||
+    (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) ||
+    (item.premiere && /ожидается|скоро|в кино/i.test(item.premiere)) ||
+    (item.quality && /ожидается|скоро/i.test(item.quality)) ||
+    /кэрри.*2026|flanagan/i.test(String(item.title || '') + ' ' + String(item.link || '')) ||
+    (item.release_date && (() => {
+      const parts = String(item.release_date).split('-');
+      if (parts.length === 3) {
+        const d = new Date(item.release_date);
+        return !isNaN(d.getTime()) && d > new Date();
+      }
+      return false;
+    })()) ||
+    (item.year && parseInt(item.year, 10) > new Date().getFullYear())
+  );
+
+  const previewDesc = isUpcoming
+    ? `Официальная премьера ожидается в ${previewYr || 'скоро'} году. Добавьте в «Буду смотреть», чтобы не пропустить цифровой релиз и 4K стримы.`
+    : (item.description || (previewCat.toLowerCase().includes('сериал') ? 'Просмотр сериала онлайн в высоком качестве с профессиональным русским дубляжем.' : 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.'));
+
   preview.innerHTML = `
     <!-- Верхняя строка плашек -->
     <div class="hover-preview-top-row">
       <div class="hover-preview-badges-left">
-        ${item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : ''}
+        ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>' : (item.is4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : '')}
         ${item.user_status ? getStatusBadge(item.user_status) : ''}
       </div>
       <div class="hover-preview-badges-right">
@@ -5432,11 +6222,11 @@ function showCardHoverPreview(card, item) {
     </div>
 
     <!-- Синопсис / описание -->
-    <p class="hover-preview-desc">${item.description || (previewCat.toLowerCase().includes('сериал') ? 'Просмотр сериала онлайн в высоком качестве с профессиональным русским дубляжем.' : 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.')}</p>
+    <p class="hover-preview-desc">${previewDesc}</p>
 
     <!-- Кнопки действий -->
     <div class="hover-preview-actions">
-      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">▶ Смотреть</button>
+      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">${isUpcoming ? '▶ Трейлер / Плеер' : '▶ Смотреть'}</button>
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm hover-room-btn" title="Совместный просмотр в кинозале">👥 Кинозал</button>
     </div>
 
@@ -5637,6 +6427,7 @@ function initPwaServiceWorker() {
 function initNewCyberFeatures() {
   // 1. Smart TV и геймпад
   initGamepadAndTvMode();
+  initFormFactorEngine();
   const tvBtn = document.getElementById('toggle-tv-mode-btn');
   if (tvBtn) {
     tvBtn.onclick = () => toggleTvMode();

@@ -44,7 +44,10 @@ export function unwrapPosterUrl(url) {
 }
 
 export function wrapPosterUrl(url, title = '') {
-  if (!url) return POSTER_FALLBACK_SVG;
+  if (!url) {
+    if (title) return `/api/media/image-proxy?title=${encodeURIComponent(title)}`;
+    return POSTER_FALLBACK_SVG;
+  }
   if (url.startsWith('data:') || url.startsWith('assets/')) return url;
 
   // Если открыто в офлайн WebView (file:), возвращаем прямой или распакованный URL
@@ -56,10 +59,10 @@ export function wrapPosterUrl(url, title = '') {
     return unwrapPosterUrl(url);
   }
 
-  if (url.startsWith('/api/media/image-proxy')) return url;
-
-  // Прямые проверенные CDN, отдающие изображения без блокировок
-  if (url.includes('image.tmdb.org') || url.includes('anilibria.top')) {
+  if (url.startsWith('/api/media/image-proxy')) {
+    if (title && !url.includes('title=')) {
+      return `${url}&title=${encodeURIComponent(title)}`;
+    }
     return url;
   }
 
@@ -275,18 +278,52 @@ function areCalendarListsEqual(a, b) {
   return true;
 }
 
+function mergeScheduleWithDefaults(liveItems, defaultItems, daysConfig) {
+  const dayDateMap = {};
+  daysConfig.forEach(d => {
+    dayDateMap[d.id] = d.date;
+  });
+
+  const combined = [];
+  const seen = new Set();
+
+  const pushUnique = (it) => {
+    if (!it || !it.title) return;
+    const rawDay = it.day_of_week !== undefined ? it.day_of_week : it.day;
+    const dayId = (rawDay !== undefined && !isNaN(parseInt(rawDay, 10))) ? parseInt(rawDay, 10) : 1;
+    const cleanTitle = String(it.title).toLowerCase().replace(/[^a-zа-яё0-9]/gi, '');
+    const key = `${cleanTitle}_d${dayId}`;
+    if (!cleanTitle || seen.has(key)) return;
+    seen.add(key);
+    combined.push({
+      ...it,
+      day_of_week: dayId,
+      release_date: dayDateMap[dayId] || it.release_date || ''
+    });
+  };
+
+  if (Array.isArray(liveItems)) {
+    liveItems.forEach(pushUnique);
+  }
+  if (Array.isArray(defaultItems)) {
+    defaultItems.forEach(pushUnique);
+  }
+
+  return combined;
+}
+
 async function loadAndRenderWeek(container) {
   const daysConfig = selectedWeek === 'next' ? getWeekDays(1) : getWeekDays(0);
   const defaultItems = selectedWeek === 'next' ? DEFAULT_NEXT_WEEK : DEFAULT_CURRENT_WEEK;
-  let scheduleItems = [...defaultItems];
+  let scheduleItems = mergeScheduleWithDefaults([], defaultItems, daysConfig);
 
-  // 1. Быстрая загрузка из локального кэша v113, если есть
+  // 1. Быстрая загрузка из локального кэша v114, если есть
   try {
-    const localCached = localStorage.getItem(`storm_cal_v113_${selectedWeek}`);
+    const localCached = localStorage.getItem(`storm_cal_v114_${selectedWeek}`);
     if (localCached) {
       const parsed = JSON.parse(localCached);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        scheduleItems = parsed.filter(it => it && it.title);
+        scheduleItems = mergeScheduleWithDefaults(parsed, defaultItems, daysConfig);
       }
     }
   } catch {}
@@ -295,7 +332,6 @@ async function loadAndRenderWeek(container) {
   if (scheduleItems.length > 0) {
     renderScheduleDaysAndGrid(container, scheduleItems, daysConfig);
   } else {
-    // Если абсолютно ничего нет, показываем спиннер
     const grid = container.querySelector('#calendar-day-items-grid');
     if (grid) {
       grid.innerHTML = `
@@ -317,29 +353,15 @@ async function loadAndRenderWeek(container) {
       const schedData = await res.json();
       const liveList = Array.isArray(schedData) ? schedData : (schedData.items || schedData.schedule || []);
       if (liveList && liveList.length > 0) {
-        const combined = [];
-        const seen = new Set();
-        liveList.forEach(it => {
-          const k = `${(it.title || '').toLowerCase().trim()}_s${it.season || 1}e${it.episode || 1}`;
-          if (k && !seen.has(k)) { seen.add(k); combined.push(it); }
-        });
-
+        const combined = mergeScheduleWithDefaults(liveList, defaultItems, daysConfig);
         try {
-          localStorage.setItem(`storm_cal_v113_${selectedWeek}`, JSON.stringify(combined));
+          localStorage.setItem(`storm_cal_v114_${selectedWeek}`, JSON.stringify(combined));
         } catch {}
-
         renderScheduleDaysAndGrid(container, combined, daysConfig);
-      } else if (scheduleItems.length === 0) {
-        renderEmptyErrorState(container, daysConfig);
       }
-    } else if (scheduleItems.length === 0) {
-      renderEmptyErrorState(container, daysConfig);
     }
   } catch (err) {
     console.warn('[Calendar] Сетевая синхронизация:', err.message);
-    if (scheduleItems.length === 0) {
-      renderEmptyErrorState(container, daysConfig);
-    }
   }
 }
 

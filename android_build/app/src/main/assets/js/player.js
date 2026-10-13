@@ -19,6 +19,7 @@ import { renderTorrServerSettings } from './torrserver-client.js';
 import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js';
 import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js';
 import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -46,6 +47,20 @@ let audioSourceNode = null;
 let compressorNode = null;
 let nightAudioModeEnabled = localStorage.getItem('storm_night_audio') === 'true';
 let xrayVisible = false;
+
+// Сессия попыток источников для предотвращения бесконечного зацикливания
+const failedSourcesSession = new Set();
+let lastUserManualSelectionTime = 0;
+
+// Фильтрация спама сторонних WebTorrent трекеров и внутренних ошибок плееров в консоли
+const _origConsoleError = console.error;
+console.error = function(...args) {
+  const msg = String(args[0] || '');
+  if (msg.includes('WebSocket') || msg.includes('tracker') || msg.includes('Forward to player') || msg.includes('change file error') || msg.includes('ERR_BLOCKED_BY_CLIENT') || msg.includes('imasdk')) {
+    return;
+  }
+  return _origConsoleError.apply(console, args);
+};
 
 // Ambilight конфигурация и пресеты
 let ambilightEnabled = false;
@@ -84,12 +99,86 @@ let vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
 export let adblockEnabled = localStorage.getItem('storm_adblock_enabled') !== 'false';
 
 export function isAdblockEnabled() {
+  adblockEnabled = localStorage.getItem('storm_adblock_enabled') !== 'false';
   return adblockEnabled;
 }
 
 export function setAdblockEnabled(val) {
   adblockEnabled = Boolean(val);
   localStorage.setItem('storm_adblock_enabled', adblockEnabled ? 'true' : 'false');
+  try {
+    const rawClean = localStorage.getItem('storm_cleanview_settings');
+    const cleanObj = rawClean ? JSON.parse(rawClean) : {};
+    cleanObj.adblockEnabled = adblockEnabled;
+    localStorage.setItem('storm_cleanview_settings', JSON.stringify(cleanObj));
+  } catch (_) {}
+}
+
+export function getPreferredDefaultPlayerId() {
+  return localStorage.getItem('storm_default_player') || 'fanfilm4k_uhd';
+}
+
+export function setPreferredDefaultPlayerId(playerId) {
+  const cleanId = String(playerId || 'fanfilm4k_uhd').trim();
+  localStorage.setItem('storm_default_player', cleanId);
+}
+
+export function getSafePersonPhotoUrl(photo) {
+  if (!photo || photo === 'assets/avatar_default.svg' || photo === 'assets/favicon.svg' || photo.startsWith('assets/')) {
+    return 'assets/avatar_default.svg';
+  }
+  if (photo.startsWith('/api/media/image-proxy')) return photo;
+  return `/api/media/image-proxy?url=${encodeURIComponent(photo)}`;
+}
+
+export function getSafeCleanStreamUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return '';
+  let streamUrl = rawUrl.trim();
+  if (streamUrl.startsWith('//')) {
+    streamUrl = 'https:' + streamUrl;
+  }
+  if (streamUrl.includes('v16.fanfilm4k.media')) {
+    streamUrl = streamUrl.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
+  }
+
+  const currentAdblock = isAdblockEnabled();
+  vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
+
+  if (currentAdblock) {
+    if (!streamUrl.startsWith('/api/') && !streamUrl.includes('.m3u8')) {
+      if (streamUrl.includes('fanfilm4k') || streamUrl.includes('stravers')) {
+        const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
+        const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
+        const kpVal = currentMedia?.kp_id || currentMedia?.kinopoisk_id || '';
+        const kpParam = kpVal ? `&kp_id=${encodeURIComponent(kpVal)}` : '';
+        streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(streamUrl)}${titleParam}${yearParam}${kpParam}`;
+      } else if (streamUrl.includes('kodik') || streamUrl.includes('rezka') || streamUrl.includes('lostfilm') || streamUrl.includes('anixart')) {
+        streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
+      } else if (streamUrl.includes('rutube.ru')) {
+        const ruIdMatch = streamUrl.match(/\/embed\/([a-f0-9]{32})/i);
+        if (ruIdMatch) {
+          streamUrl = `/api/player/rutube-embed/${ruIdMatch[1]}`;
+        } else {
+          streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
+        }
+      } else if (!streamUrl.includes('vkvideo.ru') && !streamUrl.includes('vk.com') && !streamUrl.includes('youtube')) {
+        streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
+      }
+    }
+  } else {
+    if (streamUrl.includes('/api/player/kodik-embed?url=') || streamUrl.includes('/api/player/adblock-proxy?url=') || streamUrl.includes('/api/player/fanfilm-embed?url=')) {
+      try {
+        const parsed = new URL(streamUrl, window.location.origin);
+        const inner = parsed.searchParams.get('url');
+        if (inner) streamUrl = inner;
+      } catch {}
+    }
+    if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
+      streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
+    }
+  }
+
+  return streamUrl;
 }
 
 // WebTorrent
@@ -271,7 +360,8 @@ function initFullscreenControls() {
       // 2. Объектные сообщения от Kodik, Playerjs, Allplay, FanFilm и др.
       if (typeof data === 'object' && data) {
         if (data.type === 'STORM_SWITCH_NEXT_SOURCE' || data.type === 'STORM_PLAYER_FALLBACK') {
-          switchToNextSource();
+          console.warn('[Player] Получен сигнал переключения на резервный плеер:', data.reason);
+          switchToNextSource(true);
         }
         if (data.type === 'STORM_SPEED_CHANGED') {
           const sp = parseFloat(data.speed);
@@ -1003,10 +1093,55 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 
   const suite = [];
 
-  // 1. 4K Ultra HD Плеер (FanFilm4K)
-  const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
-  const effective4kUrl = fanfilmUrl || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url) : '');
-  if (effective4kUrl) {
+  // 1. 4K Ultra HD Плеер (FanFilm4K) — гарантированный приоритет #1
+  let effective4kUrl = mediaItem.fanfilm_4k_url || '';
+  if (!effective4kUrl) {
+    effective4kUrl = resolveFanFilmUrl(title) || '';
+  }
+  if (effective4kUrl.includes('v16.fanfilm4k.media')) {
+    effective4kUrl = effective4kUrl.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
+  }
+  if (!effective4kUrl) {
+    const rawId = String(mediaItem.id || '').replace(/^fanfilm_?/, '');
+    if (/^\d+$/.test(rawId)) {
+      effective4kUrl = `https://v17.fanfilm4k.media/${rawId}-.html`;
+    } else if (mediaItem.link || mediaItem.url) {
+      effective4kUrl = String(mediaItem.link || mediaItem.url).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
+    }
+  }
+
+  const isCarrie = /кэрри|carrie/i.test(title) && (year === '2026' || parseInt(year || '2026', 10) >= 2026);
+  const isFutureYear = Boolean(year && parseInt(year, 10) > new Date().getFullYear());
+  const hasReal4kUrl = Boolean(effective4kUrl && !effective4kUrl.includes('do=search') && !effective4kUrl.includes('830'));
+  const hasAvailableStreams = Boolean(hasReal4kUrl || mediaItem.vk_embed_url || (mediaItem.rutube_id && mediaItem.rutube_id.length > 15) || (mediaItem.seasons && mediaItem.seasons.length > 0));
+  const isTrulyUpcoming = Boolean((mediaItem.is_upcoming || isCarrie || isFutureYear) && !hasAvailableStreams);
+
+  if (isTrulyUpcoming) {
+    if (mediaItem.trailer_url) {
+      suite.push({
+        id: 'official_trailer',
+        name: 'Официальный трейлер (4K / FHD)',
+        type: 'iframe',
+        quality: '4K UHD / 1080p',
+        badge: 'ТРЕЙЛЕР',
+        status: 'working',
+        status_label: '🟢 Онлайн',
+        audio_info: 'Официальный промо-трейлер в высоком качестве',
+        speed: '⚡ YouTube 4K',
+        url: mediaItem.trailer_url,
+        is_trailer: true,
+        is_recommended: true,
+        recommended_badge: '🔥 Трейлер'
+      });
+    }
+    return suite;
+  }
+
+  if (!effective4kUrl && !isTrulyUpcoming && !isLandyshiItem && !isAnime && safeTitle) {
+    effective4kUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
+  }
+
+  if (effective4kUrl && !isTrulyUpcoming && !isLandyshiItem) {
     suite.push({
       id: 'fanfilm4k_uhd',
       name: '4K Ultra HD Плеер (FanFilm4K)',
@@ -1018,12 +1153,51 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
       url: effective4kUrl,
-      is_recommended: !isAnime && !isLandyshiItem,
-      recommended_badge: (!isAnime && !isLandyshiItem) ? '🔥 4K Рекомендуемый' : ''
+      is_recommended: !isAnime,
+      recommended_badge: !isAnime ? '🔥 4K По умолчанию' : ''
     });
   }
 
-  // 2. VK Видео (Официальный плеер) — приоритет #1 для отечественных релизов и «Ландыши» со включенным звуком
+  // 2. Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka) — надежный балансер #2 сразу за 4K
+  if (!isDomesticExclusive && !mediaItem.is_upcoming) {
+    const kinoboxUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+    suite.push({
+      id: 'kinobox_universal',
+      name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, HDRezka)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'KINOBOX',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Все доступные озвучки и балансеры',
+      speed: '⚡ Мульти-CDN',
+      url: kinoboxUrl
+    });
+  }
+
+  // 3. Kodik Плеер (сериалы и озвучки)
+  if (!isDomesticExclusive && !mediaItem.is_upcoming) {
+    const kodikUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+    suite.push({
+      id: 'kodik_direct',
+      name: isAnime ? 'Kodik Аниме Плеер' : 'Kodik Плеер (сериалы и озвучки)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'KODIK',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Большой выбор студийных озвучек',
+      speed: '⚡ Быстрый поток',
+      url: kodikUrl,
+      is_recommended: isAnime && !effective4kUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
+    });
+  }
+
+  // 4. VK Видео (Официальный плеер) — приоритет #1 для отечественного эксклюзива «Ландыши»
   let vkEmbed = '';
   if (isLandyshiItem) {
     vkEmbed = 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1&js_api=1&muted=0&mute=0';
@@ -1052,7 +1226,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
 
   if (vkEmbed) {
     const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_') || isLandyshiItem;
-    const isVkRecommended = isLandyshiItem || (isVkSource && !effective4kUrl && !isAnime);
+    const isVkRecommended = isLandyshiItem;
 
     suite.push({
       id: 'vk_video_stream',
@@ -1070,15 +1244,12 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 2.5. RuTube HLS и RuTube Embed (Официальный лицензионный поток)
+  // 5. RuTube HLS и RuTube Embed (Официальный лицензионный поток / резерв)
   const effectiveRuId = (rawRuId && /^[a-f0-9]{32}$/i.test(rawRuId))
     ? rawRuId
     : (mediaItem.rutube_id && /^[a-f0-9]{32}$/i.test(mediaItem.rutube_id)
       ? mediaItem.rutube_id
       : (mediaItem.embed_url ? (mediaItem.embed_url.match(/\/embed\/([a-f0-9]{32})/i)?.[1] || '') : ''));
-
-  const isRuTubeSource = mediaItem.source === 'rutube' || String(mediaItem.id || '').startsWith('rutube_');
-  const isRuTubeRecommended = !isLandyshiItem && (isRuTubeSource || isDomestic) && !effective4kUrl && !isAnime;
 
   if (effectiveRuId) {
     suite.push({
@@ -1092,8 +1263,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       audio_info: 'Официальный прямой поток STORM: без рекламы и плашек',
       speed: '⚡ Быстрый российский CDN',
       url: `/api/media/rutube-m3u8?id=${effectiveRuId}`,
-      is_recommended: isRuTubeRecommended,
-      recommended_badge: isRuTubeRecommended ? '🔥 Рекомендуемый' : ''
+      is_recommended: isLandyshiItem,
+      recommended_badge: isLandyshiItem ? '🔥 Рекомендуемый' : ''
     });
   }
 
@@ -1111,92 +1282,16 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   if (rutubeEmbed) {
     suite.push({
       id: 'rutube_stream',
-      name: 'RuTube (Официальный поток / Wink)',
+      name: 'RuTube (Резервный поток / Wink)',
       type: 'iframe',
       quality: '1080p FHD',
       badge: 'RUTUBE',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Официальный лицензионный каталог RuTube и Wink без кнопки Смотреть на RUTUBE',
+      audio_info: 'Резервный лицензионный каталог RuTube и Wink',
       speed: '⚡ Быстрый российский CDN',
       url: rutubeEmbed,
-      is_recommended: !effectiveRuId && isRuTubeRecommended,
-      recommended_badge: (!effectiveRuId && isRuTubeRecommended) ? '🔥 Рекомендуемый' : ''
-    });
-  }
-
-  // 4. HDRezka Cinema (FHD и 4K) - исключаем для отечественного контента без Kinopoisk ID и эксклюзивов
-  if (!isDomesticExclusive) {
-    const rezkaUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=hdrezka${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=hdrezka${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'rezka_cinema',
-      name: 'HDRezka Cinema (FHD и 4K)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'HDREZKA',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Студийный перевод HDRezka Studio',
-      speed: '⚡ Высокая скорость',
-      url: rezkaUrl,
-      is_recommended: !isDomestic && !effective4kUrl && !isAnime
-    });
-  }
-
-  // 5. LostFilm TV и Red Head Sound - СТРОГО ТОЛЬКО ДЛЯ ЗАРУБЕЖНОГО КОНТЕНТА
-  if (!isDomestic && !isDomesticExclusive) {
-    const lostfilmUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=lostfilm${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=lostfilm${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'lostfilm_player',
-      name: 'LostFilm TV (Студийный перевод)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'LOSTFILM',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Фирменная многоголосая озвучка LostFilm',
-      speed: '⚡ Быстрый CDN',
-      url: lostfilmUrl
-    });
-
-    const rhsUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&translation=rhs${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&translation=rhs${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'rhs_player',
-      name: 'Red Head Sound (Дубляж RHS)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'RHS',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальные голоса дубляжа студии RHS',
-      speed: '⚡ Премиум дубляж',
-      url: rhsUrl
-    });
-  }
-
-  // 6. Kodik Плеер - строго исключаем для отечественных релизов без Kinopoisk ID и российских эксклюзивов
-  if (!isDomesticExclusive) {
-    const kodikUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
-    suite.push({
-      id: 'kodik_direct',
-      name: isAnime ? 'Kodik Аниме Плеер' : 'Kodik Плеер (сериалы и озвучки)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'KODIK',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Большой выбор студийных озвучек',
-      speed: '⚡ Быстрый поток',
-      url: kodikUrl,
-      is_recommended: isAnime && !effective4kUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
+      is_recommended: false
     });
   }
 
@@ -1219,8 +1314,8 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 7. P2P WebTorrent (Торрент-стриминг)
-  if (!mediaItem.is_upcoming) {
+  // 7. P2P WebTorrent (Торрент-стриминг) — только если имеются раздачи
+  if (mediaItem.releases?.length > 0 || mediaItem.torrent_hash) {
     suite.push({
       id: 'webtorrent',
       name: 'P2P WebTorrent (Торрент-стриминг)',
@@ -1231,22 +1326,6 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       audio_info: 'Многоголосый дубляж'
     });
   }
-
-  // 8. Официальный трейлер и промо (YouTube)
-  const safeSearch = encodeURIComponent(`${title} официальный русский трейлер`);
-  suite.push({
-    id: 'official_trailer',
-    name: 'Официальный трейлер (4K / FHD)',
-    type: 'iframe',
-    quality: '4K UHD / 1080p',
-    badge: 'ТРЕЙЛЕР',
-    status: 'working',
-    status_label: '🟢 Онлайн',
-    audio_info: 'Официальный промо-трейлер',
-    speed: '⚡ YouTube 4K',
-    url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
-    is_trailer: true
-  });
 
   if (!suite.some(p => p.is_recommended) && suite.length > 0) {
     suite[0].is_recommended = true;
@@ -1270,6 +1349,17 @@ export function adjustCinemaModalScale() {
   const vh = window.innerHeight || document.documentElement.clientHeight;
   const vw = window.innerWidth || document.documentElement.clientWidth;
   if (!vh || vh <= 0) return;
+
+  // На смартфонах и компактных экранах фиксируем плеер по ширине экрана и соотношению 16:9
+  if (vw <= 768) {
+    const mobilePlayerW = Math.min(vw, 768);
+    const mobilePlayerH = Math.round(mobilePlayerW * (9 / 16));
+    modal.style.setProperty('--cinema-player-max-h', `${mobilePlayerH}px`);
+    modal.style.setProperty('--cinema-player-max-w', '100%');
+    modal.style.setProperty('--cinema-poster-max-h', '180px');
+    modal.style.setProperty('--cinema-side-max-h', 'none');
+    return;
+  }
 
   const headerEl = modal.querySelector('.storm-modal-header');
   const headerH = (headerEl && headerEl.offsetHeight > 0) ? headerEl.offsetHeight : 40;
@@ -1347,6 +1437,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Закрываем мобильное меню и очищаем всплывающие подсказки
   const drawer = document.getElementById('mobile-drawer-backdrop');
   if (drawer) drawer.classList.remove('is-open');
+  document.body.classList.remove('quick-dropdown-active', 'player-dropdown-active');
   document.querySelectorAll('.media-hover-preview-popup').forEach(p => p.remove());
   // Проверяем ночной просмотр (между 02:00 и 05:00)
   const currentHour = new Date().getHours();
@@ -1454,14 +1545,23 @@ export async function openPlayerModal(mediaItem, options = {}) {
   // Определяем стартовый рекомендуемый плеер с защитой от удаленных 4K архивов
   const isDomestic = isDomesticContent(mediaItem, cleanTitle);
   const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-  const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
+  const isStable = p => isWorking(p) && Boolean(p.url);
+  const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
   const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
   const preferStableKodik = itemYr < 2020;
 
   const isLandyshiMedia = mediaItem.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || mediaItem.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
+  const preferredId = getPreferredDefaultPlayerId();
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
+  if (!initialChoice && preferredId && preferredId !== 'fanfilm4k_uhd' && !isLandyshiMedia) {
+    initialChoice = currentPlayers.find(p => p.id === preferredId && isStable(p)) || null;
+  }
   if (!initialChoice) {
-    if (isLandyshiMedia) {
+    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
+    const fourKInitial = currentPlayers.find(p => isReal4k(p) && isStable(p));
+    if (fourKInitial && !isLandyshiMedia) {
+      initialChoice = fourKInitial;
+    } else if (isLandyshiMedia) {
       initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
@@ -1473,12 +1573,6 @@ export async function openPlayerModal(mediaItem, options = {}) {
         || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
         || currentPlayers.find(p => p.is_recommended && isWorking(p))
-        || currentPlayers.find(isWorking)
-        || currentPlayers[0];
-    } else if (preferStableKodik) {
-      initialChoice = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
-        || currentPlayers.find(p => p.is_recommended && isStable(p))
-        || currentPlayers.find(isStable)
         || currentPlayers.find(isWorking)
         || currentPlayers[0];
     } else {
@@ -1497,6 +1591,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
     status_label: '🟢 Онлайн'
   };
   updatePlayerTriggerInfo(currentActivePlayer);
+  requestScreenWakeLock();
 
   try {
     // Получаем детальные данные с сервера с увеличенным таймаутом 12000мс
@@ -1606,55 +1701,99 @@ export async function openPlayerModal(mediaItem, options = {}) {
       document.getElementById('anixart-controls-container').style.display = 'none';
       if (currentPlayers.length > 0) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
-        if (!defaultPlayer) {
-          const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-          const isStable = p => isWorking(p) && p.url && !p.url.includes('stravers.live') && !p.url.includes('transfusion');
-          const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
-          const preferStableKodik = itemYr < 2020;
+        const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
+        const isStable = p => isWorking(p) && Boolean(p.url);
+        const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+        const hasOnlineStream = currentPlayers.some(isStable);
 
-          const isLandyshiItem = currentMedia?.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || currentMedia?.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
-          const isDomesticItem = isDomesticContent(currentMedia, cleanTitle);
-          if (isLandyshiItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
-          } else if (isDomesticItem) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p) && p.is_recommended)
-              || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
-              || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
-              || currentPlayers.find(p => p.is_recommended && isWorking(p))
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
-          } else if (preferStableKodik) {
-            defaultPlayer = currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
-              || currentPlayers.find(p => p.is_recommended && isStable(p))
-              || currentPlayers.find(isStable)
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
-          } else {
-            defaultPlayer = currentPlayers.find(p => p.is_recommended && isStable(p))
-              || currentPlayers.find(p => p.is_recommended && isWorking(p))
-              || currentPlayers.find(isStable)
-              || currentPlayers.find(isWorking)
-              || currentPlayers[0];
+        const isCarrieItem = /кэрри|carrie/i.test(currentMedia?.title || '') && parseInt(currentMedia?.year || '2026', 10) >= 2026;
+        const isUpcomingMedia = Boolean(
+          isCarrieItem ||
+          (!hasOnlineStream && (
+            currentMedia.is_upcoming ||
+            details?.is_upcoming ||
+            String(currentMedia.id || '').startsWith('tmdb_up_') ||
+            (currentMedia.year && parseInt(currentMedia.year, 10) > new Date().getFullYear())
+          ))
+        );
+
+        if (isUpcomingMedia) {
+          currentMedia.is_upcoming = true;
+          defaultPlayer = currentPlayers.find(p => p.is_trailer) || {
+            is_upcoming: true,
+            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+          };
+        } else if (!hasOnlineStream && !defaultPlayer) {
+          defaultPlayer = {
+            is_upcoming: true,
+            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+          };
+        } else {
+          currentMedia.is_upcoming = false;
+          if (!defaultPlayer) {
+            const prefPlayerId = getPreferredDefaultPlayerId();
+            if (prefPlayerId && prefPlayerId !== 'fanfilm4k_uhd' && !isLandyshiItem) {
+              defaultPlayer = currentPlayers.find(p => p.id === prefPlayerId && isStable(p)) || null;
+            }
+          }
+          if (!defaultPlayer) {
+            // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
+            const fourKPlayer = currentPlayers.find(p => isReal4k(p) && isStable(p));
+            if (fourKPlayer && !isLandyshiItem) {
+              defaultPlayer = fourKPlayer;
+            } else if (isLandyshiItem) {
+              defaultPlayer = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            } else if (isDomestic) {
+              defaultPlayer = currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            } else {
+              defaultPlayer = currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+                || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+                || currentPlayers.find(isWorking)
+                || currentPlayers[0];
+            }
           }
         }
         selectPlayer(defaultPlayer);
-      } else if (currentMedia.is_upcoming) {
+      } else {
+        const isUpcomingMedia = Boolean(
+          currentMedia.is_upcoming ||
+          String(currentMedia.id || '').startsWith('tmdb_up_') ||
+          (currentMedia.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(currentMedia.status).toLowerCase()))
+        );
         selectPlayer({
-          is_upcoming: true,
-          upcoming_notice: `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`
+          is_upcoming: isUpcomingMedia,
+          upcoming_notice: isUpcomingMedia
+            ? `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
+            : `Стриминговые потоки для «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» обновляются. Вы можете запустить просмотр через P2P WebTorrent.`
         });
       }
-    }
+      }
 
-    // Рендерим секцию рецензий со спойлер-блоками
+    // Рендерим секцию «В ролях и создатели» в стиле Luno (горизонтальная карусель, фото w500, роли)
+    renderCastAndCrewCarousel(currentMedia);
+
+    // Рендерим секцию рецензий со спойлер-блоками и WYSIWYG
     const reviewsContainer = document.getElementById('cinema-reviews-container');
     if (reviewsContainer) {
       renderReviewsSection(reviewsContainer, currentMedia);
+    }
+
+    // Инициализация мобильных жестов сенсорного экрана (двойной тап перемотки, свайпы)
+    const playerWrapper = document.getElementById('cinema-player-wrapper');
+    if (playerWrapper) {
+      initPlayerTouchGestures(playerWrapper);
     }
   } catch (err) {
     console.error('Ошибка модального окна плеера:', err);
@@ -1678,6 +1817,7 @@ export function closePlayerModal() {
     const fBtn = document.getElementById('inplayer-focus-btn');
     if (fBtn) fBtn.classList.remove('active');
     stopAmbilight();
+    releaseScreenWakeLock();
     clearPlayerUrl();
     try {
       sessionStorage.removeItem('storm_active_cinema_media');
@@ -1708,6 +1848,8 @@ export function closePlayerModal() {
     const jogBtn = document.getElementById('inplayer-jog-btn');
     if (jogBtn) jogBtn.classList.remove('active');
     isPlayerScreenLocked = false;
+
+    stopInvisibleEpisodeWatchTracker();
 
     if (iframeWatchInterval) {
       clearInterval(iframeWatchInterval);
@@ -1761,51 +1903,52 @@ function renderPlayerSources(players) {
   let validPlayers = (players || []).filter(p => {
     if (!p || !p.url) return false;
     if (p.url.includes('kinobox.tv') || p.url.includes('delivembd.ws')) return false;
+    if (p.is_trailer || p.id === 'official_trailer' || p.id === 'official_trailer_fallback') return false;
+    if (/трейлер|тизер|trailer|teaser/i.test(p.name || '') || /трейлер|тизер|trailer|teaser/i.test(p.badge || '')) return false;
     return true;
   });
 
-  // Если список плееров пуст, гарантируем доступный промо-трейлер (YouTube)
-  if (validPlayers.length === 0 && currentMedia?.title) {
-    const cleanSearchTitle = cleanVideoTitle(currentMedia.title);
-    const safeSearch = encodeURIComponent(`${cleanSearchTitle} официальный русский трейлер`);
-    validPlayers.push({
-      id: 'official_trailer_fallback',
-      name: 'Официальный трейлер и промо (HD)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'ТРЕЙЛЕР',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальное промо релиза',
-      speed: '⚡ YouTube',
-      url: `https://www.youtube-nocookie.com/embed?listType=search&list=${safeSearch}&autoplay=1`,
-      is_trailer: true,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
-    });
+  // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Рабочие потоки всегда первыми! 4K Ultra HD Плеер (FanFilm4K) на первом месте среди РАБОЧИХ!
+  const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
+  const isReal4k = p => p && isWorking(p) && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+  validPlayers.sort((a, b) => {
+    const aWork = isWorking(a);
+    const bWork = isWorking(b);
+    if (aWork && !bWork) return -1;
+    if (!aWork && bWork) return 1;
+    const aIs4k = isReal4k(a);
+    const bIs4k = isReal4k(b);
+    if (aIs4k && !bIs4k) return -1;
+    if (!aIs4k && bIs4k) return 1;
+    return 0;
+  });
+
+  if (validPlayers.length === 0 && !currentMedia?.is_upcoming) {
+    const suite = buildUniversalPlayerSuite(currentMedia, currentMedia?.title || '');
+    validPlayers = suite.filter(p => p && p.url && !p.is_trailer);
   }
 
   currentPlayers = validPlayers;
 
   if (validPlayers.length === 0) {
-    if (curName) curName.textContent = 'Плееры не найдены';
-    if (curBadge) curBadge.textContent = 'ОШИБКА';
+    if (curName) curName.textContent = 'Премьера ожидается';
+    if (curBadge) curBadge.textContent = 'РЕЛИЗ';
     if (curQuality) curQuality.textContent = '—';
-    if (curStatus) curStatus.textContent = '🔴 Недоступен';
-    list.innerHTML = '<div style="padding: 10px; color: var(--text-muted); font-size: 12px; text-align: center;">Плееры для данного видео временно недоступны</div>';
+    if (curStatus) curStatus.textContent = '🕒 Скоро';
+    list.innerHTML = '<div style="padding: 12px; color: var(--text-muted); font-size: 13px; text-align: center;">Цифровой релиз фильма еще не состоялся</div>';
     return;
   }
 
   // Заполняем выпадающий список стилизованными элементами
-  const recommendedPlayer = validPlayers.find(p => p.is_recommended) || validPlayers[0];
+  const recommendedPlayer = validPlayers.find(p => p.is_recommended && isWorking(p)) || validPlayers.find(isWorking) || validPlayers[0];
   const defaultPlayer = currentActivePlayer ? (validPlayers.find(p => p.id === currentActivePlayer.id) || recommendedPlayer) : recommendedPlayer;
 
   list.innerHTML = validPlayers.map((p, idx) => {
     const isAct = defaultPlayer ? defaultPlayer.id === p.id : idx === 0;
-    const recBadge = p.is_recommended ? `<span class="storm-badge" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-weight:800;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:auto;flex-shrink:0;">🔥 Рекомендуемый</span>` : '';
+    const isDown = (p.status_label || '').includes('🔴') || p.status === 'broken';
+    const recBadge = (p.is_recommended && !isDown) ? `<span class="storm-badge" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-weight:800;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:auto;flex-shrink:0;">🔥 Рекомендуемый</span>` : '';
     const badgeKey = p.badge ? p.badge.toLowerCase().replace(/[^a-z0-9]/g, '') : 'default';
     const is4k = (p.quality || '').includes('4K');
-    const isDown = (p.status_label || '').includes('🔴') || p.status === 'broken';
 
     return `
       <div class="player-dropdown-item ${isAct ? 'active' : ''}" data-idx="${idx}">
@@ -1843,13 +1986,14 @@ function renderPlayerSources(players) {
       const idx = parseInt(itemEl.dataset.idx, 10);
       const player = validPlayers[idx];
       if (player) {
+        lastUserManualSelectionTime = Date.now();
         list.querySelectorAll('.player-dropdown-item').forEach(el => el.classList.remove('active'));
         itemEl.classList.add('active');
         updatePlayerTriggerInfo(player);
         menu.style.display = 'none';
         dropdown.classList.remove('is-open');
         document.body.classList.remove('player-dropdown-active');
-        selectPlayer(player);
+        selectPlayer(player, true);
       }
     };
   });
@@ -1937,7 +2081,6 @@ export function updateFallbackButton(player = currentActivePlayer) {
   } else {
     nextCandidate = validPlayers.find(p => p.id !== player?.id && p.id === 'fanfilm4k_uhd')
       || validPlayers.find(p => p.id !== player?.id && p.id === 'kodik_direct')
-      || validPlayers.find(p => p.id !== player?.id && (p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player'))
       || validPlayers.find(p => p.id !== player?.id && (p.id === 'rutube_stream' || p.id === 'vk_video_stream'))
       || validPlayers.find(p => p.id !== player?.id);
   }
@@ -1951,9 +2094,6 @@ export function updateFallbackButton(player = currentActivePlayer) {
       else if (nextCandidate.id === 'rutube_stream') shortName = 'RuTube';
       else if (nextCandidate.id === 'fanfilm4k_uhd') shortName = '4K Ultra HD';
       else if (nextCandidate.id === 'kodik_direct') shortName = 'Kodik';
-      else if (nextCandidate.id === 'rezka_cinema') shortName = 'HDRezka';
-      else if (nextCandidate.id === 'lostfilm_player') shortName = 'LostFilm';
-      else if (nextCandidate.id === 'rhs_player') shortName = 'Red Head Sound';
       labelEl.textContent = `Переключить на ${shortName}`;
       fallbackBtn.title = `Переключить на резервный плеер: ${nextCandidate.name}`;
     } else {
@@ -1984,7 +2124,22 @@ function updatePlayerTriggerInfo(player) {
   updateFallbackButton(player);
 }
 
-function selectPlayer(player) {
+function selectPlayer(player, isUserManual = false) {
+  if (!player) return;
+
+  if (isUserManual) {
+    lastUserManualSelectionTime = Date.now();
+  }
+
+  // Восстанавливаем работоспособность плеера при явном выборе пользователем
+  player.status = 'working';
+  if (player.status_label && player.status_label.includes('🔴')) {
+    player.status_label = '🟢 Онлайн';
+  }
+  if (failedSourcesSession) {
+    failedSourcesSession.delete(player.id);
+  }
+
   currentActivePlayer = player;
   updatePlayerTriggerInfo(player);
 
@@ -2006,21 +2161,45 @@ function selectPlayer(player) {
     return;
   }
 
-  // Если ссылки нет, отображаем статус ожидаемой премьеры
-  if (!player.url) {
-    if (player.upcoming_notice || currentMedia?.is_upcoming) {
-      const notice = player.upcoming_notice || `Релиз «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» находится в производстве. Мировая премьера ожидается в ${currentMedia?.year || 'скоро'}.`;
-      container.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.85);border-radius:12px;gap:14px;">
-          <div style="font-size:42px;">🎬</div>
-          <div style="font-size:18px;font-weight:800;color:var(--text-primary);">Премьера еще не состоялась</div>
-          <div style="max-width:560px;font-size:13px;line-height:1.6;color:var(--text-secondary);">${notice}</div>
+  // Если ссылки нет или релиз не вышел, отображаем статус ожидаемой премьеры
+  if (!player || !player.url || player.is_upcoming) {
+    const title = cleanVideoTitle(currentMedia?.title || 'Фильм');
+    const year = currentMedia?.year || '2026';
+    const notice = player?.upcoming_notice || `Официальная премьера «${title}» ожидается в ${year} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`;
+
+    container.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:480px;text-align:center;padding:36px 20px;background:radial-gradient(circle at center, #151d30 0%, #0a0b10 100%);border-radius:12px;gap:16px;">
+        <div style="font-size:52px;line-height:1;filter:drop-shadow(0 0 16px rgba(0,210,255,0.4));">🎬</div>
+        <div style="font-size:22px;font-weight:800;color:#00d2ff;letter-spacing:0.5px;">Официальная цифровая премьера еще не состоялась</div>
+        <div style="max-width:540px;font-size:14px;line-height:1.6;color:#94a3b8;">${notice}</div>
+        <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;justify-content:center;">
+          ${currentMedia?.trailer_url ? `<button type="button" class="storm-btn storm-btn-primary" onclick="window.playTrailerDirectly && window.playTrailerDirectly()" style="background:linear-gradient(135deg, #00d2ff, #0077ff);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,210,255,0.35);">▶ Смотреть трейлер</button>` : ''}
+          <button type="button" class="storm-btn ${currentMedia?.trailer_url ? 'storm-btn-secondary' : 'storm-btn-primary'}" id="player-notice-add-planned-btn" style="padding:12px 20px;font-weight:700;border-radius:10px;">
+            📌 Добавить в «Буду смотреть»
+          </button>
+          ${(currentMedia?.releases?.length > 0 || currentMedia?.torrent_hash) ? `<button type="button" class="storm-btn storm-btn-secondary" id="player-notice-webtorrent-btn" style="padding:12px 20px;border-radius:10px;">🧲 Запустить в P2P WebTorrent</button>` : ''}
         </div>
-      `;
-      return;
+      </div>
+    `;
+
+    const addPlannedBtn = container.querySelector('#player-notice-add-planned-btn');
+    if (addPlannedBtn) {
+      addPlannedBtn.onclick = async () => {
+        if (currentMedia) {
+          await saveBookmarkStatus(currentMedia, 'planned');
+          addPlannedBtn.textContent = '✓ Добавлено в «В планах»';
+          addPlannedBtn.classList.remove('storm-btn-primary');
+          addPlannedBtn.classList.add('storm-btn-secondary');
+        }
+      };
     }
 
-    container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);">Ссылка на данный плеер временно недоступна</div>';
+    const wtBtn = container.querySelector('#player-notice-webtorrent-btn');
+    if (wtBtn) {
+      wtBtn.onclick = () => {
+        renderWebTorrentPlayer();
+      };
+    }
     return;
   }
 
@@ -2028,41 +2207,54 @@ function selectPlayer(player) {
 }
 
 export function switchToNextSource(preferWorking = true) {
-  if (!currentPlayers || currentPlayers.length <= 1) {
-    showToast('Нет других доступных источников', 'warning');
+  if (Date.now() - lastUserManualSelectionTime < 15000 && !preferWorking) {
+    console.warn('[Player] Игнорируем авто-переключение источника: пользователь недавно вручную выбрал плеер');
     return;
   }
-  let nextPlayer = null;
-  if (preferWorking) {
-    const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
-    const isDom = isDomesticContent(currentMedia, currentMedia?.title || '');
-    if (isDom) {
-      if (currentActivePlayer?.id === 'vk_video_stream') {
-        nextPlayer = currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p));
-      } else if (currentActivePlayer?.id === 'rutube_stream') {
-        nextPlayer = currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p));
-      }
-      if (!nextPlayer) {
-        nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'vk_video_stream' || p.id === 'rutube_stream'))
-          || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
-          || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
-          || null;
-      }
-    } else {
-      // Приоритет: 4K Ultra HD (FanFilm), затем Kodik, затем HDRezka / LostFilm / RHS, затем любой другой рабочий
-      nextPlayer = currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'fanfilm4k_uhd')
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && p.id === 'kodik_direct')
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rezka_cinema' || p.id === 'lostfilm_player' || p.id === 'rhs_player'))
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p) && (p.id === 'rutube_stream' || p.id === 'vk_video_stream'))
-        || currentPlayers.find(p => p.id !== currentActivePlayer?.id && isWorking(p))
-        || null;
+
+  const failedPlayerId = currentActivePlayer ? currentActivePlayer.id : null;
+  if (failedPlayerId) {
+    failedSourcesSession.add(failedPlayerId);
+    if (failedPlayerId !== 'fanfilm4k_uhd' && failedPlayerId !== 'kinobox_universal') {
+      currentActivePlayer.status = 'broken';
+      currentActivePlayer.status_label = '🔴 Недоступен';
+      currentActivePlayer.is_recommended = false;
     }
   }
-  if (!nextPlayer) {
-    const curIdx = currentPlayers.findIndex(p => p.id === currentActivePlayer?.id);
-    const nextIdx = (curIdx + 1) % currentPlayers.length;
-    nextPlayer = currentPlayers[nextIdx];
+
+  // Обновляем список плееров в выпадающем меню UI
+  if (currentPlayers) {
+    renderPlayerSources(currentPlayers);
   }
+
+  if (!currentPlayers || currentPlayers.length <= 1) {
+    stopPlayerFallbackLoop();
+    return;
+  }
+
+  const isWorking = p => p && p.id !== failedPlayerId && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent' && !failedSourcesSession.has(p.id);
+
+  let nextPlayer = null;
+  const isDom = isDomesticContent(currentMedia, currentMedia?.title || '');
+  if (isDom) {
+    nextPlayer = currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+      || currentPlayers.find(isWorking)
+      || null;
+  } else {
+    nextPlayer = currentPlayers.find(p => p.id === 'fanfilm4k_uhd' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'kinobox_universal' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'kodik_direct' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'rutube_stream' && isWorking(p))
+      || currentPlayers.find(p => p.id === 'vidsrc_player' && isWorking(p))
+      || currentPlayers.find(isWorking)
+      || null;
+  }
+
   if (nextPlayer) {
     selectPlayer(nextPlayer);
     updatePlayerTriggerInfo(nextPlayer);
@@ -2075,7 +2267,105 @@ export function switchToNextSource(preferWorking = true) {
       });
     }
     showToast(`⚡ Источник переключен: ${nextPlayer.name}`, 'info');
+  } else {
+    // Все доступные источники исчерпаны — останавливаем цикл и показываем экран релиза
+    stopPlayerFallbackLoop();
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.playTrailerDirectly = function() {
+    if (currentMedia?.trailer_url) {
+      playStreamUrl(currentMedia.trailer_url);
+      const curBadge = document.getElementById('player-current-badge');
+      if (curBadge) curBadge.textContent = 'ТРЕЙЛЕР';
+      const curName = document.getElementById('player-current-name');
+      if (curName) curName.textContent = 'Официальный трейлер';
+      const curQuality = document.getElementById('player-current-quality');
+      if (curQuality) curQuality.textContent = '4K UHD / 1080p';
+      showToast('🎬 Воспроизведение официального трейлера', 'info');
+    } else {
+      showToast('Официальный трейлер недоступен', 'warning');
+    }
+  };
+
+  window.addMediaToWatchlist = function(id) {
+    const targetId = id || currentMedia?.id;
+    if (typeof window.toggleBookmark === 'function') {
+      window.toggleBookmark(targetId, 'planned');
+    }
+    showToast('Добавлено в список «Буду смотреть»', 'success');
+  };
+
+  window.retryPlayerSources = function() {
+    failedSourcesSession.clear();
+    if (currentPlayers && currentPlayers.length > 0) {
+      currentPlayers.forEach(p => {
+        if (p.status === 'broken') {
+          p.status = 'working';
+          p.status_label = '🟢 Онлайн';
+        }
+      });
+      switchToNextSource(true);
+    }
+  };
+}
+
+export function stopPlayerFallbackLoop() {
+  const container = document.getElementById('cinema-player-wrapper');
+  if (!container) return;
+
+  const isCarrie = /кэрри|carrie/i.test(currentMedia?.title || '');
+  const isFutureYear = Boolean(currentMedia?.year && parseInt(currentMedia.year, 10) > new Date().getFullYear());
+  const isUpcoming = Boolean(
+    currentMedia?.is_upcoming ||
+    isCarrie ||
+    isFutureYear ||
+    /ожидается|скоро/i.test(currentMedia?.release_date || currentMedia?.premiere || '')
+  );
+
+  const cleanTitle = cleanVideoTitle(currentMedia?.title || 'Кинорелиз');
+  const yearText = currentMedia?.year || 'скоро';
+
+  if (isUpcoming && currentMedia?.trailer_url) {
+    playStreamUrl(currentMedia.trailer_url);
+    const curBadge = document.getElementById('player-current-badge');
+    if (curBadge) curBadge.textContent = 'ТРЕЙЛЕР';
+    const curName = document.getElementById('player-current-name');
+    if (curName) curName.textContent = 'Официальный трейлер';
+    const curQuality = document.getElementById('player-current-quality');
+    if (curQuality) curQuality.textContent = '4K UHD / 1080p';
+    showToast(`🎬 Цифровой релиз ожидается в ${yearText} году. Запущен официальный трейлер`, 'info');
+    return;
+  }
+
+  if (isUpcoming) {
+    container.innerHTML = `
+      <div class="storm-player-empty-screen" style="height:100%;min-height:480px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center, #151d30 0%, #0a0b10 100%);color:#fff;text-align:center;padding:32px 24px;box-sizing:border-box;">
+        <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(0,210,255,0.4));">🎬</div>
+        <h2 style="font-size:22px;font-weight:800;color:#00d2ff;margin:0 0 10px 0;letter-spacing:0.5px;">Официальная цифровая премьера еще не состоялась</h2>
+        <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
+          Выход фильма «${cleanTitle}» запланирован на ${yearText} год. Как только состоится официальный цифровой релиз, фильм станет доступен в 4K Ultra HD со всеми студийными озвучками.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+          ${currentMedia?.trailer_url ? `<button type="button" class="storm-btn storm-btn-primary" onclick="window.playTrailerDirectly && window.playTrailerDirectly()" style="background:linear-gradient(135deg, #00d2ff, #0077ff);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,210,255,0.35);">▶ Смотреть трейлер</button>` : ''}
+          <button type="button" class="storm-btn storm-btn-secondary" onclick="window.addMediaToWatchlist && window.addMediaToWatchlist('${currentMedia?.id}')" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:10px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;">+ В список «Буду смотреть»</button>
+        </div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="storm-player-empty-screen" style="height:100%;min-height:480px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center, #1b1525 0%, #0a0b10 100%);color:#fff;text-align:center;padding:32px 24px;box-sizing:border-box;">
+        <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(245,158,11,0.4));">📡</div>
+        <h2 style="font-size:22px;font-weight:800;color:#f59e0b;margin:0 0 10px 0;">Онлайн-потоки временно недоступны</h2>
+        <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
+          Все доступные балансеры и онлайн-плееры вернули статус отсутствия видеопотока. Попробуйте обновить страницу или повторить попытку позже.
+        </p>
+        <button type="button" class="storm-btn storm-btn-primary" onclick="window.retryPlayerSources && window.retryPlayerSources()" style="background:linear-gradient(135deg, #f59e0b, #d97706);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(245,158,11,0.35);">🔄 Повторить поиск источников</button>
+      </div>
+    `;
+  }
+  showToast('Все онлайн-источники проверены и временно недоступны', 'warning');
 }
 
 /* ==========================================================================
@@ -3022,7 +3312,9 @@ async function updateQuickIframeSrc() {
   const iframe = document.querySelector('.cinema-player-iframe');
   if (iframe) {
     if (quickBarBaseUrl && (quickBarBaseUrl.includes('fanfilm') || quickBarBaseUrl.includes('stravers'))) {
-      let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation`;
+      const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
+      const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
+      let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation${titleParam}${yearParam}`;
       if (quickBarSeriesData?.type !== 'movie') {
         url += `&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
       }
@@ -3053,9 +3345,7 @@ function highlightActiveEpisodeInGrid(episodeNum) {
   gridEl.querySelectorAll('.series-episode-card').forEach(card => {
     const isAct = parseInt(card.dataset.epNum, 10) === episodeNum;
     card.classList.toggle('active', isAct);
-    if (isAct) {
-      card.classList.add('watched');
-    }
+    // Серия НЕ отмечается просмотренной при выборе — только после просмотра >= 50%
   });
 }
 
@@ -3089,7 +3379,8 @@ function selectQuickEpisode(episodeNum) {
   updateQuickIframeSrc();
 
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, quickBarActiveSeason, ep, true);
+    // Запускаем невидимый счетчик просмотра (серия будет отмечена только при просмотре >= 50%)
+    startInvisibleEpisodeWatchTracker(currentMedia, quickBarActiveSeason, ep);
   }
 
   showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${ep}`, 'info');
@@ -3184,7 +3475,7 @@ async function selectQuickVoiceover(translationId) {
 
 let streamCheckAbort = null;
 async function checkAndAutoFallbackStream(rawUrl) {
-  if (!rawUrl || rawUrl.includes('kodik') || rawUrl.includes('youtube')) return;
+  if (!rawUrl || rawUrl.includes('kodik') || rawUrl.includes('youtube') || rawUrl.includes('stravers.live') || rawUrl.includes('fanfilm')) return;
   if (streamCheckAbort) {
     try { streamCheckAbort.abort(); } catch {}
   }
@@ -3203,8 +3494,7 @@ async function checkAndAutoFallbackStream(rawUrl) {
           brokenP.status_label = '🔴 Недоступен';
         }
         const kodik = currentPlayers?.find(p => p.id === 'kodik_direct' && p.status !== 'broken');
-        const rezka = currentPlayers?.find(p => p.id === 'rezka_cinema' && p.status !== 'broken');
-        const fallbackTarget = kodik || rezka || currentPlayers?.find(p => p.id !== 'fanfilm4k_uhd' && p.status !== 'broken');
+        const fallbackTarget = kodik || currentPlayers?.find(p => p.id !== 'fanfilm4k_uhd' && p.status !== 'broken');
         if (fallbackTarget && currentActivePlayer?.id !== fallbackTarget.id) {
           selectPlayer(fallbackTarget);
           showToast(`⚡ Автоматически включен проверенный плеер ${fallbackTarget.name}!`, 'info');
@@ -3217,8 +3507,12 @@ async function checkAndAutoFallbackStream(rawUrl) {
 }
 
 window.addEventListener('message', (e) => {
-  if (e.data?.type === 'STORM_SWITCH_NEXT_SOURCE') {
-    console.warn('Получен сигнал переключения источника:', e.data?.reason);
+  if (e.data?.type === 'STORM_SWITCH_NEXT_SOURCE' || e.data?.type === 'STORM_PLAYER_FALLBACK') {
+    if (Date.now() - lastUserManualSelectionTime < 15000 && !e.data?.user_initiated && e.data?.reason !== 'PLAYER_NOT_FOUND' && e.data?.reason !== 'FANFILM_MANUAL_SWITCH') {
+      console.warn('[Player] Игнорируем авто-переключение источника: плеер выбран пользователем вручную');
+      return;
+    }
+    console.warn('[Player] Запуск перехода к следующему источнику:', e.data?.reason);
     switchToNextSource(true);
   }
 });
@@ -3266,7 +3560,12 @@ function playStreamUrl(url) {
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
 
-        <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:2;" playsinline></video>
+        <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
+
+        <!-- Кнопка мгновенного старта воспроизведения на смартфонах и ПК -->
+        <div class="storm-video-big-play-btn" id="storm-video-big-play-btn" title="Воспроизвести">
+          <div class="big-play-icon">▶</div>
+        </div>
 
         <!-- Кнопки пропуска заставок -->
         <button type="button" class="storm-skip-btn" id="skip-intro-btn" style="display: none;">
@@ -3280,6 +3579,27 @@ function playStreamUrl(url) {
 
     const video = document.getElementById('storm-video-player');
     const videoBox = container.querySelector('.player-video-box');
+    const bigPlayBtn = container.querySelector('#storm-video-big-play-btn');
+
+    if (bigPlayBtn && video) {
+      bigPlayBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        video.play().catch(() => {});
+        bigPlayBtn.classList.add('is-hidden');
+      });
+      video.addEventListener('play', () => {
+        bigPlayBtn.classList.add('is-hidden');
+        videoBox.classList.add('is-playing');
+      });
+      video.addEventListener('pause', () => {
+        bigPlayBtn.classList.remove('is-hidden');
+        videoBox.classList.remove('is-playing');
+      });
+      video.addEventListener('playing', () => {
+        bigPlayBtn.classList.add('is-hidden');
+        videoBox.classList.add('is-playing');
+      });
+    }
 
     // Настраиваем HLS с поддержкой ленивой загрузки и P2P Smart-Cache 4K HDR
     const setupHlsStream = () => {
@@ -3324,7 +3644,9 @@ function playStreamUrl(url) {
   const isFanfilmOrStravers = typeof url === 'string' && (url.includes('stravers.live') || url.includes('fanfilm4k') || url.includes('fanfilm'));
 
   if (isFanfilmOrStravers) {
-    streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation`;
+    const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
+    const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
+    streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation${titleParam}${yearParam}`;
     initSeriesQuickBar(url);
     checkAndAutoFallbackStream(url);
   } else if (!quickBarSeriesData?.seasons?.length && !quickBarSeriesData?.isAnime) {
@@ -3341,38 +3663,7 @@ function playStreamUrl(url) {
   }
 
   if (typeof streamUrl === 'string') {
-    streamUrl = streamUrl.trim();
-    if (streamUrl.startsWith('//')) {
-      streamUrl = 'https:' + streamUrl;
-    }
-
-    if (adblockEnabled) {
-      if (!streamUrl.startsWith('/api/') && !streamUrl.includes('.m3u8')) {
-        if (streamUrl.includes('kodik') || streamUrl.includes('rezka') || streamUrl.includes('lostfilm') || streamUrl.includes('anixart')) {
-          streamUrl = `/api/player/kodik-embed?url=${encodeURIComponent(streamUrl)}`;
-        } else if (streamUrl.includes('rutube.ru')) {
-          const ruIdMatch = streamUrl.match(/\/embed\/([a-f0-9]{32})/i);
-          if (ruIdMatch) {
-            streamUrl = `/api/player/rutube-embed/${ruIdMatch[1]}`;
-          } else {
-            streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
-          }
-        } else if (!streamUrl.includes('vkvideo.ru') && !streamUrl.includes('vk.com') && !streamUrl.includes('youtube')) {
-          streamUrl = `/api/player/adblock-proxy?url=${encodeURIComponent(streamUrl)}`;
-        }
-      }
-    } else {
-      if (streamUrl.includes('/api/player/kodik-embed?url=')) {
-        try {
-          const parsed = new URL(streamUrl, window.location.origin);
-          const inner = parsed.searchParams.get('url');
-          if (inner) streamUrl = inner;
-        } catch {}
-      }
-      if (vpnBypassEnabled && !streamUrl.startsWith('/api/player/')) {
-        streamUrl = `/api/player/vpn-proxy?url=${encodeURIComponent(streamUrl)}`;
-      }
-    }
+    streamUrl = getSafeCleanStreamUrl(streamUrl);
   }
 
     const isVkPlayer = typeof streamUrl === 'string' && (streamUrl.includes('vkvideo.ru') || streamUrl.includes('vk.com'));
@@ -3381,7 +3672,7 @@ function playStreamUrl(url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         ${isVkPlayer ? `
           <button type="button" class="storm-unmute-btn" id="storm-unmute-btn" title="Включить звук VK Видео">
             <span class="unmute-icon">🔊</span>
@@ -3464,7 +3755,8 @@ function playStreamUrl(url) {
       };
     }
     iframeEl.onerror = () => {
-      switchToNextSource();
+      console.warn('[Player] Ошибка загрузки фрейма источника:', streamUrl);
+      updateFallbackButton(currentActivePlayer);
     };
   }
 
@@ -3760,7 +4052,7 @@ function renderXRayCastTab(castTab, cast) {
     <div class="xray-cast-row">
       ${cast.length > 0 ? cast.map(c => `
         <div class="xray-actor-card" data-person-id="${c.id || ''}" data-person-name="${c.name || ''}" title="Нажмите, чтобы открыть фильмографию">
-          <img src="${c.photo || 'assets/favicon.svg'}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/favicon.svg'">
+          <img src="${getSafePersonPhotoUrl(c.photo)}" alt="${c.name}" class="xray-actor-img" onerror="this.src='assets/avatar_default.svg'">
           <div style="min-width: 0;">
             <div class="xray-actor-name">${c.name}</div>
             <div class="xray-actor-role">${c.character || 'В главных ролях'}</div>
@@ -3875,7 +4167,7 @@ function showXRayPanel(wrapper) {
       <div class="xray-crew-list">
         ${crewList.length > 0 ? crewList.map(person => `
           <div class="xray-crew-card" data-person-id="${person.id || ''}" data-person-name="${person.name || ''}" style="cursor: pointer;" title="Открыть фильмографию">
-            <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="xray-crew-img" onerror="this.src='assets/favicon.svg'">
+            <img src="${getSafePersonPhotoUrl(person.photo)}" alt="${person.name}" class="xray-crew-img" onerror="this.src='assets/avatar_default.svg'">
             <div>
               <div class="xray-crew-name">${person.name}</div>
               <div class="xray-crew-role">${person.role}</div>
@@ -4443,10 +4735,31 @@ function startAmbilightLoop(video) {
         r = rgb.r; g = rgb.g; b = rgb.b;
       }
     } else {
-      // Плавный динамический спектральный перелив для Iframe или паузы
-      const hue = (Date.now() / 40) % 360;
-      const rgb = hslToRgb(hue / 360, 0.9, 0.55);
-      r = rgb.r; g = rgb.g; b = rgb.b;
+      // Улучшенный кинематографичный Ambilight: адаптация под атмосферу жанра релиза
+      let atmosColor = null;
+      if (currentMedia) {
+        const genres = (currentMedia.genres || []).map(g => (typeof g === 'string' ? g : g.name || '').toLowerCase());
+        if (genres.some(g => g.includes('ужас') || g.includes('триллер'))) {
+          atmosColor = { r: 220, g: 38, b: 38 }; // мистический кроваво-красный
+        } else if (genres.some(g => g.includes('фантаст') || g.includes('кибер'))) {
+          atmosColor = { r: 0, g: 240, b: 255 }; // неоновый циан
+        } else if (genres.some(g => g.includes('фэнтези') || g.includes('приключ'))) {
+          atmosColor = { r: 245, g: 158, b: 11 }; // янтарно-золотой
+        } else if (genres.some(g => g.includes('боевик') || g.includes('криминал'))) {
+          atmosColor = { r: 255, g: 107, b: 74 }; // закатно-огненный
+        }
+      }
+
+      if (atmosColor) {
+        const pulse = 0.88 + 0.12 * Math.sin(Date.now() / 1100);
+        r = Math.round(atmosColor.r * pulse);
+        g = Math.round(atmosColor.g * pulse);
+        b = Math.round(atmosColor.b * pulse);
+      } else {
+        const hue = (Date.now() / 50) % 360;
+        const rgb = hslToRgb(hue / 360, 0.85, 0.55);
+        r = rgb.r; g = rgb.g; b = rgb.b;
+      }
     }
 
     const aura = document.getElementById('player-ambilight-aura');
@@ -4455,7 +4768,13 @@ function startAmbilightLoop(video) {
       const blur = ambilightSettings.blur;
       aura.classList.add('active');
       aura.style.opacity = `${alpha}`;
-      aura.style.boxShadow = `0 0 ${blur}px rgba(${r}, ${g}, ${b}, 0.9), 0 0 ${Math.round(blur * 1.5)}px rgba(${r}, ${g}, ${b}, 0.55), inset 0 0 ${Math.round(blur * 0.5)}px rgba(${r}, ${g}, ${b}, 0.35)`;
+      aura.style.boxShadow = `
+        0 -18px ${blur}px rgba(${r}, ${g}, ${b}, 0.5),
+        0 18px ${blur}px rgba(${r}, ${g}, ${b}, 0.6),
+        -24px 0 ${Math.round(blur * 1.3)}px rgba(${r}, ${g}, ${b}, 0.55),
+        24px 0 ${Math.round(blur * 1.3)}px rgba(${r}, ${g}, ${b}, 0.55),
+        inset 0 0 ${Math.round(blur * 0.4)}px rgba(${r}, ${g}, ${b}, 0.35)
+      `;
     }
 
     sendSmartLightsFrame(r, g, b);
@@ -5247,7 +5566,7 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
   quickBarActiveSeason = sNum;
 
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, sNum, ep, true);
+    startInvisibleEpisodeWatchTracker(currentMedia, sNum, ep);
   }
 
   // 1. Универсальная быстрая панель серверов / FanFilm / RuTube / VK / Kodik
@@ -6360,11 +6679,13 @@ export async function toggleAdvancedPiP() {
 // ==========================================
 const WEBTORRENT_TRACKERS = [
   'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz',
   'wss://tracker.webtorrent.dev',
+  'wss://tracker.files.fm:7073/announce',
+  'wss://sparta.cyberia.club:443/announce',
   'wss://tracker.fastcast.nz',
   'wss://tracker.sloppyta.co:443/announce',
-  'wss://tracker.ghostrr.com:443/announce',
-  'wss://tracker.btorrent.xyz'
+  'wss://tracker.ghostrr.com:443/announce'
 ];
 
 let webTorrentLoadPromise = null;
@@ -6373,12 +6694,19 @@ export async function ensureWebTorrentLoaded() {
   if (webTorrentLoadPromise) return webTorrentLoadPromise;
   webTorrentLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js';
+    script.src = '/vendor/webtorrent.min.js';
     script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => {
-      webTorrentLoadPromise = null;
-      reject(new Error('Не удалось загрузить WebTorrent модуль'));
+      const fallbackScript = document.createElement('script');
+      fallbackScript.src = 'https://cdn.bootcdn.net/ajax/libs/webtorrent/1.9.7/webtorrent.min.js';
+      fallbackScript.async = true;
+      fallbackScript.onload = () => resolve(true);
+      fallbackScript.onerror = () => {
+        webTorrentLoadPromise = null;
+        reject(new Error('Не удалось загрузить WebTorrent модуль'));
+      };
+      document.head.appendChild(fallbackScript);
     };
     document.head.appendChild(script);
   });
@@ -6391,12 +6719,19 @@ export async function ensureHlsLoaded() {
   if (hlsLoadPromise) return hlsLoadPromise;
   hlsLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+    script.src = '/vendor/hls.min.js';
     script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => {
-      hlsLoadPromise = null;
-      reject(new Error('Не удалось загрузить HLS модуль'));
+      const fallbackScript = document.createElement('script');
+      fallbackScript.src = 'https://unpkg.com/hls.js/dist/hls.min.js';
+      fallbackScript.async = true;
+      fallbackScript.onload = () => resolve(true);
+      fallbackScript.onerror = () => {
+        hlsLoadPromise = null;
+        reject(new Error('Не удалось загрузить HLS модуль'));
+      };
+      document.head.appendChild(fallbackScript);
     };
     document.head.appendChild(script);
   });
@@ -6798,12 +7133,167 @@ export function getNextEpisodeData() {
   return null;
 }
 
+// ==========================================
+// БЛОКИРОВКА ЗАСЫПАНИЯ ЭКРАНА (SCREEN WAKE LOCK API)
+// ==========================================
+let screenWakeLock = null;
+
+export async function requestScreenWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      if (!screenWakeLock) {
+        screenWakeLock = await navigator.wakeLock.request('screen');
+        screenWakeLock.addEventListener('release', () => {
+          screenWakeLock = null;
+        });
+      }
+    } catch (err) {
+      console.warn('[WakeLock]:', err.message);
+    }
+  }
+}
+
+export function releaseScreenWakeLock() {
+  if (screenWakeLock) {
+    try {
+      screenWakeLock.release();
+    } catch {}
+    screenWakeLock = null;
+  }
+}
+
+// ==========================================
+// МОБИЛЬНЫЕ СЕНСОРНЫЕ ЖЕСТЫ И ТАКТИЛЬНАЯ ОТДАЧА (HAPTICS)
+// ==========================================
+let playerBrightnessLevel = 100;
+
+export function initPlayerTouchGestures(wrapper) {
+  if (!wrapper || wrapper.dataset.hasTouchGestures) return;
+  wrapper.dataset.hasTouchGestures = 'true';
+
+  let lastTapTime = 0;
+  let lastTapX = 0;
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isSwiping = false;
+
+  wrapper.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      isSwiping = false;
+    }
+  }, { passive: true });
+
+  wrapper.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1) return;
+    const curX = e.touches[0].clientX;
+    const curY = e.touches[0].clientY;
+    const deltaX = curX - touchStartX;
+    const deltaY = curY - touchStartY;
+
+    if (Math.abs(deltaY) > 22 && Math.abs(deltaY) > Math.abs(deltaX) * 1.4) {
+      isSwiping = true;
+      const rect = wrapper.getBoundingClientRect();
+      const isLeft = (touchStartX - rect.left) < rect.width * 0.45;
+      const step = deltaY < 0 ? 3 : -3;
+
+      if (isLeft) {
+        playerBrightnessLevel = Math.min(150, Math.max(30, playerBrightnessLevel + step));
+        const videoOrIframe = wrapper.querySelector('video, iframe');
+        if (videoOrIframe) {
+          videoOrIframe.style.filter = `brightness(${playerBrightnessLevel}%)`;
+        }
+        showTouchGesturePill(`☀️ Яркость: ${playerBrightnessLevel}%`);
+      } else {
+        const video = wrapper.querySelector('video');
+        if (video) {
+          video.volume = Math.min(1, Math.max(0, video.volume + (step > 0 ? 0.04 : -0.04)));
+          showTouchGesturePill(`🔊 Громкость: ${Math.round(video.volume * 100)}%`);
+        }
+      }
+    }
+  }, { passive: true });
+
+  wrapper.addEventListener('touchend', () => {
+    if (isSwiping) return;
+
+    const now = Date.now();
+    const tapX = touchStartX;
+    const rect = wrapper.getBoundingClientRect();
+
+    if (now - lastTapTime < 320 && Math.abs(tapX - lastTapX) < 45) {
+      const relX = tapX - rect.left;
+      if (relX < rect.width * 0.38) {
+        handlePlayerTvSeek(-10);
+        showTouchGestureRipple('left', '⏪ -10 сек');
+        if (navigator.vibrate) navigator.vibrate(15);
+      } else if (relX > rect.width * 0.62) {
+        handlePlayerTvSeek(10);
+        showTouchGestureRipple('right', '⏩ +10 сек');
+        if (navigator.vibrate) navigator.vibrate(15);
+      }
+      lastTapTime = 0;
+      return;
+    }
+
+    lastTapTime = now;
+    lastTapX = tapX;
+  });
+}
+
+function showTouchGesturePill(text) {
+  let pill = document.getElementById('player-touch-gesture-pill');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'player-touch-gesture-pill';
+    pill.className = 'player-touch-gesture-pill';
+    const wrapper = document.getElementById('cinema-player-wrapper');
+    if (wrapper) wrapper.appendChild(pill);
+  }
+  pill.textContent = text;
+  pill.classList.add('visible');
+  clearTimeout(pill._timer);
+  pill._timer = setTimeout(() => {
+    pill.classList.remove('visible');
+  }, 900);
+}
+
+function showTouchGestureRipple(side, text) {
+  const wrapper = document.getElementById('cinema-player-wrapper');
+  if (!wrapper) return;
+  const ripple = document.createElement('div');
+  ripple.className = `player-touch-ripple ripple-${side}`;
+  ripple.innerHTML = `<span class="ripple-text">${text}</span>`;
+  wrapper.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 700);
+}
+
+// ==========================================
+// УПРЕЖДАЮЩАЯ ФОНОВАЯ БУФЕРИЗАЦИЯ СЛЕДУЮЩЕЙ СЕРИИ (PRE-FETCHING ENGINE)
+// ==========================================
 function triggerNextEpisodePrebuffer() {
   try {
     const nextEp = getNextEpisodeData();
     if (!nextEp) return;
+
+    // 1. Потоковое кеширование для HLS / MP4
     if (currentMedia?.source === 'anilibria' && nextEp.streamUrl) {
       fetch(nextEp.streamUrl, { method: 'HEAD', priority: 'low' }).catch(() => {});
+    }
+
+    // 2. Фоновый запрос к структуре серий
+    if (quickBarBaseUrl) {
+      const curMediaId = currentMedia?.id || '';
+      const mediaTitle = currentMedia?.title || currentMedia?.name || '';
+      const mediaTmdbId = currentMedia?.tmdb_id || '';
+      fetch(`/api/player/series-options?url=${encodeURIComponent(quickBarBaseUrl)}&title=${encodeURIComponent(mediaTitle)}&mediaId=${encodeURIComponent(curMediaId)}&tmdbId=${encodeURIComponent(mediaTmdbId)}&season=${nextEp.season || 1}&episode=${nextEp.episode || 1}`, { priority: 'low' }).catch(() => {});
+    }
+
+    // 3. Предзагрузка стоп-кадра следующего эпизода
+    if (nextEp.still && String(nextEp.still).startsWith('http')) {
+      const img = new Image();
+      img.src = nextEp.still;
     }
   } catch (_) {}
 }
@@ -7170,7 +7660,7 @@ async function renderInPlayerCastDrawer(body) {
         ${cast.map(c => `
           <div class="inplayer-cast-item-card" data-person-id="${escapeHtml(c.id || '')}" data-person-name="${escapeHtml(c.name || '')}">
             <div class="inplayer-cast-img-box">
-              <img src="${escapeHtml(c.photo || c.profile_path || 'assets/favicon.svg')}" alt="${escapeHtml(c.name || '')}" class="inplayer-cast-img" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              <img src="${getSafePersonPhotoUrl(c.photo || c.profile_path)}" alt="${escapeHtml(c.name || '')}" class="inplayer-cast-img" loading="lazy" onerror="this.src='assets/avatar_default.svg'">
             </div>
             <div class="inplayer-cast-name">${escapeHtml(c.name || 'Актер')}</div>
             <div class="inplayer-cast-role">${escapeHtml(c.character || 'В ролях')}</div>
@@ -7269,7 +7759,7 @@ function renderDrawerXRayView(body, onBack) {
         <div class="xray-crew-list">
           ${crewList.length > 0 ? crewList.map(person => `
             <div class="xray-crew-card" data-person-id="${escapeHtml(person.id || '')}" data-person-name="${escapeHtml(person.name || '')}" style="cursor: pointer;" title="Открыть фильмографию">
-              <img src="${escapeHtml(person.photo || 'assets/favicon.svg')}" alt="${escapeHtml(person.name)}" class="xray-crew-img" onerror="this.src='assets/favicon.svg'">
+              <img src="${getSafePersonPhotoUrl(person.photo)}" alt="${escapeHtml(person.name)}" class="xray-crew-img" onerror="this.src='assets/avatar_default.svg'">
               <div>
                 <div class="xray-crew-name">${escapeHtml(person.name)}</div>
                 <div class="xray-crew-role">${escapeHtml(person.role)}</div>
@@ -7435,6 +7925,10 @@ function renderPlayerUtilityButtons() {
             <button type="button" class="studio-tab-btn" id="studio-tab-cleanview" title="STORM CleanView: автоматический пропуск рекламы и вырезание водяных знаков">
               <span class="studio-tab-icon">🛡️</span>
               <span class="studio-tab-text">CleanView</span>
+            </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-franchise" title="Хронология франшизы, сиквелы, приквелы и связанные фильмы">
+              <span class="studio-tab-icon">🧬</span>
+              <span class="studio-tab-text">Франшиза</span>
             </button>
           </div>
         </div>
@@ -7771,6 +8265,61 @@ function renderPlayerUtilityButtons() {
     };
   }
 
+  // 9. Хронология франшизы и связанные части
+  const tabFranchise = container.querySelector('#studio-tab-franchise');
+  if (tabFranchise) {
+    tabFranchise.onclick = () => {
+      openDrawerTab('franchise', '🧬', `Хронология франшизы: ${currentMedia?.title || ''}`, async (body) => {
+        body.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">⏳ Построение хронологического графа франшизы...</div>`;
+        try {
+          const qTitle = encodeURIComponent(currentMedia?.title || '');
+          const res = await fetch(`/api/media/franchise?title=${qTitle}`);
+          const data = await res.json();
+          const items = Array.isArray(data?.items) ? data.items : [];
+          if (items.length === 0) {
+            body.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">Для «${escapeHtml(currentMedia?.title || '')}» дополнительных частей франшизы не найдено.</div>`;
+            return;
+          }
+          body.innerHTML = `
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+              Все части и связанные релизы вселенной <strong>«${escapeHtml(data.franchise || currentMedia?.title || '')}»</strong> в хронологическом порядке:
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;">
+              ${items.map((it, idx) => {
+                const pUrl = it.poster ? (it.poster.startsWith('/api/media/image-proxy') ? it.poster : `/api/media/image-proxy?url=${encodeURIComponent(it.poster)}&title=${encodeURIComponent(it.title || '')}`) : `/api/media/image-proxy?title=${encodeURIComponent(it.title || '')}`;
+                const isCur = String(it.title || '').toLowerCase() === String(currentMedia?.title || '').toLowerCase();
+                return `
+                  <div class="storm-card franchise-item-card" data-idx="${idx}" style="display: flex; gap: 10px; padding: 10px; border-radius: 10px; cursor: pointer; border: 1px solid ${isCur ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}; background: ${isCur ? 'rgba(0,210,255,0.08)' : 'rgba(255,255,255,0.03)'};">
+                    <img src="${pUrl}" alt="${escapeHtml(it.title)}" style="width: 54px; height: 78px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" onerror="this.src='assets/favicon.svg'">
+                    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                      <div>
+                        <div style="font-size: 10px; color: var(--accent); font-weight: 800;">Часть #${idx + 1} • ${it.year || ''}</div>
+                        <div style="font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">★ ${it.rating || '8.0'} • ${escapeHtml(it.quality || '4K UHD')}</div>
+                      </div>
+                      <span style="font-size: 11px; color: ${isCur ? '#10b981' : 'var(--accent)'}; font-weight: 700;">${isCur ? '● Сейчас открыто' : '▶ Переключить'}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+          body.querySelectorAll('.franchise-item-card').forEach(card => {
+            card.onclick = () => {
+              const picked = items[parseInt(card.dataset.idx, 10)];
+              if (picked) {
+                closeDrawer();
+                openPlayerModal(picked);
+              }
+            };
+          });
+        } catch (err) {
+          body.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--color-red);">Не удалось загрузить хронологию: ${escapeHtml(err.message)}</div>`;
+        }
+      });
+    };
+  }
+
   // Быстрые кнопки панели справа
   const nightAudioBtn = container.querySelector('#toggle-night-audio-btn');
   if (nightAudioBtn) {
@@ -7811,8 +8360,236 @@ function renderPlayerUtilityButtons() {
 }
 
 // ==========================================================================
-// СИСТЕМА ОТСЛЕЖИВАНИЯ ПРОСМОТРЕННЫХ СЕРИЙ И ПОДСКАЗОК
+// НЕВИДИМЫЙ СЧЕТЧИК И ДИНАМИЧЕСКИЙ ТРЕКЕР ПРОСМОТРА СЕРИЙ (>= 50%)
+// Серия отмечается просмотренной ТОЛЬКО при достижении как минимум 50% хронометража.
+// Статус серии и сериала динамически обновляется на лету во всех компонентах DOM.
 // ==========================================================================
+let episodeWatchTrackerInterval = null;
+let activeTrackingMediaId = null;
+let activeTrackingSeason = 1;
+let activeTrackingEpisode = 1;
+let activeTrackingWatchedSeconds = 0;
+let activeTrackingDurationSeconds = 1440;
+let activeTrackingHasReached50 = false;
+let activeTrackingStorageKey = '';
+
+export function stopInvisibleEpisodeWatchTracker() {
+  if (episodeWatchTrackerInterval) {
+    clearInterval(episodeWatchTrackerInterval);
+    episodeWatchTrackerInterval = null;
+  }
+}
+
+export function parseDurationStringToSeconds(str) {
+  if (!str) return 0;
+  if (typeof str === 'number') return str > 300 ? Math.round(str) : Math.round(str * 60);
+  const s = String(str).toLowerCase().trim();
+  if (s.includes(':')) {
+    const parts = s.split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+  }
+  let total = 0;
+  const hMatch = s.match(/(\d+)\s*(?:ч|h|час)/);
+  if (hMatch) total += parseInt(hMatch[1], 10) * 3600;
+  const mMatch = s.match(/(\d+)\s*(?:м|m|мин)/);
+  if (mMatch) total += parseInt(mMatch[1], 10) * 60;
+  const sMatch = s.match(/(\d+)\s*(?:с|s|сек)/);
+  if (sMatch) total += parseInt(sMatch[1], 10);
+  if (total > 0) return total;
+  const num = parseInt(s, 10);
+  if (!isNaN(num) && num > 0) {
+    return num <= 300 ? num * 60 : num;
+  }
+  return 0;
+}
+
+export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeNum = 1) {
+  if (!media || !media.id) return;
+  stopInvisibleEpisodeWatchTracker();
+
+  activeTrackingMediaId = String(media.id);
+  activeTrackingSeason = Number(seasonNum) || 1;
+  activeTrackingEpisode = Number(episodeNum) || 1;
+  activeTrackingStorageKey = `storm_ep_watchtime_${activeTrackingMediaId}_s${activeTrackingSeason}_e${activeTrackingEpisode}`;
+
+  // Проверяем, не была ли серия УЖЕ отмечена просмотренной ранее
+  const watchedSet = getWatchedEpisodes(activeTrackingMediaId, activeTrackingSeason);
+  activeTrackingHasReached50 = watchedSet.has(activeTrackingEpisode);
+
+  // Считываем сохраненное время просмотра этой серии (если пользователь уже смотрел часть)
+  try {
+    activeTrackingWatchedSeconds = parseInt(localStorage.getItem(activeTrackingStorageKey) || '0', 10);
+    if (isNaN(activeTrackingWatchedSeconds) || activeTrackingWatchedSeconds < 0) {
+      activeTrackingWatchedSeconds = 0;
+    }
+  } catch (_) {
+    activeTrackingWatchedSeconds = 0;
+  }
+
+  // Определение хронометража серии (в секундах)
+  let resolvedDuration = 0;
+
+  // 1. Из нативного видеоэлемента
+  const video = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+  if (video && video.duration && !isNaN(video.duration) && isFinite(video.duration) && video.duration > 30) {
+    resolvedDuration = Math.round(video.duration);
+  }
+
+  // 2. Из перечня серий текущего сезона (ep.duration)
+  if (!resolvedDuration && Array.isArray(currentEpisodes) && currentEpisodes.length > 0) {
+    const epObj = currentEpisodes.find(e => (Number(e.episode || e.episode_number) === activeTrackingEpisode));
+    if (epObj?.duration) {
+      resolvedDuration = parseDurationStringToSeconds(epObj.duration);
+    }
+  }
+
+  // 3. Из данных медиа или быстрого бара
+  if (!resolvedDuration && media.duration) {
+    resolvedDuration = parseDurationStringToSeconds(media.duration);
+  }
+
+  // 4. Умный дефолт по типу медиа:
+  // Аниме: 24 минуты (1440 сек, 50% = 12 мин)
+  // Сериал: 45 минут (2700 сек, 50% = 22.5 мин)
+  // Фильм: 90 минут (5400 сек, 50% = 45 мин)
+  if (!resolvedDuration || resolvedDuration <= 30) {
+    const mType = media.media_type || '';
+    const genres = (Array.isArray(media.genres) ? media.genres.join(' ') : (media.genres || '')).toLowerCase();
+    if (mType.includes('anime') || genres.includes('аниме')) {
+      resolvedDuration = 24 * 60; // 1440
+    } else if (mType.includes('series') || media.seasons || quickBarSeriesData) {
+      resolvedDuration = 45 * 60; // 2700
+    } else {
+      resolvedDuration = 90 * 60; // 5400
+    }
+  }
+
+  activeTrackingDurationSeconds = resolvedDuration;
+
+  // Немедленная проверка: если сохраненное время уже >= 50%, отмечаем
+  check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+
+  // Запуск невидимого ежесекундного тикера
+  episodeWatchTrackerInterval = setInterval(() => {
+    const modal = document.getElementById('cinema-modal');
+    if (!modal || !modal.classList.contains('is-open')) {
+      stopInvisibleEpisodeWatchTracker();
+      return;
+    }
+    // Если пользователь свернул окно/вкладку — невидимый таймер на паузе
+    if (document.hidden) return;
+
+    // Нативный HTML5 видеоплеер
+    const currentVideo = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+    if (currentVideo) {
+      if (!currentVideo.paused && !currentVideo.ended) {
+        if (currentVideo.duration && isFinite(currentVideo.duration) && currentVideo.duration > 30) {
+          activeTrackingDurationSeconds = Math.round(currentVideo.duration);
+        }
+        activeTrackingWatchedSeconds = Math.round(currentVideo.currentTime || 0);
+        check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+      }
+    } else {
+      // Встраиваемый Iframe плеер (Kodik, Alloha, VideoCDN, FanFilm4K, RuTube, VK и др.)
+      activeTrackingWatchedSeconds += 1;
+      check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+    }
+
+    // Сохраняем прогресс каждые 5 секунд
+    if (activeTrackingWatchedSeconds % 5 === 0 && activeTrackingStorageKey) {
+      try {
+        localStorage.setItem(activeTrackingStorageKey, String(activeTrackingWatchedSeconds));
+      } catch (_) {}
+    }
+  }, 1000);
+}
+
+function check50PercentWatchCondition(watchedSec, totalSec) {
+  if (activeTrackingHasReached50 || !activeTrackingMediaId) return;
+  if (!totalSec || totalSec <= 0) totalSec = 1440;
+  const progressRatio = watchedSec / totalSec;
+
+  if (progressRatio >= 0.5) {
+    activeTrackingHasReached50 = true;
+    markEpisodeWatched(activeTrackingMediaId, activeTrackingSeason, activeTrackingEpisode, true);
+    showToast(`Серия ${activeTrackingEpisode} просмотрена более чем на 50% и отмечена`, 'success');
+  }
+}
+
+// Слушатель postMessage от встраиваемых плееров (Kodik, Alloha, Playerjs)
+if (typeof window !== 'undefined' && !window._stormPostMessageListenerAttached) {
+  window._stormPostMessageListenerAttached = true;
+  window.addEventListener('message', (event) => {
+    try {
+      let data = event.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (_) {}
+      }
+      if (data && typeof data === 'object') {
+        const time = Number(data.time || data.currentTime || data.value?.time);
+        const duration = Number(data.duration || data.value?.duration);
+        if (time > 0 && duration > 30) {
+          if (activeTrackingDurationSeconds <= 0 || activeTrackingDurationSeconds === 1440 || activeTrackingDurationSeconds === 2700) {
+            activeTrackingDurationSeconds = Math.round(duration);
+          }
+          activeTrackingWatchedSeconds = Math.max(activeTrackingWatchedSeconds, Math.round(time));
+          check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+        }
+      }
+    } catch (_) {}
+  });
+}
+
+export function updateEpisodeDOMElements(mediaId, seasonNum, episodeNum, watched) {
+  const epNum = Number(episodeNum) || 1;
+  const sNum = Number(seasonNum) || 1;
+
+  // 1. Карточка серии в основном списке серий (#series-episodes-grid)
+  const gridEl = document.getElementById('series-episodes-grid');
+  if (gridEl) {
+    const card = gridEl.querySelector(`.series-episode-card[data-ep-num="${epNum}"]`);
+    if (card) {
+      card.classList.toggle('watched', watched);
+      const isAct = card.classList.contains('active');
+      const chip = card.querySelector('.season-status-chip, .ep-status-toggle');
+      if (chip) {
+        chip.className = `season-status-chip ${watched ? 'completed' : (isAct ? 'watching' : 'planned')} ep-status-toggle`;
+        chip.textContent = watched ? '✓ Просмотрено' : (isAct ? '▶ Смотрю' : 'Не просмотрено');
+      }
+    }
+  }
+
+  // 2. Элемент серии в выезжающей шторке серий внутри плеера
+  const inplayerItems = document.querySelectorAll(`.inplayer-ep-item[data-ep-num="${epNum}"]`);
+  inplayerItems.forEach(item => {
+    const isAct = item.classList.contains('active');
+    item.classList.toggle('watched', watched);
+    let pill = item.querySelector('.inplayer-ep-status-pill');
+    if (!pill) {
+      pill = document.createElement('span');
+      pill.className = 'inplayer-ep-status-pill';
+      item.appendChild(pill);
+    }
+    if (isAct) {
+      pill.className = 'inplayer-ep-status-pill current';
+      pill.textContent = '▶ Смотрю';
+    } else if (watched) {
+      pill.className = 'inplayer-ep-status-pill watched';
+      pill.textContent = '✓';
+    } else {
+      pill.className = 'inplayer-ep-status-pill';
+      pill.textContent = '';
+    }
+  });
+
+  // 3. Выпадающие списки серий быстрой панели (QuickBar)
+  renderQuickBarDropdowns();
+
+  // 4. Вкладки сезонов (счетчик просмотренных серий "Сезон 1 (3/10)")
+  renderSeasonTabs();
+}
+
 function getWatchedEpisodes(mediaId, seasonNum = 1) {
   if (!mediaId) return new Set();
   try {
@@ -7858,6 +8635,9 @@ function markEpisodeWatched(mediaId, seasonOrEp, maybeEpisode, maybeWatched) {
     }
   } catch {}
 
+  // МГНОВЕННО обновляем DOM элементов серии, вкладок и быстрой панели без перезагрузки страницы
+  updateEpisodeDOMElements(mediaId, seasonNum, episodeNum, watched);
+
   evaluateAndSyncOverallSeriesStatus(mediaId);
 }
 
@@ -7895,34 +8675,39 @@ function evaluateAndSyncOverallSeriesStatus(mediaId) {
       totalExpectedEpisodes = Number(currentM.total_episodes);
     }
 
-    let newOverallStatus = null;
+    let newOverallStatus = 'watching';
     if (totalExpectedEpisodes > 0 && totalWatchedAcrossAll >= totalExpectedEpisodes) {
       newOverallStatus = 'completed';
     } else if (totalWatchedAcrossAll > 0) {
       newOverallStatus = 'watching';
+    } else {
+      newOverallStatus = 'planned';
     }
 
-    if (newOverallStatus) {
-      localStorage.setItem(`storm_status_${mediaId}`, newOverallStatus);
-      if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, newOverallStatus);
+    localStorage.setItem(`storm_status_${mediaId}`, newOverallStatus);
+    if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, newOverallStatus);
 
-      if (newOverallStatus === 'completed') {
-        const cw = localStorage.getItem('storm_continue_watching');
-        if (cw) {
-          try {
-            const list = JSON.parse(cw).filter(it => String(it.media_id) !== String(mediaId));
-            localStorage.setItem('storm_continue_watching', JSON.stringify(list));
-          } catch (_) {}
-        }
+    if (currentM) {
+      currentM.user_status = newOverallStatus;
+      renderStatusButtons(newOverallStatus);
+    }
+
+    if (newOverallStatus === 'completed') {
+      const cw = localStorage.getItem('storm_continue_watching');
+      if (cw) {
+        try {
+          const list = JSON.parse(cw).filter(it => String(it.media_id) !== String(mediaId));
+          localStorage.setItem('storm_continue_watching', JSON.stringify(list));
+        } catch (_) {}
       }
-
-      window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
-        detail: { mediaId, status: newOverallStatus }
-      }));
-      window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', {
-        detail: { mediaId }
-      }));
     }
+
+    window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+      detail: { mediaId, status: newOverallStatus }
+    }));
+    window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', {
+      detail: { mediaId }
+    }));
   } catch (e) {
     console.warn('[Player] Ошибка пересчета статуса сериала:', e);
   }
@@ -8501,9 +9286,9 @@ function playAnixartEpisode(episode) {
   currentActivePlayer = playerObj;
   updatePlayerTriggerInfo(playerObj);
 
-  // Отмечаем серию как просмотренную в хранилище для активного сезона
+  // Запускаем невидимый счетчик просмотра (серия будет отмечена только при просмотре >= 50%)
   if (currentMedia?.id) {
-    markEpisodeWatched(currentMedia.id, quickBarActiveSeason || 1, pos, true);
+    startInvisibleEpisodeWatchTracker(currentMedia, quickBarActiveSeason || 1, pos);
   }
 
   quickBarActiveEpisode = pos;
@@ -8523,23 +9308,13 @@ function playAnixartEpisode(episode) {
   }
 
   if (typeof streamUrl === 'string') {
-    streamUrl = streamUrl.trim();
-    if (streamUrl.includes('/api/player/kodik-embed?url=')) {
-      try {
-        const parsed = new URL(streamUrl, window.location.origin);
-        const inner = parsed.searchParams.get('url');
-        if (inner) streamUrl = inner;
-      } catch {}
-    }
-    if (streamUrl.startsWith('//')) {
-      streamUrl = 'https:' + streamUrl;
-    }
+    streamUrl = getSafeCleanStreamUrl(streamUrl);
   }
 
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" style="position:relative;z-index:2;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -8552,7 +9327,8 @@ function playAnixartEpisode(episode) {
     const iframeEl = container.querySelector('.cinema-player-iframe');
     if (iframeEl) {
       iframeEl.onerror = () => {
-        switchToNextSource();
+        console.warn('[Player] Ошибка загрузки серии:', pos);
+        updateFallbackButton(currentActivePlayer);
       };
     }
 
@@ -8591,6 +9367,13 @@ function renderStatusButtons(currentStatus) {
         markAllSeriesSeasonsAndEpisodes(currentMedia, 'planned');
         renderStatusButtons(null);
         renderQuickBarDropdowns();
+        if (typeof renderSeasonTabs === 'function') renderSeasonTabs();
+        if (typeof loadSeasonEpisodes === 'function') {
+          loadSeasonEpisodes(quickBarActiveSeason || 1, activeEpisodeNum || 1);
+        }
+        window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+          detail: { mediaId: currentMedia?.id, status: 'planned' }
+        }));
         showToast('Статус просмотра снят', 'info');
       } else {
         if (currentMedia) currentMedia.user_status = s.id;
@@ -8602,7 +9385,14 @@ function renderStatusButtons(currentStatus) {
         }
         renderStatusButtons(s.id);
         renderQuickBarDropdowns();
+        if (typeof renderSeasonTabs === 'function') renderSeasonTabs();
+        if (typeof loadSeasonEpisodes === 'function') {
+          loadSeasonEpisodes(quickBarActiveSeason || 1, activeEpisodeNum || 1);
+        }
         await saveBookmarkStatus(currentMedia, s.id);
+        window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
+          detail: { mediaId: currentMedia?.id, status: s.id }
+        }));
         if (s.id === 'completed') {
           showToast('Сериал и все серии отмечены как просмотренные', 'success');
         }
@@ -8754,9 +9544,14 @@ function renderScreenshotsGallery(mediaItem, details) {
   }
 
   container.style.display = 'block';
-  gallery.innerHTML = screenshots.map((src, idx) => `
-    <img class="cinema-screenshot-thumb" src="${src}" alt="Кадр ${idx + 1}" loading="lazy" onerror="this.style.display='none';" onclick="window.open('${src}', '_blank')">
-  `).join('');
+  gallery.innerHTML = screenshots.map((src, idx) => {
+    const rawSrc = typeof src === 'string' ? src.trim() : '';
+    if (!rawSrc) return '';
+    const proxiedSrc = (rawSrc.startsWith('http://') || rawSrc.startsWith('https://'))
+      ? `/api/media/image-proxy?url=${encodeURIComponent(rawSrc)}&title=${encodeURIComponent(mediaItem?.title || '')}`
+      : rawSrc;
+    return `<img class="cinema-screenshot-thumb" src="${proxiedSrc}" alt="Кадр ${idx + 1}" loading="lazy" onerror="this.style.display='none';" onclick="window.open('${proxiedSrc}', '_blank')">`;
+  }).join('');
 }
 
 function initProgressSlider() {
@@ -9284,7 +10079,7 @@ function renderDetailedMediaInfo(mediaDetails) {
               if (castSubtitle) castSubtitle.textContent = `В главных ролях (${data.cast.length})`;
               castScroll.innerHTML = data.cast.map(actor => `
                 <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
-                  <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+                  <img src="${getSafePersonPhotoUrl(actor.photo)}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/avatar_default.svg'">
                   <div class="cinema-actor-info">
                     <div class="cinema-actor-name">${actor.name}</div>
                     <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
@@ -9394,7 +10189,7 @@ function renderDetailedMediaInfo(mediaDetails) {
           <span style="font-weight: 800;">Режиссер</span>
         </div>
         <div class="cinema-director-card" data-director-id="${primaryDirector.id}" data-director-name="${primaryDirector.name}">
-          <img src="${primaryDirector.photo || 'assets/favicon.svg'}" alt="${primaryDirector.name}" class="cinema-director-photo" onerror="this.src='assets/favicon.svg'">
+          <img src="${getSafePersonPhotoUrl(primaryDirector.photo)}" alt="${primaryDirector.name}" class="cinema-director-photo" onerror="this.src='assets/avatar_default.svg'">
           <div class="cinema-director-info">
             <div class="cinema-director-name">${primaryDirector.name}</div>
             <div class="cinema-director-role">Постановщик кинокартины</div>
@@ -9415,7 +10210,7 @@ function renderDetailedMediaInfo(mediaDetails) {
       <div class="cinema-cast-scroll" id="cinema-side-cast-scroll">
         ${cast.length > 0 ? cast.map(actor => `
           <div class="cinema-actor-chip" data-actor-id="${actor.id}" data-actor-name="${actor.name}" title="Нажмите для просмотра фильмов">
-            <img src="${actor.photo || 'assets/favicon.svg'}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/favicon.svg'">
+            <img src="${getSafePersonPhotoUrl(actor.photo)}" alt="${actor.name}" class="cinema-actor-photo" onerror="this.src='assets/avatar_default.svg'">
             <div class="cinema-actor-info">
               <div class="cinema-actor-name">${actor.name}</div>
               <div class="cinema-actor-role">${actor.character || 'Роль'}</div>
@@ -9538,45 +10333,84 @@ export async function renderFranchiseOrder(mediaItem) {
     const currentTitleNorm = (mediaItem.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
     const currentIdStr = String(mediaItem.id || '');
 
-    currentFranchiseActiveIndex = currentFranchiseItems.findIndex(it => {
-      if (String(it.id) === currentIdStr || String(it.tmdb_id) === currentIdStr) return true;
-      const itTitleNorm = (it.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-      return itTitleNorm === currentTitleNorm || itTitleNorm.includes(currentTitleNorm) || currentTitleNorm.includes(itTitleNorm);
-    });
+    // Проверяем список просмотренных картин для отметок в таймлайне
+    let watchedIds = new Set();
+    try {
+      const bRes = await fetch('/api/bookmarks?status=completed');
+      if (bRes.ok) {
+        const bList = await bRes.json();
+        if (Array.isArray(bList)) {
+          bList.forEach(b => {
+            if (b.media_id) watchedIds.add(String(b.media_id));
+            if (b.title) watchedIds.add(String(b.title).toLowerCase().trim());
+          });
+        }
+      }
+    } catch {}
 
-    listEl.innerHTML = currentFranchiseItems.map((item, idx) => {
-      const isCurrent = idx === currentFranchiseActiveIndex;
-      const orderLabel = item.order_label || (item.order ? `Часть ${item.order}` : `Часть ${idx + 1}`);
-      const relationBadge = item.relation ? `<span class="franchise-order-badge">${item.relation}</span>` : `<span class="franchise-order-badge">${orderLabel}</span>`;
-      const poster = item.poster || 'assets/favicon.svg';
-      const year = item.year || '';
+    let franchiseSortMode = localStorage.getItem('storm_franchise_sort') || 'chronology';
 
-      return `
-        <div class="franchise-card ${isCurrent ? 'current' : ''}" data-franchise-index="${idx}" title="${item.title}">
-          <div class="franchise-card-poster">
-            <img src="${poster}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
-            ${relationBadge}
-          </div>
-          <div class="franchise-card-content">
-            <div class="franchise-card-title">${item.title}</div>
-            <div class="franchise-card-meta">
-              <span>${year}</span>
-              ${item.rating ? `<span style="color:var(--accent);font-weight:700;">★ ${item.rating}</span>` : ''}
+    function renderFranchiseCards() {
+      let itemsToRender = [...currentFranchiseItems];
+      if (franchiseSortMode === 'release') {
+        itemsToRender.sort((a, b) => (parseInt(a.year, 10) || 0) - (parseInt(b.year, 10) || 0));
+      }
+
+      listEl.innerHTML = itemsToRender.map((item, idx) => {
+        const itemTitleNorm = (item.title || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+        const isCurrent = String(item.id) === currentIdStr || itemTitleNorm === currentTitleNorm || itemTitleNorm.includes(currentTitleNorm);
+        const isWatched = watchedIds.has(String(item.id)) || watchedIds.has(String(item.tmdb_id)) || watchedIds.has((item.title || '').toLowerCase().trim());
+        const orderLabel = franchiseSortMode === 'release' 
+          ? (item.year ? `${item.year} г.` : `Часть ${idx + 1}`) 
+          : (item.relation || item.order_label || (item.order ? `Часть ${item.order}` : `Часть ${idx + 1}`));
+        const relationBadge = `<span class="franchise-order-badge">${orderLabel}</span>`;
+        const poster = item.poster || 'assets/favicon.svg';
+        const year = item.year || '';
+
+        return `
+          <div class="franchise-card ${isCurrent ? 'current' : ''} ${isWatched ? 'watched' : ''}" data-franchise-index="${idx}" title="${item.title}">
+            <div class="franchise-card-poster">
+              <img src="${poster}" alt="${item.title}" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              ${relationBadge}
+            </div>
+            <div class="franchise-card-content">
+              <div class="franchise-card-title">${item.title}</div>
+              <div class="franchise-card-meta">
+                <span>${year}</span>
+                ${item.rating ? `<span style="color:var(--accent);font-weight:700;">★ ${item.rating}</span>` : ''}
+              </div>
             </div>
           </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
 
-    // Подключение быстрых переходов при клике на карточку части
-    listEl.querySelectorAll('.franchise-card').forEach(card => {
-      card.onclick = () => {
-        const idx = parseInt(card.dataset.franchiseIndex, 10);
-        if (!isNaN(idx) && currentFranchiseItems[idx]) {
-          openPlayerModal(currentFranchiseItems[idx]);
-        }
+      listEl.querySelectorAll('.franchise-card').forEach((card, idx) => {
+        card.onclick = () => {
+          if (itemsToRender[idx]) openPlayerModal(itemsToRender[idx]);
+        };
+      });
+    }
+
+    // Добавляем переключатель сортировки в заголовок блока
+    let sortBtn = document.getElementById('franchise-sort-toggle-btn');
+    if (!sortBtn && titleEl && titleEl.parentElement) {
+      sortBtn = document.createElement('button');
+      sortBtn.id = 'franchise-sort-toggle-btn';
+      sortBtn.type = 'button';
+      sortBtn.className = 'franchise-sort-toggle';
+      titleEl.parentElement.appendChild(sortBtn);
+    }
+    if (sortBtn) {
+      sortBtn.textContent = franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)';
+      sortBtn.onclick = () => {
+        franchiseSortMode = franchiseSortMode === 'release' ? 'chronology' : 'release';
+        localStorage.setItem('storm_franchise_sort', franchiseSortMode);
+        sortBtn.textContent = franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)';
+        renderFranchiseCards();
       };
-    });
+    }
+
+    renderFranchiseCards();
 
     section.style.display = 'block';
 
@@ -9625,6 +10459,148 @@ export async function autoAdvanceNextFranchiseItem() {
 }
 
 // ==========================================
+// КАРУСЕЛЬ «В РОЛЯХ И СОЗДАТЕЛИ» В СТИЛЕ LUNO (CAST & CREW CAROUSEL)
+// ==========================================
+export async function renderCastAndCrewCarousel(mediaDetails) {
+  const container = document.getElementById('cinema-cast-and-crew-container');
+  if (!container) return;
+
+  if (!mediaDetails) {
+    container.style.display = 'none';
+    return;
+  }
+
+  // Сначала проверяем, есть ли актеры и создатели в переданном mediaDetails
+  let directors = Array.isArray(mediaDetails.directors) ? [...mediaDetails.directors] : [];
+  let cast = Array.isArray(mediaDetails.cast) ? [...mediaDetails.cast] : [];
+
+  // Если список пуст, выполняем запрос к серверному эндпоинту cast
+  if (directors.length === 0 && cast.length === 0) {
+    try {
+      const src = mediaDetails.source || 'tmdb';
+      const mId = mediaDetails.id || '';
+      const mTitle = mediaDetails.title || mediaDetails.name || '';
+      const mOrigTitle = mediaDetails.original_title || '';
+      const mYear = mediaDetails.year || '';
+      const mActors = mediaDetails.actors || '';
+      const mType = mediaDetails.media_type || '';
+
+      const queryParams = new URLSearchParams({
+        source: src,
+        id: String(mId),
+        title: String(mTitle),
+        original_title: String(mOrigTitle),
+        year: String(mYear),
+        media_type: String(mType),
+        actors: String(mActors)
+      });
+
+      const res = await fetch(`/api/media/cast?${queryParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (Array.isArray(data.directors) && data.directors.length > 0) {
+            directors = data.directors;
+          }
+          if (Array.isArray(data.cast) && data.cast.length > 0) {
+            cast = data.cast;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Cast & Crew]: Ошибка получения создателей:', err);
+    }
+  }
+
+  // Объединяем режиссеров и актеров в единый список (как на Luno)
+  const combined = [];
+  const seenNames = new Set();
+
+  directors.forEach(d => {
+    const name = (d.name || '').trim();
+    if (name && !seenNames.has(name.toLowerCase())) {
+      seenNames.add(name.toLowerCase());
+      combined.push({
+        id: d.id || name,
+        name: name,
+        role: d.role || 'Режиссёр',
+        photo: d.photo || 'assets/avatar_default.svg',
+        isDirector: true
+      });
+    }
+  });
+
+  cast.forEach(c => {
+    const name = (c.name || '').trim();
+    if (name && !seenNames.has(name.toLowerCase())) {
+      seenNames.add(name.toLowerCase());
+      combined.push({
+        id: c.id || name,
+        name: name,
+        role: c.character || 'Актёр',
+        photo: c.photo || 'assets/avatar_default.svg',
+        isDirector: false
+      });
+    }
+  });
+
+  if (combined.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'flex';
+  container.innerHTML = `
+    <div class="md-cast-head">
+      <h4 class="md-cast-title">
+        <span class="cast-icon">🎭</span>
+        <span>В ролях и создатели</span>
+        <span class="md-cast-count">(${combined.length})</span>
+      </h4>
+      <div class="md-cast-nav">
+        <button type="button" class="md-cast-nav-btn md-cast-prev" id="md-cast-prev-btn" title="Прокрутить назад" aria-label="Назад">‹</button>
+        <button type="button" class="md-cast-nav-btn md-cast-next" id="md-cast-next-btn" title="Прокрутить вперед" aria-label="Вперед">›</button>
+      </div>
+    </div>
+    <div class="md-cast-track" id="md-cast-track">
+      ${combined.map(m => `
+        <div class="md-cast-card" data-person-id="${escapeHtml(String(m.id))}" data-person-name="${escapeHtml(m.name)}" title="${escapeHtml(m.name)} — ${escapeHtml(m.role)}">
+          <div class="md-cast-photo-wrap">
+            <img src="${getSafePersonPhotoUrl(m.photo)}" alt="${escapeHtml(m.name)}" class="md-cast-photo" loading="lazy" onerror="if(!this.dataset.failed){ this.dataset.failed='1'; this.src='assets/avatar_default.svg'; }">
+            ${m.isDirector ? '<span class="md-cast-director-badge">Режиссёр</span>' : ''}
+          </div>
+          <div class="md-cast-name">${escapeHtml(m.name)}</div>
+          <div class="md-cast-role">${escapeHtml(m.role)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Скролл карусели кнопками навигации
+  const track = document.getElementById('md-cast-track');
+  const prevBtn = document.getElementById('md-cast-prev-btn');
+  const nextBtn = document.getElementById('md-cast-next-btn');
+
+  if (prevBtn && track) {
+    prevBtn.onclick = () => track.scrollBy({ left: -360, behavior: 'smooth' });
+  }
+  if (nextBtn && track) {
+    nextBtn.onclick = () => track.scrollBy({ left: 360, behavior: 'smooth' });
+  }
+
+  // Клик по карточке персоны открывает окно фильмографии
+  container.querySelectorAll('.md-cast-card').forEach(card => {
+    card.onclick = () => {
+      const pid = card.dataset.personId;
+      const pname = card.dataset.personName;
+      if (pid || pname) {
+        openPersonModal(pid || pname, pname);
+      }
+    };
+  });
+}
+
+// ==========================================
 // МОДАЛЬНОЕ ОКНО ФИЛЬМОГРАФИИ АКТЕРА И РЕЖИССЕРА
 // ==========================================
 export async function openPersonModal(personId, personName) {
@@ -9662,15 +10638,15 @@ export async function openPersonModal(personId, personName) {
 
     body.innerHTML = `
       <div class="person-profile-header">
-        <img src="${person.photo || 'assets/favicon.svg'}" alt="${person.name}" class="person-profile-photo" onerror="this.src='assets/favicon.svg'">
+        <img src="${getSafePersonPhotoUrl(person.photo)}" alt="${escapeHtml(person.name || personName || 'Персона')}" class="person-profile-photo" onerror="if(!this.dataset.failed){ this.dataset.failed='1'; this.src='assets/avatar_default.svg'; }">
         <div class="person-profile-info">
-          <h3 class="person-profile-name">${person.name || personName}</h3>
+          <h3 class="person-profile-name">${escapeHtml(person.name || personName || '')}</h3>
           <div class="person-profile-meta">
-            <span>${person.known_for || 'Кинематографист'}</span>
-            ${formattedBirthday ? `<span>• Дата рождения: <b>${formattedBirthday}</b></span>` : ''}
-            ${person.place_of_birth ? `<span>• ${person.place_of_birth}</span>` : ''}
+            <span>${escapeHtml(person.known_for || 'Кинематографист')}</span>
+            ${formattedBirthday ? `<span>• Дата рождения: <b>${escapeHtml(formattedBirthday)}</b></span>` : ''}
+            ${person.place_of_birth ? `<span>• ${escapeHtml(person.place_of_birth)}</span>` : ''}
           </div>
-          ${person.biography ? `<p class="person-profile-bio">${person.biography}</p>` : ''}
+          ${person.biography ? `<p class="person-profile-bio">${escapeHtml(person.biography)}</p>` : ''}
         </div>
       </div>
 
@@ -9687,11 +10663,12 @@ export async function openPersonModal(personId, personName) {
         ` : items.map(item => `
           <div class="person-media-card" data-id="${item.id}" data-source="${item.source || 'tmdb'}">
             <div class="person-media-poster-box">
-              <img src="${item.poster || 'assets/favicon.svg'}" alt="${item.title}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              <img src="${(item.poster && !item.poster.startsWith('assets/')) ? `/api/media/image-proxy?url=${encodeURIComponent(item.poster)}` : (item.poster || 'assets/favicon.svg')}" alt="${escapeHtml(item.title || '')}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
               <span class="person-media-rating">★ ${item.rating || '—'}</span>
+              <span class="person-media-badge-4k" title="Воспроизведение в 4K Ultra HD качестве">4K UHD</span>
             </div>
             <div class="person-media-info">
-              <div class="person-media-title" title="${item.title}">${item.title}</div>
+              <div class="person-media-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || '')}</div>
               <div class="person-media-year">${item.year || ''} • ${item.media_type === 'series' ? 'Сериал' : 'Фильм'}</div>
             </div>
           </div>
@@ -9713,6 +10690,46 @@ export async function openPersonModal(personId, personName) {
     `;
   }
 }
+
+// ==========================================
+// ИНТЕРАКТИВНЫЙ ТАЙМКОД ИЗ ОТЗЫВОВ ЗРИТЕЛЕЙ
+// ==========================================
+window.seekPlayerToTimecode = function(timecodeStr) {
+  if (!timecodeStr) return;
+  const parts = String(timecodeStr).split(':').map(p => parseInt(p, 10) || 0);
+  let totalSeconds = 0;
+  if (parts.length === 3) {
+    totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    totalSeconds = parts[0] * 60 + parts[1];
+  } else {
+    totalSeconds = parts[0];
+  }
+
+  // Проверяем наличие нативного HTML5 video
+  const video = document.querySelector('#cinema-player-wrapper video');
+  if (video) {
+    video.currentTime = totalSeconds;
+    video.play().catch(() => {});
+    showToast(`⏱️ Перемотка на таймкод ${timecodeStr}`, 'info');
+    return;
+  }
+
+  // Если iframe (плееры Kinobox, FanFilm 4K, Kodik)
+  const iframe = document.querySelector('#cinema-player-wrapper iframe');
+  if (iframe && iframe.contentWindow) {
+    try {
+      iframe.contentWindow.postMessage({ event: 'seek', time: totalSeconds }, '*');
+      iframe.contentWindow.postMessage({ api: 'seek', time: totalSeconds }, '*');
+      iframe.contentWindow.postMessage({ type: 'seek', value: totalSeconds }, '*');
+      showToast(`⏱️ Перемотка на таймкод ${timecodeStr}`, 'info');
+    } catch (e) {
+      console.warn('Seek postMessage error:', e);
+    }
+  } else {
+    showToast(`⏱️ Таймкод: ${timecodeStr}`, 'info');
+  }
+};
 
 // ==========================================
 // СЕЛЕКТОР СЕЗОНОВ И СЕРИЙ С ДИНАМИЧЕСКИМИ ОПИСАНИЯМИ И СТАТУСАМИ
@@ -9981,7 +10998,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         const tvId = mediaDetails.tmdb_id || (mediaDetails.source === 'tmdb' ? String(mediaDetails.id).replace('tmdb_', '') : '');
         const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
         try {
-          const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
+          const res = await fetch(`/api/media/series-episodes?tvId=${encodeURIComponent(tvId)}&season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`, {
+            signal: AbortSignal.timeout(6000)
+          });
           if (res.ok) {
             const data = await res.json();
             episodes = data.episodes || [];
@@ -10012,7 +11031,9 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       if ((mediaDetails.source === 'anixart' || mediaDetails.source === 'anilibria') && episodes.length > 0) {
         try {
           const cleanSerTitle = cleanVideoTitle(mediaDetails.title || '');
-          const metaRes = await fetch(`/api/media/series-episodes?season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`);
+          const metaRes = await fetch(`/api/media/series-episodes?season=${seasonNum}&title=${encodeURIComponent(cleanSerTitle)}`, {
+            signal: AbortSignal.timeout(5000)
+          });
           if (metaRes.ok) {
             const metaData = await metaRes.json();
             if (metaData?.episodes && metaData.episodes.length > 0) {
@@ -10184,14 +11205,11 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           card.classList.add('active');
           activeEpisodeNum = epNum;
 
-          markEpisodeWatched(mediaDetails.id, seasonNum, epNum, true);
-          card.classList.add('watched');
           updateEpisodeSynopsis(epObj);
 
           showToast(`Выбрана серия ${epNum}: ${epObj?.name || ''}`, 'info');
           updateProgressState(epNum, episodes.length);
           renderSeasonTabs();
-          await syncOverallSeriesProgress(mediaDetails);
 
           // Обновляем быструю панель
           quickBarActiveSeason = seasonNum;
@@ -10199,6 +11217,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
           renderQuickBarDropdowns();
 
           if (!currentMedia) currentMedia = mediaDetails;
+          startInvisibleEpisodeWatchTracker(currentMedia, seasonNum, epNum);
           playEpisodeByNumber(epNum, seasonNum);
         };
       });

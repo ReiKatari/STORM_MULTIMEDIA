@@ -8,6 +8,15 @@ import { showToast } from './auth.js';
 let activeVideo = null;
 let currentSkipIntervals = null;
 let activeSkipBanner = null;
+let lastAutoSkippedSegment = '';
+
+export function isAutoSkipIntroEnabled() {
+  return localStorage.getItem('storm_autoskip_intro') !== 'false';
+}
+
+export function setAutoSkipIntroEnabled(val) {
+  localStorage.setItem('storm_autoskip_intro', val ? 'true' : 'false');
+}
 
 // Стандартные интервалы для аниме и сериалов (только для ручного пропуска)
 export function getEstimatedSkipIntervals(durationSeconds, mediaType = '') {
@@ -34,6 +43,7 @@ export function getEstimatedSkipIntervals(durationSeconds, mediaType = '') {
 
 export function setSmartSkipIntervals(intervals) {
   currentSkipIntervals = intervals;
+  lastAutoSkippedSegment = '';
   if (activeVideo && activeVideo.duration) {
     renderChaptersOnTrack(activeVideo, currentSkipIntervals);
   }
@@ -42,6 +52,7 @@ export function setSmartSkipIntervals(intervals) {
 export function initSmartSkip(video, intervals = null) {
   activeVideo = video;
   currentSkipIntervals = intervals;
+  lastAutoSkippedSegment = '';
 
   if (!video) return;
 
@@ -62,9 +73,18 @@ export function initSmartSkip(video, intervals = null) {
 function checkSkipIntervals() {
   if (!activeVideo || !currentSkipIntervals) return;
   const t = activeVideo.currentTime;
+  const autoSkip = isAutoSkipIntroEnabled();
 
   // 1. Проверка интро (опенинга / заставки)
   if (currentSkipIntervals.intro && t >= currentSkipIntervals.intro.start && t < currentSkipIntervals.intro.end) {
+    const segKey = `intro_${currentSkipIntervals.intro.start}_${currentSkipIntervals.intro.end}`;
+    if (autoSkip && currentSkipIntervals.verified && lastAutoSkippedSegment !== segKey) {
+      lastAutoSkippedSegment = segKey;
+      activeVideo.currentTime = currentSkipIntervals.intro.end;
+      showToast(`⏩ ${currentSkipIntervals.intro.label} автоматически пропущено`, 'info');
+      removeSkipBanner();
+      return;
+    }
     showSkipBanner(currentSkipIntervals.intro.label, currentSkipIntervals.intro.end);
     return;
   }

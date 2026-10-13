@@ -62,28 +62,27 @@ export function showToast(message, type = 'info') {
 }
 
 export async function checkAuth() {
-  if (!currentToken) {
-    currentUser = null;
-    localStorage.removeItem('storm_token');
-    localStorage.removeItem('storm_user');
-    updateAuthUI();
-    notifyAuthChanged();
-    return null;
-  }
-
   try {
-    const res = await fetch('/api/auth/me', {
-      headers: {
-        'Authorization': `Bearer ${currentToken}`
-      }
-    });
+    const headers = {};
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
+    }
+
+    const res = await fetch('/api/auth/me', { headers });
 
     if (res.ok) {
       const data = await res.json();
-      currentUser = data.user;
-      if (currentUser) {
+      if (data && data.user) {
+        currentUser = data.user;
         currentUser.stats = data.stats;
+        if (data.token) {
+          currentToken = data.token;
+          localStorage.setItem('storm_token', currentToken);
+        }
         localStorage.setItem('storm_user', JSON.stringify(currentUser));
+        updateAuthUI();
+        notifyAuthChanged();
+        return currentUser;
       } else {
         currentToken = null;
         currentUser = null;
@@ -91,7 +90,7 @@ export async function checkAuth() {
         localStorage.removeItem('storm_user');
       }
     } else if (res.status === 401 || res.status === 403) {
-      if (!currentToken.startsWith('offline_') && !currentToken.startsWith('guest_')) {
+      if (!currentToken || (!currentToken.startsWith('offline_') && !currentToken.startsWith('guest_'))) {
         currentUser = null;
         currentToken = null;
         localStorage.removeItem('storm_token');
@@ -267,12 +266,12 @@ export function loginAsGuest() {
 
 export function loginOfflineAdmin(username = 'ReiKatari') {
   currentUser = {
-    id: 1,
+    id: 2,
     username: username,
-    email: '45316432+ReiKatari@users.noreply.github.com',
+    email: 'ReiKatari@outlook.com',
     role: 'admin',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=CyberRei',
-    created_at: new Date().toISOString(),
+    avatar: 'assets/favicon.svg',
+    created_at: 1789233981191,
     stats: { bookmarks_count: 5, history_count: 10 }
   };
   currentToken = 'offline_admin_token_' + Date.now();
@@ -306,6 +305,64 @@ export async function logout() {
   showToast(t('msg_logout_success'), 'info');
 }
 
+// ==========================================
+// ВХОД ПО ОДНОРАЗОВОМУ ТВ-КОДУ (DEVICE CODE FLOW)
+// ==========================================
+let tvCodePollInterval = null;
+
+export async function startTvDeviceCodeSession() {
+  const displayEl = document.getElementById('tv-code-display');
+  const statusEl = document.getElementById('tv-code-status-text');
+  if (displayEl) displayEl.textContent = '------';
+  if (statusEl) statusEl.textContent = 'Генерация одноразового кода...';
+
+  stopTvDeviceCodeSession();
+
+  try {
+    const res = await fetch('/api/auth/device/code', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.code) throw new Error(data.error || 'Ошибка запроса кода');
+
+    const code = data.code;
+    if (displayEl) displayEl.textContent = code;
+    if (statusEl) statusEl.textContent = 'Ожидание подтверждения на устройстве...';
+
+    tvCodePollInterval = setInterval(async () => {
+      try {
+        const pollRes = await fetch(`/api/auth/device/poll?code=${encodeURIComponent(code)}`);
+        const pollData = await pollRes.json();
+
+        if (pollData.status === 'authorized' && pollData.session) {
+          stopTvDeviceCodeSession();
+          currentToken = pollData.session.token;
+          currentUser = pollData.session.user;
+          localStorage.setItem('storm_token', currentToken);
+          localStorage.setItem('storm_user', JSON.stringify(currentUser));
+          updateAuthUI();
+          notifyAuthChanged();
+          showToast(`✅ Успешный вход на ТВ (${currentUser.username})!`, 'success');
+          const authModal = document.getElementById('auth-modal');
+          if (authModal) authModal.classList.remove('is-open');
+        } else if (pollData.status === 'expired') {
+          stopTvDeviceCodeSession();
+          if (statusEl) statusEl.textContent = '⚠️ Срок действия кода истёк. Запросите новый код.';
+        }
+      } catch (err) {
+        console.warn('Ошибка проверки статуса ТВ-кода:', err);
+      }
+    }, 2500);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
+  }
+}
+
+export function stopTvDeviceCodeSession() {
+  if (tvCodePollInterval) {
+    clearInterval(tvCodePollInterval);
+    tvCodePollInterval = null;
+  }
+}
+
 export function updateFamilyHeaderUI() {
   const profile = getActiveProfile();
   const iconEl = document.getElementById('active-profile-avatar-icon');
@@ -334,7 +391,14 @@ export function updateAuthUI() {
     if (loginBtn) loginBtn.style.display = 'none';
     if (headerProfileBtn) headerProfileBtn.style.display = 'none';
     if (profileBtn) profileBtn.style.display = 'flex';
-    if (avatarImg) avatarImg.src = currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`;
+    if (avatarImg) {
+      avatarImg.src = currentUser.avatar || 'assets/avatar_default.svg';
+      avatarImg.onerror = () => {
+        if (!avatarImg.src.endsWith('assets/avatar_default.svg')) {
+          avatarImg.src = 'assets/avatar_default.svg';
+        }
+      };
+    }
     if (userNameSpan) userNameSpan.textContent = currentUser.username;
 
     // Кнопка административного дашборда для ReiKatari или роли admin
@@ -438,11 +502,18 @@ export function openProfileModal() {
   const modal = document.getElementById('profile-modal');
   if (!modal) return;
 
-  const currentAvatar = currentUser
-    ? (currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`)
-    : 'assets/favicon.svg';
+  const currentAvatar = currentUser && currentUser.avatar
+    ? currentUser.avatar
+    : 'assets/avatar_default.svg';
   const avatarEl = document.getElementById('profile-avatar');
-  if (avatarEl) avatarEl.src = currentAvatar;
+  if (avatarEl) {
+    avatarEl.src = currentAvatar;
+    avatarEl.onerror = () => {
+      if (!avatarEl.src.endsWith('assets/avatar_default.svg')) {
+        avatarEl.src = 'assets/avatar_default.svg';
+      }
+    };
+  }
 
   const userEl = document.getElementById('profile-username');
   if (userEl) userEl.textContent = currentUser ? currentUser.username : 'Гость (Без авторизации)';
@@ -503,6 +574,89 @@ export function openProfileModal() {
     profileThemeSelect.value = localStorage.getItem('storm_theme') || 'STORM DARK';
     profileThemeSelect.onchange = (e) => {
       import('./theme.js').then(m => m.setTheme(e.target.value));
+    };
+  }
+
+  // Настройки плеера по умолчанию, AdShield, CleanView, Smart Skip и Ambilight
+  const defaultPlayerSelect = document.getElementById('profile-default-player-select');
+  if (defaultPlayerSelect) {
+    defaultPlayerSelect.value = localStorage.getItem('storm_default_player') || 'fanfilm4k_uhd';
+    defaultPlayerSelect.onchange = (e) => {
+      const val = e.target.value || 'fanfilm4k_uhd';
+      localStorage.setItem('storm_default_player', val);
+      import('./player.js').then(m => {
+        if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
+      }).catch(() => {});
+      showToast('Плеер по умолчанию сохранен', 'success');
+    };
+  }
+
+  const adblockToggle = document.getElementById('profile-adblock-toggle');
+  if (adblockToggle) {
+    adblockToggle.checked = localStorage.getItem('storm_adblock_enabled') !== 'false';
+    adblockToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
+      import('./player.js').then(m => {
+        if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
+      }).catch(() => {});
+      import('./ad-shield.js').then(m => {
+        if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
+      }).catch(() => {});
+      showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
+    };
+  }
+
+  const cleanviewToggle = document.getElementById('profile-cleanview-toggle');
+  if (cleanviewToggle) {
+    try {
+      const rawClean = localStorage.getItem('storm_cleanview_settings');
+      const parsedClean = rawClean ? JSON.parse(rawClean) : {};
+      cleanviewToggle.checked = Boolean(parsedClean.watermarkMaskEnabled);
+    } catch (_) {
+      cleanviewToggle.checked = false;
+    }
+    cleanviewToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      import('./ad-shield.js').then(m => {
+        if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
+      }).catch(() => {});
+      showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
+    };
+  }
+
+  const autoskipToggle = document.getElementById('profile-autoskip-toggle');
+  if (autoskipToggle) {
+    autoskipToggle.checked = localStorage.getItem('storm_autoskip_intro') !== 'false';
+    autoskipToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
+      import('./smart-skip.js').then(m => {
+        if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
+      }).catch(() => {});
+      showToast(enabled ? '⏩ Автопропуск заставок включен' : '⚪ Автопропуск заставок выключен', 'info');
+    };
+  }
+
+  const autonextToggle = document.getElementById('profile-autonext-toggle');
+  if (autonextToggle) {
+    autonextToggle.checked = localStorage.getItem('storm_autonext_enabled') !== 'false';
+    autonextToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
+      showToast(enabled ? '⏭ Автопереключение серий включено' : '⚪ Автопереключение серий выключено', 'info');
+    };
+  }
+
+  const ambilightToggle = document.getElementById('profile-ambilight-toggle');
+  if (ambilightToggle) {
+    ambilightToggle.checked = localStorage.getItem('storm_ambilight') !== 'false';
+    ambilightToggle.onchange = (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem('storm_ambilight', enabled ? 'true' : 'false');
+      const ambiGlow = document.getElementById('player-ambilight-glow');
+      if (ambiGlow) ambiGlow.style.opacity = enabled ? '0.65' : '0';
+      showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
   }
 
@@ -709,6 +863,37 @@ export function initProfileHandlers() {
         await changePassword(oldPass, newPass);
         changePasswordForm.reset();
         switchProfileTab('overview');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  // Привязка ТВ-устройства по коду (Device Code Verification)
+  const verifyTvForm = document.getElementById('verify-tv-device-form');
+  if (verifyTvForm) {
+    verifyTvForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const codeInput = document.getElementById('tv-device-code-input');
+      const rawCode = (codeInput?.value || '').trim().toUpperCase();
+      if (!rawCode) {
+        showToast('Пожалуйста, введите 6-значный ТВ-код', 'error');
+        return;
+      }
+      try {
+        const token = getToken();
+        const res = await fetch('/api/auth/device/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ code: rawCode })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Не удалось привязать ТВ-устройство');
+        showToast('✅ ТВ-устройство успешно авторизовано!', 'success');
+        if (codeInput) codeInput.value = '';
       } catch (err) {
         showToast(err.message, 'error');
       }
