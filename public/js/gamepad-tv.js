@@ -18,15 +18,26 @@ let modalObserver = null;
 // ==========================================
 // 1. АУДИО-ЭФФЕКТЫ КОНСОЛИ (WEB AUDIO SYNTHESIZER)
 // ==========================================
+let hasUserGestureForAudio = false;
+if (typeof window !== 'undefined') {
+  const markGesture = () => { hasUserGestureForAudio = true; };
+  window.addEventListener('pointerdown', markGesture, { once: true, capture: true, passive: true });
+  window.addEventListener('keydown', markGesture, { once: true, capture: true, passive: true });
+}
+
 function getAudioContext() {
+  const isActivated = hasUserGestureForAudio || Boolean(navigator.userActivation && navigator.userActivation.hasBeenActive);
+  if (!isActivated) return null;
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
   if (!window._tvAudioCtx) {
     window._tvAudioCtx = new AudioCtx();
   }
   if (window._tvAudioCtx.state === 'suspended') {
+    if (navigator.userActivation && !navigator.userActivation.isActive) return null;
     window._tvAudioCtx.resume().catch(() => {});
   }
+  if (window._tvAudioCtx.state !== 'running') return null;
   return window._tvAudioCtx;
 }
 

@@ -184,7 +184,7 @@ export async function resolveMediaPremiereAndYear({
   }
 
   // Если дата была заполнена ошибочным годом, синхронизируем с подтвержденным годом
-  if (resYear && resReleaseDate && !resReleaseDate.startsWith(resYear)) {
+  if (resYear && resReleaseDate && !resReleaseDate.startsWith(resYear) && !resReleaseDate.endsWith(resYear)) {
     resReleaseDate = `${resYear}-01-01`;
     if (!premiere || premiere.includes('2026')) {
       resPremiere = `${resYear} год`;

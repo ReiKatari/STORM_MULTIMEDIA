@@ -106,41 +106,76 @@ export async function getAniLibriaCatalog(category = 'popular', page = 1) {
   }
 }
 
+export function sanitizeAniLibriaHlsUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  return rawUrl
+    .replace(/^https?:\/\/cache-[a-z0-9-]+\.libria\.fun\//i, 'https://cache.libria.fun/')
+    .split('?')[0];
+}
+
 /**
  * Получение детальной информации о релизе и списка серий с HLS потоками
  */
-export async function getAniLibriaDetails(releaseId) {
-  const cacheKey = `details_${releaseId}`;
+export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
+  let cleanId = String(releaseId || '').replace(/^(?:anilibria_|anilib_|libria_)/i, '').trim();
+  if (!/^\d+$/.test(cleanId) && (fallbackTitle || cleanId)) {
+    try {
+      const searchQ = fallbackTitle || cleanId.replace(/_/g, ' ');
+      const searchRes = await searchAniLibria(searchQ);
+      if (searchRes?.items?.length > 0) {
+        cleanId = String(searchRes.items[0].id);
+      }
+    } catch (_) {}
+  }
+  if (!cleanId) return null;
+
+  const cacheKey = `details_v2_${cleanId}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 
   try {
-    const url = `${ANILIBRIA_BASE}/anime/releases/${releaseId}`;
-    const res = await anilibriaFetch(url);
+    const url = `${ANILIBRIA_BASE}/anime/releases/${cleanId}`;
+    const res = await anilibriaFetch(url, { timeout: 4500 });
     if (!res.ok) throw new Error(`AniLibria details error: ${res.status}`);
 
     const rel = await res.json();
     const baseInfo = formatAniLibriaRelease(rel);
 
-    const episodes = (rel.episodes || []).map(ep => ({
-      id: ep.id,
-      ordinal: ep.ordinal,
-      name: ep.name || `Серия ${ep.ordinal}`,
-      duration: ep.duration,
-      hls_1080: ep.hls_1080 || null,
-      hls_720: ep.hls_720 || null,
-      hls_480: ep.hls_480 || null
-    }));
+    const episodes = (rel.episodes || []).map(ep => {
+      const rawPreview = ep.preview?.optimized?.src || ep.preview?.src || ep.preview?.preview || '';
+      const previewUrl = rawPreview ? (rawPreview.startsWith('http') ? rawPreview : `${DOMAIN}${rawPreview}`) : '';
+      return {
+        id: ep.id,
+        ordinal: ep.ordinal,
+        episode_number: ep.ordinal,
+        name: ep.name || `Серия ${ep.ordinal}`,
+        duration: ep.duration ? `${Math.max(1, Math.round(ep.duration / 60))} мин.` : '24 мин.',
+        still: previewUrl || baseInfo.poster,
+        preview: previewUrl || baseInfo.poster,
+        hls_1080: sanitizeAniLibriaHlsUrl(ep.hls_1080),
+        hls_720: sanitizeAniLibriaHlsUrl(ep.hls_720),
+        hls_480: sanitizeAniLibriaHlsUrl(ep.hls_480)
+      };
+    });
+
+    const seasons = episodes.length > 0 ? [{
+      season_number: 1,
+      name: 'Сезон 1',
+      episode_count: episodes.length,
+      overview: baseInfo.description || `Официальный релиз AniLibria • ${episodes.length} серий в Full HD качестве.`,
+      episodes
+    }] : [];
 
     const result = {
       ...baseInfo,
-      episodes
+      episodes,
+      seasons
     };
 
     setCache('anilibria', cacheKey, result, 3600);
     return result;
   } catch (err) {
-    console.warn(`Ошибка получения деталей AniLibria (${releaseId}):`, err.message);
+    console.warn(`Ошибка получения деталей AniLibria (${cleanId}):`, err.message);
     return null;
   }
 }

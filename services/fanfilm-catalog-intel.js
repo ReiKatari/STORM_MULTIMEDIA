@@ -204,12 +204,6 @@ export function resolveFanFilmUrl(title) {
     .trim();
 
   if (KNOWN_FANFILM_URLS[norm]) return KNOWN_FANFILM_URLS[norm];
-
-  // Проверка по подстрокам
-  for (const [k, url] of Object.entries(KNOWN_FANFILM_URLS)) {
-    if (k.length >= 4 && (norm === k || norm.startsWith(k + ' ') || k.startsWith(norm + ' '))) {
-      return url;
-    }
-  }
   return '';
 }
+

@@ -2785,7 +2785,7 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
       opacity: 0; pointer-events: none; transform: scale(0.85);
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+  <script src="/vendor/hls.min.js"></script>
 </head>
 <body>
   <div id="player-wrap">
@@ -2947,9 +2947,9 @@ app.get('/api/media/item', async (req, res) => {
     if (source === 'anixart' || String(id || '').startsWith('anix_')) {
       const cleanAnixId = String(id || '').replace('anix_', '');
       mediaDetails = await getAnixartReleaseDetails(cleanAnixId);
-    } else if (source === 'anilibria' || String(id || '').startsWith('libria_')) {
-      const cleanLibriaId = String(id || '').replace('libria_', '');
-      const details = await getAniLibriaDetails(cleanLibriaId);
+    } else if (source === 'anilibria' || String(id || '').startsWith('libria_') || String(id || '').startsWith('anilib')) {
+      const cleanLibriaId = String(id || '').replace(/^(?:anilibria_|anilib_|libria_)/i, '');
+      const details = await getAniLibriaDetails(cleanLibriaId, req.query.title || '');
       if (details) {
         mediaDetails = {
           ...details,
@@ -3184,7 +3184,12 @@ app.get('/api/media/item', async (req, res) => {
         String(id || '').startsWith('tmdb_up_') ||
         mediaDetails.is_upcoming ||
         (mediaDetails.release_date && (() => {
-          const parts = String(mediaDetails.release_date).split('.');
+          const s = String(mediaDetails.release_date).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+            const d = new Date(s);
+            return !isNaN(d.getTime()) && d > new Date();
+          }
+          const parts = s.split('.');
           if (parts.length === 3) {
             const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
             return !isNaN(d.getTime()) && d > new Date();
@@ -3195,26 +3200,29 @@ app.get('/api/media/item', async (req, res) => {
       );
 
       const knownFf = resolveFanFilmUrl(mediaDetails.title || req.query.title);
-      if (knownFf && !isCarrieUnreleased) {
+      if (knownFf && !isCarrieUnreleased && !isReleaseUpcoming) {
         mediaDetails.fanfilm_4k_url = knownFf;
         mediaDetails.is4K = true;
         mediaDetails.quality = '4K Ultra HD';
-      } else if (req.query.fanfilm_4k_url && !isCarrieUnreleased) {
+      } else if (req.query.fanfilm_4k_url && !isCarrieUnreleased && !isReleaseUpcoming) {
         mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url;
         mediaDetails.is4K = true;
         mediaDetails.quality = '4K Ultra HD';
       }
 
       // Если 4K поток еще не прикреплен — выполняем поиск в FanFilm4K для бесшовного 4K воспроизведения (только для уже вышедших релизов)
-      if (!isCarrieUnreleased && !mediaDetails.fanfilm_4k_url && mediaDetails.title) {
+      if (!isCarrieUnreleased && !isReleaseUpcoming && !mediaDetails.fanfilm_4k_url && mediaDetails.title) {
         try {
           const ffResults = await searchFanFilm(mediaDetails.title);
           if (ffResults && ffResults.length > 0) {
-            const normTitle = mediaDetails.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+            const isWantSeries = mediaDetails.media_type === 'series' || mediaDetails.category === 'Сериал';
             const match = ffResults.find(f => {
-              const fNorm = f.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-              return fNorm === normTitle || fNorm.includes(normTitle) || normTitle.includes(fNorm);
-            }) || ffResults[0];
+              if (!isWantSeries && (f.media_type === 'series' || /сериал|сезон/i.test(f.title || '') || /\/serials?\//i.test(f.link || f.url || ''))) {
+                return false;
+              }
+              const sc = scoreMediaCandidate(f.title || '', '', mediaDetails.title, mediaDetails.year || '', isWantSeries ? '1' : '', '');
+              return sc >= 200;
+            });
             if (match) {
               mediaDetails.fanfilm_4k_url = match.link || match.url;
               mediaDetails.is4K = true;
@@ -3225,7 +3233,7 @@ app.get('/api/media/item', async (req, res) => {
       }
 
       // Извлекаем прямые стриминговые плееры и kp_id со страницы FanFilm4K
-      if (mediaDetails.fanfilm_4k_url && !isCarrieUnreleased) {
+      if (mediaDetails.fanfilm_4k_url && !isCarrieUnreleased && !isReleaseUpcoming) {
         try {
           const ffDetails = await getFanFilmDetails(mediaDetails.fanfilm_4k_url);
           if (ffDetails) {
@@ -3247,8 +3255,6 @@ app.get('/api/media/item', async (req, res) => {
                   mediaDetails.players.push(p);
                 }
               });
-              isReleaseUpcoming = false;
-              mediaDetails.is_upcoming = false;
             }
           }
         } catch (e) {
@@ -3257,7 +3263,7 @@ app.get('/api/media/item', async (req, res) => {
       }
     } else {
       let targetLookup = String(url || id || '').replace(/^ff_/, '').trim();
-      if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || targetLookup.includes('undefined') || /^\d+$/.test(targetLookup)) {
+      if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || targetLookup.includes('undefined')) {
         targetLookup = resolveFanFilmUrl(req.query.title || '') || targetLookup || '';
       }
       if (targetLookup && targetLookup !== 'undefined' && targetLookup !== 'null') {
@@ -3408,8 +3414,14 @@ app.get('/api/media/item', async (req, res) => {
           new Promise(r => setTimeout(() => r({ items: [] }), 2200))
         ]);
         if (tmdbSearch.items?.length > 0) {
-          const matchByYear = mediaDetails.year ? tmdbSearch.items.find(it => String(it.year) === String(mediaDetails.year)) : null;
-          let matchByType = isSeries ? tmdbSearch.items.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
+          const isAnimeSource = source === 'anilibria' || source === 'anixart' || String(mediaDetails.media_type || '').includes('anime');
+          const validItems = tmdbSearch.items.filter(it => {
+            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, '', isSeries ? '1' : '', '');
+            return sc >= 0;
+          });
+          const pool = validItems.length > 0 ? validItems : (isAnimeSource ? [] : tmdbSearch.items);
+          const matchByYear = mediaDetails.year ? pool.find(it => String(it.year) === String(mediaDetails.year)) : null;
+          let matchByType = isSeries ? pool.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
           if (isSeries && !matchByType && cleanSearchTitle.toLowerCase().includes('ричер')) {
             const reacherTv = await Promise.race([searchTmdb('Ричер', 1), new Promise(r => setTimeout(() => r({ items: [] }), 1800))]);
             matchByType = (reacherTv?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv') || { id: '108978', media_type: 'series' };
@@ -3418,11 +3430,11 @@ app.get('/api/media/item', async (req, res) => {
             const dmTv = await Promise.race([searchTmdb('Dark Matter', 1), new Promise(r => setTimeout(() => r({ items: [] }), 1800))]);
             matchByType = (dmTv?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv' || String(it.id) === '196322') || { id: '196322', media_type: 'series' };
           }
-          const first = (isSeries && matchByType) || matchByYear || tmdbSearch.items[0];
-          const enriched = await Promise.race([
+          const first = (isSeries && matchByType) || matchByYear || pool[0];
+          const enriched = first ? await Promise.race([
             getTmdbItemDetails(first.id, isSeries ? 'series' : (mediaDetails.media_type || first.media_type), cleanSearchTitle || mediaDetails.title),
             new Promise(r => setTimeout(() => r(null), 2200))
-          ]);
+          ]) : null;
           if (enriched) {
             if ((!hasValidDesc || (enriched.description && enriched.description.length > (mediaDetails.description || '').length)) && enriched.description && enriched.description.length >= 60) {
               mediaDetails.description = enriched.description;
@@ -3454,13 +3466,13 @@ app.get('/api/media/item', async (req, res) => {
             mediaDetails.revenue = enriched.revenue || mediaDetails.revenue;
             mediaDetails.cast = enriched.cast?.length ? enriched.cast : mediaDetails.cast;
             mediaDetails.trailer_url = mediaDetails.trailer_url || enriched.trailer_url;
-            if (enriched.seasons?.length && (!mediaDetails.seasons || enriched.seasons.length > mediaDetails.seasons.length)) {
+            if (!isAnimeSource && enriched.seasons?.length && (!mediaDetails.seasons || enriched.seasons.length > mediaDetails.seasons.length)) {
               mediaDetails.seasons = enriched.seasons;
             }
             if (enriched.tmdb_id || enriched.id) {
               mediaDetails.tmdb_id = String(enriched.tmdb_id || enriched.id).replace('tmdb_', '');
             }
-            if (isSeries) {
+            if (isSeries && !isAnimeSource) {
               mediaDetails.media_type = 'series';
               mediaDetails.category = 'Сериал';
             }
@@ -3577,8 +3589,17 @@ app.get('/api/media/item', async (req, res) => {
     // Автоматический поиск и привязка FanFilm 4K и HD потоков при их отсутствии
     let fanfilmStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')?.url || mediaDetails.fanfilm_4k_url;
     let fanfilmHdStreamUrl = mediaDetails.players?.find(p => p.id === 'fanfilm_hd')?.url || mediaDetails.fanfilm_hd_url;
+    const isAlreadyUpcoming = Boolean(
+      isCarrieUnreleased ||
+      mediaDetails.is_upcoming ||
+      String(id || '').startsWith('tmdb_up_') ||
+      isFutureDateCheck(mediaDetails.release_date) ||
+      isFutureDateCheck(mediaDetails.premiere) ||
+      isFutureDateCheck(mediaDetails.digital_release) ||
+      isFutureDateCheck(mediaDetails.world_premier)
+    );
 
-    if (!fanfilmStreamUrl && !fanfilmHdStreamUrl && mediaDetails.title && !isCarrieUnreleased) {
+    if (!fanfilmStreamUrl && !fanfilmHdStreamUrl && mediaDetails.title && !isAlreadyUpcoming) {
       try {
         const cleanT = mediaDetails.title
           .replace(/\s*[\(\[]?\s*\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон\s*[\)\]]?/gi, '')
@@ -3587,10 +3608,12 @@ app.get('/api/media/item', async (req, res) => {
           .trim();
         const ffResults = await searchFanFilm(cleanT);
         if (ffResults && ffResults.length > 0) {
-          const normTarget = cleanT.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
           const ffItem = ffResults.find(r => {
-            const normR = String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-            return normR && normTarget && (normR === normTarget || normR.startsWith(normTarget + ' ') || normTarget.startsWith(normR + ' ') && normR.split(' ').length >= 2);
+            if (!isSeries && (r.media_type === 'series' || /сериал|сезон/i.test(r.title || '') || /\/serials?\//i.test(r.link || r.url || ''))) {
+              return false;
+            }
+            const sc = scoreMediaCandidate(r.title || '', '', cleanT, mediaDetails.year || '', isSeries ? '1' : '', '');
+            return sc >= 200;
           });
           const ffDetails = ffItem ? await getFanFilmDetails(ffItem.link || ffItem.url || ffItem.id) : null;
           if (ffDetails) {
@@ -3742,13 +3765,18 @@ app.get('/api/media/item', async (req, res) => {
       }
     }
 
-    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ!
-    const isReal4kStream = p => p && isWorkingStream(p) && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
+    const isAnimeDirect = p => p && isWorkingStream(p) && (p.id === 'anilibria_hls' || p.id === 'anixart_stream');
+    const isReal4kStream = p => p && isWorkingStream(p) && !String(p.url || '').includes('do=search') && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
     allPlayers.sort((a, b) => {
       const aWorking = isWorkingStream(a);
       const bWorking = isWorkingStream(b);
       if (aWorking && !bWorking) return -1;
       if (!aWorking && bWorking) return 1;
+      const aAnime = isAnimeDirect(a);
+      const bAnime = isAnimeDirect(b);
+      if (aAnime && !bAnime) return -1;
+      if (!aAnime && bAnime) return 1;
       const aIs4k = isReal4kStream(a);
       const bIs4k = isReal4kStream(b);
       if (aIs4k && !bIs4k) return -1;
@@ -4729,18 +4757,27 @@ app.all('/api/player/stravers-api-proxy', express.raw({ type: '*/*', limit: '10m
       return res.end();
     }
 
-    const targetUrl = req.query.url;
+    let targetUrl = req.query.url;
+    if (targetUrl && typeof targetUrl === 'string' && targetUrl.includes('libria.fun')) {
+      targetUrl = targetUrl.replace(/^https?:\/\/cache-[a-z0-9-]+\.libria\.fun\//i, 'https://cache.libria.fun/');
+      if (targetUrl.includes('.m3u8')) {
+        targetUrl = targetUrl.split('?')[0];
+      }
+    }
     const isCdnStream = targetUrl && (
       targetUrl.includes('vkvideo.ru') ||
       targetUrl.includes('okcdn.ru') ||
       targetUrl.includes('mycdn.me') ||
-      targetUrl.includes('userapi.com')
+      targetUrl.includes('userapi.com') ||
+      targetUrl.includes('libria.fun') ||
+      targetUrl.includes('anilibria.top')
     );
     if (!targetUrl || (!targetUrl.includes('stravers.live') && !targetUrl.includes('transfusion') && !targetUrl.includes('fanfilm') && !isCdnStream)) {
       return res.status(400).json({ error: 'Неверный URL' });
     }
 
-    let targetOrigin = 'https://transfusion-as.stravers.live';
+    const isLibriaStream = targetUrl.includes('libria.fun') || targetUrl.includes('anilibria.top');
+    let targetOrigin = isLibriaStream ? 'https://anilibria.top' : 'https://transfusion-as.stravers.live';
     if (!isCdnStream) {
       try {
         targetOrigin = new URL(targetUrl).origin;
@@ -4800,7 +4837,7 @@ app.all('/api/player/stravers-api-proxy', express.raw({ type: '*/*', limit: '10m
     const resHeaders = {};
     proxyRes.headers.forEach((val, key) => {
       const lowKey = key.toLowerCase();
-      if (!['content-encoding', 'transfer-encoding', 'connection', 'content-length'].includes(lowKey)) {
+      if (!['content-encoding', 'transfer-encoding', 'connection', 'content-length', 'permissions-policy', 'feature-policy', 'content-security-policy'].includes(lowKey)) {
         resHeaders[key] = val;
       }
     });
@@ -4821,12 +4858,18 @@ app.all('/api/player/stravers-api-proxy', express.raw({ type: '*/*', limit: '10m
         const trimmed = line.trim();
         if (!trimmed) return line;
         if (!trimmed.startsWith('#')) {
-          const abs = trimmed.startsWith('http') ? trimmed : new URL(trimmed, targetUrl).href;
+          let abs = trimmed.startsWith('http') ? trimmed : new URL(trimmed, targetUrl).href;
+          if (abs.includes('libria.fun')) {
+            abs = abs.replace(/^https?:\/\/cache-[a-z0-9-]+\.libria\.fun\//i, 'https://cache.libria.fun/');
+          }
           return `/api/player/stravers-api-proxy?url=${encodeURIComponent(abs)}`;
         }
         if (trimmed.includes('URI="')) {
           return trimmed.replace(/URI="([^"]+)"/g, (_, u) => {
-            const abs = u.startsWith('http') ? u : new URL(u, targetUrl).href;
+            let abs = u.startsWith('http') ? u : new URL(u, targetUrl).href;
+            if (abs.includes('libria.fun')) {
+              abs = abs.replace(/^https?:\/\/cache-[a-z0-9-]+\.libria\.fun\//i, 'https://cache.libria.fun/');
+            }
             return `URI="/api/player/stravers-api-proxy?url=${encodeURIComponent(abs)}"`;
           });
         }
@@ -4863,6 +4906,11 @@ function normalizeMatchText(s) {
   return String(s || '')
     .toLowerCase()
     .replace(/ё/g, 'е')
+    // Склеиваем аббревиатуры через слэш или точку (З/Л/О -> зло, З.Л.О -> зло, V/H/S -> vhs)
+    .replace(/(^|[^\p{L}\p{N}])(\p{L})(?:[\/\\.\-](\p{L}))+(?=$|[^\p{L}\p{N}])/gu, (m, pre) => {
+      const letters = m.slice(pre.length).replace(/[\/\\.\-]/g, '');
+      return `${pre}${letters}`;
+    })
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -4873,11 +4921,17 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   const normCand = normalizeMatchText(candidateTitle);
   if (!normTarget || !normCand) return -1;
 
+  // Отклоняем музыкальные сборники, шансон, приколы, радио и караоке
+  if (/\b(?:русская\s+музыка|музыка\s+в\s+машину|сборник\s+песен|сборник\s+хитов|лучших\s+песен|хиты\s+\d{4}|песни\s+\d{4}|песни\s+о\s+любви|дискотека|шансон|шансона|радио|плейлист|playlist|клипы|караоке|смешные\s+приколы|сборник\s+приколов|приколы\s+\d{4}|мультики\s+для\s+детей)\b/i.test(candidateTitle)) {
+    return -1;
+  }
+
   const sigWords = normTarget.split(' ').filter(w => w.length >= 2 && !MEDIA_MATCH_STOPWORDS.has(w));
   if (sigWords.length === 0) return -1;
 
   const candWords = normCand.split(' ').filter(Boolean);
   let matchedCount = 0;
+  let firstWordMatched = false;
   let lastWordMatched = false;
 
   for (let i = 0; i < sigWords.length; i++) {
@@ -4894,6 +4948,7 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
     });
     if (isMatched) {
       matchedCount++;
+      if (i === 0) firstWordMatched = true;
       if (i === sigWords.length - 1) lastWordMatched = true;
     }
   }
@@ -4901,7 +4956,7 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   if (sigWords.length <= 3) {
     if (matchedCount < sigWords.length) return -1;
   } else {
-    if (matchedCount < sigWords.length - 1 || !lastWordMatched) return -1;
+    if (matchedCount < sigWords.length - 1 || !firstWordMatched || !lastWordMatched) return -1;
   }
 
   const hasSeasonReq = Boolean(season && String(season).trim() !== '');
@@ -4954,6 +5009,12 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   }
 
   let score = 100;
+  if (normCand === normTarget || normCand.startsWith(normTarget + ' ')) {
+    score += 350;
+  } else if (normCand.includes(normTarget)) {
+    score += 200;
+  }
+
   if (reqYear >= 1920 && reqYear <= 2030) {
     if (String(candidateTitle).includes(String(reqYear))) {
       score += 500;
@@ -5001,6 +5062,7 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
   const candidates = [];
   const seenKeys = new Set();
   const minDur = season ? 900 : 3600;
+  const maxDur = season ? 7200 : 14400;
 
   for (const q of queries.slice(0, 2)) {
     try {
@@ -5039,6 +5101,7 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
           const rawSec = typeof it[19] === 'number' ? it[19] : (typeof it[18] === 'number' ? it[18] : 0);
           const durationSec = rawSec > 0 ? rawSec : parseDur(durStr);
           if (!allowShort && durationSec < minDur) continue;
+          if (durationSec > maxDur) continue;
 
           const sc = scoreMediaCandidate(rawTitle, '', cleanTitle, year, season, episode, 0);
           if (sc < 0) continue;
@@ -5089,6 +5152,7 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
   const candidates = [];
   const seenIds = new Set();
   const minDur = season ? 900 : 3600;
+  const maxDur = season ? 7200 : 14400;
 
   for (const rq of rawQueries) {
     try {
@@ -5110,6 +5174,7 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
           seenIds.add(it.id);
           const dur = parseInt(it.duration, 10) || 0;
           if (!allowShort && dur < minDur) continue;
+          if (dur > maxDur) continue;
 
           const pubTs = it.publication_ts || it.created_ts || '';
           const pubYear = pubTs ? new Date(pubTs).getFullYear() : 0;
@@ -5140,8 +5205,8 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
 }
 
 const _fanFilmIframeCache = new Map();
-async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false) {
-  const normKey = `${String(cleanTitle || '').toLowerCase().trim()}_${preferHd ? 'hd' : '4k'}`;
+async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false, year = '') {
+  const normKey = `${String(cleanTitle || '').toLowerCase().trim()}_${year || ''}_${preferHd ? 'hd' : '4k'}`;
   if (!cleanTitle) return '';
   const cached = _fanFilmIframeCache.get(normKey);
   if (cached && (Date.now() - cached.ts < 1800000)) {
@@ -5149,6 +5214,12 @@ async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false) {
   }
 
   let pageUrl = resolveFanFilmUrl(cleanTitle);
+  if (pageUrl && year) {
+    const urlYearMatch = pageUrl.match(/-(19\d\d|20\d\d)(?:-|\.html)/);
+    if (urlYearMatch && urlYearMatch[1] !== String(year).trim()) {
+      pageUrl = '';
+    }
+  }
   if (!pageUrl) {
     try {
       const searchResults = await Promise.race([
@@ -5156,10 +5227,9 @@ async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false) {
         new Promise(r => setTimeout(() => r([]), 3200))
       ]);
       if (Array.isArray(searchResults) && searchResults.length > 0) {
-        const normTarget = cleanTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
         const bestMatch = searchResults.find(r => {
-          const normR = String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-          return normR && normTarget && (normR === normTarget || normR.startsWith(normTarget + ' ') || (normTarget.startsWith(normR + ' ') && normR.split(' ').length >= 2));
+          const sc = scoreMediaCandidate(r.title || '', '', cleanTitle, year || '', '', '');
+          return sc >= 200 && (!year || !r.year || Math.abs(parseInt(r.year, 10) - parseInt(year, 10)) <= 1);
         });
         if (bestMatch && (bestMatch.link || bestMatch.url)) {
           pageUrl = bestMatch.link || bestMatch.url;
@@ -5402,7 +5472,7 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
     // 5. Проверяем наличие прямого 4K/HD мульти-потока на FanFilm4K / Stravers (включая живой поиск по базе v17.fanfilm4k.media)
     if (cleanTitle) {
       const preferHd = balancer === 'hdrezka' || balancer === 'collaps' || balancer === 'rhs';
-      const ffIframe = await resolveFanFilmDirectIframe(cleanTitle, preferHd);
+      const ffIframe = await resolveFanFilmDirectIframe(cleanTitle, preferHd, year);
       if (ffIframe) {
         return res.redirect(302, `/api/player/fanfilm-embed?url=${encodeURIComponent(ffIframe)}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(year || '')}${epQuery}`);
       }
@@ -5453,7 +5523,13 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
 
     // 1. Если передан поисковый URL FanFilm4K, сначала проверяем канонический словарь и быстрый поиск
     if (directIframe.includes('fanfilm4k') && (directIframe.includes('do=search') || directIframe.endsWith('fanfilm4k.media/'))) {
-      const knownDirect = fallbackTitle ? resolveFanFilmUrl(fallbackTitle) : null;
+      let knownDirect = fallbackTitle ? resolveFanFilmUrl(fallbackTitle) : null;
+      if (knownDirect && year) {
+        const urlYearMatch = knownDirect.match(/-(19\d\d|20\d\d)(?:-|\.html)/);
+        if (urlYearMatch && urlYearMatch[1] !== String(year).trim()) {
+          knownDirect = null;
+        }
+      }
       if (knownDirect) {
         directIframe = knownDirect;
       } else if (fallbackTitle) {
@@ -5463,10 +5539,9 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             new Promise(r => setTimeout(() => r([]), 2800))
           ]);
           if (Array.isArray(searchResults) && searchResults.length > 0) {
-            const normTarget = fallbackTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
             const bestMatch = searchResults.find(r => {
-              const normR = String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-              return normR && normTarget && (normR === normTarget || normR.startsWith(normTarget + ' ') || (normTarget.startsWith(normR + ' ') && normR.split(' ').length >= 2));
+              const sc = scoreMediaCandidate(r.title || '', '', fallbackTitle, year || '', season || '', episode || '');
+              return sc >= 200 && (!year || !r.year || Math.abs(parseInt(r.year, 10) - parseInt(year, 10)) <= 1);
             });
             if (bestMatch && (bestMatch.link || bestMatch.url)) {
               directIframe = bestMatch.link || bestMatch.url;

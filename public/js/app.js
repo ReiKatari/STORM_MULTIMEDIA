@@ -52,24 +52,24 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.0.38';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.38';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.38';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.38';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.38';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.38';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.38';
-import { renderSyncModalContent } from './sync-service.js?v=1.0.38';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.38';
-import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.38';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.38';
-import { openRemoteQrModal } from './storm-remote.js?v=1.0.38';
-import { initAdminDashboard } from './admin-dashboard.js?v=1.0.38';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.38';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.38';
-import { getStatusIconSvg } from './status-icons.js?v=1.0.38';
-import { checkForUpdates } from './updater.js?v=1.0.38';
-import { initFormFactorEngine } from './form-factor.js?v=1.0.38';
+import { initTheme, setTheme } from './theme.js?v=1.0.39';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.39';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.39';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.39';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.39';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.39';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.39';
+import { renderSyncModalContent } from './sync-service.js?v=1.0.39';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.39';
+import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.39';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.39';
+import { openRemoteQrModal } from './storm-remote.js?v=1.0.39';
+import { initAdminDashboard } from './admin-dashboard.js?v=1.0.39';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.39';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.39';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.39';
+import { checkForUpdates } from './updater.js?v=1.0.39';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.39';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -6394,7 +6394,6 @@ function initPwaServiceWorker() {
   }
 
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
     deferredInstallPrompt = e;
     const pwaBtn = document.getElementById('pwa-install-btn');
     if (pwaBtn) {

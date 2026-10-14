@@ -73,11 +73,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   // Проверка эксклюзивного отечественного сериала «Ландыши»
   const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
 
-  if (!resolvedFanfilmUrl && !isUpcoming && !isLandyshi && safeTitle) {
-    resolvedFanfilmUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
-  }
-
-  if (resolvedFanfilmUrl && !isUpcoming && !isLandyshi) {
+  if (resolvedFanfilmUrl && !resolvedFanfilmUrl.includes('do=search') && !isUpcoming && !isLandyshi && !isAnime) {
     players.push({
       id: 'fanfilm4k_uhd',
       name: '4K Ultra HD Плеер (FanFilm4K)',

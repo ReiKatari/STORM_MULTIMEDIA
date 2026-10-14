@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.38';
-import { getUser, showToast } from './auth.js?v=1.0.38';
-import { t } from './i18n.js?v=1.0.38';
-import { trackClientAction } from './achievements.js?v=1.0.38';
-import { renderReviewsSection } from './reviews.js?v=1.0.38';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.38';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.38';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.38';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.38';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.38';
-import { saveMediaForOffline } from './offline-storage.js?v=1.0.38';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.38';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.38';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.38';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.38';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.38';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.39';
+import { getUser, showToast } from './auth.js?v=1.0.39';
+import { t } from './i18n.js?v=1.0.39';
+import { trackClientAction } from './achievements.js?v=1.0.39';
+import { renderReviewsSection } from './reviews.js?v=1.0.39';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.39';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.39';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.39';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.39';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.39';
+import { saveMediaForOffline } from './offline-storage.js?v=1.0.39';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.39';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.39';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.39';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.39';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.39';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -139,6 +139,11 @@ export function getSafeCleanStreamUrl(rawUrl) {
   }
   if (streamUrl.includes('v16.fanfilm4k.media')) {
     streamUrl = streamUrl.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
+  }
+  if (streamUrl.includes('libria.fun')) {
+    streamUrl = streamUrl
+      .replace(/^https?:\/\/cache-[a-z0-9-]+\.libria\.fun\//i, 'https://cache.libria.fun/')
+      .split('?')[0];
   }
   streamUrl = streamUrl.replace(/([?&])(autoplay|autoPlay)=1\b/g, '$1$2=0');
 
@@ -2468,7 +2473,7 @@ export function stopPlayerFallbackLoop() {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${fallbackEmbedUrl}" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen *; picture-in-picture *; encrypted-media *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${fallbackEmbedUrl}" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen *; picture-in-picture *; encrypted-media *" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
   }
@@ -3640,7 +3645,7 @@ function playStreamUrl(url) {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
-  const cleanStreamUrl = String(url || '').trim();
+  let cleanStreamUrl = String(url || '').trim();
   if (!cleanStreamUrl || cleanStreamUrl === '/' || cleanStreamUrl === 'undefined') {
     container.innerHTML = `
       <div class="player-video-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:30px;background:rgba(10,12,18,0.92);border-radius:12px;gap:14px;">
@@ -3651,6 +3656,13 @@ function playStreamUrl(url) {
     `;
     return;
   }
+
+  if (cleanStreamUrl.includes('libria.fun')) {
+    cleanStreamUrl = cleanStreamUrl
+      .replace(/^https?:\/\/cache-[a-z0-9-]+\.libria\.fun\//i, 'https://cache.libria.fun/')
+      .split('?')[0];
+  }
+  url = cleanStreamUrl;
 
   if (currentMedia?.source === 'fanfilm4k') {
     trackClientAction('use_4k');
@@ -3674,12 +3686,17 @@ function playStreamUrl(url) {
       }
     }
 
+    if (window._stormHls) {
+      try { window._stormHls.destroy(); } catch (_) {}
+      window._stormHls = null;
+    }
+
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
 
-        <video id="storm-video-player" controls crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
+        <video id="storm-video-player" controls crossorigin="anonymous" preload="metadata" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
 
         <!-- Кнопка мгновенного старта воспроизведения на смартфонах и ПК -->
         <div class="storm-video-big-play-btn" id="storm-video-big-play-btn" title="Воспроизвести">
@@ -3699,6 +3716,10 @@ function playStreamUrl(url) {
     const video = document.getElementById('storm-video-player');
     const videoBox = container.querySelector('.player-video-box');
     const bigPlayBtn = container.querySelector('#storm-video-big-play-btn');
+
+    if (videoBox) {
+      mountInPlayerOverlay(videoBox);
+    }
 
     if (bigPlayBtn && video) {
       bigPlayBtn.addEventListener('click', (e) => {
@@ -3720,7 +3741,30 @@ function playStreamUrl(url) {
       });
     }
 
-    // Настраиваем HLS с поддержкой ленивой загрузки и P2P Smart-Cache 4K HDR
+    // Настраиваем HLS с поддержкой ленивой загрузки, авто-проксирования и резервного переключения
+    let retriedViaProxy = false;
+    let hlsFallbackTriggered = false;
+    let manifestReady = false;
+
+    const triggerHlsFallback = (activeHls) => {
+      if (hlsFallbackTriggered) return;
+      if (!retriedViaProxy && url.startsWith('http') && !url.includes('/api/player/stravers-api-proxy')) {
+        retriedViaProxy = true;
+        const proxiedHlsUrl = `/api/player/stravers-api-proxy?url=${encodeURIComponent(url)}`;
+        if (activeHls) {
+          try {
+            activeHls.loadSource(proxiedHlsUrl);
+            return;
+          } catch (_) {}
+        }
+      }
+      hlsFallbackTriggered = true;
+      if (activeHls) {
+        try { activeHls.destroy(); } catch (_) {}
+      }
+      switchToNextSource(false);
+    };
+
     const setupHlsStream = () => {
       if (window.Hls && window.Hls.isSupported()) {
         const hls = new window.Hls({
@@ -3729,13 +3773,39 @@ function playStreamUrl(url) {
           maxBufferSize: 120 * 1024 * 1024,
           enableWorker: true,
           lowLatencyMode: false,
-          backBufferLength: 30
+          backBufferLength: 30,
+          manifestLoadingTimeOut: 6000,
+          manifestLoadingMaxRetry: 1,
+          levelLoadingTimeOut: 6000
         });
         window._stormHls = hls;
+
+        const watchdog = setTimeout(() => {
+          if (!manifestReady && document.getElementById('storm-video-player') === video) {
+            triggerHlsFallback(hls);
+          }
+        }, 7000);
+
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          manifestReady = true;
+          clearTimeout(watchdog);
+        });
+
+        hls.on(window.Hls.Events.ERROR, (_event, data) => {
+          if (data && data.fatal) {
+            clearTimeout(watchdog);
+            if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+              try { hls.recoverMediaError(); return; } catch (_) {}
+            }
+            triggerHlsFallback(hls);
+          }
+        });
+
         hls.loadSource(url);
         hls.attachMedia(video);
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
+        video.addEventListener('error', () => triggerHlsFallback(null), { once: true });
       }
     };
 
@@ -3782,11 +3852,13 @@ function playStreamUrl(url) {
 
     const isVkPlayer = typeof streamUrl === 'string' && (streamUrl.includes('vkvideo.ru') || streamUrl.includes('vk.com'));
     const isRuTubePlayer = typeof streamUrl === 'string' && (streamUrl.includes('rutube.ru') || currentActivePlayer?.id === 'rutube_stream');
+    const isInternalGateway = typeof streamUrl === 'string' && streamUrl.startsWith('/api/player/');
+    const sandboxAttr = isInternalGateway ? '' : 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads"';
 
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" ${sandboxAttr} scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         ${isVkPlayer ? `
           <button type="button" class="storm-unmute-btn" id="storm-unmute-btn" title="Включить звук VK Видео">
             <span class="unmute-icon">🔊</span>
@@ -9425,10 +9497,13 @@ function playAnixartEpisode(episode) {
     streamUrl = getSafeCleanStreamUrl(streamUrl);
   }
 
+  const isInternalAnix = typeof streamUrl === 'string' && streamUrl.startsWith('/api/player/');
+  const anixSandbox = isInternalAnix ? '' : 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads"';
+
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="fullscreen; picture-in-picture; encrypted-media; display-capture" ${anixSandbox} scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
