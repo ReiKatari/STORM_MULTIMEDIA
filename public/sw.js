@@ -2,43 +2,43 @@
    STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v3.2-1.0.31';
+const CACHE_NAME = 'storm-multimedia-v3.5-1.0.38';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/remote.html',
-  '/styles/storm-theme.css',
-  '/styles/components.css',
-  '/styles/main.css',
-  '/styles/tv-mode.css',
-  '/js/status-icons.js',
-  '/js/catalog-baseline.js',
-  '/js/form-factor.js',
-  '/js/app.js',
-  '/js/auth.js',
-  '/js/bookmarks.js',
-  '/js/player.js',
-  '/js/i18n.js',
-  '/js/theme.js',
-  '/js/achievements.js',
-  '/js/reviews.js',
-  '/js/watch-together.js',
-  '/js/subtitles-manager.js',
-  '/js/voice-assistant.js',
-  '/js/gamepad-tv.js',
-  '/js/sync-service.js',
-  '/js/smart-skip.js',
-  '/js/smart-lights.js',
-  '/js/neural-recommender.js',
-  '/js/offline-storage.js',
-  '/js/torrserver-client.js',
-  '/js/whisper-subtitles.js',
-  '/js/release-calendar.js',
-  '/js/storm-remote.js',
-  '/js/admin-dashboard.js',
-  '/js/updater.js',
-  '/js/ad-shield.js',
-  '/js/pro-media-engine.js',
+  '/styles/storm-theme.css?v=1.0.38',
+  '/styles/components.css?v=1.0.38',
+  '/styles/main.css?v=1.0.38',
+  '/styles/tv-mode.css?v=1.0.38',
+  '/js/status-icons.js?v=1.0.38',
+  '/js/catalog-baseline.js?v=1.0.38',
+  '/js/form-factor.js?v=1.0.38',
+  '/js/app.js?v=1.0.38',
+  '/js/auth.js?v=1.0.38',
+  '/js/bookmarks.js?v=1.0.38',
+  '/js/player.js?v=1.0.38',
+  '/js/i18n.js?v=1.0.38',
+  '/js/theme.js?v=1.0.38',
+  '/js/achievements.js?v=1.0.38',
+  '/js/reviews.js?v=1.0.38',
+  '/js/watch-together.js?v=1.0.38',
+  '/js/subtitles-manager.js?v=1.0.38',
+  '/js/voice-assistant.js?v=1.0.38',
+  '/js/gamepad-tv.js?v=1.0.38',
+  '/js/sync-service.js?v=1.0.38',
+  '/js/smart-skip.js?v=1.0.38',
+  '/js/smart-lights.js?v=1.0.38',
+  '/js/neural-recommender.js?v=1.0.38',
+  '/js/offline-storage.js?v=1.0.38',
+  '/js/torrserver-client.js?v=1.0.38',
+  '/js/whisper-subtitles.js?v=1.0.38',
+  '/js/release-calendar.js?v=1.0.38',
+  '/js/storm-remote.js?v=1.0.38',
+  '/js/admin-dashboard.js?v=1.0.38',
+  '/js/updater.js?v=1.0.38',
+  '/js/ad-shield.js?v=1.0.38',
+  '/js/pro-media-engine.js?v=1.0.38',
   '/assets/favicon.svg',
   '/manifest.json'
 ];
@@ -117,7 +117,7 @@ self.addEventListener('fetch', (event) => {
           }).catch(() => {});
         }, 2800);
 
-        fetch(event.request, { signal: controller.signal })
+        fetch(event.request, { signal: controller.signal, cache: 'no-store' })
           .then((networkResponse) => {
             clearTimeout(timer);
             if (networkResponse && networkResponse.status === 200) {

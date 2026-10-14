@@ -9,6 +9,7 @@ import {
   isTrailerMedia,
   KNOWN_RELEASE_YEARS as INTEL_RELEASE_YEARS
 } from './canonical-media-intel.js';
+import { getAvailablePlayers } from './kinobox-service.js';
 
 const BASE_URL = 'https://v17.fanfilm4k.media';
 
@@ -48,7 +49,7 @@ export async function fetchHtml(url, options = {}) {
   for (const curUrl of uniqueUrls) {
     try {
       const response = await fetch(curUrl, {
-        signal: AbortSignal.timeout(options.timeout || 1500),
+        signal: AbortSignal.timeout(options.timeout || 4500),
         ...options,
         headers
       });
@@ -833,10 +834,10 @@ export async function getFanFilmDetails(idOrUrl) {
     }
 
     // 2. Определение плееров на сайте FanFilm4K
-    const player4kIframe = $('[data-tab-content="4kplayer"] iframe').attr('src') || $('iframe[src*="stravers"]').attr('src') || $('iframe[src*="transfusion"]').attr('src') || '';
+    const player4kIframe = $('[data-tab-content="4kplayer"] iframe').attr('src') || $('[data-tab-content="4kplayer"] iframe').attr('data-src') || $('iframe[src*="stravers"]').attr('src') || $('iframe[data-src*="stravers"]').attr('data-src') || $('iframe[src*="transfusion"]').attr('src') || '';
     const final4kUrl = player4kIframe ? (player4kIframe.startsWith('//') ? `https:${player4kIframe}` : player4kIframe) : '';
 
-    const playerHdIframe = $('[data-tab-content="hdplayer"] iframe').attr('src') || '';
+    const playerHdIframe = $('[data-tab-content="hdplayer"] iframe').attr('src') || $('[data-tab-content="hdplayer"] iframe').attr('data-src') || '';
     const finalHdUrl = playerHdIframe ? (playerHdIframe.startsWith('//') ? `https:${playerHdIframe}` : playerHdIframe) : '';
 
     // 3. Парсинг сезонов и серий для сериалов (из fileList stravers или из текста страницы)
@@ -943,44 +944,18 @@ export async function getFanFilmDetails(idOrUrl) {
     const hasStreams = Boolean(effective4kUrl || kpId || seasonsData.length > 0);
     const isUnreleasedUpcoming = isCarrieUnreleased || (!hasStreams && numYr > new Date().getFullYear());
 
-    // Плееры
-    const players = [];
-
-    // 1. 4K Ultra HD Плеер FanFilm (основной рекомендованный источник FanFilm4K)
-    if (effective4kUrl && !isCarrieUnreleased) {
-      players.push({
-        id: 'fanfilm4k_uhd',
-        name: '4K Ultra HD Плеер (FanFilm4K)',
-        type: 'iframe',
-        quality: '4K UHD',
-        badge: 'FANFILM 4K',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
-        speed: '💎 Премиум 4K CDN',
-        url: effective4kUrl,
-        is_recommended: true,
-        recommended_badge: '🔥 4K Рекомендуемый'
-      });
-    }
-
-    // 2. Дополнительные проверенные студии при наличии Kinopoisk ID
-    if (kpId && !isCarrieUnreleased) {
-      players.push({
-        id: 'kodik_direct',
-        name: 'Kodik Плеер (сериалы и озвучки)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'KODIK',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Большой выбор студийных озвучек',
-        speed: '⚡ Быстрый поток',
-        url: `https://kodikplayer.com/find-player?kinopoiskID=${kpId}`,
-        is_recommended: !final4kUrl,
-        recommended_badge: !final4kUrl ? '🔥 Рекомендуемый' : ''
-      });
-    }
+    // Плееры (полный список из 13+ источников с приоритетом FanFilm 4K на первом месте)
+    const players = getAvailablePlayers({
+      kp_id: kpId,
+      title,
+      year: resolvedYear,
+      media_type: (seasonsData.length > 0 || isExplicitSeries) ? 'series' : detectedType,
+      genres: resolveCanonicalGenres(title, '', description, genres),
+      source: 'fanfilm4k',
+      fanfilm_4k_url: (effective4kUrl && !isCarrieUnreleased) ? effective4kUrl : '',
+      fanfilm_hd_url: finalHdUrl,
+      is_upcoming: isUnreleasedUpcoming
+    });
 
     // Кадры из фильма
     const frames = [];
@@ -1032,7 +1007,7 @@ export async function getFanFilmDetails(idOrUrl) {
       genres: canonicalGenres,
       media_type: (seasonsData.length > 0 || isExplicitSeries) ? 'series' : detectedType,
       category: (seasonsData.length > 0 || isExplicitSeries) ? 'Сериал' : (detectedType.includes('anime') ? 'Аниме' : (detectedType.includes('cartoon') ? 'Мультфильм' : 'Фильм')),
-      countries,
+      countries: countries ? countries.split(/[,;/]+/).map(c => c.trim()).filter(Boolean) : [],
       director,
       directors: directorsList,
       actors,

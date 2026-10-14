@@ -84,11 +84,20 @@ export async function searchVkVideo(query, page = 1) {
 
   const cleanQuery = query.trim();
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `search_${cleanQuery}_p${pageNum}`;
+  const cacheKey = `search_v2_${cleanQuery}_p${pageNum}`;
   const cached = getCache('vkvideo', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   const items = [];
+
+  const parseDurationStr = (s) => {
+    if (!s || typeof s !== 'string') return 0;
+    const parts = s.trim().split(':').map(n => parseInt(n, 10));
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+  };
 
   const executeVkQuery = async (queryText) => {
     try {
@@ -120,12 +129,21 @@ export async function searchVkVideo(query, page = 1) {
           const ownerId = it[0];
           const videoId = it[1];
           const poster = it[2] || '';
-          let title = String(it[3] || '').trim();
+          let title = String(it[3] || '')
+            .replace(/&#(\d+);/g, (_, code) => { try { return String.fromCodePoint(parseInt(code, 10)); } catch { return ''; } })
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/<[^>]+>/g, '')
+            .trim();
           if (!title) continue;
 
           const durationStr = typeof it[5] === 'string' ? it[5] : '';
-          const durationSec = typeof it[18] === 'number' ? it[18] : 0;
+          const rawSec = typeof it[19] === 'number' ? it[19] : (typeof it[18] === 'number' ? it[18] : 0);
+          const durationSec = rawSec > 0 ? rawSec : parseDurationStr(durationStr);
           const views = typeof it[10] === 'number' ? it[10] : 0;
+          const hash = (typeof it[42] === 'string' && /^[a-f0-9]{14,24}$/i.test(it[42]))
+            ? it[42]
+            : (it.find(x => typeof x === 'string' && /^[a-f0-9]{16,22}$/i.test(x)) || '');
 
           // Исключаем трейлеры, тизеры и короткие рекламные клипы
           if (isTrailerMedia({
@@ -151,6 +169,7 @@ export async function searchVkVideo(query, page = 1) {
             source_id: `${ownerId}_${videoId}`,
             owner_id: ownerId,
             video_id: videoId,
+            hash,
             title,
             original_title: title,
             poster: poster || 'assets/favicon.svg',
@@ -163,7 +182,7 @@ export async function searchVkVideo(query, page = 1) {
             duration_seconds: durationSec,
             genres,
             description: `Официальное видео из медиатеки VK Видео${views > 0 ? ` (просмотров: ${views.toLocaleString('ru-RU')})` : ''}.`,
-            embed_url: `https://vkvideo.ru/video_ext.php?oid=${ownerId}&id=${videoId}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`,
+            embed_url: `https://vk.com/video_ext.php?oid=${ownerId}&id=${videoId}${hash ? `&hash=${hash}` : ''}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`,
             web_url: `https://vkvideo.ru/video${ownerId}_${videoId}`,
             views
           });
@@ -191,6 +210,7 @@ export async function searchVkVideo(query, page = 1) {
 export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
   if (!title) return null;
   if (knownItem?.owner_id && knownItem?.video_id) {
+    const hashParam = knownItem.hash ? `&hash=${knownItem.hash}` : '';
     return {
       id: 'vk_video_stream',
       name: 'VK Видео (Официальный плеер)',
@@ -201,7 +221,7 @@ export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
       status_label: '🟢 Онлайн',
       audio_info: 'Официальный лицензионный каталог VK Видео',
       speed: '⚡ Скоростной VK CDN',
-      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`
+      url: `https://vk.com/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}${hashParam}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`
     };
   }
 
@@ -213,7 +233,7 @@ export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
     const query = `${cleanTitle} ${year || ''}`.trim();
     const results = await searchVkVideo(query);
     if (results && results.length > 0) {
-      const top = results[0];
+      const top = results.find(it => (it.duration_seconds || 0) >= 900) || results[0];
       let embed = top.embed_url;
       if (embed && !embed.includes('muted=')) {
         embed += (embed.includes('?') ? '&' : '?') + 'js_api=1&muted=0&mute=0';
@@ -239,6 +259,7 @@ export async function resolveVkVideoPlayer(title, year = '', knownItem = null) {
 
 export function getVkVideoPlayer(title, year = '', knownItem = null) {
   if (knownItem?.owner_id && knownItem?.video_id) {
+    const hashParam = knownItem.hash ? `&hash=${knownItem.hash}` : '';
     return {
       id: 'vk_video_stream',
       name: 'VK Видео (Официальный плеер)',
@@ -249,7 +270,7 @@ export function getVkVideoPlayer(title, year = '', knownItem = null) {
       status_label: '🟢 Онлайн',
       audio_info: 'Официальный лицензионный каталог VK Видео',
       speed: '⚡ Скоростной VK CDN',
-      url: `https://vkvideo.ru/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`
+      url: `https://vk.com/video_ext.php?oid=${knownItem.owner_id}&id=${knownItem.video_id}${hashParam}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`
     };
   }
   return null;

@@ -52,7 +52,10 @@ export function initRemoteHost() {
     };
 
     hostWs.onclose = () => {
-      setTimeout(initRemoteHost, 3500);
+      const modal = document.getElementById('storm-remote-modal');
+      if (isRemotePhoneConnected || (modal && modal.classList.contains('is-open'))) {
+        setTimeout(initRemoteHost, 3500);
+      }
     };
   } catch (_) {}
 }
@@ -299,5 +302,4 @@ export function handleIncomingRemoteAction(data) {
   }
 }
 
-// Автоматический запуск хоста пульта при загрузке модуля
-setTimeout(initRemoteHost, 800);
+// Хост пульта инициализируется по запросу при открытии QR-окна (openRemoteQrModal)

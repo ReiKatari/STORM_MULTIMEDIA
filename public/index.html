@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="STORM DARK">
+<html lang="ru" data-theme="STORM MIDNIGHT">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
   <link rel="shortcut icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#00d2ff">
+  <meta name="theme-color" content="#8b5cf6">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.3">
-  <link rel="stylesheet" href="/styles/components.css?v=1.3">
-  <link rel="stylesheet" href="/styles/main.css?v=1.3">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.3">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.38">
+  <link rel="stylesheet" href="/styles/components.css?v=1.0.38">
+  <link rel="stylesheet" href="/styles/main.css?v=1.0.38">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.38">
 </head>
 <body data-active-tab="home">
 
@@ -560,7 +560,7 @@
   </div>
 
   <!-- Модальное окно фильмографии актера / режиссера -->
-  <div class="storm-modal-backdrop" id="person-modal">
+  <div class="storm-modal-backdrop" id="person-modal" style="z-index: 120000 !important;">
     <div class="storm-modal person-modal-dialog">
       <div class="storm-modal-header">
         <h3 class="storm-modal-title" id="person-modal-title">Фильмография</h3>
@@ -716,38 +716,105 @@
             </div>
           </div>
 
-          <!-- Настройка языка интерфейса внутри профиля -->
+          <!-- Настройка языка интерфейса внутри профиля (11 языков, автоопределение ОС) -->
           <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;" data-i18n="lang_select_title">Язык интерфейса</div>
-              <div style="font-size: 11px; color: var(--text-muted);">100% локализация STORM MULTIMEDIA</div>
+              <div style="font-size: 11px; color: var(--text-muted);">11 локализаций STORM MULTIMEDIA (автоопределение языка ОС)</div>
             </div>
-            <select class="storm-select" id="profile-lang-select" style="min-width: 170px;">
+            <select class="storm-select" id="profile-lang-select" style="min-width: 190px;">
               <option value="ru">RU • Русский</option>
               <option value="en">EN • English</option>
               <option value="de">DE • Deutsch</option>
               <option value="fr">FR • Français</option>
-              <option value="zh">ZH • 中文</option>
+              <option value="zh">ZH • 简体中文</option>
+              <option value="ko">KO • 한국어</option>
               <option value="ja">JA • 日本語</option>
+              <option value="es">ES • Español</option>
+              <option value="it">IT • Italiano</option>
+              <option value="pt">PT • Português</option>
+              <option value="hi">HI • हिन्दी</option>
             </select>
           </div>
 
-          <!-- Выбор визуальной темы оформления (8 эталонных стилей STORM) -->
+          <!-- Выбор визуальной темы оформления (9 эталонных стилей STORM AURORA FLUID) -->
           <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Тема оформления</div>
-              <div style="font-size: 11px; color: var(--text-muted);">8 эталонных стилей экосистемы STORM SOFT</div>
+              <div style="font-size: 11px; color: var(--text-muted);">9 эталонных стилей экосистемы STORM AURORA FLUID</div>
             </div>
-            <select class="storm-select" id="profile-theme-select" style="min-width: 200px;">
-              <option value="STORM DARK">STORM DARK</option>
-              <option value="STORM NIGHT">STORM NIGHT</option>
-              <option value="STORM MATRIX">STORM MATRIX</option>
-              <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
+            <select class="storm-select" id="profile-theme-select" style="min-width: 210px;">
               <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
-              <option value="STORM FANTASY">STORM FANTASY</option>
-              <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
+              <option value="STORM NIGHT">STORM NIGHT</option>
+              <option value="STORM DARK">STORM DARK</option>
               <option value="STORM DAY">STORM DAY</option>
+              <option value="STORM FANTASY">STORM FANTASY</option>
+              <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
+              <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
+              <option value="STORM ELEMENTAL">STORM ELEMENTAL</option>
+              <option value="STORM">STORM</option>
+              <option value="STORM MATRIX">STORM MATRIX</option>
             </select>
+          </div>
+
+          <!-- Выбор акцентного цвета (13 акцентов), динамического шрифта (10 шрифтов) и масштаба UI -->
+          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Акцентный цвет</div>
+                <div style="font-size: 11px; color: var(--text-muted);">13 динамических неоновых оттенков подсветки</div>
+              </div>
+              <select class="storm-select" id="profile-accent-select" style="min-width: 210px;">
+                <option value="default">По умолчанию (от темы)</option>
+                <option value="violet">💜 Violet (#8B5CF6)</option>
+                <option value="cyan">🩵 Cyan (#06B6D4)</option>
+                <option value="blue">💙 Electric Blue (#3B82F6)</option>
+                <option value="indigo">🔮 Royal Indigo (#6366F1)</option>
+                <option value="teal">🌊 Teal Mint (#14B8A6)</option>
+                <option value="emerald">💚 Emerald Green (#10B981)</option>
+                <option value="lime">🍀 Neon Lime (#84CC16)</option>
+                <option value="amber">💛 Amber Gold (#F59E0B)</option>
+                <option value="orange">🧡 Solar Orange (#F97316)</option>
+                <option value="crimson">❤️ Crimson Red (#EF4444)</option>
+                <option value="rose">🌹 Rose Pink (#F43F5E)</option>
+                <option value="magenta">🩷 Magenta Fuchsia (#EC4899)</option>
+                <option value="platinum">🤍 Platinum Silver (#E2E8F0)</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Шрифт интерфейса</div>
+                <div style="font-size: 11px; color: var(--text-muted);">10 динамических гарнитур STORM AURORA FLUID</div>
+              </div>
+              <select class="storm-select" id="profile-font-select" style="min-width: 210px;">
+                <option value="Inter">Inter Variable (По умолчанию)</option>
+                <option value="PlusJakartaSans">Plus Jakarta Sans</option>
+                <option value="GeistSans">Geist Sans</option>
+                <option value="Manrope">Manrope</option>
+                <option value="Outfit">Outfit</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="Rubik">Rubik</option>
+                <option value="Orbitron">Orbitron / Rajdhani</option>
+                <option value="JetBrainsMono">JetBrains Mono</option>
+                <option value="FiraCode">Fira Code / Cascadia</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+              <div>
+                <div style="font-weight: 700; font-size: 13px;">Масштаб интерфейса</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Динамическое масштабирование элементов (75% – 150%)</div>
+              </div>
+              <select class="storm-select" id="profile-scale-select" style="min-width: 210px;">
+                <option value="0.85">85% (Компактный)</option>
+                <option value="0.95">95% (Умеренный)</option>
+                <option value="1" selected>100% (Стандартный)</option>
+                <option value="1.1">110% (Увеличенный)</option>
+                <option value="1.2">120% (Крупный)</option>
+                <option value="1.35">135% (Для ТВ и планшетов)</option>
+              </select>
+            </div>
           </div>
 
           <!-- Настройки плеера по умолчанию, блокировки рекламы и воспроизведения -->
@@ -1296,7 +1363,7 @@
   </button>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.31"></script>
+  <script type="module" src="/js/app.js?v=1.0.38"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
   <script>

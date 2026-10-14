@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js';
-import { getUser, showToast } from './auth.js';
-import { t } from './i18n.js';
-import { trackClientAction } from './achievements.js';
-import { renderReviewsSection } from './reviews.js';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js';
-import { saveMediaForOffline } from './offline-storage.js';
-import { renderTorrServerSettings } from './torrserver-client.js';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.38';
+import { getUser, showToast } from './auth.js?v=1.0.38';
+import { t } from './i18n.js?v=1.0.38';
+import { trackClientAction } from './achievements.js?v=1.0.38';
+import { renderReviewsSection } from './reviews.js?v=1.0.38';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.38';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.38';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.38';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.38';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.38';
+import { saveMediaForOffline } from './offline-storage.js?v=1.0.38';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.38';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.38';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.38';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.38';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.38';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -140,6 +140,7 @@ export function getSafeCleanStreamUrl(rawUrl) {
   if (streamUrl.includes('v16.fanfilm4k.media')) {
     streamUrl = streamUrl.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
   }
+  streamUrl = streamUrl.replace(/([?&])(autoplay|autoPlay)=1\b/g, '$1$2=0');
 
   const currentAdblock = isAdblockEnabled();
   vpnBypassEnabled = localStorage.getItem('storm_vpn_bypass') === 'true';
@@ -1054,7 +1055,6 @@ function initMobilePlayerControls() {
  */
 export function isDomesticContent(item = {}, cleanTitle = '') {
   const t = (cleanTitle || item.title || '').toLowerCase();
-  const ot = (item.original_title || '').toLowerCase();
   const c = Array.isArray(item.countries) ? item.countries.join(' ').toLowerCase() : String(item.countries || '').toLowerCase();
   const g = Array.isArray(item.genres) ? item.genres.join(' ').toLowerCase() : String(item.genres || '').toLowerCase();
   const cat = String(item.category || '').toLowerCase();
@@ -1066,12 +1066,6 @@ export function isDomesticContent(item = {}, cleanTitle = '') {
   if (c.includes('росси') || c.includes('ссср') || c.includes('russia') || c.includes('рф')) return true;
   if (cat.includes('российск') || g.includes('российск')) return true;
 
-  // Если в названии кириллица и нет англоязычного оригинального названия
-  const hasCyrillic = /[\u0400-\u04FF]/.test(t) || /[\u0400-\u04FF]/.test(ot);
-  const hasLatinOriginal = /[a-zA-Z]{3,}/.test(ot);
-  if (hasCyrillic && !hasLatinOriginal) {
-    return true;
-  }
   return false;
 }
 
@@ -1079,17 +1073,17 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const title = cleanTitle || cleanVideoTitle(mediaItem.title || 'Видео');
   const safeTitle = encodeURIComponent(title);
   const year = mediaItem.year ? String(mediaItem.year).trim() : '';
-  const yearParam = year ? `&year=${year}&strict=1` : '&strict=1';
+  const yearQuery = year ? `&year=${encodeURIComponent(year)}` : '';
   const kpId = mediaItem.kp_id || '';
+  const imdbId = mediaItem.imdb_id || '';
+  const kpParam = kpId ? `&kp_id=${encodeURIComponent(kpId)}` : '';
+  const imdbParam = imdbId ? `&imdb_id=${encodeURIComponent(imdbId)}` : '';
   const mediaType = mediaItem.media_type || mediaItem.type || 'movie';
   const isSeries = mediaType === 'series' || mediaType === 'cartoon-series' || mediaType === 'anime-series';
   const isAnime = mediaType.includes('anime') || mediaItem.source === 'anilibria' || mediaItem.source === 'anixart';
-  const typeFilter = isSeries ? '&types=foreign-serial,russian-serial,anime-serial' : '&types=foreign-movie,russian-movie,anime';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
-  const isDomestic = isDomesticContent(mediaItem, title);
   const rawRuId = mediaItem.rutube_id || (String(mediaItem.id || '').startsWith('rutube_') ? String(mediaItem.id).replace('rutube_', '') : null);
   const isLandyshiItem = mediaItem.id === 'rutube_landyshi' || title.toLowerCase().includes('ландыши') || rawRuId === '564f31c881b83373bfe0cb26979d44cf';
-  const isDomesticExclusive = (isDomestic && !kpId) || isLandyshiItem;
 
   const suite = [];
 
@@ -1110,7 +1104,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     }
   }
 
-  const isCarrie = /кэрри|carrie/i.test(title) && (year === '2026' || parseInt(year || '2026', 10) >= 2026);
+  const isCarrie = /кэрри|carrie/i.test(title) && /flanagan|флэнаган/i.test(title);
   const isFutureYear = Boolean(year && parseInt(year, 10) > new Date().getFullYear());
   const hasReal4kUrl = Boolean(effective4kUrl && !effective4kUrl.includes('do=search') && !effective4kUrl.includes('830'));
   const hasAvailableStreams = Boolean(hasReal4kUrl || mediaItem.vk_embed_url || (mediaItem.rutube_id && mediaItem.rutube_id.length > 15) || (mediaItem.seasons && mediaItem.seasons.length > 0));
@@ -1137,7 +1131,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     return suite;
   }
 
-  if (!effective4kUrl && !isTrulyUpcoming && !isLandyshiItem && !isAnime && safeTitle) {
+  if (!effective4kUrl && !isTrulyUpcoming && !isLandyshiItem && safeTitle) {
     effective4kUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
   }
 
@@ -1158,85 +1152,165 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 2. Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka) — надежный балансер #2 сразу за 4K
-  if (!isDomesticExclusive && !mediaItem.is_upcoming) {
-    const kinoboxUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+  // 2. Kinobox Мультиплеер (Alloha, Collaps, Kodik, HDRezka, Videocdn)
+  if (!isLandyshiItem) {
     suite.push({
       id: 'kinobox_universal',
-      name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, HDRezka)',
+      name: 'Kinobox Мультиплеер (Alloha, Collaps, Kodik, HDRezka, Videocdn)',
       type: 'iframe',
-      quality: '1080p FHD',
+      quality: '1080p FHD / 4K',
       badge: 'KINOBOX',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Все доступные озвучки и балансеры',
+      audio_info: 'Универсальный мультиплеер: автоподбор рабочего балансера',
       speed: '⚡ Мульти-CDN',
-      url: kinoboxUrl
+      url: `/api/player/kinobox-embed?balancer=kinobox&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
-  }
 
-  // 3. Kodik Плеер (сериалы и озвучки)
-  if (!isDomesticExclusive && !mediaItem.is_upcoming) {
+    // 3. HDRezka Studio
+    suite.push({
+      id: 'hdrezka_stream',
+      name: 'HDRezka Studio (Дубляж и авторские озвучки)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'HDREZKA',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Фирменный дубляж HDRezka Studio, RHS, TVShows, Jaskier',
+      speed: '⚡ Скоростной CDN',
+      url: `/api/player/kinobox-embed?balancer=hdrezka&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+    });
+
+    // 4. Collaps и AllPlay
+    suite.push({
+      id: 'collaps_stream',
+      name: 'Collaps и AllPlay (Full HD и 4K балансер)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'COLLAPS',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Лицензионный дубляж СНГ и многоголосые переводы',
+      speed: '⚡ Быстрый поток',
+      url: `/api/player/kinobox-embed?balancer=collaps&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+    });
+
+    // 5. Alloha Плеер
+    suite.push({
+      id: 'alloha_stream',
+      name: 'Alloha Плеер (Скоростной CDN новинок)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'ALLOHA',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Премьерные релизы 2025–2026 и студийный звук',
+      speed: '⚡ Премиум поток',
+      url: `/api/player/kinobox-embed?balancer=alloha&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+    });
+
+    // 6. Kodik Плеер (без жесткого ограничения по году)
     const kodikUrl = kpId
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${typeFilter}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}${typeFilter}${episodeParam}`;
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}${episodeParam}`;
     suite.push({
       id: 'kodik_direct',
-      name: isAnime ? 'Kodik Аниме Плеер' : 'Kodik Плеер (сериалы и озвучки)',
+      name: isAnime ? 'Kodik Аниме Плеер (Все озвучки)' : 'Kodik Плеер (Сериалы, кино и озвучки)',
       type: 'iframe',
       quality: '1080p FHD',
       badge: 'KODIK',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Большой выбор студийных озвучек',
+      audio_info: 'Большой выбор студийных и авторских озвучек',
       speed: '⚡ Быстрый поток',
       url: kodikUrl,
       is_recommended: isAnime && !effective4kUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
     });
+
+    // 7. VideoCDN и Lumex
+    suite.push({
+      id: 'videocdn_stream',
+      name: 'VideoCDN и Lumex (Кинопрокат и сериалы)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'VIDEOCDN',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'База кинопроката, сериалов и классики в Full HD',
+      speed: '⚡ Мульти-поток',
+      url: `/api/player/kinobox-embed?balancer=videocdn&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+    });
+
+    // 8. Red Head Sound и LostFilm
+    suite.push({
+      id: 'rhs_stream',
+      name: 'Red Head Sound и LostFilm (Студийный дубляж)',
+      type: 'iframe',
+      quality: '1080p FHD / 4K',
+      badge: 'RHS / LOSTFILM',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Голоса официального дубляжа Red Head Sound и LostFilm',
+      speed: '⚡ Студийный CDN',
+      url: `/api/player/kinobox-embed?balancer=rhs&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+    });
+
+    // 9. Bazon и CDNMovies
+    suite.push({
+      id: 'bazon_stream',
+      name: 'Bazon и CDNMovies (Резервный 1080p поток)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'BAZON',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Высокая отказоустойчивость для новинок и сериалов',
+      speed: '⚡ Резервный CDN',
+      url: `/api/player/kinobox-embed?balancer=bazon&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+    });
   }
 
-  // 4. VK Видео (Официальный плеер) — приоритет #1 для отечественного эксклюзива «Ландыши»
+  // 10. VK Видео (Официальный плеер / Автопоиск реального потока)
   let vkEmbed = '';
   if (isLandyshiItem) {
-    vkEmbed = 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1&js_api=1&muted=0&mute=0';
+    vkEmbed = 'https://vk.com/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0';
   } else if (mediaItem.vk_embed_url) {
     vkEmbed = mediaItem.vk_embed_url;
   } else if (mediaItem.owner_id && mediaItem.video_id) {
-    vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${mediaItem.owner_id}&id=${mediaItem.video_id}&hd=2&autoplay=1`;
+    vkEmbed = `https://vk.com/video_ext.php?oid=${mediaItem.owner_id}&id=${mediaItem.video_id}&hd=2&autoplay=0`;
   } else if (String(mediaItem.id || '').startsWith('vk_')) {
     const vkM = String(mediaItem.id).match(/vk_(-?\d+)_(\d+)/);
     if (vkM) {
-      vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=1`;
+      vkEmbed = `https://vk.com/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=0`;
     }
   } else if (mediaItem.vk_url) {
     const vkM = mediaItem.vk_url.match(/video(-?\d+)_(\d+)/);
     if (vkM) {
-      vkEmbed = `https://vkvideo.ru/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=1`;
+      vkEmbed = `https://vk.com/video_ext.php?oid=${vkM[1]}&id=${vkM[2]}&hd=2&autoplay=0`;
     }
   } else if (mediaItem.embed_url && (mediaItem.embed_url.includes('oid=') || mediaItem.embed_url.includes('video-'))) {
     vkEmbed = mediaItem.embed_url;
+  } else if (safeTitle) {
+    vkEmbed = `/api/player/vk-search-embed?title=${safeTitle}${yearQuery}${episodeParam}`;
   }
 
   if (vkEmbed && (vkEmbed.includes('vkvideo.ru') || vkEmbed.includes('vk.com'))) {
+    vkEmbed = vkEmbed.replace(/([?&])autoplay=1\b/g, '$1autoplay=0');
     if (!vkEmbed.includes('js_api=')) vkEmbed += (vkEmbed.includes('?') ? '&' : '?') + 'js_api=1';
     if (!vkEmbed.includes('muted=')) vkEmbed += '&muted=0&mute=0';
   }
 
   if (vkEmbed) {
-    const isVkSource = mediaItem.source === 'vkvideo' || String(mediaItem.id || '').startsWith('vk_') || isLandyshiItem;
     const isVkRecommended = isLandyshiItem;
-
     suite.push({
       id: 'vk_video_stream',
-      name: 'VK Видео (Официальный плеер)',
+      name: isLandyshiItem ? 'VK Видео (Официальный плеер)' : 'VK Видео (Фильмы, сериалы и дубляж)',
       type: 'iframe',
       quality: '1080p FHD / 4K',
       badge: 'VK ВИДЕО',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: isLandyshiItem ? 'Официальный сериал Ландыши на платформе VK Видео со звуком' : 'Официальные релизы и студийные переводы VK Видео',
+      audio_info: isLandyshiItem ? 'Официальный сериал Ландыши на платформе VK Видео со звуком' : 'Официальные релизы и полные фильмы из базы VK Видео',
       speed: '⚡ Скоростной VK CDN',
       url: vkEmbed,
       is_recommended: isVkRecommended,
@@ -1244,7 +1318,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     });
   }
 
-  // 5. RuTube HLS и RuTube Embed (Официальный лицензионный поток / резерв)
+  // 11. RuTube HLS и RuTube Embed (Официальный лицензионный поток / автопоиск)
   const effectiveRuId = (rawRuId && /^[a-f0-9]{32}$/i.test(rawRuId))
     ? rawRuId
     : (mediaItem.rutube_id && /^[a-f0-9]{32}$/i.test(mediaItem.rutube_id)
@@ -1274,58 +1348,92 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   } else if (mediaItem.embed_url && mediaItem.embed_url.includes('rutube.ru/play/embed/')) {
     const mId = mediaItem.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
     rutubeEmbed = mId ? `/api/player/rutube-embed/${mId[1]}` : mediaItem.embed_url;
-  } else if (mediaItem.source === 'rutube') {
-    const ruSearchQ = encodeURIComponent(`${title} ${year || ''}`.trim());
-    rutubeEmbed = `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=1`;
+  } else if (safeTitle) {
+    rutubeEmbed = `/api/player/rutube-search-embed?title=${safeTitle}${yearQuery}${episodeParam}`;
   }
 
   if (rutubeEmbed) {
     suite.push({
       id: 'rutube_stream',
-      name: 'RuTube (Резервный поток / Wink)',
+      name: 'RuTube и Wink (Лицензионный поток)',
       type: 'iframe',
       quality: '1080p FHD',
       badge: 'RUTUBE',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Резервный лицензионный каталог RuTube и Wink',
+      audio_info: 'Лицензионные фильмы, сериалы и шоу RuTube / Wink',
       speed: '⚡ Быстрый российский CDN',
       url: rutubeEmbed,
       is_recommended: false
     });
   }
 
-  // 6. AniXart Stream (для аниме)
+  // 12. Vidsrc Cinema (Original и субтитры)
+  if (!isLandyshiItem && !isAnime) {
+    suite.push({
+      id: 'vidsrc_player',
+      name: 'Vidsrc Cinema (Original и субтитры)',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'VIDSRC',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Международный поток в оригинале и с субтитрами',
+      speed: '⚡ Международный CDN',
+      url: imdbId
+        ? `https://vidsrc.to/embed/${isSeries ? 'tv' : 'movie'}/${imdbId}`
+        : `/api/player/kinobox-embed?balancer=vidsrc&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}`
+    });
+  }
+
+  // 13. AniXart Stream и Shikimori (для аниме)
   if (isAnime) {
     const anixartUrl = kpId
       ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&types=anime-serial,anime${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${yearParam}&types=anime-serial,anime${episodeParam}`;
+      : `https://kodikplayer.com/find-player?title=${safeTitle}&types=anime-serial,anime${episodeParam}`;
     suite.push({
       id: 'anixart_stream',
-      name: 'AniXart Stream (Аниме-релизы)',
+      name: 'AniXart Stream (Аниме-релизы и фандаб)',
       type: 'iframe',
       quality: '1080p FHD',
       badge: 'ANIXART',
       status: 'working',
       status_label: '🟢 Онлайн',
-      audio_info: 'Тысячи озвучек от фандаб-сообщества',
+      audio_info: 'AniLibria, StudioBand, AniDub, SHIZA, Jam, DreamCast',
       speed: '⚡ Скоростной поток',
       url: anixartUrl
     });
-  }
 
-  // 7. P2P WebTorrent (Торрент-стриминг) — только если имеются раздачи
-  if (mediaItem.releases?.length > 0 || mediaItem.torrent_hash) {
+    const shikimoriUrl = kpId
+      ? `https://kodikplayer.com/find-player?kinopoiskID=${kpId}&source=shikimori${episodeParam}`
+      : `https://kodikplayer.com/find-player?title=${safeTitle}&source=shikimori${episodeParam}`;
     suite.push({
-      id: 'webtorrent',
-      name: 'P2P WebTorrent (Торрент-стриминг)',
-      url: 'webtorrent://direct',
-      badge: 'P2P 4K',
-      quality: '4K UHD / 1080p',
-      status_label: '🟢 P2P Сеть',
-      audio_info: 'Многоголосый дубляж'
+      id: 'shikimori_stream',
+      name: 'Shikimori и AnimeGO Плеер',
+      type: 'iframe',
+      quality: '1080p FHD',
+      badge: 'SHIKIMORI',
+      status: 'working',
+      status_label: '🟢 Онлайн',
+      audio_info: 'Оригинальные субтитры и студийный дубляж',
+      speed: '⚡ Быстрый поток',
+      url: shikimoriUrl
     });
   }
+
+  // 14. P2P WebTorrent и TorrServer (Торрент-стриминг для всех релизов)
+  suite.push({
+    id: 'webtorrent',
+    name: 'P2P WebTorrent и TorrServer (4K UHD / 1080p)',
+    type: 'webtorrent',
+    url: 'webtorrent://direct',
+    badge: 'TORRENT 4K',
+    quality: '4K UHD / 1080p',
+    status: 'working',
+    status_label: '🟢 P2P Поток',
+    audio_info: 'Максимальный битрейт без сжатия напрямую из P2P-сети',
+    speed: '🚀 BitTorrent 4K'
+  });
 
   if (!suite.some(p => p.is_recommended) && suite.length > 0) {
     suite[0].is_recommended = true;
@@ -1551,6 +1659,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const preferStableKodik = itemYr < 2020;
 
   const isLandyshiMedia = mediaItem.id === 'rutube_landyshi' || cleanTitle.toLowerCase().includes('ландыши') || mediaItem.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
+  const isLandyshiItem = isLandyshiMedia;
   const preferredId = getPreferredDefaultPlayerId();
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice && preferredId && preferredId !== 'fanfilm4k_uhd' && !isLandyshiMedia) {
@@ -1647,7 +1756,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
       details.players.forEach(dp => {
         if (!dp || !dp.url) return;
         if (isDomestic && (dp.id === 'lostfilm_player' || dp.id === 'rhs_player')) return;
-        if (!mergedPlayers.some(mp => mp.id === dp.id || mp.url === dp.url)) {
+        if (!mergedPlayers.some(mp => mp.id === dp.id)) {
           mergedPlayers.push(dp);
         }
       });
@@ -1655,7 +1764,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
     fallbackSuite.forEach(fp => {
       if (!fp || !fp.url) return;
       if (isDomestic && (fp.id === 'lostfilm_player' || fp.id === 'rhs_player')) return;
-      if (!mergedPlayers.some(mp => mp.id === fp.id || mp.url === fp.url)) {
+      if (!mergedPlayers.some(mp => mp.id === fp.id)) {
         mergedPlayers.push(fp);
       }
     });
@@ -2315,7 +2424,7 @@ export function stopPlayerFallbackLoop() {
   const container = document.getElementById('cinema-player-wrapper');
   if (!container) return;
 
-  const isCarrie = /кэрри|carrie/i.test(currentMedia?.title || '');
+  const isCarrie = /кэрри|carrie/i.test(currentMedia?.title || '') && /flanagan|флэнаган/i.test(currentMedia?.title || '');
   const isFutureYear = Boolean(currentMedia?.year && parseInt(currentMedia.year, 10) > new Date().getFullYear());
   const isUpcoming = Boolean(
     currentMedia?.is_upcoming ||
@@ -2325,7 +2434,7 @@ export function stopPlayerFallbackLoop() {
   );
 
   const cleanTitle = cleanVideoTitle(currentMedia?.title || 'Кинорелиз');
-  const yearText = currentMedia?.year || 'скоро';
+  const yearText = currentMedia?.year || '';
 
   if (isUpcoming && currentMedia?.trailer_url) {
     playStreamUrl(currentMedia.trailer_url);
@@ -2335,7 +2444,7 @@ export function stopPlayerFallbackLoop() {
     if (curName) curName.textContent = 'Официальный трейлер';
     const curQuality = document.getElementById('player-current-quality');
     if (curQuality) curQuality.textContent = '4K UHD / 1080p';
-    showToast(`🎬 Цифровой релиз ожидается в ${yearText} году. Запущен официальный трейлер`, 'info');
+    showToast(`🎬 Цифровой релиз ожидается в ${yearText || 'скоро'} году. Запущен официальный трейлер`, 'info');
     return;
   }
 
@@ -2345,7 +2454,7 @@ export function stopPlayerFallbackLoop() {
         <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(0,210,255,0.4));">🎬</div>
         <h2 style="font-size:22px;font-weight:800;color:#00d2ff;margin:0 0 10px 0;letter-spacing:0.5px;">Официальная цифровая премьера еще не состоялась</h2>
         <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
-          Выход фильма «${cleanTitle}» запланирован на ${yearText} год. Как только состоится официальный цифровой релиз, фильм станет доступен в 4K Ultra HD со всеми студийными озвучками.
+          Выход фильма «${cleanTitle}» запланирован на ${yearText || '2026'} год. Как только состоится официальный цифровой релиз, фильм станет доступен в 4K Ultra HD со всеми студийными озвучками.
         </p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
           ${currentMedia?.trailer_url ? `<button type="button" class="storm-btn storm-btn-primary" onclick="window.playTrailerDirectly && window.playTrailerDirectly()" style="background:linear-gradient(135deg, #00d2ff, #0077ff);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,210,255,0.35);">▶ Смотреть трейлер</button>` : ''}
@@ -2354,18 +2463,15 @@ export function stopPlayerFallbackLoop() {
       </div>
     `;
   } else {
+    // Гарантированный резервный мульти-балансер вместо тупикового экрана ошибки
+    const fallbackEmbedUrl = `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(yearText)}&kp_id=${encodeURIComponent(currentMedia?.kp_id || '')}&imdb_id=${encodeURIComponent(currentMedia?.imdb_id || '')}`;
     container.innerHTML = `
-      <div class="storm-player-empty-screen" style="height:100%;min-height:480px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center, #1b1525 0%, #0a0b10 100%);color:#fff;text-align:center;padding:32px 24px;box-sizing:border-box;">
-        <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(245,158,11,0.4));">📡</div>
-        <h2 style="font-size:22px;font-weight:800;color:#f59e0b;margin:0 0 10px 0;">Онлайн-потоки временно недоступны</h2>
-        <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
-          Все доступные балансеры и онлайн-плееры вернули статус отсутствия видеопотока. Попробуйте обновить страницу или повторить попытку позже.
-        </p>
-        <button type="button" class="storm-btn storm-btn-primary" onclick="window.retryPlayerSources && window.retryPlayerSources()" style="background:linear-gradient(135deg, #f59e0b, #d97706);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(245,158,11,0.35);">🔄 Повторить поиск источников</button>
+      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <iframe class="cinema-player-iframe" src="${fallbackEmbedUrl}" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen *; picture-in-picture *; encrypted-media *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
       </div>
     `;
   }
-  showToast('Все онлайн-источники проверены и временно недоступны', 'warning');
 }
 
 /* ==========================================================================
@@ -2546,15 +2652,15 @@ async function initSeriesQuickBar(playerUrl) {
     renderQuickBarDropdowns();
     setupQuickBarOutsideListeners();
 
-    if (autoVoiceMatched || quickBarActiveSeason > 1 || quickBarActiveEpisode > 1) {
+    if (autoVoiceMatched || (data.type !== 'movie' && (quickBarActiveSeason > 1 || quickBarActiveEpisode > 1))) {
       updateQuickIframeSrc();
     }
     if (autoVoiceMatched && matchedTrans) {
       showToast(`🎙️ Умный выбор озвучки: ${matchedTrans.name}`, 'info');
     }
 
-    // Синхронизируем список сезонов и серий при обнаружении многосезонного релиза
-    if (data.seasons && data.seasons.length > 0) {
+    // Синхронизируем список сезонов и серий только для реальных сериалов (не для фильмов)
+    if (data.type !== 'movie' && data.seasons && data.seasons.length > 0) {
       if (currentMedia) {
         currentMedia.media_type = 'series';
         currentMedia.category = 'Сериал';
@@ -2578,6 +2684,19 @@ async function initSeriesQuickBar(playerUrl) {
         if (epBtn) epBtn.style.display = '';
         if (bottomBar) bottomBar.style.display = '';
         if (epSheet) epSheet.style.display = '';
+        updateInPlayerEpisodeInfo();
+      }
+    } else if (data.type === 'movie') {
+      const seasonsContainer = document.getElementById('series-seasons-container');
+      if (seasonsContainer) seasonsContainer.style.display = 'none';
+      const overlay = document.getElementById('storm-inplayer-overlay');
+      if (overlay) {
+        const epBtn = overlay.querySelector('#inplayer-episodes-btn');
+        const bottomBar = overlay.querySelector('#inplayer-bottom-bar');
+        const epSheet = overlay.querySelector('#player-inplayer-episodes-sheet');
+        if (epBtn) epBtn.style.setProperty('display', 'none', 'important');
+        if (bottomBar) bottomBar.style.setProperty('display', 'none', 'important');
+        if (epSheet) epSheet.style.display = 'none';
         updateInPlayerEpisodeInfo();
       }
     }
@@ -3560,7 +3679,7 @@ function playStreamUrl(url) {
         <!-- Динамическая подсветка Ambilight -->
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
 
-        <video id="storm-video-player" controls autoplay crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
+        <video id="storm-video-player" controls crossorigin="anonymous" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
 
         <!-- Кнопка мгновенного старта воспроизведения на смартфонах и ПК -->
         <div class="storm-video-big-play-btn" id="storm-video-big-play-btn" title="Воспроизвести">
@@ -3615,12 +3734,8 @@ function playStreamUrl(url) {
         window._stormHls = hls;
         hls.loadSource(url);
         hls.attachMedia(video);
-        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-          video.play().catch(() => {});
-        });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
-        video.play().catch(() => {});
       }
     };
 
@@ -3630,7 +3745,6 @@ function playStreamUrl(url) {
       ensureHlsLoaded().then(setupHlsStream).catch(() => {
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = url;
-          video.play().catch(() => {});
         }
       });
     }
@@ -3672,7 +3786,7 @@ function playStreamUrl(url) {
     container.innerHTML = `
       <div class="player-video-box" style="position:relative;width:100%;height:100%;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="autoplay *; fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen *; picture-in-picture *; encrypted-media *; display-capture *; microphone *; camera *" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
         ${isVkPlayer ? `
           <button type="button" class="storm-unmute-btn" id="storm-unmute-btn" title="Включить звук VK Видео">
             <span class="unmute-icon">🔊</span>
@@ -4066,8 +4180,8 @@ function renderXRayCastTab(castTab, cast) {
     card.onclick = () => {
       const pid = card.dataset.personId;
       const pname = card.dataset.personName;
-      if (pid && typeof openPersonModal === 'function') {
-        openPersonModal(pid, pname);
+      if ((pid || pname) && typeof openPersonModal === 'function') {
+        openPersonModal(pid || pname, pname);
       }
     };
   });
@@ -4279,8 +4393,8 @@ function showXRayPanel(wrapper) {
     card.onclick = () => {
       const pid = card.dataset.personId;
       const pname = card.dataset.personName;
-      if (pid && typeof openPersonModal === 'function') {
-        openPersonModal(pid, pname);
+      if ((pid || pname) && typeof openPersonModal === 'function') {
+        openPersonModal(pid || pname, pname);
       }
     };
   });
@@ -5038,7 +5152,7 @@ export function toggleInPlayerEpisodesSheet(overlay, show) {
   const epBtn = overlay.querySelector('#inplayer-episodes-btn');
   if (!sheet) return;
 
-  if (!checkIfMediaIsSeries(currentMedia)) {
+  if (quickBarSeriesData?.type === 'movie' || !checkIfMediaIsSeries(currentMedia)) {
     sheet.classList.remove('is-open');
     sheet.style.display = 'none';
     if (epBtn) epBtn.classList.remove('active');
@@ -5066,7 +5180,7 @@ export function renderInPlayerEpisodesSheet(overlay) {
   if (!overlay) return;
 
   const sheet = overlay.querySelector('#player-inplayer-episodes-sheet');
-  if (!checkIfMediaIsSeries(currentMedia)) {
+  if (quickBarSeriesData?.type === 'movie' || !checkIfMediaIsSeries(currentMedia)) {
     if (sheet) {
       sheet.classList.remove('is-open');
       sheet.style.display = 'none';
@@ -5490,7 +5604,7 @@ export function updateInPlayerEpisodeInfo() {
   const prevBtn = overlay.querySelector('#inplayer-prev-ep-btn');
   const nextBtn = overlay.querySelector('#inplayer-next-ep-btn');
 
-  const isSeries = checkIfMediaIsSeries(currentMedia);
+  const isSeries = quickBarSeriesData?.type !== 'movie' && checkIfMediaIsSeries(currentMedia);
 
   let titleText = cleanVideoTitle(currentMedia?.title || '');
   let epText = '';
@@ -6820,7 +6934,7 @@ function renderWebTorrentPlayer() {
       <!-- Основная область воспроизведения (сверху) -->
       <div id="torrent-playback-area" style="position: relative; width: 100%; flex: 1; min-height: 340px; background: #05070a; display: flex; align-items: center; justify-content: center; overflow: hidden;">
         <div id="player-ambilight-aura" class="ambilight-aura"></div>
-        <video id="storm-video-player" controls autoplay playsinline crossorigin="anonymous" style="position: relative; z-index: 2; width: 100%; height: 100%; max-height: 520px; background: #000; object-fit: contain;"></video>
+        <video id="storm-video-player" controls playsinline crossorigin="anonymous" style="position: relative; z-index: 2; width: 100%; height: 100%; max-height: 520px; background: #000; object-fit: contain;"></video>
 
         <!-- Оверлей загрузки пиров и буферизации -->
         <div id="torrent-loader-overlay" style="position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 10, 15, 0.88); backdrop-filter: blur(8px); gap: 12px; padding: 20px; text-align: center;">
@@ -7026,7 +7140,7 @@ async function startWebTorrentStream(torrentIdentifier) {
     if (file) {
       const video = document.getElementById('storm-video-player');
       if (video) {
-        file.renderTo(video, { autoplay: true });
+        file.renderTo(video, { autoplay: false });
         setupVideoFeatures(video, playbackArea);
         video.onplaying = () => {
           if (loaderOverlay) loaderOverlay.style.display = 'none';
@@ -7674,8 +7788,8 @@ async function renderInPlayerCastDrawer(body) {
     card.onclick = () => {
       const pid = card.dataset.personId;
       const pname = card.dataset.personName;
-      if (pid && typeof openPersonModal === 'function') {
-        openPersonModal(pid, pname);
+      if ((pid || pname) && typeof openPersonModal === 'function') {
+        openPersonModal(pid || pname, pname);
       }
     };
   });
@@ -9314,7 +9428,7 @@ function playAnixartEpisode(episode) {
   container.innerHTML = `
     <div class="player-video-box" style="position:relative;width:100%;height:100%;">
       <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="fullscreen; picture-in-picture; encrypted-media; display-capture" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads" scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
     </div>
   `;
 
@@ -9834,9 +9948,13 @@ export function parseFormattedGenres(rawGenres, mediaContext = null) {
     }
   }
 
+  const nonGenreWords = new Set(['сериал', 'фильм', 'мультсериал', 'series', 'movie', 'tv', 'ova', 'ona', 'special']);
   const unique = [];
   result.forEach(g => {
-    if (g && !unique.includes(g)) unique.push(g);
+    const cleanG = String(g || '').trim();
+    if (cleanG && !nonGenreWords.has(cleanG.toLowerCase()) && !unique.includes(cleanG)) {
+      unique.push(cleanG);
+    }
   });
 
   // Если жанры не пришли от источника — определяем их по названию и контексту описания фильма
@@ -9847,8 +9965,8 @@ export function parseFormattedGenres(rawGenres, mediaContext = null) {
       unique.push('Ужасы', 'Фантастика', 'Боевик', 'Триллер');
     } else if (/космос|галактик|будуще|киборг|робот|ии|технолог|планет|звездн/i.test(text)) {
       unique.push('Фантастика', 'Приключения', 'Боевик');
-    } else if (/убийств|расследован|детектив|маньяк|полиц|преступлен|следств|агент/i.test(text)) {
-      unique.push('Детектив', 'Криминал', 'Триллер');
+    } else if (/убийств|расследован|детектив|маньяк|полиц|преступлен|следств|агент|гангстер|мафи|криминал|клан/i.test(text)) {
+      unique.push('Криминал', 'Драма', 'Триллер');
     } else if (/комед|смеш|юмор|весел|забавн/i.test(text)) {
       unique.push('Комедия', 'Приключения');
     } else if (/войн|фронт|битва|солдат|армия|сражен/i.test(text)) {
@@ -9869,6 +9987,7 @@ export function parseFormattedGenres(rawGenres, mediaContext = null) {
   const isSuperhero = titleNorm.includes('паук') || titleNorm.includes('spider') || titleNorm.includes('мстител') ||
                       titleNorm.includes('бэтмен') || titleNorm.includes('batman') || titleNorm.includes('супермен') ||
                       titleNorm.includes('superman') || titleNorm.includes('дэдпул') || titleNorm.includes('deadpool') ||
+                      titleNorm.includes('росомах') || titleNorm.includes('wolverine') ||
                       titleNorm.includes('марвел') || titleNorm.includes('marvel');
 
   if (isSuperhero) {
@@ -9876,10 +9995,44 @@ export function parseFormattedGenres(rawGenres, mediaContext = null) {
       const gl = g.toLowerCase();
       return gl !== 'ужасы' && gl !== 'история' && gl !== 'документальный';
     });
-    ['Фантастика', 'Боевик', 'Приключения', 'Супергероика'].forEach(sg => {
+    const extraHero = (titleNorm.includes('дэдпул') || titleNorm.includes('deadpool'))
+      ? ['Фантастика', 'Боевик', 'Комедия', 'Приключения']
+      : ['Фантастика', 'Боевик', 'Приключения', 'Супергероика'];
+    extraHero.forEach(sg => {
       if (!cleaned.includes(sg)) cleaned.push(sg);
     });
     return cleaned;
+  }
+
+  // Если у релиза всего 1–2 жанра — дополняем смежными жанрами для полноценной карточки
+  if (unique.length === 1) {
+    const firstLower = unique[0].toLowerCase();
+    if (firstLower === 'ужасы') {
+      unique.push('Триллер', 'Мистика');
+    } else if (firstLower === 'триллер') {
+      unique.push('Детектив', 'Драма');
+    } else if (firstLower === 'криминал') {
+      unique.push('Драма', 'Триллер');
+    } else if (firstLower === 'фантастика') {
+      unique.push('Боевик', 'Приключения');
+    } else if (firstLower === 'боевик') {
+      unique.push('Триллер', 'Приключения');
+    } else if (firstLower === 'комедия') {
+      unique.push('Приключения', 'Семейный');
+    } else if (firstLower === 'драма') {
+      unique.push('Триллер', 'Криминал');
+    } else if (firstLower === 'мелодрама') {
+      unique.push('Драма', 'Комедия');
+    } else if (firstLower === 'мультфильм') {
+      unique.push('Семейный', 'Приключения');
+    } else if (firstLower === 'аниме') {
+      unique.push('Фэнтези', 'Приключения');
+    }
+  } else if (unique.length === 2) {
+    const lowSet = unique.map(u => u.toLowerCase());
+    if (lowSet.includes('криминал') && lowSet.includes('драма')) {
+      unique.push('Триллер');
+    }
   }
 
   return unique;
@@ -9979,10 +10132,11 @@ function renderDetailedMediaInfo(mediaDetails) {
     formattedReleaseDate = `${canonYr} год`;
   }
 
-  const isSeries = mediaDetails.media_type === 'series' || mediaDetails.media_type === 'anime-series' ||
+  const isSeries = (quickBarSeriesData?.type !== 'movie') && (
+                   mediaDetails.media_type === 'series' || mediaDetails.media_type === 'anime-series' ||
                    mediaDetails.media_type === 'cartoon-series' || currentMedia?.media_type === 'series' ||
                    currentMedia?.media_type === 'anime-series' || currentMedia?.media_type === 'cartoon-series' ||
-                   Boolean(mediaDetails.seasons?.length || currentMedia?.seasons?.length || quickBarSeriesData?.seasons?.length);
+                   Boolean(mediaDetails.seasons?.length || currentMedia?.seasons?.length || (quickBarSeriesData?.type !== 'movie' && quickBarSeriesData?.seasons?.length)));
   const isAnime = (mediaDetails.media_type && mediaDetails.media_type.includes('anime')) || (currentMedia?.media_type && currentMedia.media_type.includes('anime'));
   const fallbackRuntime = isSeries ? (isAnime ? '~24 мин / серия' : '~45 мин / серия') : 'Не указана';
   
@@ -10104,10 +10258,13 @@ function renderDetailedMediaInfo(mediaDetails) {
     fetchCastAsync();
   }
 
+  container.style.setProperty('overflow-y', 'auto', 'important');
+  container.style.setProperty('overflow-x', 'hidden', 'important');
+
   container.innerHTML = `
     <!-- Постер и ключевые плашки -->
-    <div class="cinema-side-poster-wrap">
-      <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" onerror="this.src='assets/favicon.svg'">
+    <div class="cinema-side-poster-wrap" style="flex-shrink: 0 !important;">
+      <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" style="max-height: var(--cinema-poster-max-h, 175px) !important;" onerror="this.src='assets/favicon.svg'">
       <div class="cinema-side-poster-glow"></div>
       <div class="cinema-side-badges">
         <span class="storm-badge storm-badge-4k">4K UHD</span>
@@ -10116,7 +10273,7 @@ function renderDetailedMediaInfo(mediaDetails) {
     </div>
 
     <!-- Рейтинги мировых платформ в один ряд -->
-    <div class="cinema-ratings-strip" title="Рейтинги мировых платформ">
+    <div class="cinema-ratings-strip" title="Рейтинги мировых платформ" style="flex-shrink: 0 !important;">
       <div class="cinema-rating-pill kp" title="Кинопоиск">
         <span class="rating-pill-logo">KP</span>
         <span class="rating-pill-val">★ ${ratingKp}</span>
@@ -10140,21 +10297,21 @@ function renderDetailedMediaInfo(mediaDetails) {
     </div>
 
     <!-- 3D Таблица параметров и метаданных -->
-    <div class="cinema-info-table-wrap">
-      <table class="cinema-info-table">
+    <div class="cinema-info-table-wrap" style="overflow: visible !important; flex-shrink: 0 !important; height: auto !important; max-height: none !important; min-height: max-content !important;">
+      <table class="cinema-info-table" style="width: 100% !important; height: auto !important;">
         <tbody>
           <tr>
-            <td class="info-table-label">📅 Премьера</td>
-            <td class="info-table-val"><b>${formattedReleaseDate}</b></td>
+            <td class="info-table-label" style="vertical-align: top !important; padding: 6px 8px !important;">📅 Премьера</td>
+            <td class="info-table-val" style="vertical-align: top !important; padding: 6px 8px !important;"><b>${formattedReleaseDate}</b></td>
           </tr>
           <tr>
-            <td class="info-table-label">⏱️ Длительность</td>
-            <td class="info-table-val" data-info="duration"><b>${duration}</b></td>
+            <td class="info-table-label" style="vertical-align: top !important; padding: 6px 8px !important;">⏱️ Длительность</td>
+            <td class="info-table-val" data-info="duration" style="vertical-align: top !important; padding: 6px 8px !important;"><b>${duration}</b></td>
           </tr>
           <tr>
-            <td class="info-table-label">🌍 Страны</td>
-            <td class="info-table-val">
-              <div class="cinema-meta-chips-wrap">
+            <td class="info-table-label" style="vertical-align: top !important; padding: 6px 8px !important;">🌍 Страны</td>
+            <td class="info-table-val" style="vertical-align: top !important; padding: 6px 8px !important;">
+              <div class="cinema-meta-chips-wrap" style="display: flex !important; flex-wrap: wrap !important; gap: 4px !important; justify-content: flex-end !important;">
                 ${formattedCountries.map(c => `
                   <button type="button" class="cinema-meta-chip country-chip" data-country="${c}" title="Показать все фильмы (${c})">
                     <span>🌍</span>
@@ -10165,9 +10322,9 @@ function renderDetailedMediaInfo(mediaDetails) {
             </td>
           </tr>
           <tr>
-            <td class="info-table-label">🎭 Жанры</td>
-            <td class="info-table-val">
-              <div class="cinema-meta-chips-wrap">
+            <td class="info-table-label" style="vertical-align: top !important; padding: 6px 8px !important;">🎭 Жанры</td>
+            <td class="info-table-val" style="vertical-align: top !important; padding: 6px 8px !important;">
+              <div class="cinema-meta-chips-wrap" style="display: flex !important; flex-wrap: wrap !important; gap: 4px !important; justify-content: flex-end !important;">
                 ${formattedGenres.map(g => `
                   <button type="button" class="cinema-meta-chip genre-chip" data-genre="${g}" title="Показать все фильмы в жанре ${g}">
                     <span class="genre-icon">${getGenreIcon(g)}</span>
@@ -10609,6 +10766,20 @@ export async function openPersonModal(personId, personName) {
   const body = document.getElementById('person-modal-body');
   if (!modal || !body) return;
 
+  modal.style.setProperty('z-index', '120000', 'important');
+  const closeBtn = modal.querySelector('.storm-modal-close');
+  if (closeBtn) {
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      modal.classList.remove('is-open');
+    };
+  }
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('is-open');
+    }
+  };
+
   if (title) title.textContent = personName ? `Фильмография: ${personName}` : 'Фильмография';
   modal.classList.add('is-open');
 
@@ -10620,11 +10791,18 @@ export async function openPersonModal(personId, personName) {
   `;
 
   try {
-    const res = await fetch(`/api/media/person?id=${encodeURIComponent(personId)}`);
+    const queryParams = new URLSearchParams({
+      id: String(personId || '').trim(),
+      name: String(personName || '').trim()
+    });
+    const res = await fetch(`/api/media/person?${queryParams.toString()}`);
     if (!res.ok) throw new Error('Не удалось загрузить данные персоны');
     const data = await res.json();
-    const person = data.person || {};
-    const items = data.items || [];
+    const person = data.person || { name: personName || 'Персона', known_for: 'Кинематографист', photo: 'assets/avatar_default.svg' };
+    let items = Array.isArray(data.items) ? [...data.items] : [];
+    if (items.length === 0 && currentMedia && currentMedia.title) {
+      items.push(currentMedia);
+    }
 
     let formattedBirthday = '';
     if (person.birthday) {
@@ -10663,7 +10841,7 @@ export async function openPersonModal(personId, personName) {
         ` : items.map(item => `
           <div class="person-media-card" data-id="${item.id}" data-source="${item.source || 'tmdb'}">
             <div class="person-media-poster-box">
-              <img src="${(item.poster && !item.poster.startsWith('assets/')) ? `/api/media/image-proxy?url=${encodeURIComponent(item.poster)}` : (item.poster || 'assets/favicon.svg')}" alt="${escapeHtml(item.title || '')}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
+              <img src="${(item.poster && !item.poster.startsWith('assets/') && !item.poster.startsWith('/api/')) ? `/api/media/image-proxy?url=${encodeURIComponent(item.poster)}` : (item.poster || 'assets/favicon.svg')}" alt="${escapeHtml(item.title || '')}" class="person-media-poster" loading="lazy" onerror="this.src='assets/favicon.svg'">
               <span class="person-media-rating">★ ${item.rating || '—'}</span>
               <span class="person-media-badge-4k" title="Воспроизведение в 4K Ultra HD качестве">4K UHD</span>
             </div>
@@ -10738,6 +10916,11 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   const container = document.getElementById('series-seasons-container');
   if (!container) return;
 
+  if (quickBarSeriesData?.type === 'movie') {
+    container.style.display = 'none';
+    return;
+  }
+
   const detType = detectClientMediaType(mediaDetails);
   const isMovie = !checkIfMediaIsSeries(mediaDetails) && !checkIfMediaIsSeries(currentMedia) &&
                   (detType === 'movie' || detType === 'cartoon' || detType === 'anime-movie' ||
@@ -10768,7 +10951,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
 
   let seasons = mediaDetails.seasons || [];
 
-  if (quickBarSeriesData?.seasons && quickBarSeriesData.seasons.length > seasons.length) {
+  if (quickBarSeriesData?.type !== 'movie' && quickBarSeriesData?.seasons && quickBarSeriesData.seasons.length > seasons.length) {
     seasons = quickBarSeriesData.seasons.map(qs => {
       const existing = (mediaDetails.seasons || []).find(s => s.season_number === qs.season);
       return {
@@ -10888,6 +11071,52 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   }
   if (!activeEpisodeNum) {
     activeEpisodeNum = 1;
+  }
+
+  function proxyMediaImageUrl(rawUrl, fallbackTitle = '') {
+    if (!rawUrl || rawUrl === 'assets/favicon.svg') return '';
+    const u = String(rawUrl).trim();
+    if (!u || u === 'assets/favicon.svg') return '';
+    if (u.startsWith('/api/media/image-proxy') || u.startsWith('data:') || u.startsWith('assets/')) return u;
+    if (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('//')) {
+      const full = u.startsWith('//') ? 'https:' + u : u;
+      return `/api/media/image-proxy?url=${encodeURIComponent(full)}&title=${encodeURIComponent(fallbackTitle)}`;
+    }
+    return u;
+  }
+
+  function resolveEpisodeThumbUrl(ep, idx = 0) {
+    const cleanT = cleanVideoTitle(mediaDetails.title || currentMedia?.title || '');
+    const primary = ep?.still || ep?.still_path || ep?.preview || '';
+    const gallery = mediaDetails?.screenshots || mediaDetails?.screenshot_images || mediaDetails?.frames ||
+                    currentMedia?.screenshots || currentMedia?.screenshot_images || currentMedia?.frames || [];
+    const backdrop = mediaDetails?.backdrop || mediaDetails?.backdrop_path || currentMedia?.backdrop || '';
+    const poster = mediaDetails?.poster || currentMedia?.poster || '';
+
+    // Если primary не пустой и не равен общему постеру/заглушке — используем его
+    if (primary && primary !== 'assets/favicon.svg' && primary !== poster) {
+      const proxied = proxyMediaImageUrl(primary, cleanT);
+      if (proxied) return proxied;
+    }
+    // Если есть кадры из галереи релиза — берем кадр по номеру серии
+    if (Array.isArray(gallery) && gallery.length > 0) {
+      const frameCandidate = gallery[idx % gallery.length];
+      const proxiedFrame = proxyMediaImageUrl(frameCandidate, cleanT);
+      if (proxiedFrame) return proxiedFrame;
+    }
+    if (backdrop) {
+      const proxiedBg = proxyMediaImageUrl(backdrop, cleanT);
+      if (proxiedBg) return proxiedBg;
+    }
+    if (primary && primary !== 'assets/favicon.svg') {
+      const proxiedPrim = proxyMediaImageUrl(primary, cleanT);
+      if (proxiedPrim) return proxiedPrim;
+    }
+    if (poster && poster !== 'assets/favicon.svg') {
+      const proxiedPoster = proxyMediaImageUrl(poster, cleanT);
+      if (proxiedPoster) return proxiedPoster;
+    }
+    return `/api/media/image-proxy?title=${encodeURIComponent(cleanT)}`;
   }
 
   function updateEpisodeSynopsis(ep) {
@@ -11012,7 +11241,7 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         }
 
         // Если из API не пришли детальные серии, проверяем quickBarSeriesData
-        if ((!episodes || episodes.length === 0) && quickBarSeriesData?.seasons) {
+        if ((!episodes || episodes.length === 0) && quickBarSeriesData?.type !== 'movie' && quickBarSeriesData?.seasons) {
           const qSeason = quickBarSeriesData.seasons.find(s => s.season === seasonNum);
           if (qSeason && qSeason.episodes?.length > 0) {
             episodes = qSeason.episodes.map(qe => ({
@@ -11156,16 +11385,19 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
         updateEpisodeSynopsis(initialEp);
       }
 
-      gridEl.innerHTML = episodes.map(ep => {
+      const fallbackPosterThumb = proxyMediaImageUrl(mediaDetails.poster || currentMedia?.poster || '', cleanVideoTitle(mediaDetails.title || '')) || 'assets/favicon.svg';
+
+      gridEl.innerHTML = episodes.map((ep, idx) => {
         const isEpActive = ep.episode_number === effectiveTargetEp;
         const isWatched = watchedSet.has(ep.episode_number);
         const epStatusLabel = isWatched ? '✓ Просмотрено' : (isEpActive ? '▶ Смотрю' : 'Не просмотрено');
         const epStatusClass = isWatched ? 'completed' : (isEpActive ? 'watching' : 'planned');
+        const thumbUrl = resolveEpisodeThumbUrl(ep, idx);
 
         return `
         <div class="series-episode-card storm-focusable ${isEpActive ? 'active' : ''} ${isWatched ? 'watched' : ''}" data-ep-num="${ep.episode_number}" tabindex="0">
           <div class="series-episode-thumb-box">
-            <img src="${ep.still || ep.still_path || 'assets/favicon.svg'}" alt="${escapeHtml(ep.name)}" class="series-episode-thumb" loading="lazy" onerror="this.src='assets/favicon.svg'">
+            <img src="${thumbUrl}" alt="${escapeHtml(ep.name)}" class="series-episode-thumb" loading="lazy" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${fallbackPosterThumb}';}else{this.src='assets/favicon.svg';}">
             <div class="series-episode-play-overlay"><span>▶</span></div>
             <span class="series-episode-badge">Серия ${ep.episode_number}</span>
             ${ep.duration ? `<span class="series-episode-duration">${ep.duration}</span>` : ''}

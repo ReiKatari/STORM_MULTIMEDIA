@@ -590,7 +590,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '7d',
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     } else {
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     }
@@ -2391,76 +2391,33 @@ async function executeUnifiedSearch(query, source = 'all') {
     const resolvedFf = resolveFanFilmUrl(title);
     const fanfilmUrl = resolvedFf || it.fanfilm_4k_url || (it.source === 'fanfilm4k' && cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(title)}`);
 
-    const unifiedPlayers = [];
-
-    // #1 FanFilm 4K Ultra HD
-    unifiedPlayers.push({
-      id: 'fanfilm4k_uhd',
-      name: '4K Ultra HD Плеер (FanFilm4K)',
-      type: 'iframe',
-      quality: '4K UHD',
-      badge: 'FANFILM 4K',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
-      speed: '💎 Премиум 4K CDN',
-      url: fanfilmUrl,
-      is_recommended: true,
-      recommended_badge: '🔥 4K Рекомендуемый'
+    const unifiedPlayers = getAvailablePlayers({
+      kp_id: it.kp_id,
+      imdb_id: it.imdb_id,
+      title,
+      year: it.year,
+      media_type: it.media_type,
+      genres: it.genres,
+      source: it.source,
+      fanfilm_4k_url: fanfilmUrl,
+      trailer_url: it.trailer_url,
+      is_upcoming: it.is_upcoming
     });
 
-    // #2 Kinobox Мультиплеер (Kodik, Collaps 4K, Alloha, HDRezka)
-    const kinoboxUrl = it.kinobox_url || `https://kodikplayer.com/find-player?title=${encodeURIComponent(title)}&year=${it.year || ''}`;
-    unifiedPlayers.push({
-      id: 'kinobox_universal',
-      name: 'Kinobox Мультиплеер (Kodik, Collaps, Alloha, Balda, HDRezka)',
-      type: 'iframe',
-      quality: '1080p FHD',
-      badge: 'МУЛЬТИПЛЕЕР',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Автовыбор лучшей озвучки и балансера',
-      speed: '⚡ Быстрый CDN',
-      url: kinoboxUrl,
-      is_recommended: false
-    });
-
-    // #3 VK Видео
+    // Добавляем любые специфические плееры (например AniLibria, Shikimori, прямой VK/RuTube)
     if (it.vk_embed_url) {
-      unifiedPlayers.push({
-        id: 'vk_video_stream',
-        name: 'VK Видео (Фильмы, сериалы и дубляж)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'VK ВИДЕО',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальный плеер VK Видео',
-        speed: '⚡ РФ CDN',
-        url: it.vk_embed_url,
-        is_recommended: false
-      });
+      const existingVk = unifiedPlayers.find(p => p.id === 'vk_video_stream');
+      if (existingVk) {
+        existingVk.url = it.vk_embed_url;
+      }
     }
-
-    // #4 RuTube
     if (it.rutube_id) {
-      const rutubePlayUrl = String(it.rutube_id).startsWith('http') ? it.rutube_id : `https://rutube.ru/play/embed/${String(it.rutube_id).replace(/^rutube_/, '')}`;
-      unifiedPlayers.push({
-        id: 'rutube_stream',
-        name: 'RuTube (Резервный поток / Wink)',
-        type: 'iframe',
-        quality: '1080p FHD',
-        badge: 'RUTUBE',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальный поток RuTube',
-        speed: '⚡ РФ Балансер',
-        url: rutubePlayUrl,
-        is_recommended: false
-      });
+      const rutubePlayUrl = String(it.rutube_id).startsWith('http') ? it.rutube_id : `/api/player/rutube-embed/${String(it.rutube_id).replace(/^rutube_/, '')}`;
+      const existingRu = unifiedPlayers.find(p => p.id === 'rutube_stream');
+      if (existingRu) {
+        existingRu.url = rutubePlayUrl;
+      }
     }
-
-    // Добавляем любые специфические плееры (например AniLibria, Shikimori)
     if (Array.isArray(it.players) && it.players.length > 0) {
       for (const p of it.players) {
         if (!unifiedPlayers.some(up => up.id === p.id)) {
@@ -2657,8 +2614,16 @@ app.get('/api/media/rutube-m3u8', async (req, res) => {
     // Перезаписываем все URL подпотоков через наш быстрый стриминг-прокси
     const lines = text.split('\n').map(line => {
       const trimmed = line.trim();
-      if (trimmed.startsWith('http')) {
-        return `/api/media/rutube-proxy?url=${encodeURIComponent(trimmed)}`;
+      if (!trimmed) return line;
+      if (!trimmed.startsWith('#')) {
+        const abs = trimmed.startsWith('http') ? trimmed : new URL(trimmed, opts.m3u8).href;
+        return `/api/media/rutube-proxy?url=${encodeURIComponent(abs)}`;
+      }
+      if (trimmed.includes('URI="')) {
+        return trimmed.replace(/URI="([^"]+)"/g, (_, u) => {
+          const abs = u.startsWith('http') ? u : new URL(u, opts.m3u8).href;
+          return `URI="/api/media/rutube-proxy?url=${encodeURIComponent(abs)}"`;
+        });
       }
       return line;
     });
@@ -2707,6 +2672,12 @@ app.get('/api/media/rutube-proxy', async (req, res) => {
           const abs = trimmed.startsWith('http') ? trimmed : new URL(trimmed, targetUrl).href;
           return `/api/media/rutube-proxy?url=${encodeURIComponent(abs)}`;
         }
+        if (trimmed.includes('URI="')) {
+          return trimmed.replace(/URI="([^"]+)"/g, (_, u) => {
+            const abs = u.startsWith('http') ? u : new URL(u, targetUrl).href;
+            return `URI="/api/media/rutube-proxy?url=${encodeURIComponent(abs)}"`;
+          });
+        }
         return line;
       });
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
@@ -2734,145 +2705,203 @@ app.get('/api/media/rutube-proxy', async (req, res) => {
   }
 });
 
-// Проксированный RuTube плеер с тотальной блокировкой рекламы, VAST и скрытием кнопки «Смотреть на RUTUBE»
+// Нативный HLS плеер RuTube через серверный прокси /api/media/rutube-m3u8 без CORS-ошибок и рекламы
 app.get('/api/player/rutube-embed/:id', async (req, res) => {
   try {
     const id = (req.params.id || '').trim();
     if (!id) return res.status(400).send('Missing id');
-    const response = await fetch(`https://rutube.ru/play/embed/${id}?skinColor=00d2ff&autoPlay=1`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Referer': 'https://rutube.ru/'
-      }
-    });
-    if (!response.ok) {
-      return res.redirect(302, `https://rutube.ru/play/embed/${id}?skinColor=00d2ff&autoPlay=1`);
-    }
-    let html = await response.text();
-
-    const antiAdAndBrandingInjection = `
-      <style id="storm-rutube-cleaner">
-        [class*="watch-on-rutube"], [class*="watchOnRutube"], [class*="watch_on_rutube"],
-        [class*="openInApp"], [class*="open-in-app"], [class*="watermark"], [class*="logoContainer"],
-        [class*="rutube-logo"], a[href*="rutube.ru"], button[aria-label*="RUTUBE"],
-        button[aria-label*="Rutube"], div[class*="branding"], a[class*="Button"],
-        div[class*="watchButton"], button[class*="watchButton"], [class*="ad-"], [class*="adv-"],
-        .vast-container, [id*="banner"], [class*="banner"] {
-          display: none !important;
-          opacity: 0 !important;
-          visibility: hidden !important;
-          pointer-events: none !important;
-          width: 0 !important;
-          height: 0 !important;
-        }
-      </style>
-      <script>
-        (function() {
-          // STORM VAST & Video Ad Neutralizer
-          try {
-            var emptyVast = '<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"></VAST>';
-            var origFetch = window.fetch;
-            window.fetch = function(input, init) {
-              var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-              var low = String(url || '').toLowerCase();
-              if (low.includes('/api/v1/ad') || low.includes('/gowast/') || low.includes('ssp.rutube.ru') ||
-                  low.includes('yast.rutube.ru') || low.includes('goya.rutube.ru') || low.includes('/adonline/') ||
-                  low.includes('/banner/') || low.includes('preroll') || low.includes('vast') || low.includes('adsystem')) {
-                return Promise.resolve(new Response(emptyVast, {
-                  status: 200,
-                  headers: { 'Content-Type': 'application/xml; charset=utf-8' }
-                }));
-              }
-              return origFetch.apply(this, arguments);
-            };
-
-            var origOpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method, url) {
-              var low = String(url || '').toLowerCase();
-              if (low.includes('/api/v1/ad') || low.includes('/gowast/') || low.includes('ssp.rutube.ru') ||
-                  low.includes('yast.rutube.ru') || low.includes('goya.rutube.ru') || low.includes('/adonline/') ||
-                  low.includes('/banner/') || low.includes('preroll') || low.includes('vast') || low.includes('adsystem')) {
-                this._isBlockedAd = true;
-              }
-              return origOpen.apply(this, arguments);
-            };
-
-            var origSend = XMLHttpRequest.prototype.send;
-            XMLHttpRequest.prototype.send = function() {
-              if (this._isBlockedAd) {
-                var self = this;
-                setTimeout(function() {
-                  Object.defineProperty(self, 'readyState', { value: 4, writable: false });
-                  Object.defineProperty(self, 'status', { value: 200, writable: false });
-                  Object.defineProperty(self, 'statusText', { value: 'OK', writable: false });
-                  Object.defineProperty(self, 'responseText', { value: emptyVast, writable: false });
-                  Object.defineProperty(self, 'response', { value: emptyVast, writable: false });
-                  if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
-                  if (typeof self.onload === 'function') self.onload();
-                }, 5);
-                return;
-              }
-              return origSend.apply(this, arguments);
-            };
-
-            window.open = function() { return null; };
-          } catch(e) {}
-
-          function purgeRutubeArtifacts() {
-            try {
-              var all = document.querySelectorAll('button, a, span, div, p');
-              for (var i = 0; i < all.length; i++) {
-                var el = all[i];
-                var txt = (el.innerText || el.textContent || '').trim();
-                if (txt === 'Смотреть на RUTUBE' || txt === 'Смотреть на Rutube' || txt.indexOf('Смотреть на RUTUBE') !== -1) {
-                  var btn = el.closest('button, a, [role="button"], div[class*="button"]') || el;
-                  btn.style.setProperty('display', 'none', 'important');
-                  btn.style.setProperty('visibility', 'hidden', 'important');
-                  btn.style.setProperty('pointer-events', 'none', 'important');
-                }
-              }
-
-              // Авто-пропуск любого короткого рекламного ролика
-              var vids = document.querySelectorAll('video');
-              for (var k = 0; k < vids.length; k++) {
-                var v = vids[k];
-                if (v && v.duration && v.duration < 65 && v.duration > 2) {
-                  v.muted = true;
-                  if (v.playbackRate < 10) v.playbackRate = 16;
-                  if (v.currentTime < v.duration - 0.2) v.currentTime = v.duration;
-                }
-              }
-
-              // Авто-клик по кнопкам пропуска
-              var skipBtns = document.querySelectorAll('.skip-ad, .ad-skip, .vast-skip-button, button[class*="skip"], [class*="skip"][class*="ad"]');
-              for (var s = 0; s < skipBtns.length; s++) {
-                if (skipBtns[s].offsetParent !== null) skipBtns[s].click();
-              }
-            } catch (_) {}
-          }
-
-          var obs = new MutationObserver(purgeRutubeArtifacts);
-          obs.observe(document.documentElement, { childList: true, subtree: true });
-          setInterval(purgeRutubeArtifacts, 200);
-          window.addEventListener('DOMContentLoaded', purgeRutubeArtifacts);
-          window.addEventListener('load', purgeRutubeArtifacts);
-        })();
-      </script>
-    `;
-
-    if (html.includes('</head>')) {
-      html = html.replace('</head>', `${antiAdAndBrandingInjection}</head>`);
-    } else {
-      html = antiAdAndBrandingInjection + html;
-    }
+    const opts = await getRuTubePlayOptions(id);
+    const hasHls = Boolean(opts && opts.m3u8);
+    const poster = (opts && opts.thumbnail) ? String(opts.thumbnail).replace(/"/g, '&quot;') : '';
+    const m3u8Url = `/api/media/rutube-m3u8?id=${encodeURIComponent(id)}`;
+    const directEmbedUrl = `https://rutube.ru/play/embed/${encodeURIComponent(id)}?skinColor=00d2ff&autoPlay=0`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('X-Frame-Options', 'ALLOWALL');
-    res.send(html);
+
+    if (!hasHls) {
+      return res.send(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>html,body,iframe{margin:0;padding:0;width:100%;height:100%;background:#000;border:0;overflow:hidden}</style>
+</head>
+<body>
+  <iframe src="${directEmbedUrl}" allow="fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe>
+</body>
+</html>`);
+    }
+
+    return res.send(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>STORM HLS Player</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #000; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #player-wrap {
+      position: relative; width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center; background: #000;
+    }
+    video {
+      width: 100%; height: 100%; object-fit: contain; background: #000; outline: none;
+    }
+    #quality-bar {
+      position: absolute; top: 12px; right: 14px; z-index: 20;
+      display: none; gap: 6px; align-items: center;
+      background: rgba(10, 14, 24, 0.78); border: 1px solid rgba(0, 210, 255, 0.35);
+      padding: 4px 8px; border-radius: 8px; backdrop-filter: blur(8px);
+    }
+    #quality-select {
+      background: transparent; color: #e2e8f0; border: none;
+      font-size: 12px; font-weight: 700; cursor: pointer; outline: none;
+    }
+    #quality-select option { background: #0f172a; color: #fff; }
+    #storm-rutube-big-play {
+      position: absolute; z-index: 15;
+      width: 76px; height: 76px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(0, 240, 255, 0.95), rgba(0, 119, 255, 0.92));
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      box-shadow: 0 10px 30px rgba(0, 210, 255, 0.45), inset 0 2px 6px rgba(255, 255, 255, 0.4);
+      color: #fff; font-size: 30px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+      padding-left: 5px; box-sizing: border-box; user-select: none;
+    }
+    #storm-rutube-big-play:hover {
+      transform: scale(1.08);
+      box-shadow: 0 14px 36px rgba(0, 240, 255, 0.65), inset 0 2px 8px rgba(255, 255, 255, 0.55);
+    }
+    #storm-rutube-big-play:active {
+      transform: scale(0.95);
+    }
+    #storm-rutube-big-play.is-hidden {
+      opacity: 0; pointer-events: none; transform: scale(0.85);
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+</head>
+<body>
+  <div id="player-wrap">
+    <div id="quality-bar">
+      <select id="quality-select" title="Качество видео"><option value="-1">Авто (HD)</option></select>
+    </div>
+    <div id="storm-rutube-big-play" title="Воспроизвести">▶</div>
+    <video id="storm-rutube-video" controls playsinline preload="metadata" ${poster ? `poster="${poster}"` : ''}></video>
+  </div>
+  <script>
+    (function() {
+      var video = document.getElementById('storm-rutube-video');
+      var bigPlay = document.getElementById('storm-rutube-big-play');
+      var qBar = document.getElementById('quality-bar');
+      var qSel = document.getElementById('quality-select');
+      var src = ${JSON.stringify(m3u8Url)};
+      var fallbackIframeUrl = ${JSON.stringify(directEmbedUrl)};
+      var switchedToIframe = false;
+
+      if (bigPlay && video) {
+        bigPlay.addEventListener('click', function(e) {
+          e.stopPropagation();
+          video.play().catch(function() {});
+        });
+        video.addEventListener('play', function() {
+          bigPlay.classList.add('is-hidden');
+        });
+        video.addEventListener('playing', function() {
+          bigPlay.classList.add('is-hidden');
+        });
+        video.addEventListener('pause', function() {
+          bigPlay.classList.remove('is-hidden');
+        });
+      }
+
+      function fallbackToNativeIframe() {
+        if (switchedToIframe) return;
+        switchedToIframe = true;
+        var wrap = document.getElementById('player-wrap');
+        if (wrap) {
+          wrap.innerHTML = '<iframe src="' + fallbackIframeUrl + '" style="width:100%;height:100%;border:0" allow="fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe>';
+        }
+      }
+
+      if (window.Hls && Hls.isSupported()) {
+        var hls = new Hls({
+          enableWorker: true,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60
+        });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, function(_, data) {
+          if (data && Array.isArray(data.levels) && data.levels.length > 1) {
+            qBar.style.display = 'flex';
+            var seen = {};
+            data.levels.forEach(function(lvl, idx) {
+              var h = lvl.height || 0;
+              if (h && !seen[h]) {
+                seen[h] = true;
+                var opt = document.createElement('option');
+                opt.value = String(idx);
+                opt.textContent = h + 'p';
+                qSel.appendChild(opt);
+              }
+            });
+            var bestIdx = -1;
+            var bestH = 0;
+            data.levels.forEach(function(lvl, idx) {
+              if ((lvl.height || 0) >= bestH && (lvl.height || 0) <= 1080) {
+                bestH = lvl.height || 0;
+                bestIdx = idx;
+              }
+            });
+            if (bestIdx >= 0) {
+              hls.currentLevel = bestIdx;
+              qSel.value = String(bestIdx);
+            }
+          }
+        });
+        qSel.addEventListener('change', function() {
+          hls.currentLevel = parseInt(qSel.value, 10);
+        });
+        var recoverCount = 0;
+        hls.on(Hls.Events.ERROR, function(_, data) {
+          if (data && data.fatal) {
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR && recoverCount < 2) {
+              recoverCount++;
+              hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && recoverCount < 2) {
+              recoverCount++;
+              hls.recoverMediaError();
+            } else {
+              fallbackToNativeIframe();
+            }
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = src;
+        video.addEventListener('error', fallbackToNativeIframe);
+      } else {
+        fallbackToNativeIframe();
+      }
+
+      window.addEventListener('message', function(e) {
+        var d = e.data || {};
+        if (d.type === 'STORM_SET_PLAYBACK_RATE' && video) {
+          video.playbackRate = Number(d.rate) || 1;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>`);
   } catch (e) {
-    res.redirect(302, `https://rutube.ru/play/embed/${req.params.id}?skinColor=00d2ff&autoPlay=1`);
+    res.redirect(302, `https://rutube.ru/play/embed/${req.params.id}?skinColor=00d2ff&autoPlay=0`);
   }
 });
 
@@ -3019,7 +3048,7 @@ app.get('/api/media/item', async (req, res) => {
         id: 'vk_video_stream',
         name: 'VK Видео (Официальный плеер)',
         type: 'iframe',
-        url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1&js_api=1&muted=0&mute=0',
+        url: 'https://vk.com/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0',
         quality: '1080p FHD / 4K',
         badge: 'VK ВИДЕО',
         status: 'working',
@@ -3044,7 +3073,7 @@ app.get('/api/media/item', async (req, res) => {
         id: 'rutube_stream',
         name: 'RuTube (Официальный поток / Wink)',
         type: 'iframe',
-        url: `https://rutube.ru/play/embed/${cleanRuId}?skinColor=00d2ff&autoPlay=1`,
+        url: `https://rutube.ru/play/embed/${cleanRuId}?skinColor=00d2ff&autoPlay=0`,
         quality: '1080p FHD',
         badge: 'RUTUBE',
         status: 'working',
@@ -3088,7 +3117,7 @@ app.get('/api/media/item', async (req, res) => {
           status_label: '🟢 Онлайн',
           is_recommended: true,
           recommended_badge: '🔥 Рекомендуемый',
-          url: `https://vkvideo.ru/video_ext.php?oid=${oid}&id=${vid}&hd=2&autoplay=1&js_api=1&muted=0&mute=0`
+          url: `https://vk.com/video_ext.php?oid=${oid}&id=${vid}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`
         });
       } else {
         const resolved = await resolveVkVideoPlayer(videoTitle, req.query.year);
@@ -3112,7 +3141,7 @@ app.get('/api/media/item', async (req, res) => {
         status_label: '🟢 Онлайн',
         audio_info: 'Официальный лицензионный каталог RuTube и Wink',
         speed: '⚡ Российский CDN',
-        url: `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=1`
+        url: `https://rutube.ru/play/embed/search/?query=${ruSearchQ}&autoplay=0`
       });
 
       mediaDetails = {
@@ -3149,7 +3178,7 @@ app.get('/api/media/item', async (req, res) => {
       }
 
       // Проверяем, является ли релиз ожидаемой новинкой / не вышедшим в прокат
-      const isKnownUnreleased = /кэрри|carrie|чужая мама|other mommy/i.test(mediaDetails.title || req.query.title || '') && (parseInt(mediaDetails.year || req.query.year || '2026', 10) >= 2026 || /flanagan|флэнаган|blake|savage/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+      const isKnownUnreleased = /кэрри|carrie/i.test(mediaDetails.title || req.query.title || '') && /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || ''));
       const isCarrieUnreleased = isKnownUnreleased;
       let isReleaseUpcoming = isKnownUnreleased || Boolean(
         String(id || '').startsWith('tmdb_up_') ||
@@ -3227,13 +3256,22 @@ app.get('/api/media/item', async (req, res) => {
         }
       }
     } else {
-      let targetLookup = url || id;
-      if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || !String(targetLookup).trim() || String(targetLookup).includes('undefined')) {
-        targetLookup = resolveFanFilmUrl(req.query.title || '') || '';
+      let targetLookup = String(url || id || '').replace(/^ff_/, '').trim();
+      if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || targetLookup.includes('undefined') || /^\d+$/.test(targetLookup)) {
+        targetLookup = resolveFanFilmUrl(req.query.title || '') || targetLookup || '';
       }
-      if (targetLookup && targetLookup !== 'undefined' && targetLookup !== 'null' && String(targetLookup).trim() !== '') {
+      if (targetLookup && targetLookup !== 'undefined' && targetLookup !== 'null') {
         try {
           mediaDetails = await getFanFilmDetails(targetLookup);
+          if ((!mediaDetails || !mediaDetails.title) && req.query.title) {
+            const knownDirect = resolveFanFilmUrl(req.query.title);
+            if (knownDirect && knownDirect !== targetLookup) {
+              const retryDetails = await getFanFilmDetails(knownDirect);
+              if (retryDetails && retryDetails.title) {
+                mediaDetails = retryDetails;
+              }
+            }
+          }
           if (mediaDetails) {
             if (!mediaDetails.fanfilm_4k_url && url && String(url).startsWith('http') && !url.includes('undefined')) {
               mediaDetails.fanfilm_4k_url = url;
@@ -3365,20 +3403,26 @@ app.get('/api/media/item', async (req, res) => {
           .replace(/\s*[\(\[]\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|19\d\d|20\d\d).*?[\)\]]/gi, '')
           .replace(/\s*4[kк]\s*$/gi, '')
           .trim();
-        const tmdbSearch = await searchTmdb(cleanSearchTitle || mediaDetails.title, 1);
+        const tmdbSearch = await Promise.race([
+          searchTmdb(cleanSearchTitle || mediaDetails.title, 1),
+          new Promise(r => setTimeout(() => r({ items: [] }), 2200))
+        ]);
         if (tmdbSearch.items?.length > 0) {
           const matchByYear = mediaDetails.year ? tmdbSearch.items.find(it => String(it.year) === String(mediaDetails.year)) : null;
           let matchByType = isSeries ? tmdbSearch.items.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
           if (isSeries && !matchByType && cleanSearchTitle.toLowerCase().includes('ричер')) {
-            const reacherTv = await searchTmdb('Ричер', 1);
+            const reacherTv = await Promise.race([searchTmdb('Ричер', 1), new Promise(r => setTimeout(() => r({ items: [] }), 1800))]);
             matchByType = (reacherTv?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv') || { id: '108978', media_type: 'series' };
           }
           if (isSeries && !matchByType && (cleanSearchTitle.toLowerCase().includes('материя') || cleanSearchTitle.toLowerCase().includes('dark matter'))) {
-            const dmTv = await searchTmdb('Dark Matter', 1);
+            const dmTv = await Promise.race([searchTmdb('Dark Matter', 1), new Promise(r => setTimeout(() => r({ items: [] }), 1800))]);
             matchByType = (dmTv?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv' || String(it.id) === '196322') || { id: '196322', media_type: 'series' };
           }
           const first = (isSeries && matchByType) || matchByYear || tmdbSearch.items[0];
-          const enriched = await getTmdbItemDetails(first.id, isSeries ? 'series' : (mediaDetails.media_type || first.media_type), cleanSearchTitle || mediaDetails.title);
+          const enriched = await Promise.race([
+            getTmdbItemDetails(first.id, isSeries ? 'series' : (mediaDetails.media_type || first.media_type), cleanSearchTitle || mediaDetails.title),
+            new Promise(r => setTimeout(() => r(null), 2200))
+          ]);
           if (enriched) {
             if ((!hasValidDesc || (enriched.description && enriched.description.length > (mediaDetails.description || '').length)) && enriched.description && enriched.description.length >= 60) {
               mediaDetails.description = enriched.description;
@@ -3452,21 +3496,26 @@ app.get('/api/media/item', async (req, res) => {
 
     // Гарантированное определение даты премьеры и года выпуска через каскад TheTVDB / TMDB / Kinopoisk
     try {
-      const resolvedPremiereData = await resolveMediaPremiereAndYear({
-        title: mediaDetails.title,
-        originalTitle: mediaDetails.original_title,
-        link: mediaDetails.fanfilm_4k_url || mediaDetails.link || '',
-        poster: mediaDetails.poster,
-        year: mediaDetails.year || req.query.year || '',
-        premiere: mediaDetails.premiere || '',
-        releaseDate: mediaDetails.release_date || '',
-        mediaType: mediaDetails.media_type || req.query.media_type || 'movie',
-        kpId: mediaDetails.kp_id || ''
-      });
+      const resolvedPremiereData = await Promise.race([
+        resolveMediaPremiereAndYear({
+          title: mediaDetails.title,
+          originalTitle: mediaDetails.original_title,
+          link: mediaDetails.fanfilm_4k_url || mediaDetails.link || '',
+          poster: mediaDetails.poster,
+          year: mediaDetails.year || req.query.year || '',
+          premiere: mediaDetails.premiere || '',
+          releaseDate: mediaDetails.release_date || '',
+          mediaType: mediaDetails.media_type || req.query.media_type || 'movie',
+          kpId: mediaDetails.kp_id || ''
+        }),
+        new Promise(r => setTimeout(() => r(null), 2000))
+      ]);
 
-      mediaDetails.year = resolvedPremiereData.year || mediaDetails.year;
-      mediaDetails.premiere = resolvedPremiereData.premiere;
-      mediaDetails.release_date = resolvedPremiereData.release_date;
+      if (resolvedPremiereData) {
+        mediaDetails.year = resolvedPremiereData.year || mediaDetails.year;
+        mediaDetails.premiere = resolvedPremiereData.premiere || mediaDetails.premiere;
+        mediaDetails.release_date = resolvedPremiereData.release_date || mediaDetails.release_date;
+      }
     } catch (e) {
       console.warn('Ошибка resolveMediaPremiereAndYear:', e.message);
     }
@@ -3477,11 +3526,17 @@ app.get('/api/media/item', async (req, res) => {
     if (!mediaDetails.trivia || mediaDetails.trivia.length === 0) {
       const cleanTitle = (mediaDetails.title || 'Кинорелиз').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
       const uniqueTrivia = [];
-      if (mediaDetails.genres?.length) {
-        uniqueTrivia.push({ type: 'genre', label: 'Жанровое направление', content: `Картина создана в жанре ${mediaDetails.genres.join(', ').toLowerCase()}.` });
+      const genresArr = Array.isArray(mediaDetails.genres)
+        ? mediaDetails.genres
+        : (typeof mediaDetails.genres === 'string' && mediaDetails.genres.trim() ? mediaDetails.genres.split(/[,;/]+/).map(s => s.trim()).filter(Boolean) : []);
+      const countriesArr = Array.isArray(mediaDetails.countries)
+        ? mediaDetails.countries
+        : (typeof mediaDetails.countries === 'string' && mediaDetails.countries.trim() ? mediaDetails.countries.split(/[,;/]+/).map(s => s.trim()).filter(Boolean) : []);
+      if (genresArr.length) {
+        uniqueTrivia.push({ type: 'genre', label: 'Жанровое направление', content: `Картина создана в жанре ${genresArr.join(', ').toLowerCase()}.` });
       }
-      if (mediaDetails.countries?.length) {
-        uniqueTrivia.push({ type: 'country', label: 'Страны производства', content: `Производство кинематографистов: ${mediaDetails.countries.join(', ')}.` });
+      if (countriesArr.length) {
+        uniqueTrivia.push({ type: 'country', label: 'Страны производства', content: `Производство кинематографистов: ${countriesArr.join(', ')}.` });
       }
       if (mediaDetails.duration) {
         uniqueTrivia.push({ type: 'timing', label: 'Хронометраж', content: `Длительность: ${mediaDetails.duration}.` });
@@ -3494,7 +3549,7 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Проверка на статус не вышедшего в цифровой релиз фильма
-    const isKnownUnreleased = /кэрри|carrie|чужая мама|other mommy/i.test(mediaDetails.title || '') && (parseInt(mediaDetails.year || '2026', 10) >= 2026 || /flanagan|флэнаган|blake|savage/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || '')));
+    const isKnownUnreleased = /кэрри|carrie/i.test(mediaDetails.title || '') && /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || ''));
     const isCarrieUnreleased = isKnownUnreleased;
     const isFutureDateCheck = (dateStr) => {
       if (!dateStr) return false;
@@ -3532,8 +3587,12 @@ app.get('/api/media/item', async (req, res) => {
           .trim();
         const ffResults = await searchFanFilm(cleanT);
         if (ffResults && ffResults.length > 0) {
-          const ffItem = ffResults[0];
-          const ffDetails = await getFanFilmDetails(ffItem.link || ffItem.url || ffItem.id);
+          const normTarget = cleanT.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+          const ffItem = ffResults.find(r => {
+            const normR = String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+            return normR && normTarget && (normR === normTarget || normR.startsWith(normTarget + ' ') || normTarget.startsWith(normR + ' ') && normR.split(' ').length >= 2);
+          });
+          const ffDetails = ffItem ? await getFanFilmDetails(ffItem.link || ffItem.url || ffItem.id) : null;
           if (ffDetails) {
             if (ffDetails.fanfilm_4k_url) {
               fanfilmStreamUrl = ffDetails.fanfilm_4k_url;
@@ -3545,7 +3604,7 @@ app.get('/api/media/item', async (req, res) => {
             if (ffDetails.players && ffDetails.players.length > 0) {
               mediaDetails.players = mediaDetails.players || [];
               ffDetails.players.forEach(p => {
-                if (!mediaDetails.players.some(mp => mp.id === p.id || mp.url === p.url)) {
+                if (!mediaDetails.players.some(mp => mp.id === p.id)) {
                   mediaDetails.players.unshift(p);
                 }
               });
@@ -3567,10 +3626,12 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     const hasActualStream = Boolean(
-      (source === 'fanfilm4k' && mediaDetails.fanfilm_4k_url && !mediaDetails.fanfilm_4k_url.includes('830')) ||
+      (mediaDetails.fanfilm_4k_url && !mediaDetails.fanfilm_4k_url.includes('do=search')) ||
+      (mediaDetails.fanfilm_hd_url) ||
       (mediaDetails.vk_embed_url) ||
       (mediaDetails.rutube_id && mediaDetails.rutube_id.length > 15) ||
-      (Array.isArray(mediaDetails.seasons) && mediaDetails.seasons.length > 0)
+      (Array.isArray(mediaDetails.seasons) && mediaDetails.seasons.length > 0) ||
+      (Array.isArray(mediaDetails.players) && mediaDetails.players.length > 0)
     );
 
     const isFutureRelease = Boolean(
@@ -3582,7 +3643,7 @@ app.get('/api/media/item', async (req, res) => {
       isFutureDateCheck(mediaDetails.premiere) ||
       isFutureDateCheck(mediaDetails.digital_release) ||
       isFutureDateCheck(mediaDetails.world_premier) ||
-      (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear() && !mediaDetails.fanfilm_4k_url)
+      (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear() && !mediaDetails.fanfilm_4k_url)
     );
 
     let isUpcoming = isFutureRelease && !hasActualStream;
@@ -3621,7 +3682,7 @@ app.get('/api/media/item', async (req, res) => {
       // Исключаем дубли FanFilm, если fanfilm4k_uhd уже добавлен
       if (p.id === 'fanfilm_4k' && allPlayers.some(ap => ap.id === 'fanfilm4k_uhd')) return;
       if (isLandyshiItem && (p.id === 'kodik_direct' || p.id === 'kinobox_universal')) return;
-      if (!allPlayers.some(ap => ap.url === p.url || ap.id === p.id)) {
+      if (!allPlayers.some(ap => ap.id === p.id)) {
         allPlayers.push(p);
       }
     });
@@ -3796,15 +3857,89 @@ app.get('/api/media/series-episodes', async (req, res) => {
       } catch (e) {}
     }
 
+    // Если серии не найдены в TMDB (например, российские сериалы) — ищем реальные серии и превью на RuTube
+    if ((!data.episodes || data.episodes.length === 0) && cleanTitle) {
+      try {
+        const rtQuery = `${cleanTitle} ${sNum > 1 ? sNum + ' сезон ' : ''}серия`.trim();
+        const rtResults = await searchRuTube(rtQuery);
+        if (Array.isArray(rtResults) && rtResults.length > 0) {
+          const epMap = new Map();
+          for (const rt of rtResults) {
+            const m = String(rt.title || '').match(/(\d+)\s*сери[яие]/i);
+            const epN = m ? parseInt(m[1], 10) : (epMap.size + 1);
+            if (epN >= 1 && epN <= 100 && !epMap.has(epN)) {
+              const rawThumb = rt.poster || rt.thumbnail_url || '';
+              const proxiedThumb = (rawThumb && rawThumb.startsWith('http'))
+                ? `/api/media/image-proxy?url=${encodeURIComponent(rawThumb)}&title=${encodeURIComponent(cleanTitle)}`
+                : `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}`;
+              epMap.set(epN, {
+                episode_number: epN,
+                name: `${epN} серия`,
+                still: proxiedThumb,
+                still_path: proxiedThumb,
+                duration: rt.duration || '48 мин.',
+                air_date: '',
+                overview: `Серия ${epN}. Смотрите ${epN}-ю серию проекта «${cleanTitle}» в высоком разрешении со студийным переводом.`
+              });
+            }
+          }
+          if (epMap.size > 0) {
+            const maxEp = Math.max(...Array.from(epMap.keys()), 8);
+            const built = [];
+            const allThumbs = Array.from(epMap.values()).map(x => x.still).filter(Boolean);
+            for (let i = 1; i <= maxEp; i++) {
+              if (epMap.has(i)) {
+                built.push(epMap.get(i));
+              } else {
+                const thumb = allThumbs.length > 0 ? allThumbs[(i - 1) % allThumbs.length] : `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}`;
+                built.push({
+                  episode_number: i,
+                  name: `${i} серия`,
+                  still: thumb,
+                  still_path: thumb,
+                  duration: '48 мин.',
+                  air_date: '',
+                  overview: `Серия ${i}. Смотрите ${i}-ю серию проекта «${cleanTitle}» в высоком разрешении со студийным переводом.`
+                });
+              }
+            }
+            data.episodes = built;
+            data.overview = `Сезон ${sNum}: официальный сезон из ${built.length} серий.`;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Проксируем все внешние ссылки на превью серий (image.tmdb.org и др.), чтобы они гарантированно открывались в РФ
+    if (Array.isArray(data.episodes) && data.episodes.length > 0) {
+      const fallbackTitle = cleanTitle || 'Сериал';
+      data.episodes = data.episodes.map(ep => {
+        let sUrl = ep.still || ep.still_path || '';
+        if (sUrl && (sUrl.startsWith('http://') || sUrl.startsWith('https://')) && !sUrl.startsWith('/api/media/image-proxy')) {
+          sUrl = `/api/media/image-proxy?url=${encodeURIComponent(sUrl)}&title=${encodeURIComponent(fallbackTitle)}`;
+        } else if (!sUrl || sUrl === 'assets/favicon.svg') {
+          sUrl = `/api/media/image-proxy?title=${encodeURIComponent(fallbackTitle)}`;
+        }
+        return {
+          ...ep,
+          still: sUrl,
+          still_path: sUrl
+        };
+      });
+    }
+
+    let isSynthesizedFallback = false;
     // Если даже после поиска серии не найдены, синтезируем качественные слоты серий для гарантированной работы плеера
     if (!data.episodes || data.episodes.length === 0) {
+      isSynthesizedFallback = true;
       const fallbackTitle = cleanTitle || 'Сериал';
       const fallbackCount = 8;
+      const proxyThumb = `/api/media/image-proxy?title=${encodeURIComponent(fallbackTitle)}`;
       data.episodes = Array.from({ length: fallbackCount }, (_, i) => ({
         episode_number: i + 1,
         name: `${i + 1} серия`,
-        still: 'assets/favicon.svg',
-        still_path: null,
+        still: proxyThumb,
+        still_path: proxyThumb,
         duration: '45 мин.',
         air_date: '',
         overview: `Серия ${i + 1}. Смотрите ${i + 1}-ю серию проекта «${fallbackTitle}» в высоком разрешении со студийным переводом и субтитрами.`
@@ -3812,7 +3947,7 @@ app.get('/api/media/series-episodes', async (req, res) => {
       data.overview = `Сезон ${sNum}: официальный сезон из ${fallbackCount} серий.`;
     }
 
-    if (data && Array.isArray(data.episodes) && data.episodes.length > 0) {
+    if (!isSynthesizedFallback && data && Array.isArray(data.episodes) && data.episodes.length > 0) {
       setCache('series_episodes', cacheKey, data, 86400 * 7);
     }
 
@@ -3820,10 +3955,12 @@ app.get('/api/media/series-episodes', async (req, res) => {
   } catch (err) {
     const cleanTitle = (req.query.title || 'Сериал').replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
     const fallbackCount = 8;
+    const proxyThumb = `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}`;
     const fallbackEpisodes = Array.from({ length: fallbackCount }, (_, i) => ({
       episode_number: i + 1,
       name: `${i + 1} серия`,
-      still: 'assets/favicon.svg',
+      still: proxyThumb,
+      still_path: proxyThumb,
       duration: '45 мин.',
       air_date: '',
       overview: `Серия ${i + 1}. Смотрите ${i + 1}-ю серию проекта «${cleanTitle}» в высоком разрешении.`
@@ -3915,7 +4052,7 @@ app.get('/api/media/vk-episode', async (req, res) => {
         id: match.id,
         owner_id: match.owner_id,
         video_id: match.video_id,
-        embed_url: match.embed_url || `https://vkvideo.ru/video_ext.php?oid=${match.owner_id}&id=${match.video_id}&hd=2&autoplay=1`,
+        embed_url: match.embed_url || `https://vk.com/video_ext.php?oid=${match.owner_id}&id=${match.video_id}&hd=2&autoplay=0`,
         title: match.title
       });
     }
@@ -4579,51 +4716,719 @@ async function getStraversCss(cssUrl, referer) {
   return null;
 }
 
-// Проксирование внутренних API запросов Stravers / Transfusion (/bnsi/movies/..., /events и т.д.) без CORS и preflight блокировок
+// Проксирование внутренних API запросов Stravers / Transfusion (/bnsi/movies/..., /sarn, /vorf, /events и HLS потоков vkvideo.ru/okcdn.ru) без CORS и preflight блокировок
 app.all('/api/player/stravers-api-proxy', express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
   try {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST, OPTIONS, PUT, DELETE, HEAD',
+        'access-control-allow-headers': 'Borth, borth, acceptis, accepts-block, Accepts-Controls, accepts-controls, Authorization, authorization, Range, range, Content-Type, X-Requested-With, *',
+        'access-control-expose-headers': 'Borth, borth, Content-Length, Content-Range, *'
+      });
+      return res.end();
+    }
+
     const targetUrl = req.query.url;
-    if (!targetUrl || (!targetUrl.includes('stravers.live') && !targetUrl.includes('transfusion') && !targetUrl.includes('fanfilm'))) {
+    const isCdnStream = targetUrl && (
+      targetUrl.includes('vkvideo.ru') ||
+      targetUrl.includes('okcdn.ru') ||
+      targetUrl.includes('mycdn.me') ||
+      targetUrl.includes('userapi.com')
+    );
+    if (!targetUrl || (!targetUrl.includes('stravers.live') && !targetUrl.includes('transfusion') && !targetUrl.includes('fanfilm') && !isCdnStream)) {
       return res.status(400).json({ error: 'Неверный URL' });
+    }
+
+    let targetOrigin = 'https://transfusion-as.stravers.live';
+    if (!isCdnStream) {
+      try {
+        targetOrigin = new URL(targetUrl).origin;
+      } catch (_) {}
     }
 
     const headers = {
       'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-      'Referer': 'https://v17.fanfilm4k.media/',
-      'Origin': 'https://v17.fanfilm4k.media'
+      'Accept': req.headers['accept'] || '*/*',
+      'Accept-Language': req.headers['accept-language'] || 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Referer': `${targetOrigin}/`,
+      'Origin': targetOrigin
     };
 
     if (req.headers['borth']) headers['Borth'] = req.headers['borth'];
+    if (req.headers['acceptis']) headers['acceptis'] = req.headers['acceptis'];
+    if (req.headers['accepts-block']) headers['accepts-block'] = req.headers['accepts-block'];
+    if (req.headers['accepts-controls']) headers['Accepts-Controls'] = req.headers['accepts-controls'];
+    if (req.headers['authorization']) headers['Authorization'] = req.headers['authorization'];
+    if (req.headers['range']) headers['Range'] = req.headers['range'];
     if (req.headers['content-type']) headers['Content-Type'] = req.headers['content-type'];
+    if (req.headers['x-requested-with']) headers['X-Requested-With'] = req.headers['x-requested-with'];
 
     const fetchOptions = {
       method: req.method || 'GET',
       headers,
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(10000)
     };
 
-    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Buffer.isBuffer(req.body) && req.body.length > 0) {
-      fetchOptions.body = req.body;
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined && req.body !== null) {
+      if (Buffer.isBuffer(req.body)) {
+        if (req.body.length > 0) fetchOptions.body = req.body;
+      } else if (typeof req.body === 'string') {
+        if (req.body.length > 0) fetchOptions.body = req.body;
+      } else if (typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+        const ct = String(req.headers['content-type'] || '').toLowerCase();
+        if (ct.includes('application/json')) {
+          fetchOptions.body = JSON.stringify(req.body);
+        } else {
+          const params = new URLSearchParams();
+          for (const [k, v] of Object.entries(req.body)) {
+            if (v !== undefined && v !== null) params.append(k, String(v));
+          }
+          fetchOptions.body = params.toString();
+        }
+      }
     }
 
-    const proxyRes = await fetch(targetUrl, fetchOptions);
+    let proxyRes = await fetch(targetUrl, fetchOptions);
+    if (proxyRes.status === 403 && isCdnStream) {
+      const retryHeaders = { ...headers };
+      delete retryHeaders['Referer'];
+      delete retryHeaders['Origin'];
+      proxyRes = await fetch(targetUrl, { ...fetchOptions, headers: retryHeaders });
+    }
+
     const resHeaders = {};
     proxyRes.headers.forEach((val, key) => {
       const lowKey = key.toLowerCase();
-      if (!['content-encoding', 'transfer-encoding', 'connection'].includes(lowKey)) {
+      if (!['content-encoding', 'transfer-encoding', 'connection', 'content-length'].includes(lowKey)) {
         resHeaders[key] = val;
       }
     });
+    const borthVal = proxyRes.headers.get('borth') || proxyRes.headers.get('Borth');
+    if (borthVal) {
+      resHeaders['Borth'] = borthVal;
+    }
 
     resHeaders['access-control-allow-origin'] = '*';
-    resHeaders['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE';
-    resHeaders['access-control-allow-headers'] = '*';
+    resHeaders['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE, HEAD';
+    resHeaders['access-control-allow-headers'] = 'Borth, borth, acceptis, accepts-block, Accepts-Controls, accepts-controls, Authorization, authorization, Range, range, Content-Type, X-Requested-With, *';
+    resHeaders['access-control-expose-headers'] = 'Borth, borth, Content-Length, Content-Range, *';
+
+    const cType = String(proxyRes.headers.get('content-type') || '').toLowerCase();
+    if (proxyRes.ok && (targetUrl.includes('.m3u8') || cType.includes('mpegurl'))) {
+      const m3u8Text = await proxyRes.text();
+      const rewritten = m3u8Text.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return line;
+        if (!trimmed.startsWith('#')) {
+          const abs = trimmed.startsWith('http') ? trimmed : new URL(trimmed, targetUrl).href;
+          return `/api/player/stravers-api-proxy?url=${encodeURIComponent(abs)}`;
+        }
+        if (trimmed.includes('URI="')) {
+          return trimmed.replace(/URI="([^"]+)"/g, (_, u) => {
+            const abs = u.startsWith('http') ? u : new URL(u, targetUrl).href;
+            return `URI="/api/player/stravers-api-proxy?url=${encodeURIComponent(abs)}"`;
+          });
+        }
+        return line;
+      }).join('\n');
+      resHeaders['content-type'] = 'application/vnd.apple.mpegurl; charset=utf-8';
+      res.writeHead(proxyRes.status, resHeaders);
+      return res.end(rewritten);
+    }
 
     res.writeHead(proxyRes.status, resHeaders);
     const resBuffer = await proxyRes.arrayBuffer();
     res.end(Buffer.from(resBuffer));
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+const MEDIA_MATCH_STOPWORDS = new Set([
+  'фильм', 'фильмы', 'сериал', 'сериалы', 'мультфильм', 'мультсериал',
+  'аниме', 'дорама', 'онлайн', 'смотреть', 'бесплатно', 'хорошем',
+  'качестве', 'сезон', 'серия', 'серии', 'часть', 'глава', 'эпизод',
+  'выпуск', 'все', 'полный', 'русском', 'дубляж', 'озвучка', 'трейлер',
+  'тизер', 'обзор', 'фильма', 'сериала', 'the', 'and', 'for', 'with'
+]);
+
+const ORDINAL_TO_NUM = {
+  'первая': '1', 'первый': '1', 'вторая': '2', 'второй': '2',
+  'третья': '3', 'третий': '3', 'четвертая': '4', 'четвертый': '4',
+  'пятая': '5', 'пятый': '5', 'шестая': '6', 'шестой': '6'
+};
+
+function normalizeMatchText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle = '', year = '', season = '', episode = '', pubYear = 0) {
+  const normTarget = normalizeMatchText(cleanTitle);
+  const normCand = normalizeMatchText(candidateTitle);
+  if (!normTarget || !normCand) return -1;
+
+  const sigWords = normTarget.split(' ').filter(w => w.length >= 2 && !MEDIA_MATCH_STOPWORDS.has(w));
+  if (sigWords.length === 0) return -1;
+
+  const candWords = normCand.split(' ').filter(Boolean);
+  let matchedCount = 0;
+  let lastWordMatched = false;
+
+  for (let i = 0; i < sigWords.length; i++) {
+    const w = sigWords[i];
+    const numEquiv = ORDINAL_TO_NUM[w];
+    const isMatched = candWords.some(cw => {
+      if (cw === w) return true;
+      if (numEquiv && cw === numEquiv) return true;
+      if (w.length >= 4 && cw.length >= 4 && Math.abs(cw.length - w.length) <= 2) {
+        const stemLen = Math.min(w.length, cw.length) - 1;
+        if (stemLen >= 3 && cw.slice(0, stemLen) === w.slice(0, stemLen)) return true;
+      }
+      return false;
+    });
+    if (isMatched) {
+      matchedCount++;
+      if (i === sigWords.length - 1) lastWordMatched = true;
+    }
+  }
+
+  if (sigWords.length <= 3) {
+    if (matchedCount < sigWords.length) return -1;
+  } else {
+    if (matchedCount < sigWords.length - 1 || !lastWordMatched) return -1;
+  }
+
+  const hasSeasonReq = Boolean(season && String(season).trim() !== '');
+  if (!hasSeasonReq) {
+    // Для фильмов строго отклоняем сериалы, серии, игровые стримы, разборы, обзоры и аудиокниги
+    if (/\b(?:\d+\s*сезон|сезон\s*\d+|\d+\s*сери[яие]|сери[яие]\s*\d+|сериал|все\s*серии|эпизод\s*\d+|майнкрафт|minecraft|роблокс|roblox|geometry\s*dash|прохождение|стрим|летсплей|разбор|обзор|пересказ|реакция|мнение|объяснени[ея]|аудиокниг[аи]|слушать\s+онлайн|интервью|бэкстейдж|кто\s+из\s+героев|в\s+чем\s+смысл|косплей)\b/i.test(candidateTitle)) {
+      return -1;
+    }
+    // Если в исходном названии нет цифр, отклоняем номерные сиквелы (например, "Обитель зла 2..6") и спин-оффы с подзаголовками
+    if (!/\d/.test(normTarget)) {
+      const escapedTarget = normTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const sequelRe = new RegExp(`\\b${escapedTarget}\\s+[2-9]\\b`, 'i');
+      if (sequelRe.test(normCand)) return -1;
+    }
+    if (normTarget === 'обитель зла' && /\b(?:возмездие|вырождение|проклятие|вендетта|остров\s+смерти|раккун|жизнь\s+после\s+смерти|истребление|апокалипсис|последняя\s+глава|мутация)\b/i.test(normCand)) {
+      return -1;
+    }
+  } else {
+    const sNum = parseInt(season, 10);
+    const epNum = parseInt(episode, 10);
+    if (epNum > 0) {
+      const epMatch = candidateTitle.match(/(\d+)\s*сери[яие]|сери[яие]\s*(\d+)|эпизод\s*(\d+)/i);
+      if (epMatch) {
+        const candEp = parseInt(epMatch[1] || epMatch[2] || epMatch[3], 10);
+        if (candEp && candEp !== epNum) return -1;
+      }
+    }
+    if (sNum > 0) {
+      const sMatch = candidateTitle.match(/(\d+)\s*сезон|сезон\s*(\d+)/i);
+      if (sMatch) {
+        const candS = parseInt(sMatch[1] || sMatch[2], 10);
+        if (candS && candS !== sNum) return -1;
+      }
+    }
+  }
+
+  const reqYear = parseInt(year, 10);
+  if (reqYear >= 1920 && reqYear <= 2030) {
+    const yearMatches = String(candidateTitle).match(/\b(19\d\d|20\d\d)\b/g) || [];
+    for (const ym of yearMatches) {
+      if (normTarget.includes(ym)) continue;
+      const cy = parseInt(ym, 10);
+      if (Math.abs(cy - reqYear) > 1) {
+        return -1;
+      }
+    }
+    if (!hasSeasonReq && reqYear >= 2025 && pubYear > 0 && pubYear < reqYear - 1) {
+      return -1;
+    }
+  }
+
+  let score = 100;
+  if (reqYear >= 1920 && reqYear <= 2030) {
+    if (String(candidateTitle).includes(String(reqYear))) {
+      score += 500;
+    } else if (String(candidateDesc || '').includes(String(reqYear))) {
+      score += 250;
+    } else if (!hasSeasonReq && reqYear >= 2025) {
+      score -= 250;
+    }
+  }
+
+  if (/дубляж|red\s*head\s*sound|hdrezka|профессиональн|лицензи/i.test(candidateTitle)) {
+    score += 200;
+  }
+  if (!hasSeasonReq && /\bфильм\b/i.test(candidateTitle)) {
+    score += 100;
+  }
+  if (/часами\s+выбираешь|телеграм|t\.me\/|подпишись\s+на/i.test(candidateDesc || '')) {
+    score -= 400;
+  }
+
+  return score;
+}
+
+// Помощник поиска реального видеопотока в VK Видео (фильмы, сериалы, озвучки и промо)
+async function resolveBestVkEmbed(title = '', year = '', season = '', episode = '', allowShort = false) {
+  const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  if (!cleanTitle) return '';
+
+  const epSuffix = season ? ` ${season} сезон ${episode || 1} серия` : '';
+  const queries = [
+    `${cleanTitle}${epSuffix} ${year || ''}`.trim(),
+    `${cleanTitle}${epSuffix} фильм`.trim(),
+    cleanTitle
+  ];
+
+  const parseDur = (s) => {
+    if (!s || typeof s !== 'string') return 0;
+    const parts = s.trim().split(':').map(n => parseInt(n, 10));
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+  };
+
+  const candidates = [];
+  const seenKeys = new Set();
+  const minDur = season ? 900 : 3600;
+
+  for (const q of queries.slice(0, 2)) {
+    try {
+      const rawRes = await fetch('https://vk.com/al_video.php?act=search_video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Referer': 'https://vk.com/'
+        },
+        body: `al=1&q=${encodeURIComponent(q)}&offset=0`,
+        signal: AbortSignal.timeout(3200)
+      });
+      if (rawRes.ok) {
+        const buf = await rawRes.arrayBuffer();
+        let text = '';
+        try { text = new TextDecoder('windows-1251').decode(buf); } catch { text = new TextDecoder('utf-8').decode(buf); }
+        const json = JSON.parse(text);
+        const list = json?.payload?.[1]?.[2]?.list || [];
+        for (const it of list) {
+          if (!Array.isArray(it) || it.length < 4 || !it[0] || !it[1]) continue;
+          const oid = it[0];
+          const vid = it[1];
+          const key = `${oid}_${vid}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+
+          const rawTitle = String(it[3] || '')
+            .replace(/&#(\d+);/g, (_, code) => { try { return String.fromCodePoint(parseInt(code, 10)); } catch { return ''; } })
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/<[^>]+>/g, '')
+            .trim();
+          const durStr = typeof it[5] === 'string' ? it[5] : '';
+          const rawSec = typeof it[19] === 'number' ? it[19] : (typeof it[18] === 'number' ? it[18] : 0);
+          const durationSec = rawSec > 0 ? rawSec : parseDur(durStr);
+          if (!allowShort && durationSec < minDur) continue;
+
+          const sc = scoreMediaCandidate(rawTitle, '', cleanTitle, year, season, episode, 0);
+          if (sc < 0) continue;
+
+          const hash = (typeof it[42] === 'string' && /^[a-f0-9]{14,24}$/i.test(it[42]))
+            ? it[42]
+            : (it.find(x => typeof x === 'string' && /^[a-f0-9]{16,22}$/i.test(x)) || '');
+
+          candidates.push({
+            url: `https://vk.com/video_ext.php?oid=${oid}&id=${vid}${hash ? `&hash=${hash}` : ''}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`,
+            score: sc,
+            duration: durationSec
+          });
+        }
+      }
+    } catch (_) {}
+    if (candidates.some(c => c.score >= 500 && c.duration >= 3600)) break;
+  }
+
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.duration - a.duration;
+    });
+    return candidates[0].url;
+  }
+
+  return '';
+}
+
+// Помощник поиска реального видеопотока в RuTube (полные фильмы, сериалы и дублированные видео)
+async function resolveBestRuTubeId(title = '', year = '', season = '', episode = '', variantIndex = 0, allowShort = false) {
+  const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  if (!cleanTitle) return '';
+
+  const epSuffix = season ? ` ${season} сезон ${episode || 1} серия` : '';
+  const rawQueries = year
+    ? [
+        `${cleanTitle}${epSuffix} ${year}`.trim(),
+        `${cleanTitle}${epSuffix} фильм ${year}`.trim(),
+        `${cleanTitle}${epSuffix}`.trim()
+      ]
+    : [
+        `${cleanTitle}${epSuffix}`.trim(),
+        `${cleanTitle} фильм`.trim()
+      ];
+
+  const candidates = [];
+  const seenIds = new Set();
+  const minDur = season ? 900 : 3600;
+
+  for (const rq of rawQueries) {
+    try {
+      const apiRes = await fetch(`https://rutube.ru/api/search/video/?query=${encodeURIComponent(rq)}&page=1&format=json`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://rutube.ru/'
+        },
+        signal: AbortSignal.timeout(3000)
+      });
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        const list = Array.isArray(data?.results)
+          ? data.results.filter(it => it && it.id && /^[a-f0-9]{32}$/i.test(it.id) && !it.is_deleted && !it.is_hidden && !it.is_locked)
+          : [];
+        for (const it of list) {
+          if (seenIds.has(it.id)) continue;
+          seenIds.add(it.id);
+          const dur = parseInt(it.duration, 10) || 0;
+          if (!allowShort && dur < minDur) continue;
+
+          const pubTs = it.publication_ts || it.created_ts || '';
+          const pubYear = pubTs ? new Date(pubTs).getFullYear() : 0;
+          const sc = scoreMediaCandidate(it.title || '', it.description || '', cleanTitle, year, season, episode, pubYear);
+          if (sc < 0) continue;
+
+          candidates.push({
+            id: it.id,
+            score: sc,
+            duration: dur
+          });
+        }
+      }
+    } catch (_) {}
+    if (candidates.some(c => c.score >= 500 && c.duration >= 3600)) break;
+  }
+
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.duration - a.duration;
+    });
+    const pick = candidates[Math.min(variantIndex, candidates.length - 1)] || candidates[0];
+    return pick.id;
+  }
+
+  return '';
+}
+
+const _fanFilmIframeCache = new Map();
+async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false) {
+  const normKey = `${String(cleanTitle || '').toLowerCase().trim()}_${preferHd ? 'hd' : '4k'}`;
+  if (!cleanTitle) return '';
+  const cached = _fanFilmIframeCache.get(normKey);
+  if (cached && (Date.now() - cached.ts < 1800000)) {
+    return cached.url;
+  }
+
+  let pageUrl = resolveFanFilmUrl(cleanTitle);
+  if (!pageUrl) {
+    try {
+      const searchResults = await Promise.race([
+        searchFanFilm(cleanTitle),
+        new Promise(r => setTimeout(() => r([]), 3200))
+      ]);
+      if (Array.isArray(searchResults) && searchResults.length > 0) {
+        const normTarget = cleanTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        const bestMatch = searchResults.find(r => {
+          const normR = String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+          return normR && normTarget && (normR === normTarget || normR.startsWith(normTarget + ' ') || (normTarget.startsWith(normR + ' ') && normR.split(' ').length >= 2));
+        });
+        if (bestMatch && (bestMatch.link || bestMatch.url)) {
+          pageUrl = bestMatch.link || bestMatch.url;
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!pageUrl) return '';
+  if (pageUrl.includes('stravers.live')) {
+    _fanFilmIframeCache.set(normKey, { url: pageUrl, ts: Date.now() });
+    return pageUrl;
+  }
+
+  try {
+    const pageHtml = await fetchHtml(pageUrl, { timeout: 3500 });
+    const m4k = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*(?:src|data-src)=["']([^"']+)["']/i);
+    const mHd = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*(?:src|data-src)=["']([^"']+)["']/i);
+    const mAny = pageHtml.match(/<iframe[^>]*(?:src|data-src)=["']([^"']*(?:stravers\.live|allplay|kodik|videocdn|collaps|alloha)[^"']*)["']/i);
+    const rawSrc = preferHd
+      ? ((mHd && mHd[1]) || (m4k && m4k[1]) || (mAny && mAny[1]) || '')
+      : ((m4k && m4k[1]) || (mHd && mHd[1]) || (mAny && mAny[1]) || '');
+    if (rawSrc) {
+      const fullIframe = rawSrc.startsWith('//') ? 'https:' + rawSrc : rawSrc;
+      _fanFilmIframeCache.set(normKey, { url: fullIframe, ts: Date.now() });
+      return fullIframe;
+    }
+  } catch (_) {}
+
+  return '';
+}
+
+const _kodikDirectCache = new Map();
+async function resolveKodikDirectIframe({ cleanTitle = '', shikimori_id = '', season = '', episode = '' } = {}) {
+  const cacheKey = `${cleanTitle}_${shikimori_id}_${season}_${episode}`.toLowerCase();
+  const cached = _kodikDirectCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts < 1800000)) {
+    return cached.url;
+  }
+
+  let resolvedShikiId = String(shikimori_id || '').replace(/\D/g, '');
+  if (!resolvedShikiId && cleanTitle) {
+    try {
+      const shikiList = await Promise.race([
+        searchShikimori(cleanTitle),
+        new Promise(r => setTimeout(() => r([]), 2000))
+      ]);
+      if (Array.isArray(shikiList) && shikiList.length > 0) {
+        const normTarget = cleanTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        const match = shikiList.find(s => {
+          const normS = String(s.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+          return normS && normTarget && (normS === normTarget || normS.startsWith(normTarget + ' '));
+        });
+        if (match) {
+          resolvedShikiId = String(match.shikimori_id || match.id || '').replace(/\D/g, '');
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!resolvedShikiId) return '';
+
+  try {
+    const params = new URLSearchParams({
+      token: '447d179e875efe44217f20d1ee2146be',
+      shikimoriID: resolvedShikiId
+    });
+    if (season) params.set('season', String(season));
+    if (episode) params.set('episode', String(episode));
+
+    const kRes = await fetch(`https://kodik-api.com/get-player?${params.toString()}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': 'https://kodikplayer.com/'
+      },
+      signal: AbortSignal.timeout(2500)
+    });
+    if (kRes.ok) {
+      const kData = await kRes.json();
+      if (kData && kData.found && kData.link) {
+        let link = kData.link.startsWith('//') ? `https:${kData.link}` : kData.link;
+        if (season) {
+          link += `${link.includes('?') ? '&' : '?'}season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}`;
+        }
+        _kodikDirectCache.set(cacheKey, { url: link, ts: Date.now() });
+        return link;
+      }
+    }
+  } catch (_) {}
+
+  return '';
+}
+
+// Автоматический шлюз поиска и воспроизведения VK Видео
+app.get('/api/player/vk-search-embed', async (req, res) => {
+  try {
+    const { title = '', year = '', season = '', episode = '' } = req.query;
+    const [vkUrl, ruId] = await Promise.all([
+      resolveBestVkEmbed(title, year, season, episode, false),
+      resolveBestRuTubeId(title, year, season, episode, 0, false)
+    ]);
+    if (vkUrl) {
+      return res.redirect(302, vkUrl);
+    }
+    if (ruId) {
+      return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+    }
+    const shortVk = await resolveBestVkEmbed(title, year, season, episode, true);
+    if (shortVk) {
+      return res.redirect(302, shortVk);
+    }
+    return res.redirect(302, `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(title)}&year=${encodeURIComponent(year)}`);
+  } catch (err) {
+    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(req.query.title || '')}&year=${encodeURIComponent(req.query.year || '')}`);
+  }
+});
+
+// Автоматический шлюз поиска и воспроизведения RuTube / Wink
+app.get('/api/player/rutube-search-embed', async (req, res) => {
+  try {
+    const { title = '', year = '', season = '', episode = '', no_ff = '' } = req.query;
+    const [ruId, vkUrl] = await Promise.all([
+      resolveBestRuTubeId(title, year, season, episode, 0, false),
+      resolveBestVkEmbed(title, year, season, episode, false)
+    ]);
+    if (ruId) {
+      return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+    }
+    if (vkUrl) {
+      return res.redirect(302, vkUrl);
+    }
+    if (no_ff !== '1') {
+      const ffIframe = await resolveFanFilmDirectIframe(title);
+      if (ffIframe) {
+        return res.redirect(302, `/api/player/fanfilm-embed?url=${encodeURIComponent(ffIframe)}&title=${encodeURIComponent(title)}&year=${encodeURIComponent(year || '')}`);
+      }
+    }
+    const [shortRuId, shortVk] = await Promise.all([
+      resolveBestRuTubeId(title, year, season, episode, 0, true),
+      resolveBestVkEmbed(title, year, season, episode, true)
+    ]);
+    if (shortRuId) {
+      return res.redirect(302, `/api/player/rutube-embed/${shortRuId}`);
+    }
+    if (shortVk) {
+      return res.redirect(302, shortVk);
+    }
+    return res.status(404).send('Видеопоток временно недоступен');
+  } catch (err) {
+    return res.status(500).send('Ошибка поиска видеопотока');
+  }
+});
+
+// Универсальный мульти-балансерный шлюз Kinobox / HDRezka / Collaps / Alloha / VideoCDN / RHS / Bazon / Kodik / Vidsrc
+app.get('/api/player/kinobox-embed', async (req, res) => {
+  try {
+    const {
+      balancer = 'kinobox',
+      title = '',
+      year = '',
+      kp_id = '',
+      imdb_id = '',
+      shikimori_id = '',
+      season = '',
+      episode = '',
+      fallback_mode = ''
+    } = req.query;
+
+    const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+    const epQuery = season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+
+    // 1. Для международного балансера Vidsrc пробуем IMDb ID или поиск в TMDB (через доступное зеркало vidsrc.me)
+    if (balancer === 'vidsrc') {
+      let resolvedImdb = String(imdb_id || '').trim();
+      let resolvedTmdbId = '';
+      let isTv = Boolean(season);
+      if (!resolvedImdb && cleanTitle) {
+        try {
+          const tmdbResults = await Promise.race([
+            searchTmdb(cleanTitle, 1),
+            new Promise(r => setTimeout(() => r([]), 2500))
+          ]);
+          if (Array.isArray(tmdbResults) && tmdbResults.length > 0) {
+            const rawTmdb = String(tmdbResults[0].id || '').replace(/^tmdb_(?:movie|tv|up)_/, '');
+            if (/^\d+$/.test(rawTmdb)) {
+              resolvedTmdbId = rawTmdb;
+              isTv = tmdbResults[0].media_type === 'series' || tmdbResults[0].media_type === 'tv';
+            }
+          }
+        } catch (_) {}
+      }
+      if (resolvedImdb) {
+        return res.redirect(302, `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?imdb=${encodeURIComponent(resolvedImdb)}`);
+      }
+      if (resolvedTmdbId) {
+        return res.redirect(302, `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?tmdb=${encodeURIComponent(resolvedTmdbId)}`);
+      }
+    }
+
+    // 2. Если включен режим гарантированного резерва (fallback_mode=1) — проверяем RuTube и VK Видео в первую очередь
+    if (fallback_mode === '1') {
+      const [ruId, vkUrl] = await Promise.all([
+        resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false),
+        resolveBestVkEmbed(cleanTitle, year, season, episode, false)
+      ]);
+      if (ruId) {
+        return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+      }
+      if (vkUrl) {
+        return res.redirect(302, vkUrl);
+      }
+    }
+
+    // 3. Для Kodik (или аниме-балансера) сначала проверяем прямое наличие в базе Kodik API
+    if (balancer === 'kodik' || shikimori_id) {
+      const kodikDirect = await resolveKodikDirectIframe({ cleanTitle, shikimori_id, season, episode });
+      if (kodikDirect) {
+        return res.redirect(302, `/api/player/adblock-proxy?url=${encodeURIComponent(kodikDirect)}&fallback_title=${encodeURIComponent(cleanTitle)}&fallback_year=${encodeURIComponent(year)}`);
+      }
+    }
+
+    // 4. Для альтернативных CDN балансеров (videocdn, bazon) приоритезируем независимые зеркала VK Видео / RuTube (альтернативный поток)
+    if (balancer === 'videocdn' || balancer === 'bazon') {
+      const variantIdx = balancer === 'bazon' ? 1 : 0;
+      const [ruId, vkUrl] = await Promise.all([
+        resolveBestRuTubeId(cleanTitle, year, season, episode, variantIdx, false),
+        resolveBestVkEmbed(cleanTitle, year, season, episode, false)
+      ]);
+      if (balancer === 'videocdn' && vkUrl) {
+        return res.redirect(302, vkUrl);
+      }
+      if (ruId) {
+        return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+      }
+      if (vkUrl) {
+        return res.redirect(302, vkUrl);
+      }
+    }
+
+    // 5. Проверяем наличие прямого 4K/HD мульти-потока на FanFilm4K / Stravers (включая живой поиск по базе v17.fanfilm4k.media)
+    if (cleanTitle) {
+      const preferHd = balancer === 'hdrezka' || balancer === 'collaps' || balancer === 'rhs';
+      const ffIframe = await resolveFanFilmDirectIframe(cleanTitle, preferHd);
+      if (ffIframe) {
+        return res.redirect(302, `/api/player/fanfilm-embed?url=${encodeURIComponent(ffIframe)}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(year || '')}${epQuery}`);
+      }
+    }
+
+    // 6. Если на FanFilm4K релиза нет — проверяем Kodik API (для аниме) и гарантированный поток RuTube / VK Видео
+    const [kodikDirect, ruId, vkUrl] = await Promise.all([
+      resolveKodikDirectIframe({ cleanTitle, shikimori_id, season, episode }),
+      resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false),
+      resolveBestVkEmbed(cleanTitle, year, season, episode, false)
+    ]);
+
+    if (kodikDirect) {
+      return res.redirect(302, `/api/player/adblock-proxy?url=${encodeURIComponent(kodikDirect)}&fallback_title=${encodeURIComponent(cleanTitle)}&fallback_year=${encodeURIComponent(year)}`);
+    }
+    if (ruId) {
+      return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+    }
+    if (vkUrl) {
+      return res.redirect(302, vkUrl);
+    }
+
+    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(year)}&no_ff=1`);
+  } catch (err) {
+    console.warn('[Kinobox Embed Error]:', err.message);
+    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(req.query.title || '')}&year=${encodeURIComponent(req.query.year || '')}&no_ff=1`);
   }
 });
 
@@ -4638,10 +5443,6 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     if (!targetUrl) {
       return res.status(400).send('URL плеера не указан');
     }
-
-    const fallbackKodik = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${encodeURIComponent(kp_id)}&title=${encodeURIComponent(fallbackTitle)}`
-      : (fallbackTitle ? `https://kodikplayer.com/find-player?title=${encodeURIComponent(fallbackTitle)}${year ? `&year=${year}` : ''}` : '');
 
     if (!targetUrl.includes('stravers.live') && !targetUrl.includes('fanfilm4k')) {
       // Для сторонних плееров делаем прямой безопасный редирект
@@ -4659,10 +5460,14 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
         try {
           const searchResults = await Promise.race([
             searchFanFilm(fallbackTitle),
-            new Promise(r => setTimeout(() => r([]), 2200))
+            new Promise(r => setTimeout(() => r([]), 2800))
           ]);
           if (Array.isArray(searchResults) && searchResults.length > 0) {
-            const bestMatch = searchResults[0];
+            const normTarget = fallbackTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+            const bestMatch = searchResults.find(r => {
+              const normR = String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+              return normR && normTarget && (normR === normTarget || normR.startsWith(normTarget + ' ') || (normTarget.startsWith(normR + ' ') && normR.split(' ').length >= 2));
+            });
             if (bestMatch && (bestMatch.link || bestMatch.url)) {
               directIframe = bestMatch.link || bestMatch.url;
             }
@@ -4671,13 +5476,13 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
       }
     }
 
-    // 2. Извлекаем прямой iframe 4K / HD плеера со страницы релиза FanFilm4K
+    // 2. Извлекаем прямой iframe 4K / HD плеера со страницы релиза FanFilm4K (поддержка src и data-src)
     if (directIframe.includes('fanfilm4k.media') && !directIframe.includes('stravers.live') && !directIframe.includes('do=search')) {
       try {
-        const pageHtml = await fetchHtml(directIframe, { timeout: 2500 });
-        const m4k = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
-        const mHd = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*src=["']([^"']+)["']/i);
-        const mAny = pageHtml.match(/<iframe[^>]*src=["']([^"']*(?:stravers\.live|allplay|kodik|videocdn|collaps|alloha)[^"']*)["']/i);
+        const pageHtml = await fetchHtml(directIframe, { timeout: 3500 });
+        const m4k = pageHtml.match(/data-tab-content=["']4kplayer["'][^>]*>[\s\S]*?<iframe[^>]*(?:src|data-src)=["']([^"']+)["']/i);
+        const mHd = pageHtml.match(/data-tab-content=["']hdplayer["'][^>]*>[\s\S]*?<iframe[^>]*(?:src|data-src)=["']([^"']+)["']/i);
+        const mAny = pageHtml.match(/<iframe[^>]*(?:src|data-src)=["']([^"']*(?:stravers\.live|allplay|kodik|videocdn|collaps|alloha)[^"']*)["']/i);
         const rawSrc = (m4k && m4k[1]) || (mHd && mHd[1]) || (mAny && mAny[1]) || '';
         const extractedIframe = rawSrc ? (rawSrc.startsWith('//') ? 'https:' + rawSrc : rawSrc) : '';
         if (extractedIframe) {
@@ -4686,18 +5491,22 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
       } catch (_) {}
     }
 
-    // 3. Если со страницы FanFilm4K не удалось извлечь iframe плеера (сайт недоступен или релиза нет на зеркале),
-    // мгновенно перенаправляем на чистый проксируемый поток без черных экранов и сбоев
+    // 3. Если со страницы FanFilm4K не удалось извлечь iframe плеера (релиза еще нет на зеркале FanFilm4K),
+    // перенаправляем на мульти-балансер с автоматическим резервом RuTube / VK Видео / Kodik без жесткой блокировки года
     if (directIframe.includes('fanfilm4k.media') && !directIframe.includes('stravers.live')) {
-      if (fallbackKodik) {
-        return res.redirect(302, `/api/player/adblock-proxy?url=${encodeURIComponent(fallbackKodik)}`);
-      }
+      const epQuery = season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+      return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(fallbackTitle)}&year=${encodeURIComponent(year || '')}${epQuery}&no_ff=1`);
     }
 
     const urlObj = new URL(directIframe);
-    if (season !== undefined && season !== null) urlObj.searchParams.set('season', season);
-    if (episode !== undefined && episode !== null) urlObj.searchParams.set('episode', episode);
-    if (translation !== undefined && translation !== null) urlObj.searchParams.set('translation', translation);
+    const isMovieToken = directIframe.includes('token_movie=');
+    if (!isMovieToken) {
+      if (season !== undefined && season !== null && String(season).trim() !== '') urlObj.searchParams.set('season', season);
+      if (episode !== undefined && episode !== null && String(episode).trim() !== '') urlObj.searchParams.set('episode', episode);
+    }
+    if (translation !== undefined && translation !== null && String(translation).trim() !== '') {
+      urlObj.searchParams.set('translation', translation);
+    }
     urlObj.searchParams.set('selector', '0');
     urlObj.searchParams.set('hidden', hidden || 'season,episode,translation');
 
@@ -4708,11 +5517,9 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     try {
       const embedRes = await fetch(finalUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+          'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
           'Referer': 'https://v17.fanfilm4k.media/',
-          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-          'X-Forwarded-For': '87.255.6.63',
-          'X-Real-IP': '87.255.6.63'
+          'Accept-Language': req.headers['accept-language'] || 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
         },
         signal: AbortSignal.timeout(6000)
       });
@@ -4720,10 +5527,35 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
       if (embedRes.ok) {
         let html = await embedRes.text();
         const hasFileList = html.includes('const fileList =') || html.includes('fileList');
-        const hasConfig = html.includes('const config =') || html.includes('mediaMetadata');
-        const isDead = (html.toLowerCase().includes('<title>ошибка!</title>') || html.includes('<div class="error">')) && !hasFileList;
+        const hasValidIdFile = !hasFileList || /["']id_file["']\s*:\s*[1-9]\d*/.test(html);
+        const isDead = ((html.toLowerCase().includes('<title>ошибка!</title>') || html.includes('<div class="error">')) && !hasFileList) || !hasValidIdFile;
 
         if (isDead) {
+          const pageTitleMatch = html.match(/<title>([^<]+)<\/title>/i);
+          const extractedTitle = (pageTitleMatch && !/ошибка/i.test(pageTitleMatch[1])) ? pageTitleMatch[1].trim() : '';
+          const effectiveTitle = fallbackTitle || extractedTitle;
+          if (effectiveTitle) {
+            const [ruId, vkUrl] = await Promise.all([
+              resolveBestRuTubeId(effectiveTitle, year, season, episode, 0, false),
+              resolveBestVkEmbed(effectiveTitle, year, season, episode, false)
+            ]);
+            if (ruId) {
+              return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+            }
+            if (vkUrl) {
+              return res.redirect(302, vkUrl);
+            }
+            const [shortRuId, shortVk] = await Promise.all([
+              resolveBestRuTubeId(effectiveTitle, year, season, episode, 0, true),
+              resolveBestVkEmbed(effectiveTitle, year, season, episode, true)
+            ]);
+            if (shortRuId) {
+              return res.redirect(302, `/api/player/rutube-embed/${shortRuId}`);
+            }
+            if (shortVk) {
+              return res.redirect(302, shortVk);
+            }
+          }
           console.warn('FanFilm embed: обнаружен неработающий поток, переключаем на следующий источник');
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           return res.send(`
@@ -4756,7 +5588,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                   cursor: pointer; box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3);
                   transition: transform 0.15s, opacity 0.15s;
                 }
-                .vpn-btn:hover { transform: translateY(-1px); opacity: 0.95; }
+                .vpn-btn:hover { transform: translateY(-1px); opacity 0.95; }
               </style>
             </head>
             <body>
@@ -4781,8 +5613,9 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
         // 1. STORM AdBlock Engine: вырезание внешних скриптов тизеров, трекеров и казино
         html = html.replace(/<script[^>]*src=["'][^"']*(?:yandex|adfox|googleads|doubleclick|adsystem|adkernel|redclick|marketgid|casino|1xbet|betting|traff|banner|adv)[^"']*["'][^>]*><\/script>/gi, '');
 
-        // 2. Нейтрализуем проверку фрейма Script 6, чтобы плеер никогда не стирал разметку
+        // 2. Нейтрализуем проверку фрейма Script 6 и некорректную проверку referrer bdtest(), чтобы плеер никогда не стирал разметку (без поломки вложенных скобок!)
         html = html.replace(/if\s*\(\s*!isFramed\s*\)\s*\{/g, 'if (false && !isFramed) {');
+        html = html.replace(/function\s+bdtest\s*\(\)\s*\{/g, 'function bdtest() { return false; ');
 
         // 3. Снятие атрибутов Subresource Integrity (SRI) integrity="..." со всех <link> и <script>.
         html = html.replace(/\s+integrity=["'][^"']+["']/gi, '');
@@ -4807,6 +5640,41 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
             try { window.top = window.self; } catch(e) {}
             try { window.open = function() { return null; }; } catch(e) {}
             try { window.alert = function() {}; } catch(e) {}
+            try {
+              Object.defineProperty(document, 'referrer', { get: function() { return 'https://v17.fanfilm4k.media/'; }, configurable: true });
+              if (typeof Location !== 'undefined' && Location.prototype) {
+                Object.defineProperty(Location.prototype, 'ancestorOrigins', { get: function() { return ['https://v17.fanfilm4k.media']; }, configurable: true });
+              }
+            } catch(_) {}
+
+            // Блокировка автозапуска видео при открытии до клика пользователя
+            (function() {
+              var _userInteracted = false;
+              var markInteracted = function() { _userInteracted = true; };
+              window.addEventListener('pointerdown', markInteracted, true);
+              window.addEventListener('mousedown', markInteracted, true);
+              window.addEventListener('touchstart', markInteracted, true);
+              window.addEventListener('keydown', markInteracted, true);
+              window.addEventListener('click', markInteracted, true);
+              window.addEventListener('message', function(e) {
+                try {
+                  var d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+                  if (d && (d.type === 'PLAY' || d.type === 'TOGGLE' || d.action === 'play' || d.action === 'toggle')) {
+                    _userInteracted = true;
+                  }
+                } catch(_) {}
+              });
+              try {
+                var origPlay = HTMLMediaElement.prototype.play;
+                HTMLMediaElement.prototype.play = function() {
+                  if (!_userInteracted) {
+                    try { this.autoplay = false; this.removeAttribute('autoplay'); } catch(_) {}
+                    return Promise.resolve();
+                  }
+                  return origPlay.apply(this, arguments);
+                };
+              } catch(_) {}
+            })();
 
             // STORM AdBlock Engine & Stravers API Proxy
             var stormOrigin = window.location.origin;
@@ -4818,6 +5686,14 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                      low.includes('adsystem') || low.includes('adkernel') || low.includes('popunder') ||
                      low.includes('clickunder') || low.includes('casino') || low.includes('1xbet') ||
                      low.includes('winline') || low.includes('melbet');
+            };
+            var isStraversApiUrl = function(u) {
+              var s = String(u || '');
+              if (s.includes('/api/player/stravers-api-proxy')) return false;
+              return s.includes('/bnsi/') || s.includes('/sarn') || s.includes('/vorf') ||
+                     s.includes('/events') || s.includes('/stat') || s.includes('/errors') ||
+                     s.includes('/lists.php') || s.includes('stravers.live') || s.includes('transfusion') ||
+                     s.includes('vkvideo.ru') || s.includes('okcdn.ru') || s.includes('mycdn.me') || s.includes('userapi.com');
             };
 
             // Защита AudioContext от InvalidStateError при повторном подключении MediaElementSourceNode в AllPlay
@@ -4860,7 +5736,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                   }));
                 }
                 var strUrl = String(url || '');
-                if (strUrl.includes('/bnsi/') || strUrl.includes('/events') || strUrl.includes('stravers.live') || strUrl.includes('transfusion')) {
+                if (isStraversApiUrl(strUrl)) {
                   var fullTarget = strUrl.startsWith('http') ? strUrl : ('${baseOrigin}' + (strUrl.startsWith('/') ? '' : '/') + strUrl);
                   var proxied = stormOrigin + '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
                   if (typeof input === 'string') {
@@ -4880,7 +5756,7 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                 return origOpen.apply(this, arguments);
               }
               var strUrl = String(url || '');
-              if (strUrl.includes('/bnsi/') || strUrl.includes('/events') || strUrl.includes('stravers.live') || strUrl.includes('transfusion')) {
+              if (isStraversApiUrl(strUrl)) {
                 var fullTarget = strUrl.startsWith('http') ? strUrl : ('${baseOrigin}' + (strUrl.startsWith('/') ? '' : '/') + strUrl);
                 var proxied = stormOrigin + '/api/player/stravers-api-proxy?url=' + encodeURIComponent(fullTarget);
                 return origOpen.call(this, method, proxied, arguments[2], arguments[3], arguments[4]);
@@ -4904,9 +5780,28 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               return origSend.apply(this, arguments);
             };
 
-            // Автоматическое снятие вечного лоадера при ошибке потока и переключение на следующий источник
+            // Автоматическое снятие вечного лоадера при ошибке потока и мгновенный переход на рабочий HLS поток
             (function() {
               var hasSwitched = false;
+              var serverFallbackTitle = ${JSON.stringify(fallbackTitle || '')};
+              var serverYear = ${JSON.stringify(year || '')};
+              var serverSeason = ${JSON.stringify(season || '')};
+              var serverEpisode = ${JSON.stringify(episode || '')};
+
+              function resolveCurrentTitle() {
+                if (serverFallbackTitle) return serverFallbackTitle;
+                try {
+                  var pDoc = window.parent && window.parent.document;
+                  if (pDoc) {
+                    var tEl = pDoc.getElementById('cinema-title');
+                    if (tEl && tEl.textContent) {
+                      return tEl.textContent.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+                    }
+                  }
+                } catch (_) {}
+                return '';
+              }
+
               function triggerSwitch(reason) {
                 if (hasSwitched) return;
                 hasSwitched = true;
@@ -4918,6 +5813,18 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
                     ldrs[i].style.setProperty('display', 'none', 'important');
                   }
                 } catch (_) {}
+
+                var resolvedTitle = resolveCurrentTitle();
+                if (resolvedTitle) {
+                  var epParams = serverSeason
+                    ? ('&season=' + encodeURIComponent(serverSeason) + '&episode=' + encodeURIComponent(serverEpisode || '1'))
+                    : '';
+                  var fallbackUrl = stormOrigin + '/api/player/rutube-search-embed?title=' + encodeURIComponent(resolvedTitle) +
+                    '&year=' + encodeURIComponent(serverYear) +
+                    epParams +
+                    '&no_ff=1';
+                  window.location.replace(fallbackUrl);
+                }
               }
 
               function checkErrorState() {
@@ -4929,22 +5836,30 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }
               setInterval(checkErrorState, 400);
 
-              // Перехват критических ошибок инициализации AllPlay в консоли
+              function inspectConsoleMsg(args) {
+                try {
+                  var msg = Array.prototype.slice.call(args).join(' ');
+                  if (msg.includes('all manifest URLs exhausted') || msg.includes('terminating player') || msg.includes('error change file') || msg.includes('change file error')) {
+                    triggerSwitch('MANIFEST_EXHAUSTED');
+                  }
+                } catch (_) {}
+              }
+
+              var origConsoleLog = console.log;
+              console.log = function() {
+                inspectConsoleMsg(arguments);
+                origConsoleLog.apply(console, arguments);
+              };
+
               var origConsoleWarn = console.warn;
               console.warn = function() {
-                var msg = Array.prototype.slice.call(arguments).join(' ');
-                if (msg.includes('error change file') || msg.includes('change file error')) {
-                  triggerSwitch('CHANGE_FILE_ERROR');
-                }
+                inspectConsoleMsg(arguments);
                 origConsoleWarn.apply(console, arguments);
               };
 
               var origConsoleErr = console.error;
               console.error = function() {
-                var msg = Array.prototype.slice.call(arguments).join(' ');
-                if (msg.includes('error change file') || msg.includes('change file error') || msg.includes('ERR_FAILED')) {
-                  triggerSwitch('CONSOLE_STREAM_ERROR');
-                }
+                inspectConsoleMsg(arguments);
                 origConsoleErr.apply(console, arguments);
               };
 
@@ -5449,9 +6364,19 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     }
 
     // Если прямое проксирование недоступно со стороны сервера Node.js,
-    // перенаправляем на надежный балансер Kodik для бесшовного воспроизведения
-    if (fallbackKodik) {
-      return res.redirect(302, fallbackKodik);
+    // сразу разрешаем проверенный поток RuTube / VK Видео
+    if (fallbackTitle) {
+      const [ruId, vkUrl] = await Promise.all([
+        resolveBestRuTubeId(fallbackTitle, year, season, episode, 0, false),
+        resolveBestVkEmbed(fallbackTitle, year, season, episode, false)
+      ]);
+      if (ruId) {
+        return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
+      }
+      if (vkUrl) {
+        return res.redirect(302, vkUrl);
+      }
+      return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(fallbackTitle)}&year=${encodeURIComponent(year || '')}&no_ff=1`);
     }
 
     if (finalUrl && finalUrl.startsWith('http') && !finalUrl.includes('fanfilm4k.media')) {
@@ -5591,7 +6516,7 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
     // Сохраняем и восстанавливаем параметры сигнатуры балансера (d, d_sign, ref, ref_sign, season, episode и др.)
     const extraParams = new URLSearchParams();
     for (const [k, v] of Object.entries(req.query)) {
-      if (k !== 'url' && v !== undefined && v !== null && v !== '') {
+      if (k !== 'url' && k !== 'fallback_title' && k !== 'fallback_year' && v !== undefined && v !== null && v !== '') {
         extraParams.append(k, String(v));
       }
     }
@@ -5602,6 +6527,30 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
 
     const targetParsed = new URL(cleanUrl);
     const targetOrigin = targetParsed.origin;
+    const fallbackTitle = String(req.query.fallback_title || targetParsed.searchParams.get('title') || '').trim();
+    const fallbackYear = String(req.query.fallback_year || targetParsed.searchParams.get('year') || '').trim();
+    const safeFallbackRedirect = fallbackTitle
+      ? `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(fallbackTitle)}&year=${encodeURIComponent(fallbackYear)}`
+      : '';
+
+    // Если запрошен kodik find-player без прямого видео-пути, проверяем наличие в Kodik API на сервере,
+    // чтобы браузер никогда не получал пустую страницу "Плеер не найден"
+    if (cleanUrl.includes('kodik') && cleanUrl.includes('find-player')) {
+      const shikiParam = targetParsed.searchParams.get('shikimoriID') || '';
+      const seasonParam = targetParsed.searchParams.get('season') || '';
+      const epParam = targetParsed.searchParams.get('episode') || '';
+      const resolvedKodik = await resolveKodikDirectIframe({
+        cleanTitle: fallbackTitle,
+        shikimori_id: shikiParam,
+        season: seasonParam,
+        episode: epParam
+      });
+      if (resolvedKodik) {
+        cleanUrl = resolvedKodik;
+      } else if (safeFallbackRedirect) {
+        return res.redirect(302, safeFallbackRedirect);
+      }
+    }
 
     res.setHeader('X-Frame-Options', 'ALLOWALL');
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -5638,6 +6587,9 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
                          lowerHtml.includes('404 not found');
 
       if (!proxyRes.ok || isNotFound) {
+        if (safeFallbackRedirect) {
+          return res.redirect(302, safeFallbackRedirect);
+        }
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         return res.send(`
           <!DOCTYPE html>
@@ -5686,18 +6638,23 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
         (m, extra) => {
           return `var fullTargetLink = (link.startsWith("//") ? "https:" + link : link) + paramsSymbol + "${extra}";
 var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent(fullTargetLink);
-player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay *; fullscreen *"></iframe>';`;
+player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width="100%" height="100%" frameborder="0" allowfullscreen allow="fullscreen *"></iframe>';`;
         }
       );
       html = html.replace(
         /player\.innerHTML\s*=\s*["']<iframe id=\\?["']player-iframe\\?["'] src=\\?["']["']\s*\+\s*link[^<]*<\/iframe>\\?["'];?/g,
-        'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = \'<iframe id="player-iframe" src="\' + safeInnerLink + \'" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay *; fullscreen *"></iframe>\';'
+        'var safeInnerLink = "/api/player/adblock-proxy?url=" + encodeURIComponent((link.startsWith("//") ? "https:" + link : link));\nplayer.innerHTML = \'<iframe id="player-iframe" src="\' + safeInnerLink + \'" width="100%" height="100%" frameborder="0" allowfullscreen allow="fullscreen *"></iframe>\';'
       );
 
-      // Заменяем вывод "Плеер не найден" на автопереход STORM и красивую плашку
+      // Заменяем вывод "Плеер не найден" на мгновенный переход на рабочий резервный поток внутри фрейма
       html = html.replace(
         /notFoundCallback:\s*function\s*\([^)]*\)\s*\{[\s\S]*?Плеер не найден[\s\S]*?\}/g,
         `notFoundCallback: function(data) {
+          var fbUrl = ${JSON.stringify(safeFallbackRedirect)};
+          if (fbUrl) {
+            window.location.replace(fbUrl);
+            return;
+          }
           if (player) {
             player.classList.remove("loading");
             player.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0b10;color:#94a3b8;font-family:sans-serif;font-size:14px;text-align:center;padding:20px;gap:12px;">' +
@@ -5718,6 +6675,33 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
         <script>
         (function() {
           try {
+            // Блокировка автозапуска видео при открытии до клика пользователя
+            var _userInteracted = false;
+            var markInteracted = function() { _userInteracted = true; };
+            window.addEventListener('pointerdown', markInteracted, true);
+            window.addEventListener('mousedown', markInteracted, true);
+            window.addEventListener('touchstart', markInteracted, true);
+            window.addEventListener('keydown', markInteracted, true);
+            window.addEventListener('click', markInteracted, true);
+            window.addEventListener('message', function(e) {
+              try {
+                var d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+                if (d && (d.type === 'PLAY' || d.type === 'TOGGLE' || d.action === 'play' || d.action === 'toggle')) {
+                  _userInteracted = true;
+                }
+              } catch(_) {}
+            });
+            try {
+              var origPlay = HTMLMediaElement.prototype.play;
+              HTMLMediaElement.prototype.play = function() {
+                if (!_userInteracted) {
+                  try { this.autoplay = false; this.removeAttribute('autoplay'); } catch(_) {}
+                  return Promise.resolve();
+                }
+                return origPlay.apply(this, arguments);
+              };
+            } catch(_) {}
+
             // Фильтрация спама ошибок Kodik и рекламных трекеров в консоли
             var origErr = console.error;
             console.error = function() {
@@ -5734,11 +6718,16 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
 
             // Обнаружение ошибки "Плеер не найден" через DOM MutationObserver
             var reportedNotFound = false;
+            var fbRedirectUrl = ${JSON.stringify(safeFallbackRedirect)};
             var checkNotFound = function() {
               if (reportedNotFound) return;
               var text = (document.body ? document.body.innerText : '') || '';
               if (text.includes('Плеер не найден') || text.includes('Видео не найдено') || text.includes('Видео удалено') || text.includes('Контент не найден')) {
                 reportedNotFound = true;
+                if (fbRedirectUrl) {
+                  window.location.replace(fbRedirectUrl);
+                  return;
+                }
                 if (document.body) {
                   document.body.innerHTML = '<div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0b10;color:#94a3b8;font-family:sans-serif;font-size:14px;text-align:center;padding:20px;gap:12px;">' +
                     '<div style="font-size:36px;">🔍</div>' +
@@ -6269,11 +7258,28 @@ app.get('/api/player/series-options', async (req, res) => {
 // Получение всех видео актера или режиссера
 app.get('/api/media/person', async (req, res) => {
   try {
-    const { id } = req.query;
-    if (!id) {
-      return res.status(400).json({ error: 'Укажите id персоны' });
+    const { id = '', name = '' } = req.query;
+    if (!id && !name) {
+      return res.status(400).json({ error: 'Укажите id или имя персоны' });
     }
-    const data = await getTmdbPersonMedia(id);
+    const data = await getTmdbPersonMedia(id, name);
+    if ((!data || !Array.isArray(data.items) || data.items.length === 0) && name) {
+      try {
+        const [tmdbRes, ffRes] = await Promise.all([
+          searchTmdb(name, 1).catch(() => ({ items: [] })),
+          searchFanFilm(name).catch(() => ({ items: [] }))
+        ]);
+        const ffItems = Array.isArray(ffRes) ? ffRes : (ffRes?.items || []);
+        const tmdbItems = Array.isArray(tmdbRes) ? tmdbRes : (tmdbRes?.items || []);
+        const merged = [...ffItems, ...tmdbItems];
+        if (merged.length > 0) {
+          return res.json({
+            person: data?.person || { id: id || name, name, biography: '', birthday: '', place_of_birth: '', profile_path: '' },
+            items: merged.slice(0, 40)
+          });
+        }
+      } catch (_) {}
+    }
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

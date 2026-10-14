@@ -10,40 +10,23 @@ import { Agent } from 'undici';
 import dns from 'node:dns';
 
 export const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
-export const TMDB_BASE = 'https://api.themoviedb.org/3';
+export const TMDB_BASE = 'https://api.tmdb.org/3';
 export const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
-// Официальные IP CloudFront для api.themoviedb.org для обхода блокировок DNS в РФ
-const TMDB_IPS = ['18.165.122.73', '18.165.122.87', '18.165.122.23', '18.165.122.27'];
+// Официальные IP CloudFront для api.tmdb.org + SNI www.themoviedb.org для обхода DNS-отравления (127.0.0.1) и 16KB-блокировки ТСПУ в РФ
+const TMDB_IPS = ['3.165.190.93', '3.165.190.44', '3.165.190.125', '3.165.190.104'];
 let activeTmdbIpIdx = 0;
-
-// Периодическое фоновое обновление через Cloudflare DoH (DNS over HTTPS)
-async function refreshTmdbDohIps() {
-  try {
-    const res = await fetch('https://1.1.1.1/dns-query?name=api.themoviedb.org', {
-      headers: { 'Accept': 'application/dns-json' },
-      signal: AbortSignal.timeout(4000)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const fresh = (data.Answer || []).filter(a => a.type === 1 && a.data).map(a => a.data);
-      if (fresh.length > 0) {
-        TMDB_IPS.splice(0, TMDB_IPS.length, ...fresh);
-      }
-    }
-  } catch (_) {}
-}
-refreshTmdbDohIps();
-setInterval(refreshTmdbDohIps, 1000 * 60 * 60 * 6).unref();
 
 const tmdbDispatcher = new Agent({
   connect: {
+    servername: 'www.themoviedb.org',
+    rejectUnauthorized: false,
     lookup: (hostname, options, callback) => {
       if (typeof options === 'function') {
         callback = options;
         options = {};
       }
-      if (hostname === 'api.themoviedb.org') {
+      if (hostname === 'api.tmdb.org' || hostname === 'api.themoviedb.org') {
         const ip = TMDB_IPS[activeTmdbIpIdx % TMDB_IPS.length];
         activeTmdbIpIdx++;
         if (options && options.all) {
@@ -57,16 +40,31 @@ const tmdbDispatcher = new Agent({
 });
 
 export async function tmdbFetch(url, options = {}) {
-  const timeoutMs = options.timeout || 8000;
-  return await fetch(url, {
-    ...options,
-    dispatcher: tmdbDispatcher,
-    signal: AbortSignal.timeout(timeoutMs),
-    headers: {
-      'User-Agent': 'STORM-Multimedia/1.0',
-      ...(options.headers || {})
+  const timeoutMs = options.timeout || 3500;
+  const normalizedPath = String(url || '')
+    .replace(/^https?:\/\/(?:api\.themoviedb\.org|api\.tmdb\.org|apitmdb\.cub\.red)\/3/i, '');
+  const targetUrl = normalizedPath.startsWith('http')
+    ? normalizedPath.replace('api.themoviedb.org', 'api.tmdb.org')
+    : `${TMDB_BASE}${normalizedPath}`;
+
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await fetch(targetUrl, {
+        ...options,
+        dispatcher: tmdbDispatcher,
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          ...(options.headers || {})
+        }
+      });
+    } catch (err) {
+      lastErr = err;
     }
-  });
+  }
+  throw lastErr;
 }
 
 const TMDB_GENRES_RU = {
@@ -160,9 +158,9 @@ function formatTmdbItem(item, mediaTypeHint = null) {
  */
 export async function getTmdbCatalog(category = 'popular', page = 1) {
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `catalog_${category}_page_${pageNum}`;
+  const cacheKey = `catalog_v2_${category}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
   try {
     let endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=10';
@@ -207,7 +205,9 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
       total_pages: data.total_pages || 1
     };
 
-    setCache('tmdb', cacheKey, result, 3600); // 1 час кэша
+    if (items.length > 0) {
+      setCache('tmdb', cacheKey, result, 3600); // 1 час кэша
+    }
     return result;
   } catch (err) {
     console.warn('Ошибка получения каталога TMDB:', err.message);
@@ -222,9 +222,9 @@ export async function searchTmdb(query, page = 1) {
   if (!query || !query.trim()) return { items: [] };
 
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `search_${query.trim().toLowerCase()}_page_${pageNum}`;
+  const cacheKey = `search_v2_${query.trim().toLowerCase()}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
   try {
     const url = `${TMDB_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(query)}&page=${pageNum}`;
@@ -241,7 +241,9 @@ export async function searchTmdb(query, page = 1) {
       total_items: data.total_results || items.length
     };
 
-    setCache('tmdb', cacheKey, result, 1800);
+    if (items.length > 0) {
+      setCache('tmdb', cacheKey, result, 1800);
+    }
     return result;
   } catch (err) {
     console.warn('Ошибка поиска TMDB:', err.message);
@@ -439,7 +441,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
       }
       let trailerUrl = null;
       if (trailers.length > 0) {
-        trailerUrl = `https://www.youtube-nocookie.com/embed/${trailers[0].key}?autoplay=1&rel=0`;
+        trailerUrl = `https://www.youtube-nocookie.com/embed/${trailers[0].key}?autoplay=0&rel=0`;
       }
 
       // Сезоны для сериалов
@@ -581,9 +583,9 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
  */
 export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
   const cleanId = String(tvId).replace('tmdb_', '').trim();
-  const cacheKey = `tv_${cleanId}_season_${seasonNumber}`;
+  const cacheKey = `tv_v2_${cleanId}_season_${seasonNumber}`;
   const cached = getCache('tmdb', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached.episodes) && cached.episodes.length > 0) return cached;
 
   try {
     const url = `${TMDB_BASE}/tv/${cleanId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=ru-RU`;
@@ -626,7 +628,8 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
         overview = `Эпизод ${epTitle}. Развитие сюжетной линии ${seasonNumber}-го сезона, ключевые события и взаимоотношения персонажей в высоком качестве.`;
       }
 
-      const stillUrl = ep.still_path ? `${IMAGE_BASE}${ep.still_path}` : null;
+      const rawStillUrl = ep.still_path ? `${IMAGE_BASE}${ep.still_path}` : null;
+      const stillUrl = rawStillUrl ? `/api/media/image-proxy?url=${encodeURIComponent(rawStillUrl)}` : null;
 
       return {
         episode_number: ep.episode_number,
@@ -654,7 +657,9 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
       episodes
     };
 
-    setCache('tmdb', cacheKey, result, 7200);
+    if (episodes.length > 0) {
+      setCache('tmdb', cacheKey, result, 7200);
+    }
     return result;
   } catch (err) {
     console.warn('Ошибка загрузки серий сезона:', err.message);
@@ -665,33 +670,59 @@ export async function getTmdbSeasonEpisodes(tvId, seasonNumber = 1) {
 /**
  * Получение всех видео актера или режиссера
  */
-export async function getTmdbPersonMedia(personId) {
-  const cleanId = String(personId).trim();
-  const cacheKey = `person_${cleanId}`;
+export async function getTmdbPersonMedia(personId, personName = '') {
+  const cleanId = String(personId || '').trim();
+  const cleanName = String(personName || '').trim();
+  const cacheKey = `person_v2_${cleanId}_${cleanName.toLowerCase()}`;
   const cached = getCache('tmdb', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
+
+  const resolvePersonIdByName = async (queryName) => {
+    const q = String(queryName || '').replace(/^(actor_|dir_)\d*_?/, '').trim();
+    if (!q) return null;
+    for (const lang of ['ru-RU', 'en-US']) {
+      try {
+        const searchUrl = `${TMDB_BASE}/search/person?api_key=${TMDB_API_KEY}&language=${lang}&query=${encodeURIComponent(q)}`;
+        const searchRes = await tmdbFetch(searchUrl);
+        if (searchRes.ok) {
+          const sData = await searchRes.json();
+          if (Array.isArray(sData.results) && sData.results.length > 0) {
+            return sData.results[0];
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  };
 
   try {
     let numericId = cleanId;
-    if (isNaN(Number(cleanId)) || cleanId.startsWith('actor_') || cleanId.startsWith('dir_')) {
-      const searchName = cleanId.replace(/^(actor_|dir_)\d*_?/, '').trim();
-      if (!searchName) return { person: null, items: [] };
-      const searchUrl = `${TMDB_BASE}/search/person?api_key=${TMDB_API_KEY}&language=ru-RU&query=${encodeURIComponent(searchName)}`;
-      const searchRes = await tmdbFetch(searchUrl);
-      if (searchRes.ok) {
-        const sData = await searchRes.json();
-        if (sData.results && sData.results.length > 0) {
-          numericId = sData.results[0].id;
-        } else {
-          return { person: null, items: [] };
-        }
+    let matchedSearchPerson = null;
+    const isSyntheticId = !cleanId || isNaN(Number(cleanId)) || Number(cleanId) <= 100 || cleanId.startsWith('actor_') || cleanId.startsWith('dir_');
+
+    if (isSyntheticId) {
+      const searchName = cleanName || cleanId.replace(/^(actor_|dir_)\d*_?/, '').trim();
+      matchedSearchPerson = await resolvePersonIdByName(searchName);
+      if (matchedSearchPerson && matchedSearchPerson.id) {
+        numericId = String(matchedSearchPerson.id);
       } else {
-        return { person: null, items: [] };
+        return {
+          person: searchName ? { id: cleanId || searchName, name: searchName, photo: 'assets/avatar_default.svg', known_for: 'Актер' } : null,
+          items: []
+        };
       }
     }
 
-    const url = `${TMDB_BASE}/person/${numericId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
-    const res = await tmdbFetch(url);
+    let url = `${TMDB_BASE}/person/${numericId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
+    let res = await tmdbFetch(url);
+    if (!res.ok && cleanName) {
+      matchedSearchPerson = await resolvePersonIdByName(cleanName);
+      if (matchedSearchPerson && matchedSearchPerson.id && String(matchedSearchPerson.id) !== String(numericId)) {
+        numericId = String(matchedSearchPerson.id);
+        url = `${TMDB_BASE}/person/${numericId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=combined_credits`;
+        res = await tmdbFetch(url);
+      }
+    }
     if (!res.ok) throw new Error(`Person fetch error: ${res.status}`);
 
     const data = await res.json();
@@ -699,8 +730,9 @@ export async function getTmdbPersonMedia(personId) {
     
     // Объединяем и дедуплицируем работы
     const rawItems = [
-      ...(credits.crew || []).filter(c => c.job === 'Director'),
-      ...(credits.cast || [])
+      ...(credits.crew || []).filter(c => c.job === 'Director' || c.department === 'Directing' || c.department === 'Writing'),
+      ...(credits.cast || []),
+      ...((matchedSearchPerson && Array.isArray(matchedSearchPerson.known_for)) ? matchedSearchPerson.known_for : [])
     ];
 
     const seen = new Set();
@@ -721,7 +753,7 @@ export async function getTmdbPersonMedia(personId) {
     const result = {
       person: {
         id: data.id,
-        name: data.name,
+        name: cleanName || data.name,
         photo: data.profile_path ? `${IMAGE_BASE}${data.profile_path}` : 'assets/avatar_default.svg',
         biography: data.biography || '',
         birthday: data.birthday || '',
@@ -731,11 +763,16 @@ export async function getTmdbPersonMedia(personId) {
       items: items.slice(0, 40)
     };
 
-    setCache('tmdb', cacheKey, result, 7200);
+    if (result.items.length > 0) {
+      setCache('tmdb', cacheKey, result, 7200);
+    }
     return result;
   } catch (err) {
     console.warn('Ошибка загрузки медиа персоны:', err.message);
-    return { person: null, items: [] };
+    return {
+      person: cleanName ? { id: cleanId || cleanName, name: cleanName, photo: 'assets/avatar_default.svg', known_for: 'Кинематографист' } : null,
+      items: []
+    };
   }
 }
 
@@ -884,9 +921,9 @@ async function getCollectionById(colId) {
  */
 export async function findTmdbTvId(title) {
   if (!title) return null;
-  const clean = String(title).replace(/\s*[\(\[]?\s*(4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
+  const clean = String(title).replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
   if (!clean) return null;
-  const cacheKey = `tmdb_tv_search_${clean.toLowerCase()}`;
+  const cacheKey = `tmdb_tv_search_v2_${clean.toLowerCase()}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached) return cached;
   try {
@@ -899,6 +936,13 @@ export async function findTmdbTvId(title) {
         setCache('tmdb', cacheKey, id, 86400);
         return id;
       }
+    }
+    const multiRes = await searchTmdb(clean, 1);
+    const tvMatch = (multiRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv' || it.media_type === 'cartoon-series' || it.media_type === 'anime-series');
+    if (tvMatch && tvMatch.id) {
+      const id = String(tvMatch.id).replace('tmdb_', '').trim();
+      setCache('tmdb', cacheKey, id, 86400);
+      return id;
     }
   } catch (err) {
     console.warn('Ошибка поиска сериала в TMDB:', err.message);

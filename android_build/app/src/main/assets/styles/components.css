@@ -3585,7 +3585,10 @@ button:active .storm-status-svg {
   width: 100%;
   margin: 12px 0 16px 0;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+  height: auto !important;
+  min-height: max-content !important;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -3610,19 +3613,19 @@ button:active .storm-status-svg {
 }
 
 .info-table-label {
-  padding: 10px 14px;
+  padding: 8px 10px;
   font-weight: 700;
   color: #e2e8f0;
-  width: 115px;
-  vertical-align: middle;
+  width: 98px;
+  vertical-align: top;
   white-space: nowrap;
 }
 
 .info-table-val {
-  padding: 10px 14px;
+  padding: 8px 10px;
   color: #ffffff;
   font-weight: 600;
-  vertical-align: middle;
+  vertical-align: top;
   text-align: right;
 }
 
@@ -3663,20 +3666,20 @@ button:active .storm-status-svg {
 .cinema-meta-chips-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  justify-content: flex-start;
+  gap: 5px;
+  justify-content: flex-end;
   align-items: center;
 }
 
 .cinema-meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
+  gap: 5px;
+  padding: 4px 9px;
   border-radius: 7px;
   background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-card) 100%);
   border: 1px solid var(--border-subtle);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-primary);
   cursor: pointer;
@@ -3712,7 +3715,7 @@ button:active .storm-status-svg {
 }
 
 .cinema-meta-chip.genre-chip .genre-icon {
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1;
   display: inline-flex;
   align-items: center;

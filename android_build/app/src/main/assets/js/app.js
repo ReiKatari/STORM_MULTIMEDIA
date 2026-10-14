@@ -52,24 +52,24 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js';
-import { setLanguage, applyTranslations, t } from './i18n.js';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js';
-import { renderSyncModalContent } from './sync-service.js';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js';
-import { openNeuralRecommenderModal } from './neural-recommender.js';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js';
-import { openRemoteQrModal } from './storm-remote.js';
-import { initAdminDashboard } from './admin-dashboard.js';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js';
-import { getStatusIconSvg } from './status-icons.js';
-import { checkForUpdates } from './updater.js';
-import { initFormFactorEngine } from './form-factor.js';
+import { initTheme, setTheme } from './theme.js?v=1.0.38';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.38';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.38';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.38';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.38';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.38';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.38';
+import { renderSyncModalContent } from './sync-service.js?v=1.0.38';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.38';
+import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.38';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.38';
+import { openRemoteQrModal } from './storm-remote.js?v=1.0.38';
+import { initAdminDashboard } from './admin-dashboard.js?v=1.0.38';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.38';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.38';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.38';
+import { checkForUpdates } from './updater.js?v=1.0.38';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.38';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -1743,15 +1743,7 @@ export function formatMediaTitle(item) {
   // Очищаем скобки с годом из заголовка, так как год отображается в строке метаданных карточки
   rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-  let seasonsText = '';
-  if (item.media_type === 'series' || item.media_type === 'anime-series' || item.category === 'Сериал' || item.media_type === 'cartoon-series') {
-    const seasons = item.seasons_count || item.total_seasons || item.seasons;
-    if (seasons) {
-      seasonsText = ` • ${seasons} сез.`;
-    }
-  }
-
-  return `${rawTitle}${seasonsText}`;
+  return rawTitle;
 }
 
 export function isAnimeItemClient(item) {
@@ -4598,8 +4590,8 @@ export async function executeSearch(query = null) {
             owner_id: -195528184,
             video_id: 456244337,
             vk_url: 'https://vkvideo.ru/video-195528184_456244337',
-            vk_embed_url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=1&js_api=1&muted=0&mute=0',
-            embed_url: 'https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=1',
+            vk_embed_url: 'https://vk.com/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0',
+            embed_url: 'https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=0',
             video_url: 'https://rutube.ru/video/564f31c881b83373bfe0cb26979d44cf/',
             total_episodes: 16,
             seasons: 2,
@@ -6099,7 +6091,9 @@ function initModals() {
 function initLanguageSwitcher() {
   const langSelect = document.getElementById('header-lang-select');
   if (langSelect) {
-    langSelect.value = localStorage.getItem('storm_lang') || 'ru';
+    const sysLang = ((navigator.language || 'ru').split(/[-_]/)[0] || 'ru').toLowerCase();
+    langSelect.value = localStorage.getItem('storm_lang') || sysLang;
+    if (!langSelect.value) langSelect.value = 'ru';
     langSelect.addEventListener('change', (e) => {
       setLanguage(e.target.value);
     });

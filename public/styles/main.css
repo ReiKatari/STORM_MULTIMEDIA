@@ -1453,18 +1453,29 @@ body {
   font-size: 11px !important;
 }
 
+#cinema-modal .cinema-side-column > * {
+  flex-shrink: 0 !important;
+}
+
 #cinema-modal .cinema-info-table-wrap {
   margin: 6px 0 10px 0 !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+  height: auto !important;
+  min-height: max-content !important;
 }
 
 #cinema-modal .info-table-label {
-  padding: 5px 8px !important;
+  padding: 6px 8px !important;
   font-size: 11px !important;
+  vertical-align: top !important;
+  width: 95px !important;
 }
 
 #cinema-modal .cinema-info-table td {
-  padding: 5px 8px !important;
+  padding: 6px 8px !important;
   font-size: 11.5px !important;
+  vertical-align: top !important;
 }
 
 #cinema-modal.is-focus-mode .cinema-modal-dialog,
@@ -7291,4 +7302,19 @@ body.tv-mode .custom-list-card:focus {
   font-weight: 700;
   color: var(--text-main, #f8fafc);
 }
+
+/* Гарантированное отображение модального окна актера/режиссера поверх окна плеера (#cinema-modal) */
+#person-modal.storm-modal-backdrop {
+  z-index: 120000 !important;
+}
+
+/* Защита таблицы метаданных (включая строку 🎭 Жанры) от сжатия и обрезания в Flexbox */
+.cinema-info-table-wrap {
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: max-content !important;
+}
+
 

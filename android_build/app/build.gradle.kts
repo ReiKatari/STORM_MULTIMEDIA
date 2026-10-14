@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -11,16 +13,54 @@ android {
         applicationId = "com.reikatari.stormmultimedia"
         minSdk = 24
         targetSdk = 36
-        versionCode = 41
-        versionName = "1.0.31"
+        versionCode = 48
+        versionName = "1.0.38"
     }
+
+    val stormSigningProps = Properties().apply {
+        val centralProps = file("F:/STORM ALL PROJECTS/.storm-secrets/storm_signing.properties")
+        val envProps = System.getenv("STORM_SIGNING_PROPS")?.let { file(it) }
+        val activePropsFile = listOfNotNull(envProps, centralProps).firstOrNull { it.exists() }
+        if (activePropsFile != null) {
+            activePropsFile.inputStream().use { load(it) }
+        }
+    }
+    val unifiedCertFile = (
+        System.getenv("STORM_CERT_FILE")
+            ?: stormSigningProps.getProperty("STORM_CERT_FILE")
+        )?.let { file(it) }?.takeIf { it.exists() }
+    val unifiedCertPassword = System.getenv("STORM_CERT_PASSWORD")
+        ?: stormSigningProps.getProperty("STORM_CERT_PASSWORD")
+        ?: ""
+    val unifiedKeyAlias = System.getenv("STORM_KEY_ALIAS")
+        ?: stormSigningProps.getProperty("STORM_KEY_ALIAS")
+        ?: ""
+    val unifiedKeyPassword = System.getenv("STORM_KEY_PASSWORD")
+        ?: stormSigningProps.getProperty("STORM_KEY_PASSWORD")
+        ?: ""
 
     signingConfigs {
         create("release") {
-            storeFile = file("../storm.jks")
-            storePassword = "storm123"
-            keyAlias = "storm"
-            keyPassword = "storm123"
+            if (unifiedCertFile != null) {
+                storeFile = unifiedCertFile
+                storePassword = unifiedCertPassword
+                keyAlias = unifiedKeyAlias
+                keyPassword = unifiedKeyPassword
+            }
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+        getByName("debug") {
+            if (unifiedCertFile != null) {
+                storeFile = unifiedCertFile
+                storePassword = unifiedCertPassword
+                keyAlias = unifiedKeyAlias
+                keyPassword = unifiedKeyPassword
+            }
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 

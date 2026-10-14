@@ -80,8 +80,82 @@ class MainActivity : ComponentActivity() {
         setupWebSettings()
         setupClients()
         setupBackNavigation()
+        ensureStormRootStorageAndPermissions()
 
         loadAppContent()
+    }
+
+    private fun ensureStormRootStorageAndPermissions() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                if (!android.os.Environment.isExternalStorageManager()) {
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:$packageName")
+                    )
+                    if (runCatching { startActivity(intent) }.isFailure) {
+                        runCatching {
+                            startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                        }
+                    }
+                } else {
+                    initStormMultimediaRootDirectory()
+                }
+            } else {
+                val writeGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!writeGranted) {
+                    androidx.core.app.ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(
+                            android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                        ),
+                        1001
+                    )
+                } else {
+                    initStormMultimediaRootDirectory()
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val notifGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!notifGranted) {
+                    androidx.core.app.ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                        1002
+                    )
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                display?.supportedModes?.maxByOrNull { it.refreshRate }?.let { maxMode ->
+                    window.attributes = window.attributes.apply {
+                        preferredDisplayModeId = maxMode.modeId
+                    }
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val gameManager = getSystemService(android.app.GameManager::class.java)
+                gameManager?.setGameState(
+                    android.app.GameState(false, android.app.GameState.MODE_GAMEPLAY_UNINTERRUPTIBLE)
+                )
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun initStormMultimediaRootDirectory() {
+        try {
+            val rootDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "STORM MULTIMEDIA")
+            if (!rootDir.exists()) rootDir.mkdirs()
+            listOf("settings", "cache", "downloads", "offline", "subtitles", "logs", "updates").forEach { sub ->
+                java.io.File(rootDir, sub).mkdirs()
+            }
+        } catch (_: Throwable) {}
     }
 
     private fun loadAppContent() {
@@ -109,7 +183,7 @@ class MainActivity : ComponentActivity() {
         settings.allowContentAccess = true
         settings.allowFileAccessFromFileURLs = true
         settings.allowUniversalAccessFromFileURLs = true
-        settings.mediaPlaybackRequiresUserGesture = false
+        settings.mediaPlaybackRequiresUserGesture = true
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
@@ -120,13 +194,15 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.31"
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.38"
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.requestFocusFromTouch()
 
-        webView.addJavascriptInterface(StormAndroidBridge(), "StormAndroidBridge")
+        val bridge = StormAndroidBridge()
+        webView.addJavascriptInterface(bridge, "StormAndroidBridge")
+        webView.addJavascriptInterface(bridge, "StormNativeApp")
     }
 
     private fun createAssetResponse(mimeType: String, assetPath: String): WebResourceResponse? {
@@ -379,6 +455,15 @@ class MainActivity : ComponentActivity() {
         fun exitApp() {
             runOnUiThread {
                 finish()
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun hapticFeedback() {
+            runOnUiThread {
+                runCatching {
+                    rootLayout.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                }
             }
         }
     }
