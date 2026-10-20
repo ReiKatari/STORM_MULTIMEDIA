@@ -53,10 +53,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
   const numYear = parseInt(releaseYear, 10);
   const isSourceFanfilm = source === 'fanfilm4k';
   const isSourceLift = source === 'lift' || Boolean(lift_id);
-  const isKnownUnreleased = /кэрри|carrie/i.test(cleanTitle) && /flanagan|флэнаган/i.test(cleanTitle);
-  const isUpcoming = !isSourceFanfilm && !isSourceLift && (is_upcoming === true ||
-    (numYear && numYear > currentYear) ||
-    Boolean(isKnownUnreleased));
+  const isUpcoming = false;
   const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
     source === 'anilibria' || source === 'anixart' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('аним')) : String(genres).toLowerCase().includes('аним')));
@@ -465,31 +462,12 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
     });
   }
 
-  // 5. Официальный трейлер / промо (гарантированное воспроизведение видео)
-  if (trailer_url) {
-    players.push({
-      id: 'official_trailer',
-      name: 'Официальный трейлер (4K / FHD)',
-      type: 'iframe',
-      quality: '4K UHD / 1080p',
-      badge: 'ТРЕЙЛЕР',
-      status: 'working',
-      status_label: '🟢 Онлайн',
-      audio_info: 'Официальный промо-трейлер в высоком качестве',
-      speed: '⚡ YouTube / VK 4K',
-      url: trailer_url,
-      is_trailer: true,
-      is_recommended: isUpcoming && !fanfilm_4k_url,
-      recommended_badge: isUpcoming && !fanfilm_4k_url ? '🔥 Трейлер' : undefined
-    });
-  }
-
   // Гарантируем, что ровно один плеер отмечен как рекомендуемый (только среди рабочих)
   if (!players.some(p => p.is_recommended) && players.length > 0) {
     const targetP = players.find(p => p.status === 'working') || players[0];
     if (targetP) {
       targetP.is_recommended = true;
-      targetP.recommended_badge = targetP.is_trailer ? '🔥 Трейлер' : '🔥 Рекомендуемый';
+      targetP.recommended_badge = '🔥 Рекомендуемый';
     }
   }
 

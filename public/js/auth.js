@@ -579,9 +579,9 @@ export function openProfileModal() {
 
   // Настройки плеера по умолчанию, AdShield, CleanView, Smart Skip и Ambilight
   try {
-    if (!localStorage.getItem('storm_default_player_v41_migrated')) {
+    if (!localStorage.getItem('storm_default_player_v42_migrated')) {
       localStorage.setItem('storm_default_player', 'lift_adfree');
-      localStorage.setItem('storm_default_player_v41_migrated', '1');
+      localStorage.setItem('storm_default_player_v42_migrated', '1');
     }
   } catch (_) {}
 
@@ -592,7 +592,7 @@ export function openProfileModal() {
     defaultPlayerSelect.onchange = (e) => {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
-      localStorage.setItem('storm_default_player_v41_migrated', '1');
+      localStorage.setItem('storm_default_player_v42_migrated', '1');
       import('./player.js').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});

@@ -104,12 +104,24 @@ function formatTmdbItem(item, mediaTypeHint = null) {
   const title = (isTv ? item.name : item.title) || 'Кинофильм';
   const originalTitle = (isTv ? item.original_name : item.original_title) || '';
   const dateStr = (isTv ? item.first_air_date : item.release_date) || item.release_date || item.first_air_date || '';
+  if (dateStr && /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const relDate = new Date(dateStr.substring(0, 10));
+    if (!isNaN(relDate.getTime()) && relDate > new Date()) {
+      return null;
+    }
+  }
   let year = dateStr ? dateStr.substring(0, 4) : '';
   if (!year) {
     const ym = `${title} ${originalTitle} ${item.overview || ''}`.match(/\b(19\d\d|20\d\d)\b/);
     if (ym) year = ym[1];
   }
   const verifiedYear = resolveMediaYear(title, '', item.poster_path, year) || year;
+  if (verifiedYear && parseInt(verifiedYear, 10) > new Date().getFullYear()) {
+    return null;
+  }
+  if (/клэйфейс|clayface|кэрри.*2026/i.test(`${title} ${originalTitle}`)) {
+    return null;
+  }
 
   let poster = 'assets/favicon.svg';
   if (item.poster_path) {
@@ -158,29 +170,30 @@ function formatTmdbItem(item, mediaTypeHint = null) {
  */
 export async function getTmdbCatalog(category = 'popular', page = 1) {
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `catalog_v2_${category}_page_${pageNum}`;
+  const cacheKey = `catalog_v3_${category}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
   try {
-    let endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=10';
+    const todayIso = new Date().toISOString().slice(0, 10);
+    let endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=10`;
 
     if (category === 'movies') {
-      endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=10';
+      endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=10`;
     } else if (category === 'series') {
-      endpoint = '/discover/tv?sort_by=first_air_date.desc&vote_count.gte=10';
+      endpoint = `/discover/tv?sort_by=first_air_date.desc&first_air_date.lte=${todayIso}&vote_count.gte=10`;
     } else if (category === 'new') {
       endpoint = '/movie/now_playing';
     } else if (category === 'cartoons') {
-      endpoint = '/discover/movie?with_genres=16&without_original_language=ja&sort_by=primary_release_date.desc&vote_count.gte=5';
+      endpoint = `/discover/movie?with_genres=16&without_original_language=ja&sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'cartoon-series') {
-      endpoint = '/discover/tv?with_genres=16&without_original_language=ja&sort_by=first_air_date.desc&vote_count.gte=5';
+      endpoint = `/discover/tv?with_genres=16&without_original_language=ja&sort_by=first_air_date.desc&first_air_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'anime-movies') {
-      endpoint = '/discover/movie?with_genres=16&with_original_language=ja&sort_by=primary_release_date.desc&vote_count.gte=5';
+      endpoint = `/discover/movie?with_genres=16&with_original_language=ja&sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'anime-series') {
-      endpoint = '/discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc&vote_count.gte=5';
+      endpoint = `/discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc&first_air_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'popular') {
-      endpoint = '/discover/movie?sort_by=primary_release_date.desc&vote_count.gte=15';
+      endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=15`;
     }
 
     const sep = endpoint.includes('?') ? '&' : '?';
@@ -562,8 +575,8 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
         soundtrack,
         trivia,
         cast,
-        trailer_url: trailerUrl,
-        is_upcoming: isUpcoming,
+        trailer_url: '',
+        is_upcoming: false,
         seasons,
         players: []
       };

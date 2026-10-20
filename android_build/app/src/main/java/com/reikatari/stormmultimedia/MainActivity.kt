@@ -194,7 +194,19 @@ class MainActivity : ComponentActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
-        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/1.0.38"
+        val pkgVersion = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.42"
+        } catch (_: Throwable) {
+            "1.0.42"
+        }
+        settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
+        try {
+            val prefs = getSharedPreferences("storm_webview_prefs", MODE_PRIVATE)
+            if (prefs.getString("last_version", "") != pkgVersion) {
+                webView.clearCache(true)
+                prefs.edit().putString("last_version", pkgVersion).apply()
+            }
+        } catch (_: Throwable) {}
 
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
@@ -451,6 +463,15 @@ class MainActivity : ComponentActivity() {
     }
 
     inner class StormAndroidBridge {
+        @android.webkit.JavascriptInterface
+        fun getAppVersion(): String {
+            return try {
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.42"
+            } catch (_: Throwable) {
+                "1.0.42"
+            }
+        }
+
         @android.webkit.JavascriptInterface
         fun exitApp() {
             runOnUiThread {

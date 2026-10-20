@@ -6,7 +6,22 @@
 
 import { showToast } from './auth.js';
 
-export const CURRENT_APP_VERSION = '1.0.40';
+export const CURRENT_APP_VERSION = '1.0.42';
+
+export function getActiveAppVersion() {
+  let ver = CURRENT_APP_VERSION;
+  try {
+    if (typeof window !== 'undefined' && window.StormAndroidBridge && typeof window.StormAndroidBridge.getAppVersion === 'function') {
+      const nativeVer = String(window.StormAndroidBridge.getAppVersion() || '').trim();
+      if (nativeVer && compareVersions(nativeVer, ver) > 0) ver = nativeVer;
+    }
+  } catch (_) {}
+  try {
+    const m = typeof navigator !== 'undefined' ? (navigator.userAgent || '').match(/StormMultimediaApp\/(\d+\.\d+\.\d+)/i) : null;
+    if (m && m[1] && compareVersions(m[1], ver) > 0) ver = m[1];
+  } catch (_) {}
+  return ver;
+}
 const GITHUB_REPO = 'ReiKatari/STORM_MULTIMEDIA';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 час для пассивных проверок
 
@@ -65,12 +80,13 @@ export async function checkForUpdates(manualTrigger = false) {
 
   // 1. Первичная проверка через локальный серверный прокси (обходит лимиты и блокировки WebView)
   try {
-    const srvRes = await fetch('/api/updates/check', { signal: AbortSignal.timeout(5000) });
+    const activeVer = getActiveAppVersion();
+    const srvRes = await fetch('/api/updates/check?client_version=' + encodeURIComponent(activeVer), { signal: AbortSignal.timeout(5000) });
     if (srvRes.ok) {
       const data = await srvRes.json();
       if (data && data.success && data.latestVersion) {
         localStorage.setItem('storm_last_update_check', String(now));
-        const hasNewer = compareVersions(data.latestVersion, CURRENT_APP_VERSION) > 0;
+        const hasNewer = compareVersions(data.latestVersion, activeVer) > 0;
         if (hasNewer) {
           showUpdateModal({
             name: data.releaseName,
@@ -123,7 +139,7 @@ export async function checkForUpdates(manualTrigger = false) {
       return null;
     }
 
-    const hasNewer = compareVersions(latestVersion, CURRENT_APP_VERSION) > 0;
+    const hasNewer = compareVersions(latestVersion, getActiveAppVersion()) > 0;
 
     if (hasNewer) {
       showUpdateModal(release, latestVersion);

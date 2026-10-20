@@ -52,24 +52,24 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.0.41';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.41';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.41';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.41';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.41';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.41';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.41';
-import { renderSyncModalContent } from './sync-service.js?v=1.0.41';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.41';
-import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.41';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.41';
-import { openRemoteQrModal } from './storm-remote.js?v=1.0.41';
-import { initAdminDashboard } from './admin-dashboard.js?v=1.0.41';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.41';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.41';
-import { getStatusIconSvg } from './status-icons.js?v=1.0.41';
-import { checkForUpdates } from './updater.js?v=1.0.41';
-import { initFormFactorEngine } from './form-factor.js?v=1.0.41';
+import { initTheme, setTheme } from './theme.js?v=1.0.42';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.42';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.42';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.42';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.42';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.42';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.42';
+import { renderSyncModalContent } from './sync-service.js?v=1.0.42';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.42';
+import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.42';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.42';
+import { openRemoteQrModal } from './storm-remote.js?v=1.0.42';
+import { initAdminDashboard } from './admin-dashboard.js?v=1.0.42';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.42';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.42';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.42';
+import { checkForUpdates } from './updater.js?v=1.0.42';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.42';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -168,6 +168,7 @@ async function startStormApp() {
   try { initFilterDropdowns(); } catch (e) { console.warn('initFilterDropdowns error:', e); }
   try { initModals(); } catch (e) { console.warn('initModals error:', e); }
   try { initProfileHandlers(); } catch (e) { console.warn('initProfileHandlers error:', e); }
+  try { initStormCustomSelects(); } catch (e) { console.warn('initStormCustomSelects error:', e); }
   try { initLanguageSwitcher(); } catch (e) { console.warn('initLanguageSwitcher error:', e); }
   try { initNewCyberFeatures(); } catch (e) { console.warn('initNewCyberFeatures error:', e); }
   try { initAdminDashboard(); } catch (e) { console.warn('initAdminDashboard error:', e); }
@@ -1312,10 +1313,6 @@ export function openRadialActionRing(event, item) {
         <span class="radial-action-icon">🎬</span>
         <span class="radial-action-label">Смотреть</span>
       </button>
-      <button type="button" class="radial-action-item action-trailer" data-action="trailer" title="Смотреть трейлер">
-        <span class="radial-action-icon">🍿</span>
-        <span class="radial-action-label">Трейлер</span>
-      </button>
       <button type="button" class="radial-action-item action-bookmark" data-action="bookmark" title="Добавить в закладки">
         <span class="radial-action-icon">🔖</span>
         <span class="radial-action-label">Закладки</span>
@@ -1647,6 +1644,12 @@ export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
  */
 export function isTrailerMedia(item) {
   if (!item) return false;
+  if (typeof item === 'object') {
+    if (item.is_trailer || item.is_upcoming || item.isUpcoming) return true;
+    if (String(item.id || '').startsWith('tmdb_up_')) return true;
+    if (item.quality && /ожидается|скоро|трейлер/i.test(String(item.quality))) return true;
+    if (/клэйфейс|clayface/i.test(String(item.title || '') + ' ' + String(item.original_title || ''))) return true;
+  }
 
   const title = typeof item === 'string' ? item : (item.title || item.name || '');
   const originalTitle = typeof item === 'string' ? '' : (item.original_title || item.original_name || '');
@@ -6434,7 +6437,7 @@ function showCardHoverPreview(card, item) {
 
     <!-- Кнопки действий -->
     <div class="hover-preview-actions">
-      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">${isUpcoming ? '▶ Трейлер / Плеер' : '▶ Смотреть'}</button>
+      <button type="button" class="storm-btn storm-btn-primary storm-btn-sm hover-watch-btn">▶ Смотреть</button>
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm hover-room-btn" title="Совместный просмотр в кинозале">👥 Кинозал</button>
     </div>
 
@@ -7140,4 +7143,135 @@ if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', safeBootstrap);
     window.addEventListener('load', safeBootstrap);
   }
+}
+
+// ============================================================================
+// УНИВЕРСАЛЬНЫЙ КАСТОМНЫЙ СЕЛЕКТОР STORM (ЗАМЕНА СИСТЕМНОГО БЕЛОГО ОКНА ANDROID)
+// ============================================================================
+export function openStormThemedSelectModal(selectEl) {
+  if (!selectEl || !selectEl.options || selectEl.options.length === 0) return;
+
+  let modal = document.getElementById('storm-themed-select-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'storm-themed-select-modal';
+    modal.className = 'storm-modal-backdrop';
+    document.body.appendChild(modal);
+  }
+
+  // Извлекаем заголовок настройки из соседнего блока или атрибута title
+  let headerTitle = selectEl.getAttribute('title') || '';
+  if (!headerTitle) {
+    const parentRow = selectEl.closest('div[style*="justify-content: space-between"], .form-group, label');
+    if (parentRow) {
+      const titleCandidate = parentRow.querySelector('div[style*="font-weight: 700"], div[style*="font-weight:700"], label, strong, span');
+      if (titleCandidate && titleCandidate.textContent) {
+        headerTitle = titleCandidate.textContent.replace(/Без рекламы.*$/i, '').trim();
+      }
+    }
+  }
+  if (!headerTitle) headerTitle = 'Выберите вариант';
+
+  const currentVal = selectEl.value;
+  const optionsArr = Array.from(selectEl.options);
+
+  modal.innerHTML = `
+    <div class="storm-modal storm-themed-select-dialog">
+      <div class="storm-modal-header" style="padding: 16px 20px;">
+        <h3 class="storm-modal-title" style="font-size: 16.5px; font-weight: 800;">${escapeHtml(headerTitle)}</h3>
+        <button type="button" class="storm-modal-close" id="storm-themed-select-close">✕</button>
+      </div>
+      <div class="storm-themed-select-list">
+        ${optionsArr.map((opt, idx) => {
+          const isAct = String(opt.value) === String(currentVal);
+          return `
+            <button type="button" class="storm-themed-select-option ${isAct ? 'active' : ''}" data-opt-idx="${idx}">
+              <span style="line-height: 1.35;">${escapeHtml(opt.textContent || opt.label || opt.value)}</span>
+              <span class="storm-themed-radio"></span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+      <div class="storm-themed-select-footer">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="storm-themed-select-cancel" style="padding: 8px 18px; border-radius: 10px; font-weight: 700;">Отмена</button>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => {
+    modal.classList.remove('is-open');
+  };
+
+  modal.querySelector('#storm-themed-select-close')?.addEventListener('click', closeModal);
+  modal.querySelector('#storm-themed-select-cancel')?.addEventListener('click', closeModal);
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
+
+  modal.querySelectorAll('.storm-themed-select-option').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.optIdx, 10);
+      const chosenOpt = optionsArr[idx];
+      if (chosenOpt) {
+        selectEl.selectedIndex = idx;
+        selectEl.value = chosenOpt.value;
+        selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        selectEl.dispatchEvent(new Event('input', { bubbles: true }));
+        if (typeof selectEl.onchange === 'function') {
+          try { selectEl.onchange({ target: selectEl }); } catch (_) {}
+        }
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate(10); } catch (_) {}
+        }
+      }
+      closeModal();
+    });
+  });
+
+  modal.classList.add('is-open');
+}
+
+export function bindStormSelectElement(selectEl) {
+  if (!selectEl || selectEl.dataset.stormCustomBound === 'true') return;
+  selectEl.dataset.stormCustomBound = 'true';
+  selectEl.tabIndex = -1;
+
+  // Оборачиваем <select> в .storm-select-shell, чтобы WebView Android никогда не вызывал системный белый попап
+  const parent = selectEl.parentNode;
+  if (parent && (!parent.classList || !parent.classList.contains('storm-select-shell'))) {
+    const shell = document.createElement('div');
+    shell.className = 'storm-select-shell';
+    if (selectEl.style.minWidth) shell.style.minWidth = selectEl.style.minWidth;
+    if (selectEl.style.width) shell.style.width = selectEl.style.width;
+    if (selectEl.style.flex) shell.style.flex = selectEl.style.flex;
+    parent.insertBefore(shell, selectEl);
+    shell.appendChild(selectEl);
+
+    shell.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openStormThemedSelectModal(selectEl);
+    });
+  }
+}
+
+export function initStormCustomSelects() {
+  document.querySelectorAll('select.storm-select, select').forEach(bindStormSelectElement);
+
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node && node.nodeType === 1) {
+          if (node.tagName === 'SELECT') {
+            bindStormSelectElement(node);
+          } else if (node.querySelectorAll) {
+            node.querySelectorAll('select').forEach(bindStormSelectElement);
+          }
+        }
+      }
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
 }

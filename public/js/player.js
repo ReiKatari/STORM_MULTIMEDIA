@@ -116,9 +116,9 @@ export function setAdblockEnabled(val) {
 
 // Однократная миграция плеера по умолчанию на «Lift 4K и FHD (Без рекламы • Все озвучки)» (lift_adfree)
 try {
-  if (!localStorage.getItem('storm_default_player_v41_migrated')) {
+  if (!localStorage.getItem('storm_default_player_v42_migrated')) {
     localStorage.setItem('storm_default_player', 'lift_adfree');
-    localStorage.setItem('storm_default_player_v41_migrated', '1');
+    localStorage.setItem('storm_default_player_v42_migrated', '1');
   }
 } catch (_) {}
 
@@ -129,7 +129,7 @@ export function getPreferredDefaultPlayerId() {
 export function setPreferredDefaultPlayerId(playerId) {
   const cleanId = String(playerId || 'lift_adfree').trim();
   localStorage.setItem('storm_default_player', cleanId);
-  localStorage.setItem('storm_default_player_v41_migrated', '1');
+  localStorage.setItem('storm_default_player_v42_migrated', '1');
 }
 
 export function getSafePersonPhotoUrl(photo) {
@@ -1119,34 +1119,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     }
   }
 
-  const isCarrie = /кэрри|carrie/i.test(title) && /flanagan|флэнаган/i.test(title);
-  const isFutureYear = Boolean(year && parseInt(year, 10) > new Date().getFullYear());
-  const hasReal4kUrl = Boolean(effective4kUrl && !effective4kUrl.includes('do=search') && !effective4kUrl.includes('830'));
-  const hasAvailableStreams = Boolean(hasReal4kUrl || mediaItem.vk_embed_url || (mediaItem.rutube_id && mediaItem.rutube_id.length > 15) || (mediaItem.seasons && mediaItem.seasons.length > 0));
-  const isTrulyUpcoming = Boolean((mediaItem.is_upcoming || isCarrie || isFutureYear) && !hasAvailableStreams);
-
-  if (isTrulyUpcoming) {
-    if (mediaItem.trailer_url) {
-      suite.push({
-        id: 'official_trailer',
-        name: 'Официальный трейлер (4K / FHD)',
-        type: 'iframe',
-        quality: '4K UHD / 1080p',
-        badge: 'ТРЕЙЛЕР',
-        status: 'working',
-        status_label: '🟢 Онлайн',
-        audio_info: 'Официальный промо-трейлер в высоком качестве',
-        speed: '⚡ YouTube 4K',
-        url: mediaItem.trailer_url,
-        is_trailer: true,
-        is_recommended: true,
-        recommended_badge: '🔥 Трейлер'
-      });
-    }
-    return suite;
-  }
-
-  if (!effective4kUrl && !isTrulyUpcoming && !isLandyshiItem && safeTitle) {
+  if (!effective4kUrl && !isLandyshiItem && safeTitle) {
     effective4kUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
   }
 
@@ -1156,21 +1129,21 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     name: 'Lift 4K и FHD плеер (Без рекламы • Все озвучки)',
     type: 'iframe',
     quality: '4K UHD / 1080p',
-    badge: 'LIFT 4K',
+    badge: 'LIFT БЕЗ РЕКЛАМЫ',
     status: 'working',
-    status_label: '🟢 Онлайн',
+    status_label: '🟢 Без рекламы',
     audio_info: 'Прямой поток 4K VP9/AV1 и 1080p, все озвучки СНГ (RHS, Дубляж, TVShows, HDRezka, LostFilm) + субтитры и превью таймлайна',
     speed: '🚀 Прямой CDN без рекламы',
     url: `/api/player/lift-embed?title=${safeTitle}&original_title=${encodeURIComponent(mediaItem.original_title || '')}${yearQuery}${kpParam}${imdbParam}&lift_id=${encodeURIComponent(rawLiftId)}&is_series=${isSeries ? '1' : '0'}${episodeParam}`,
-    is_recommended: Boolean(rawLiftId || mediaItem.source === 'lift'),
-    recommended_badge: (rawLiftId || mediaItem.source === 'lift') ? '🚀 4K Без рекламы' : ''
+    is_recommended: !isAnime,
+    recommended_badge: !isAnime ? '🔥 Без рекламы 4K' : ''
   };
 
-  if ((rawLiftId || mediaItem.source === 'lift') && !isTrulyUpcoming && !isLandyshiItem) {
+  if (!isLandyshiItem) {
     suite.push(liftPlayerEntry);
   }
 
-  if (effective4kUrl && !isTrulyUpcoming && !isLandyshiItem) {
+  if (effective4kUrl && !isLandyshiItem) {
     suite.push({
       id: 'fanfilm4k_uhd',
       name: '4K Ultra HD Плеер (FanFilm4K)',
@@ -1182,13 +1155,9 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
       url: effective4kUrl,
-      is_recommended: !isAnime && !rawLiftId && mediaItem.source !== 'lift',
-      recommended_badge: (!isAnime && !rawLiftId && mediaItem.source !== 'lift') ? '🔥 4K По умолчанию' : ''
+      is_recommended: false,
+      recommended_badge: ''
     });
-  }
-
-  if (!rawLiftId && mediaItem.source !== 'lift' && !isTrulyUpcoming && !isLandyshiItem) {
-    suite.push(liftPlayerEntry);
   }
 
   // 2. Kinobox Мультиплеер (Alloha, Collaps, Kodik, HDRezka, Videocdn)
@@ -1855,29 +1824,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
         const isReal4k = p => p && (p.id === 'lift_adfree' || p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || (p.quality || '').includes('4K') || p.badge === 'FANFILM 4K' || p.badge === 'LIFT БЕЗ РЕКЛАМЫ');
         const hasOnlineStream = currentPlayers.some(isStable);
 
-        const isCarrieItem = /кэрри|carrie/i.test(currentMedia?.title || '') && parseInt(currentMedia?.year || '2026', 10) >= 2026;
-        const isUpcomingMedia = Boolean(
-          isCarrieItem ||
-          (!hasOnlineStream && (
-            currentMedia.is_upcoming ||
-            details?.is_upcoming ||
-            String(currentMedia.id || '').startsWith('tmdb_up_') ||
-            (currentMedia.year && parseInt(currentMedia.year, 10) > new Date().getFullYear())
-          ))
-        );
-
-        if (isUpcomingMedia) {
-          currentMedia.is_upcoming = true;
-          defaultPlayer = currentPlayers.find(p => p.is_trailer) || {
-            is_upcoming: true,
-            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
-          };
-        } else if (!hasOnlineStream && !defaultPlayer) {
-          defaultPlayer = {
-            is_upcoming: true,
-            upcoming_notice: `Официальная премьера «${cleanVideoTitle(currentMedia?.title || 'Фильм')}» ожидается в ${currentMedia?.year || 'скоро'} году. Цифровой релиз и 4K стримы появятся сразу после выхода в прокат.`
-          };
-        } else {
+        if (true) {
           currentMedia.is_upcoming = false;
           if (!defaultPlayer) {
             const prefPlayerId = getPreferredDefaultPlayerId();
@@ -2496,33 +2443,7 @@ export function stopPlayerFallbackLoop() {
   const cleanTitle = cleanVideoTitle(currentMedia?.title || 'Кинорелиз');
   const yearText = currentMedia?.year || '';
 
-  if (isUpcoming && currentMedia?.trailer_url) {
-    playStreamUrl(currentMedia.trailer_url);
-    const curBadge = document.getElementById('player-current-badge');
-    if (curBadge) curBadge.textContent = 'ТРЕЙЛЕР';
-    const curName = document.getElementById('player-current-name');
-    if (curName) curName.textContent = 'Официальный трейлер';
-    const curQuality = document.getElementById('player-current-quality');
-    if (curQuality) curQuality.textContent = '4K UHD / 1080p';
-    showToast(`🎬 Цифровой релиз ожидается в ${yearText || 'скоро'} году. Запущен официальный трейлер`, 'info');
-    return;
-  }
-
-  if (isUpcoming) {
-    container.innerHTML = `
-      <div class="storm-player-empty-screen" style="height:100%;min-height:480px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center, #151d30 0%, #0a0b10 100%);color:#fff;text-align:center;padding:32px 24px;box-sizing:border-box;">
-        <div style="font-size:52px;margin-bottom:16px;filter:drop-shadow(0 0 16px rgba(0,210,255,0.4));">🎬</div>
-        <h2 style="font-size:22px;font-weight:800;color:#00d2ff;margin:0 0 10px 0;letter-spacing:0.5px;">Официальная цифровая премьера еще не состоялась</h2>
-        <p style="font-size:14px;color:#94a3b8;max-width:540px;line-height:1.6;margin:0 0 20px 0;">
-          Выход фильма «${cleanTitle}» запланирован на ${yearText || '2026'} год. Как только состоится официальный цифровой релиз, фильм станет доступен в 4K Ultra HD со всеми студийными озвучками.
-        </p>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-          ${currentMedia?.trailer_url ? `<button type="button" class="storm-btn storm-btn-primary" onclick="window.playTrailerDirectly && window.playTrailerDirectly()" style="background:linear-gradient(135deg, #00d2ff, #0077ff);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,210,255,0.35);">▶ Смотреть трейлер</button>` : ''}
-          <button type="button" class="storm-btn storm-btn-secondary" onclick="window.addMediaToWatchlist && window.addMediaToWatchlist('${currentMedia?.id}')" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:10px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;">+ В список «Буду смотреть»</button>
-        </div>
-      </div>
-    `;
-  } else {
+  {
     // Гарантированный резервный мульти-балансер вместо тупикового экрана ошибки
     const fallbackEmbedUrl = `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(yearText)}&kp_id=${encodeURIComponent(currentMedia?.kp_id || '')}&imdb_id=${encodeURIComponent(currentMedia?.imdb_id || '')}`;
     container.innerHTML = `

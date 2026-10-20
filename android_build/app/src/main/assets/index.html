@@ -9,10 +9,10 @@
   <meta name="theme-color" content="#8b5cf6">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.40">
-  <link rel="stylesheet" href="/styles/components.css?v=1.0.40">
-  <link rel="stylesheet" href="/styles/main.css?v=1.0.40">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.40">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.42">
+  <link rel="stylesheet" href="/styles/components.css?v=1.0.42">
+  <link rel="stylesheet" href="/styles/main.css?v=1.0.42">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.42">
 </head>
 <body data-active-tab="home">
 
@@ -436,14 +436,14 @@
               </button>
             </div>
 
-            <!-- Компактный 3D Выпадающий список выбора плеера со статусами и озвучками -->
-            <div class="player-selector-dropdown-wrap" id="player-selector-dropdown-wrap">
-              <div class="storm-custom-dropdown player-custom-dropdown" id="player-source-dropdown">
+            <!-- Компактный 3D Выпадающий список выбора плеера со статусами и озвучками + Менеджер потоков 4K/FHD -->
+            <div class="player-selector-dropdown-wrap" id="player-selector-dropdown-wrap" style="display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap;">
+              <div class="storm-custom-dropdown player-custom-dropdown" id="player-source-dropdown" style="flex: 1 1 320px; min-width: 0;">
                 <button type="button" class="storm-dropdown-trigger player-dropdown-trigger" id="player-source-trigger">
                   <div class="player-trigger-info">
-                    <span class="player-source-badge" id="player-current-badge">ПЛЕЕР</span>
-                    <span class="player-current-name" id="player-current-name">Основной плеер</span>
-                    <span class="player-current-quality" id="player-current-quality">1080p FHD</span>
+                    <span class="player-source-badge" id="player-current-badge">LIFT БЕЗ РЕКЛАМЫ</span>
+                    <span class="player-current-name" id="player-current-name">Lift 4K и FHD (Без рекламы • Все озвучки)</span>
+                    <span class="player-current-quality" id="player-current-quality">4K UHD • FHD</span>
                     <span class="player-current-status" id="player-current-status">🟢 Онлайн</span>
                   </div>
                   <span class="storm-dropdown-arrow">▼</span>
@@ -454,6 +454,10 @@
                   </div>
                 </div>
               </div>
+              <button type="button" class="storm-btn storm-btn-secondary under-player-download-btn" id="under-player-lift-download-btn" title="Менеджер прямых потоков .m3u8 / .mpd для внешних плееров (VLC / IINA / PotPlayer) и скачивания субтитров .vtt" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.45); background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(0, 210, 255, 0.12)); color: #f8fafc; font-weight: 800; font-size: 13px; white-space: nowrap; cursor: pointer; flex: 0 0 auto;">
+                <span>📥</span>
+                <span>Скачать 4K / FHD</span>
+              </button>
             </div>
 
             <!-- Утилитарные действия: Ambilight, Цвета, PiP, Кинокомната, Субтитры -->
@@ -854,11 +858,14 @@
 
             <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Плеер по умолчанию</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Приоритетный источник при открытии фильмов и сериалов</div>
+                <div style="font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                  <span>Плеер по умолчанию</span>
+                  <span class="storm-badge" style="font-size: 10px; padding: 2px 6px; background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">Без рекламы • Автопропуск</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted);">Открывает любые фильмы и сериалы сразу в чистом мультитрековом плеере с автопропуском заставок</div>
               </div>
-              <select class="storm-select" id="profile-default-player-select" style="min-width: 230px;">
-                <option value="lift_adfree">🔥 Lift 4K и FHD плеер (Без рекламы • Все озвучки)</option>
+              <select class="storm-select" id="profile-default-player-select" style="min-width: 250px;">
+                <option value="lift_adfree" selected>🔥 Lift 4K и FHD (Без рекламы • Все озвучки)</option>
                 <option value="fanfilm4k_uhd">💎 4K Ultra HD плеер (FanFilm4K)</option>
                 <option value="kinobox_universal">⚡ Kinobox мультиплеер (FHD)</option>
                 <option value="kodik_direct">🎙️ Kodik (Озвучки и субтитры)</option>
@@ -927,7 +934,7 @@
           <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.40 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.42 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -1438,23 +1445,54 @@
     </div>
   </div>
 
-  <!-- Модальное окно скачивания с выбором качества (4K / 1080p / 720p) и студийной озвучки -->
+  <!-- Модальное окно скачивания и менеджера потоков 4K / FHD для внешних плееров (VLC / IINA / PotPlayer) -->
   <div class="storm-modal-backdrop" id="lift-download-modal" style="display: none; z-index: 125000 !important;">
-    <div class="storm-modal" style="max-width: 560px; width: 95%;">
+    <div class="storm-modal" style="max-width: 680px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
       <div class="storm-modal-header">
-        <h3 class="storm-modal-title" style="display: flex; align-items: center; gap: 8px;">
-          <span>📥</span> <span id="lift-download-modal-title">Скачивание и прямые потоки (4K / FHD)</span>
-        </h3>
-        <button type="button" class="storm-modal-close" id="lift-download-close-btn">✕</button>
+        <div>
+          <h3 class="storm-modal-title" style="display: flex; align-items: center; gap: 8px; margin: 0;">
+            <span>📥</span> <span id="lift-download-modal-title">Менеджер потоков 4K / FHD (VLC • IINA • PotPlayer)</span>
+          </h3>
+          <div id="lift-download-subtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+            Прямые ссылки на потоки .m3u8 / .mpd в один клик и файлы субтитров .vtt
+          </div>
+        </div>
+        <button type="button" class="storm-modal-close" id="close-lift-download-modal">✕</button>
       </div>
-      <div class="storm-modal-body" id="lift-download-modal-body" style="padding: 18px 20px;">
-        <!-- Заполняется динамически в player.js -->
+      <div class="storm-modal-body" id="lift-download-modal-body" style="padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+        <!-- 1. Панель быстрого копирования .m3u8 / .mpd и запуска во внешних плеерах (VLC / IINA / PotPlayer) -->
+        <div id="lift-download-external-bar" style="display: none; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(0, 210, 255, 0.28); border-radius: 12px; padding: 12px 14px;"></div>
+
+        <!-- 2. Сетка разрешений 4K / 1080p / 720p / 480p -->
+        <div>
+          <div style="font-size: 12px; font-weight: 800; color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span>🎬 Потоки видео по разрешению (.m3u8 / .mpd)</span>
+            <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Без рекламы • Прямой CDN</span>
+          </div>
+          <div class="lift-download-qualities-grid" id="lift-download-qualities-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px;"></div>
+        </div>
+
+        <!-- 3. Студийные озвучки и аудиодорожки -->
+        <div id="lift-download-voiceovers-row">
+          <div style="font-size: 12px; font-weight: 800; color: var(--text-secondary); margin-bottom: 8px;">
+            🎙️ Студийные озвучки и аудиопотоки (.m3u8)
+          </div>
+          <div id="lift-download-voiceovers-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        </div>
+
+        <!-- 4. Отдельные файлы субтитров .vtt -->
+        <div id="lift-download-subtitles-row" style="display: none;">
+          <div style="font-size: 12px; font-weight: 800; color: var(--text-secondary); margin-bottom: 8px;">
+            💬 Отдельные файлы субтитров (.vtt) — скачать или скопировать ссылку
+          </div>
+          <div id="lift-download-subtitles-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.40"></script>
+  <script type="module" src="/js/app.js?v=1.0.42"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
   <script>

@@ -896,6 +896,12 @@ export function resolveCanonicalGenres(title = '', category = '', description = 
  */
 export function isTrailerMedia(item) {
   if (!item) return false;
+  if (typeof item === 'object') {
+    if (item.is_trailer || item.is_upcoming || item.isUpcoming) return true;
+    if (String(item.id || '').startsWith('tmdb_up_')) return true;
+    if (item.quality && /ожидается|скоро|трейлер/i.test(String(item.quality))) return true;
+    if (/клэйфейс|clayface/i.test(String(item.title || '') + ' ' + String(item.original_title || ''))) return true;
+  }
 
   const title = typeof item === 'string' ? item : (item.title || item.name || '');
   const originalTitle = typeof item === 'string' ? '' : (item.original_title || item.original_name || '');

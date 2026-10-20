@@ -856,7 +856,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.41',
+    version: '1.0.42',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -888,7 +888,8 @@ app.post('/api/admin/sync-db', async (req, res) => {
 });
 
 app.post('/api/admin/restart', (req, res) => {
-  const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
+  const ipStr = String(req.ip || '');
+  const isLocal = ipStr === '127.0.0.1' || ipStr === '::1' || ipStr === '::ffff:127.0.0.1' || ipStr.includes('192.168.1.') || req.hostname === 'localhost';
   let currentUser = req.user;
   const isAdmin = currentUser && (
     (currentUser.username || '').toLowerCase() === 'reikatari' ||
@@ -2904,16 +2905,83 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
       width: 100%; height: 100%; object-fit: contain; background: #000; outline: none;
     }
     #quality-bar {
-      position: absolute; top: 12px; right: 14px; z-index: 20;
-      display: none; gap: 6px; align-items: center;
-      background: rgba(10, 14, 24, 0.78); border: 1px solid rgba(0, 210, 255, 0.35);
-      padding: 4px 8px; border-radius: 8px; backdrop-filter: blur(8px);
+      position: absolute; top: 12px; right: 14px; z-index: 30;
+      display: none; align-items: center;
     }
-    #quality-select {
-      background: transparent; color: #e2e8f0; border: none;
-      font-size: 12px; font-weight: 700; cursor: pointer; outline: none;
+    #quality-btn {
+      background: linear-gradient(135deg, rgba(11, 17, 32, 0.92), rgba(18, 25, 43, 0.92));
+      color: #f8fafc;
+      border: 1px solid rgba(0, 210, 255, 0.45);
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 210, 255, 0.2);
+      backdrop-filter: blur(10px);
+      transition: all 0.18s ease;
     }
-    #quality-select option { background: #0f172a; color: #fff; }
+    #quality-btn:hover {
+      border-color: #00d2ff;
+      box-shadow: 0 8px 22px rgba(0, 210, 255, 0.35);
+    }
+    #quality-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      min-width: 170px;
+      background: rgba(11, 17, 32, 0.96);
+      border: 1px solid rgba(0, 210, 255, 0.45);
+      border-radius: 12px;
+      padding: 6px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 210, 255, 0.25);
+      backdrop-filter: blur(14px);
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #quality-menu.is-open {
+      display: flex;
+    }
+    .q-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .q-option:hover {
+      background: rgba(0, 210, 255, 0.14);
+      color: #fff;
+    }
+    .q-option.active {
+      background: linear-gradient(135deg, rgba(0, 210, 255, 0.22), rgba(59, 130, 246, 0.18));
+      color: #00d2ff;
+      border: 1px solid rgba(0, 210, 255, 0.4);
+    }
+    .q-radio {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(148, 163, 184, 0.6);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+    .q-option.active .q-radio {
+      border-color: #00d2ff;
+      background: #00d2ff;
+      box-shadow: 0 0 8px rgba(0, 210, 255, 0.8);
+    }
     #storm-rutube-big-play {
       position: absolute; z-index: 15;
       width: 76px; height: 76px; border-radius: 50%;
@@ -2940,7 +3008,8 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
 <body>
   <div id="player-wrap">
     <div id="quality-bar">
-      <select id="quality-select" title="Качество видео"><option value="-1">Авто (HD)</option></select>
+      <button type="button" id="quality-btn" title="Качество видео">⚙️ <span id="quality-btn-label">Авто (HD)</span> ▾</button>
+      <div id="quality-menu"></div>
     </div>
     <div id="storm-rutube-big-play" title="Воспроизвести">▶</div>
     <video id="storm-rutube-video" controls playsinline preload="metadata" ${poster ? `poster="${poster}"` : ''}></video>
@@ -2950,7 +3019,45 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
       var video = document.getElementById('storm-rutube-video');
       var bigPlay = document.getElementById('storm-rutube-big-play');
       var qBar = document.getElementById('quality-bar');
-      var qSel = document.getElementById('quality-select');
+      var qBtn = document.getElementById('quality-btn');
+      var qLabel = document.getElementById('quality-btn-label');
+      var qMenu = document.getElementById('quality-menu');
+      var activeQualityVal = '-1';
+      var qualityOptions = [{ value: '-1', label: 'Авто (HD)' }];
+
+      function renderQualityMenu() {
+        if (!qMenu) return;
+        qMenu.innerHTML = qualityOptions.map(function(o) {
+          var isAct = String(o.value) === String(activeQualityVal);
+          return '<div class="q-option' + (isAct ? ' active' : '') + '" data-val="' + o.value + '" data-label="' + o.label + '">' +
+            '<span>' + o.label + '</span>' +
+            '<span class="q-radio"></span>' +
+          '</div>';
+        }).join('');
+        Array.prototype.forEach.call(qMenu.querySelectorAll('.q-option'), function(el) {
+          el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var v = el.getAttribute('data-val');
+            var l = el.getAttribute('data-label');
+            activeQualityVal = v;
+            if (qLabel) qLabel.textContent = l;
+            if (window._stormHlsInstance) {
+              window._stormHlsInstance.currentLevel = parseInt(v, 10);
+            }
+            qMenu.classList.remove('is-open');
+            renderQualityMenu();
+          });
+        });
+      }
+      if (qBtn && qMenu) {
+        qBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          qMenu.classList.toggle('is-open');
+        });
+        document.addEventListener('click', function() {
+          qMenu.classList.remove('is-open');
+        });
+      }
       var src = ${JSON.stringify(m3u8Url)};
       var fallbackIframeUrl = ${JSON.stringify(directEmbedUrl)};
       var switchedToIframe = false;
@@ -2988,18 +3095,17 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
         });
         hls.loadSource(src);
         hls.attachMedia(video);
+        window._stormHlsInstance = hls;
         hls.on(Hls.Events.MANIFEST_PARSED, function(_, data) {
           if (data && Array.isArray(data.levels) && data.levels.length > 1) {
             qBar.style.display = 'flex';
             var seen = {};
+            qualityOptions = [{ value: '-1', label: 'Авто (HD)' }];
             data.levels.forEach(function(lvl, idx) {
               var h = lvl.height || 0;
               if (h && !seen[h]) {
                 seen[h] = true;
-                var opt = document.createElement('option');
-                opt.value = String(idx);
-                opt.textContent = h + 'p';
-                qSel.appendChild(opt);
+                qualityOptions.push({ value: String(idx), label: h + 'p' });
               }
             });
             var bestIdx = -1;
@@ -3012,12 +3118,11 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
             });
             if (bestIdx >= 0) {
               hls.currentLevel = bestIdx;
-              qSel.value = String(bestIdx);
+              activeQualityVal = String(bestIdx);
+              if (qLabel) qLabel.textContent = bestH + 'p';
             }
+            renderQualityMenu();
           }
-        });
-        qSel.addEventListener('change', function() {
-          hls.currentLevel = parseInt(qSel.value, 10);
         });
         var recoverCount = 0;
         hls.on(Hls.Events.ERROR, function(_, data) {
@@ -3822,16 +3927,8 @@ app.get('/api/media/item', async (req, res) => {
       (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear() && !mediaDetails.fanfilm_4k_url)
     );
 
-    let isUpcoming = isFutureRelease && !hasActualStream;
-
-    mediaDetails.is_upcoming = Boolean(isUpcoming);
-    if (mediaDetails.is_upcoming) {
-      mediaDetails.is4K = false;
-      mediaDetails.quality = 'Ожидается';
-      mediaDetails.fanfilm_4k_url = '';
-      mediaDetails.fanfilm_hd_url = '';
-      mediaDetails.players = [];
-    }
+    mediaDetails.is_upcoming = false;
+    mediaDetails.trailer_url = '';
 
     // Быстрое обогащение через Lift (api.liftw.ws): lift_id, студийные озвучки, рейтинги КП/IMDb, русские роли актеров и части франшизы
     if (!mediaDetails.is_upcoming && !mediaDetails.lift_id && mediaDetails.title) {
@@ -3911,60 +4008,10 @@ app.get('/api/media/item', async (req, res) => {
       }
     });
 
-    if (mediaDetails.is_upcoming) {
-      // Для ожидаемых релизов не допускаем спекулятивные стримы
-      allPlayers = allPlayers.filter(p => p && p.is_trailer);
-      if (allPlayers.length === 0 && mediaDetails.trailer_url) {
-        allPlayers.push({
-          id: 'official_trailer',
-          name: 'Официальный трейлер',
-          type: 'iframe',
-          quality: '4K UHD / 1080p',
-          badge: 'ТРЕЙЛЕР',
-          status: 'working',
-          status_label: '🟢 Онлайн',
-          audio_info: 'Официальный дублированный промо-трейлер',
-          speed: '⚡ YouTube CDN',
-          url: mediaDetails.trailer_url,
-          is_trailer: true,
-          is_recommended: true,
-          recommended_badge: '🎬 Трейлер'
-        });
-      }
-    } else {
-      // Для вышедших релизов исключаем промо-трейлеры из списка плееров
-      allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
-    }
-
-    // Если среди доступных плееров есть действительно рабочие потоки
+    // 100% исключение любых промо-трейлеров и тизеров из списка плееров
+    allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
     const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
-    const hasActiveOnlineStream = allPlayers.some(isWorkingStream);
-    if (hasActiveOnlineStream && !isKnownUnreleased) {
-      mediaDetails.is_upcoming = false;
-    } else if (allPlayers.length === 0 || !hasActiveOnlineStream) {
-      if (isKnownUnreleased || (mediaDetails.year && parseInt(mediaDetails.year, 10) >= new Date().getFullYear())) {
-        mediaDetails.is_upcoming = true;
-        mediaDetails.is4K = false;
-        mediaDetails.quality = 'Ожидается';
-        if (mediaDetails.trailer_url && !allPlayers.some(p => p.id === 'official_trailer')) {
-          allPlayers.unshift({
-            id: 'official_trailer',
-            name: 'Официальный трейлер',
-            type: 'iframe',
-            quality: '4K UHD / 1080p',
-            badge: 'ТРЕЙЛЕР',
-            status: 'working',
-            status_label: '🟢 Онлайн',
-            audio_info: 'Официальный дублированный промо-трейлер',
-            speed: '⚡ YouTube CDN',
-            url: mediaDetails.trailer_url,
-            is_trailer: true,
-            is_recommended: true,
-            recommended_badge: '🎬 Трейлер'
-          });
-        }
-      }
-    }
+    mediaDetails.is_upcoming = false;
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K Ad-Free и 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
     const isAnimeDirect = p => p && isWorkingStream(p) && (p.id === 'anilibria_hls' || p.id === 'anixart_stream');
@@ -5177,6 +5224,11 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   const normCand = normalizeMatchText(candidateTitle);
   if (!normTarget || !normCand) return -1;
 
+  // 100% отклоняем любые трейлеры, тизеры, промо-ролики, отрывки, фрагменты и анонсы
+  if (/\b(?:трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|trailer[s]?|teaser[s]?|промо[- ]?ролик[а-я]*|отрывок[а-я]*|фрагмент[а-я]*|анонс[а-я]*|съемки|съёмки|бэкстейдж|backstage|making[- ]of|featurette|sneak[- ]peek|first[- ]look|фан[- ]трейлер|концепт[- ]трейлер)\b/i.test(candidateTitle + ' ' + String(candidateDesc || '').slice(0, 160))) {
+    return -1;
+  }
+
   // Отклоняем музыкальные сборники, шансон, приколы, радио и караоке
   if (/\b(?:русская\s+музыка|музыка\s+в\s+машину|сборник\s+песен|сборник\s+хитов|лучших\s+песен|хиты\s+\d{4}|песни\s+\d{4}|песни\s+о\s+любви|дискотека|шансон|шансона|радио|плейлист|playlist|клипы|караоке|смешные\s+приколы|сборник\s+приколов|приколы\s+\d{4}|мультики\s+для\s+детей)\b/i.test(candidateTitle)) {
     return -1;
@@ -5356,7 +5408,7 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
           const durStr = typeof it[5] === 'string' ? it[5] : '';
           const rawSec = typeof it[19] === 'number' ? it[19] : (typeof it[18] === 'number' ? it[18] : 0);
           const durationSec = rawSec > 0 ? rawSec : parseDur(durStr);
-          if (!allowShort && durationSec < minDur) continue;
+          if (durationSec < (season ? 600 : 2400)) continue;
           if (durationSec > maxDur) continue;
 
           const sc = scoreMediaCandidate(rawTitle, '', cleanTitle, year, season, episode, 0);
@@ -5429,7 +5481,7 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
           if (seenIds.has(it.id)) continue;
           seenIds.add(it.id);
           const dur = parseInt(it.duration, 10) || 0;
-          if (!allowShort && dur < minDur) continue;
+          if (dur < (season ? 600 : 2400)) continue;
           if (dur > maxDur) continue;
 
           const pubTs = it.publication_ts || it.created_ts || '';
@@ -5623,17 +5675,8 @@ app.get('/api/player/rutube-search-embed', async (req, res) => {
         return res.redirect(302, `/api/player/fanfilm-embed?url=${encodeURIComponent(ffIframe)}&title=${encodeURIComponent(title)}&year=${encodeURIComponent(year || '')}`);
       }
     }
-    const [shortRuId, shortVk] = await Promise.all([
-      resolveBestRuTubeId(title, year, season, episode, 0, true),
-      resolveBestVkEmbed(title, year, season, episode, true)
-    ]);
-    if (shortRuId) {
-      return res.redirect(302, `/api/player/rutube-embed/${shortRuId}`);
-    }
-    if (shortVk) {
-      return res.redirect(302, shortVk);
-    }
-    return res.status(404).send('Видеопоток временно недоступен');
+    const epParam = season ? `&is_series=1&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+    return res.redirect(302, `/api/player/lift-embed?title=${encodeURIComponent(title)}&year=${encodeURIComponent(year || '')}${epParam}`);
   } catch (err) {
     return res.status(500).send('Ошибка поиска видеопотока');
   }
@@ -8749,7 +8792,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.0.25';
+  let currentAppVersion = '1.0.42';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -8757,10 +8800,25 @@ app.get('/api/updates/check', async (req, res) => {
       currentAppVersion = pkg.version || currentAppVersion;
     }
   } catch {}
+  const clientVer = String(req.query.client_version || currentAppVersion).replace(/^v/i, '').trim();
+  const compareVerFast = (v1, v2) => {
+    const p1 = String(v1 || '').split('.').map(n => parseInt(n, 10) || 0);
+    const p2 = String(v2 || '').split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(p1.length, p2.length);
+    for (let i = 0; i < len; i++) {
+      if ((p1[i] || 0) > (p2[i] || 0)) return 1;
+      if ((p1[i] || 0) < (p2[i] || 0)) return -1;
+    }
+    return 0;
+  };
   try {
     const cached = getCache('system', 'github_latest_release');
-    if (cached) {
-      return res.json(cached);
+    if (cached && cached.latestVersion) {
+      return res.json({
+        ...cached,
+        currentVersion: clientVer,
+        updateAvailable: compareVerFast(cached.latestVersion, clientVer) > 0
+      });
     }
 
     const response = await fetch('https://api.github.com/repos/ReiKatari/STORM_MULTIMEDIA/releases/latest', {
@@ -8827,9 +8885,14 @@ app.get('/api/updates/check', async (req, res) => {
 
 // Фронтенд fallback с защитой от возврата HTML на API, статические ассеты и вложенные iframe
 app.get('*', (req, res) => {
-  // Защита: iframe или вложенный плеер никогда не должны рендерить index.html портала
+  // Защита: если iframe-запрос попал на неизвестный маршрут, перенаправляем на рабочий мульти-балансер вместо ошибки 404
   if (req.headers['sec-fetch-dest'] === 'iframe' || req.headers['sec-fetch-mode'] === 'nested-navigate') {
-    return res.status(404).type('text/plain; charset=utf-8').send('Кадр плеера не найден');
+    const qTitle = req.query.title || '';
+    const qYear = req.query.year || '';
+    if (qTitle) {
+      return res.redirect(302, `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(qTitle)}&year=${encodeURIComponent(qYear)}`);
+    }
+    return res.status(200).type('text/html; charset=utf-8').send('<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#0a0b10;color:#94a3b8;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:14px;}</style><script>try{window.parent.postMessage({type:"STORM_SWITCH_NEXT_SOURCE",reason:"IFRAME_ROUTE_FALLBACK"},"*");}catch(_){}</script></head><body>Переключение на рабочий видеопоток...</body></html>');
   }
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ success: false, error: 'API эндпоинт не найден' });
@@ -8876,3 +8939,17 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
+
+// STORM_AUTO_RELOAD_WATCHER: автоматический перезапуск через watchdog при обновлении server.js на диске
+try {
+  const selfStatInit = fs.statSync(__filename).mtimeMs;
+  setInterval(() => {
+    try {
+      const curMtime = fs.statSync(__filename).mtimeMs;
+      if (Math.abs(curMtime - selfStatInit) > 1500) {
+        console.log('[STORM SERVER] Обнаружено обновление server.js на диске. Перезапуск процесса через Watchdog...');
+        setTimeout(() => process.exit(0), 1200);
+      }
+    } catch (_) {}
+  }, 5000);
+} catch (_) {}

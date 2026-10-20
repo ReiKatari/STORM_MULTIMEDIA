@@ -529,10 +529,16 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
     const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
     const realYear = resolveCanonicalYear(title, link, poster, tagLeft);
     const numYr = parseInt(realYear || '2026', 10);
-    const isKnownUnreleased = /кэрри.*2026|flanagan/i.test(title + ' ' + elAllText) || (numYr > new Date().getFullYear());
+    const isKnownUnreleased = /кэрри.*2026|flanagan|клэйфейс|clayface|история игрушек 5|мстители.*судный|бэтмен.*2|одиссея.*2026/i.test(title + ' ' + elAllText) || (numYr > new Date().getFullYear());
     const isUpcoming = Boolean(isUpcomingText || isKnownUnreleased || (numYr >= 2026 && (elAllText.includes('ожидается') || elAllText.includes('скоро') || !tagLeft)));
-    const is4K = !isUpcoming;
-    const quality = isUpcoming ? 'Ожидается' : (isTS ? 'TS / Экранка' : '4K Ultra HD');
+
+    // 100% исключение невышедших релизов и карточек-анонсов с одними трейлерами
+    if (isUpcoming) {
+      return;
+    }
+
+    const is4K = true;
+    const quality = isTS ? 'TS / Экранка' : '4K Ultra HD';
 
     // Рейтинг (строго из правого тега, без смешивания с годом)
     let ratingText = el.find('.tag.top-right').first().text().replace(/[^\d\.]/g, '').trim();
@@ -581,7 +587,7 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
  * Получение каталога по категориям
  */
 export async function getFanFilmCatalog(category = 'popular', page = 1) {
-  const cacheKey = `catalog_${category}_page_${page}`;
+  const cacheKey = `catalog_v3_${category}_page_${page}`;
   const cached = getCache('fanfilm4k', cacheKey);
   if (cached) return cached;
 

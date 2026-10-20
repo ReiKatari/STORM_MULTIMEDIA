@@ -100,19 +100,22 @@ export function openFormFactorModal() {
   let modal = document.getElementById('form-factor-modal');
   if (!modal) {
     modal = document.createElement('div');
-    modal.className = 'storm-modal-backdrop';
+    modal.className = 'storm-modal-backdrop form-factor-fullscreen-backdrop';
     modal.id = 'form-factor-modal';
     modal.innerHTML = `
-      <div class="storm-modal form-factor-dialog" style="max-width: 520px;">
-        <div class="storm-modal-header">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:22px;">📐</span>
-            <h3 style="margin:0;font-size:18px;">Адаптивный триумвират интерфейсов</h3>
+      <div class="storm-modal form-factor-dialog">
+        <div class="storm-modal-header form-factor-fullscreen-header">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-size:26px;">📐</span>
+            <div>
+              <h3 style="margin:0;font-size:20px;font-weight:800;color:var(--text-primary);">Режим отображения интерфейса</h3>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Адаптивный триумвират интерфейсов STORM MULTIMEDIA</div>
+            </div>
           </div>
-          <button type="button" class="storm-modal-close" id="form-factor-close-btn">✕</button>
+          <button type="button" class="storm-modal-close" id="form-factor-close-btn" style="width:40px;height:40px;font-size:18px;">✕</button>
         </div>
-        <div class="storm-modal-body" style="padding:18px;display:flex;flex-direction:column;gap:14px;">
-          <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.5;">
+        <div class="storm-modal-body form-factor-fullscreen-body">
+          <p style="font-size:14px;color:var(--text-secondary);margin:0 0 6px 0;line-height:1.5;text-align:center;">
             Выберите оптимизацию интерфейса под ваше устройство или включите автоматическое определение:
           </p>
 
