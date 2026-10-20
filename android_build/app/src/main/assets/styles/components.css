@@ -10662,3 +10662,189 @@ body.cinema-focus-active::-webkit-scrollbar,
     grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)) !important;
   }
 }
+
+/* ==========================================================================
+   LIFT 4K / FHD ИНТЕГРАЦИЯ: 3D БАРАБАН СЕРИЙ (WHEEL PICKER) И МЕНЕДЖЕР ПОТОКОВ
+   ========================================================================== */
+.badge-lift4k {
+  background: linear-gradient(135deg, #00d2ff 0%, #3b82f6 55%, #a855f7 100%) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 2px 10px rgba(0, 210, 255, 0.45);
+}
+
+.wheel-picker-columns {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 14px;
+  height: 290px;
+}
+
+.wheel-picker-col {
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 15, 25, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: inset 0 8px 20px rgba(0, 0, 0, 0.55);
+}
+
+.wheel-picker-col-header {
+  padding: 9px 12px;
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.wheel-picker-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 10px;
+  scroll-snap-type: y mandatory;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
+}
+
+.wheel-picker-item {
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+.wheel-picker-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.wheel-picker-item.active {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.24), rgba(59, 130, 246, 0.2));
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 4px 16px rgba(0, 210, 255, 0.28);
+  transform: scale(1.02);
+}
+
+.wheel-picker-item.watched:not(.active) {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.wheel-item-num {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wheel-item-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.wheel-picker-item.active .wheel-item-sub {
+  color: var(--accent);
+}
+
+.lift-download-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.lift-quality-card {
+  background: rgba(15, 21, 35, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.lift-quality-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 210, 255, 0.45);
+}
+
+.lift-quality-card.is-uhd {
+  background: linear-gradient(145deg, rgba(16, 24, 42, 0.92), rgba(28, 18, 52, 0.88));
+  border-color: rgba(0, 210, 255, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 210, 255, 0.18);
+}
+
+.lift-quality-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lift-quality-title {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.lift-quality-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.lift-quality-badge.uhd {
+  background: linear-gradient(135deg, #00d2ff, #a855f7);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 210, 255, 0.4);
+}
+
+.lift-quality-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lift-quality-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .wheel-picker-columns {
+    grid-template-columns: 1fr;
+    height: 360px;
+  }
+}

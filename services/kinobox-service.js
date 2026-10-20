@@ -38,7 +38,7 @@ export function getKinoboxPlayerConfig(params = {}) {
  * Получение расширенного набора плееров (15+ источников) для любого релиза
  * Гарантирует рабочие ссылки без ошибок 404
  */
-export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, genres, source, fanfilm_4k_url, fanfilm_hd_url, trailer_url, is_upcoming }) {
+export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_title, year, media_type, genres, source, fanfilm_4k_url, fanfilm_hd_url, trailer_url, is_upcoming }) {
   const players = [];
   
   // Очистка названия: удаляем 4K, 4К, (2026), (фильм) и лишние скобки
@@ -47,12 +47,14 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*$/i, '').trim();
   const cleanTitle = rawTitle.replace(/[-–—/]\s*$/, '').trim();
   const safeTitle = encodeURIComponent(cleanTitle || rawTitle);
+  const safeOrigTitle = original_title ? encodeURIComponent(String(original_title).trim()) : '';
   const releaseYear = year ? String(year).trim() : '';
   const currentYear = new Date().getFullYear();
   const numYear = parseInt(releaseYear, 10);
   const isSourceFanfilm = source === 'fanfilm4k';
+  const isSourceLift = source === 'lift' || Boolean(lift_id);
   const isKnownUnreleased = /кэрри|carrie/i.test(cleanTitle) && /flanagan|флэнаган/i.test(cleanTitle);
-  const isUpcoming = !isSourceFanfilm && (is_upcoming === true ||
+  const isUpcoming = !isSourceFanfilm && !isSourceLift && (is_upcoming === true ||
     (numYear && numYear > currentYear) ||
     Boolean(isKnownUnreleased));
   const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
@@ -61,7 +63,14 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   const isSeries = media_type === 'series' || media_type === 'cartoon-series' || media_type === 'anime-series';
   const episodeParam = isSeries ? '&season=1&episode=1' : '';
 
-  // 1. FanFilm 4K Ultra HD (Приоритет #1 по умолчанию для всех фильмов и сериалов)
+  const resolvedLiftId = lift_id
+    ? String(lift_id).replace(/^lift_/i, '').trim()
+    : (source === 'lift' && kp_id ? String(kp_id).replace(/^lift_/i, '').trim() : '');
+  const liftIdParam = resolvedLiftId && /^\d+$/.test(resolvedLiftId) ? `&lift_id=${encodeURIComponent(resolvedLiftId)}` : '';
+  const origTitleParam = safeOrigTitle ? `&original_title=${safeOrigTitle}` : '';
+  const seriesFlagParam = isSeries ? '&is_series=1' : '';
+
+  // 1. FanFilm 4K Ultra HD
   let resolvedFanfilmUrl = fanfilm_4k_url ? String(fanfilm_4k_url).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media') : '';
   if (!resolvedFanfilmUrl && !isUpcoming) {
     const rawId = String(kp_id || '').trim();
@@ -73,10 +82,33 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
   // Проверка эксклюзивного отечественного сериала «Ландыши»
   const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
 
+  const kpParam = kp_id && !String(kp_id).startsWith('lift_') ? `&kp_id=${encodeURIComponent(kp_id)}` : '';
+  const imdbParam = imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : '';
+  const yearQuery = releaseYear ? `&year=${encodeURIComponent(releaseYear)}` : '';
+
+  // Lift 4K / FHD Ad-Free Плеер (Прямой поток без рекламы, все озвучки СНГ, субтитры, превью таймлайна и умный пропуск заставок)
+  if (!isUpcoming && !isLandyshi) {
+    players.push({
+      id: 'lift_adfree',
+      name: 'Lift 4K и FHD плеер (Без рекламы • Все озвучки)',
+      type: 'iframe',
+      quality: '4K UHD / 1080p',
+      badge: 'LIFT БЕЗ РЕКЛАМЫ',
+      status: 'working',
+      status_label: '🟢 Без рекламы',
+      audio_info: 'Дубляж, RHS, TVShows, LostFilm, HDRezka, Кубик в Кубе + субтитры',
+      speed: '💎 Прямой поток 0% рекламы',
+      url: `/api/player/lift-embed?title=${safeTitle}${origTitleParam}${yearQuery}${liftIdParam}${kpParam}${imdbParam}${seriesFlagParam}${episodeParam}`,
+      is_recommended: !isAnime || isSourceLift,
+      recommended_badge: (!isAnime || isSourceLift) ? '🔥 Без рекламы 4K' : undefined
+    });
+  }
+
   if (resolvedFanfilmUrl && !resolvedFanfilmUrl.includes('do=search') && !isUpcoming && !isLandyshi && !isAnime) {
+    const fanfilmRec = players.length === 0;
     players.push({
       id: 'fanfilm4k_uhd',
-      name: '4K Ultra HD Плеер (FanFilm4K)',
+      name: '4K Ultra HD плеер (FanFilm4K)',
       type: 'iframe',
       quality: '4K UHD',
       badge: 'FANFILM 4K',
@@ -85,14 +117,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
       url: resolvedFanfilmUrl,
-      is_recommended: !isAnime,
-      recommended_badge: !isAnime ? '🔥 4K По умолчанию' : undefined
+      is_recommended: fanfilmRec,
+      recommended_badge: fanfilmRec ? '🔥 4K По умолчанию' : undefined
     });
   }
-
-  const kpParam = kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : '';
-  const imdbParam = imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : '';
-  const yearQuery = releaseYear ? `&year=${encodeURIComponent(releaseYear)}` : '';
 
   // 2. Плееры для кино, сериалов и мультфильмов (12+ независимых источников)
   if (!isAnime) {
@@ -322,8 +350,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, title, year, media_type, g
       audio_info: 'AniLibria, StudioBand, AniDub, SHIZA, Jam, DreamCast',
       speed: '⚡ Скоростной поток',
       url: anixartUrl,
-      is_recommended: true,
-      recommended_badge: '🔥 Рекомендуемый'
+      is_recommended: !isSourceLift,
+      recommended_badge: !isSourceLift ? '🔥 Рекомендуемый' : undefined
     });
 
     players.push({

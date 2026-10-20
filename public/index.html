@@ -9,10 +9,10 @@
   <meta name="theme-color" content="#8b5cf6">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.39">
-  <link rel="stylesheet" href="/styles/components.css?v=1.0.39">
-  <link rel="stylesheet" href="/styles/main.css?v=1.0.39">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.39">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.40">
+  <link rel="stylesheet" href="/styles/components.css?v=1.0.40">
+  <link rel="stylesheet" href="/styles/main.css?v=1.0.40">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.40">
 </head>
 <body data-active-tab="home">
 
@@ -178,6 +178,20 @@
           </div>
         </div>
 
+        <!-- Фильтр по странам (включая Зарубежные кроме РФ и Только Россия) -->
+        <div class="storm-custom-dropdown" id="filter-country-dropdown" style="min-width: 170px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="filter-country-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span id="filter-country-badge">🌍</span>
+              <span id="filter-country-label" style="font-weight: 600;">Все страны</span>
+            </span>
+            <span class="storm-dropdown-arrow">▼</span>
+          </button>
+          <div class="storm-dropdown-menu" id="filter-country-menu" style="display: none; width: 230px; left: 0; right: auto;">
+            <div class="storm-dropdown-list" id="filter-country-list"></div>
+          </div>
+        </div>
+
         <!-- Фильтр по году выхода -->
         <div class="storm-custom-dropdown" id="filter-year-dropdown" style="min-width: 145px;">
           <button type="button" class="storm-btn storm-btn-secondary" id="filter-year-trigger" style="width: 100%; justify-content: space-between; padding: 8px 12px;">
@@ -264,6 +278,9 @@
   <main class="storm-main-container">
     <!-- Hero Showcase: Кинематографичная витрина топового релиза (Emby и Plex) -->
     <div id="hero-showcase-container" class="hero-showcase-container" style="display: none;"></div>
+
+    <!-- Тематические подборки Lift (Зарубежные и Российские фильмы/сериалы без рекламы) -->
+    <div id="lift-curated-rails-container" class="lift-curated-rails-container" style="display: none;"></div>
 
     <!-- Подпанель навигации по закладкам и коллекциям -->
     <div id="bookmarks-subnav-container" class="bookmarks-subnav-container" style="display: none;"></div>
@@ -365,6 +382,18 @@
                   <div class="quick-dropdown-list" id="quick-voiceover-list"></div>
                 </div>
               </div>
+
+              <!-- 4. 3D-барабан выбора сезона и серии (Lift Wheel Picker) -->
+              <button type="button" class="quick-dropdown-trigger" id="quick-wheel-picker-btn" title="Открыть 3D-барабан быстрого выбора сезона и серии" style="flex: 0 0 auto; padding: 8px 14px; gap: 6px; border-color: rgba(0, 210, 255, 0.35);">
+                <span class="quick-dropdown-icon">🎡</span>
+                <span class="quick-dropdown-val" style="font-weight: 700;">Барабан серий</span>
+              </button>
+
+              <!-- 5. Быстрое скачивание с выбором качества 4K/1080p и озвучки -->
+              <button type="button" class="quick-dropdown-trigger" id="quick-lift-download-btn" title="Скачать видео или поток с выбором разрешения (4K / 1080p / 720p) и озвучки" style="flex: 0 0 auto; padding: 8px 14px; gap: 6px; border-color: rgba(16, 185, 129, 0.4);">
+                <span class="quick-dropdown-icon">📥</span>
+                <span class="quick-dropdown-val" style="font-weight: 700;">Скачать 4K / FHD</span>
+              </button>
             </div>
 
             <!-- Фрейм видеоплеера с поддержкой сенсорных жестов -->
@@ -829,8 +858,9 @@
                 <div style="font-size: 11px; color: var(--text-muted);">Приоритетный источник при открытии фильмов и сериалов</div>
               </div>
               <select class="storm-select" id="profile-default-player-select" style="min-width: 230px;">
-                <option value="fanfilm4k_uhd">💎 4K Ultra HD Плеер (FanFilm4K)</option>
-                <option value="kinobox_universal">⚡ Kinobox Мультиплеер (FHD)</option>
+                <option value="lift_adfree">🔥 Lift 4K и FHD плеер (Без рекламы • Все озвучки)</option>
+                <option value="fanfilm4k_uhd">💎 4K Ultra HD плеер (FanFilm4K)</option>
+                <option value="kinobox_universal">⚡ Kinobox мультиплеер (FHD)</option>
                 <option value="kodik_direct">🎙️ Kodik (Озвучки и субтитры)</option>
                 <option value="vk_video_stream">🚀 VK Видео (Скоростной CDN)</option>
                 <option value="rutube_direct_hls">📺 RuTube (Прямой HLS поток)</option>
@@ -897,7 +927,7 @@
           <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.31 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.40 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -1276,6 +1306,21 @@
           </div>
         </div>
 
+        <!-- Блок Страны -->
+        <div class="filter-sheet-section">
+          <div class="filter-sheet-section-title">🌍 Страна производства</div>
+          <div class="filter-chips-grid" id="filter-sheet-countries">
+            <button type="button" class="filter-chip is-active" data-country="all">Все страны</button>
+            <button type="button" class="filter-chip" data-country="foreign">🌍 Зарубежные (кроме РФ)</button>
+            <button type="button" class="filter-chip" data-country="Россия">🇷🇺 Только Россия</button>
+            <button type="button" class="filter-chip" data-country="США">🇺🇸 США</button>
+            <button type="button" class="filter-chip" data-country="Великобритания">🇬🇧 Великобритания</button>
+            <button type="button" class="filter-chip" data-country="Корея Южная">🇰🇷 Южная Корея</button>
+            <button type="button" class="filter-chip" data-country="Япония">🇯🇵 Япония</button>
+            <button type="button" class="filter-chip" data-country="Франция">🇫🇷 Франция</button>
+          </div>
+        </div>
+
         <!-- Блок Годы -->
         <div class="filter-sheet-section">
           <div class="filter-sheet-section-title">📅 Год выпуска</div>
@@ -1362,8 +1407,54 @@
     <span class="scroll-top-arrow">▲</span>
   </button>
 
+  <!-- Модальное окно 3D-барабана выбора сезона и серии (Lift Wheel Picker) -->
+  <div class="storm-modal-backdrop" id="series-wheel-modal" style="display: none; z-index: 125000 !important;">
+    <div class="storm-modal" style="max-width: 480px; width: 94%;">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>🎡</span> <span>Выбор сезона и серии</span>
+        </h3>
+        <button type="button" class="storm-modal-close" id="series-wheel-close-btn">✕</button>
+      </div>
+      <div class="storm-modal-body" style="padding: 18px 20px;">
+        <div class="wheel-picker-columns" id="wheel-picker-columns">
+          <div class="wheel-picker-col">
+            <div class="wheel-picker-col-header">Сезон</div>
+            <div class="wheel-picker-scroll" id="wheel-season-scroll"></div>
+          </div>
+          <div class="wheel-picker-col">
+            <div class="wheel-picker-col-header">Серия</div>
+            <div class="wheel-picker-scroll" id="wheel-episode-scroll"></div>
+          </div>
+        </div>
+        <div id="wheel-selected-summary" style="text-align: center; margin-top: 14px; font-size: 13px; font-weight: 700; color: var(--accent);">
+          Сезон 1 • 1 серия
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 16px;">
+          <button type="button" class="storm-btn storm-btn-secondary" id="series-wheel-cancel-btn" style="flex: 1;">Отмена</button>
+          <button type="button" class="storm-btn storm-btn-primary" id="series-wheel-apply-btn" style="flex: 2;">▶ Включить серию</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно скачивания с выбором качества (4K / 1080p / 720p) и студийной озвучки -->
+  <div class="storm-modal-backdrop" id="lift-download-modal" style="display: none; z-index: 125000 !important;">
+    <div class="storm-modal" style="max-width: 560px; width: 95%;">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>📥</span> <span id="lift-download-modal-title">Скачивание и прямые потоки (4K / FHD)</span>
+        </h3>
+        <button type="button" class="storm-modal-close" id="lift-download-close-btn">✕</button>
+      </div>
+      <div class="storm-modal-body" id="lift-download-modal-body" style="padding: 18px 20px;">
+        <!-- Заполняется динамически в player.js -->
+      </div>
+    </div>
+  </div>
+
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.39"></script>
+  <script type="module" src="/js/app.js?v=1.0.40"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
   <script>

@@ -151,6 +151,20 @@ import {
   resolveVkVideoPlayer
 } from './services/vkvideo-service.js';
 
+import {
+  searchLift,
+  getLiftHomeRails,
+  getLiftCatalog,
+  getLiftDetails,
+  getLiftBatchInfo,
+  resolveLiftMatch,
+  extractLiftStreamData,
+  getLiftDownloadAndStreamOptions,
+  liftRequestRaw,
+  liftFetchJson,
+  liftFetchText
+} from './services/lift-service.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1155,18 +1169,34 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
 
   for (const candidate of candidateUrls) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(candidate, { headers, signal: controller.signal });
-      clearTimeout(timeout);
+      let buffer = null;
+      let rawType = 'image/jpeg';
 
-      if (res.ok) {
-        const rawType = res.headers.get('content-type') || 'image/jpeg';
+      if (candidate.includes('liftw.ws') || candidate.includes('lateremb.ws') || candidate.includes('liftapp.ink')) {
+        const liftResp = await liftRequestRaw(candidate, {
+          headers: { ...headers, Referer: 'https://liftw.ws/' },
+          timeoutMs
+        });
+        if (liftResp && liftResp.status >= 200 && liftResp.status < 300 && liftResp.buffer?.length > 100) {
+          buffer = liftResp.buffer;
+          rawType = liftResp.headers?.['content-type'] || 'image/jpeg';
+        }
+      } else {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const res = await fetch(candidate, { headers, signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          rawType = res.headers.get('content-type') || 'image/jpeg';
+          if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
+            buffer = Buffer.from(await res.arrayBuffer());
+          }
+        }
+      }
+
+      if (buffer && buffer.length > 100) {
         if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
-          let buffer = Buffer.from(await res.arrayBuffer());
           let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
-
-          if (buffer.length > 100) {
             if (sharp) {
               try {
                 const webpBuf = await sharp(buffer)
@@ -1186,7 +1216,6 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
             }
             imageBinaryCache.set(normalized, item);
             return item;
-          }
         }
       }
     } catch {}
@@ -1660,7 +1689,7 @@ const memoryCatalogCache = new Map();
 const MEMORY_CATALOG_FRESH_TTL = 15 * 60 * 1000; // 15 минут - свежий кэш
 const MEMORY_CATALOG_MAX_STALE_TTL = 24 * 60 * 60 * 1000; // 24 часа - допустимый stale кэш
 
-async function executeCatalogFetch(category, page = 1, source = 'all') {
+async function executeCatalogFetch(category, page = 1, source = 'all', extraFilters = {}) {
   const normCategory = category === 'home' ? 'popular' : category;
   const CATALOG_GATHER_TIMEOUT_MS = 4500;
 
@@ -1668,8 +1697,17 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
     let fetchedItems = [];
     let fetchedTotal = 0;
 
+    // 0. Прямой источник: Lift (api.liftw.ws — 88 000+ фильмов, сериалов, мультфильмов, аниме и дорам без рекламы)
+    if (source === 'lift') {
+      const liftRes = await Promise.race([
+        getLiftCatalog({ category: normCategory, page, limit: 24, ...extraFilters }),
+        new Promise(resolve => setTimeout(() => resolve({ items: [], total_items: 0 }), 3800))
+      ]);
+      fetchedItems = liftRes?.items || [];
+      fetchedTotal = liftRes?.total_items || Math.max(fetchedItems.length, 500 * 24);
+    }
     // 1. Прямой источник: The Movie Database (TMDB)
-    if (source === 'tmdb') {
+    else if (source === 'tmdb') {
       const tmdbPage1 = page * 2 - 1;
       const tmdbPage2 = page * 2;
       const [res1, res2] = await Promise.allSettled([
@@ -1812,7 +1850,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
         const tmdbTotalPages = Math.min(250, Math.ceil((tmdbRes1?.total_pages || 500) / 2));
         fetchedTotal = Math.max(fetchedItems.length, tmdbTotalPages * 20);
       } else if (normCategory === 'movies' || normCategory === 'series') {
-        const [fanfilmRes, tmdbRes] = await Promise.allSettled([
+        const [fanfilmRes, tmdbRes, liftRes] = await Promise.allSettled([
           Promise.race([
             getFanFilmCatalog(normCategory, page),
             new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 2500))
@@ -1820,12 +1858,18 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
           Promise.race([
             getTmdbCatalog(normCategory, page),
             new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 3000))
+          ]),
+          Promise.race([
+            getLiftCatalog({ category: normCategory, page, limit: 20, ...extraFilters }),
+            new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 2800))
           ])
         ]);
         const ffItems = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [];
         const tmdbItems = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [];
+        const liftItems = liftRes.status === 'fulfilled' ? liftRes.value?.items || [] : [];
         fetchedItems = interleaveSources([
           ffItems,
+          liftItems,
           tmdbItems
         ]);
         const ffPages = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.total_pages : 0;
@@ -1833,7 +1877,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
         const realPages = Math.max(ffPages || 0, tmdbPages || 0) || (normCategory === 'movies' ? 718 : 162);
         fetchedTotal = realPages * Math.max(20, fetchedItems.length || 56);
       } else if (normCategory === 'new') {
-        const [fRes, tmdbRes, aRes, libRes, sRes] = await Promise.allSettled([
+        const [fRes, tmdbRes, liftRes, aRes, libRes, sRes] = await Promise.allSettled([
           Promise.race([
             getFanFilmCatalog('new', page),
             new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
@@ -1842,12 +1886,17 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
             getTmdbCatalog('new', page),
             new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3000))
           ]),
+          Promise.race([
+            getLiftCatalog({ category: 'new', page, limit: 20, ...extraFilters }),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2800))
+          ]),
           getAnixartDiscover('new', page - 1),
           getAniLibriaCatalog('new', page),
           getShikimoriCatalog('new', page)
         ]);
         fetchedItems = interleaveSources([
           fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
+          liftRes.status === 'fulfilled' ? liftRes.value?.items || [] : [],
           tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
           aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
           libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
@@ -1856,7 +1905,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
         fetchedTotal = Math.max(fetchedItems.length, 500 * 20);
       } else {
         // Главная (home / popular)
-        const [fRes, tmdbRes, aRes, libRes, sRes] = await Promise.allSettled([
+        const [fRes, tmdbRes, liftRes, aRes, libRes, sRes] = await Promise.allSettled([
           Promise.race([
             getFanFilmCatalog('popular', page),
             new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
@@ -1865,12 +1914,17 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
             getTmdbCatalog('popular', page),
             new Promise(resolve => setTimeout(() => resolve({ items: [] }), 3000))
           ]),
+          Promise.race([
+            getLiftCatalog({ category: 'popular', page, limit: 20, ...extraFilters }),
+            new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2800))
+          ]),
           getAnixartDiscover('popular', page - 1),
           getAniLibriaCatalog('popular', page),
           getShikimoriCatalog('popular', page)
         ]);
         fetchedItems = interleaveSources([
           fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
+          liftRes.status === 'fulfilled' ? liftRes.value?.items || [] : [],
           tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
           aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
           libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
@@ -1978,6 +2032,10 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
         const preferNew = (item.source === 'tmdb' && prev.source !== 'tmdb') || (!prev.poster && item.poster);
         const merged = preferNew ? { ...prev, ...item } : { ...item, ...prev };
         merged.fanfilm_4k_url = combined4k;
+        merged.lift_id = prev.lift_id || item.lift_id || null;
+        merged.rating_kp = prev.rating_kp || item.rating_kp;
+        merged.rating_imdb = prev.rating_imdb || item.rating_imdb;
+        merged.countries = (prev.countries && prev.countries.length > 0) ? prev.countries : item.countries;
         merged.is4K = has4K;
         merged.quality = has4K ? '4K Ultra HD' : (merged.quality || '1080p FHD');
         merged.poster = prev.poster || item.poster;
@@ -1986,6 +2044,46 @@ async function executeCatalogFetch(category, page = 1, source = 'all') {
       }
     }
     items = Array.from(catalogDedupMap.values());
+
+    // Дополнительная фильтрация по странам и двойным рейтингам КП / IMDb / году
+    if (extraFilters.country) {
+      const wantCountry = String(extraFilters.country).toLowerCase();
+      items = items.filter(it => {
+        if (!Array.isArray(it.countries) || it.countries.length === 0) return it.source === 'lift';
+        return it.countries.some(c => String(c).toLowerCase().includes(wantCountry));
+      });
+    }
+    if (extraFilters.exceptCountry) {
+      const exCountry = String(extraFilters.exceptCountry).toLowerCase();
+      items = items.filter(it => {
+        if (!Array.isArray(it.countries) || it.countries.length === 0) return true;
+        return !it.countries.some(c => String(c).toLowerCase().includes(exCountry));
+      });
+    }
+    if (extraFilters.kpMin !== undefined && extraFilters.kpMin !== '') {
+      const minKp = parseFloat(extraFilters.kpMin);
+      if (!isNaN(minKp) && minKp > 0) {
+        items = items.filter(it => (parseFloat(it.rating_kp || it.rating) || 0) >= minKp);
+      }
+    }
+    if (extraFilters.imdbMin !== undefined && extraFilters.imdbMin !== '') {
+      const minImdb = parseFloat(extraFilters.imdbMin);
+      if (!isNaN(minImdb) && minImdb > 0) {
+        items = items.filter(it => (parseFloat(it.rating_imdb || it.rating) || 0) >= minImdb);
+      }
+    }
+    if (extraFilters.yearFrom !== undefined && extraFilters.yearFrom !== '') {
+      const yFrom = parseInt(extraFilters.yearFrom, 10);
+      if (!isNaN(yFrom)) {
+        items = items.filter(it => (parseInt(it.year, 10) || 0) >= yFrom);
+      }
+    }
+    if (extraFilters.yearTo !== undefined && extraFilters.yearTo !== '') {
+      const yTo = parseInt(extraFilters.yearTo, 10);
+      if (!isNaN(yTo)) {
+        items = items.filter(it => (parseInt(it.year, 10) || 9999) <= yTo);
+      }
+    }
 
     items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
   }
@@ -2065,14 +2163,48 @@ setInterval(async () => {
   } catch (_) {}
 }, 30 * 60 * 1000);
 
+// Витрина 4 тематических подборок Lift (Зарубежные фильмы, Зарубежные сериалы, Российские фильмы, Российские сериалы)
+app.get('/api/lift/home-rails', async (req, res) => {
+  try {
+    const limit = Math.min(24, Math.max(6, parseInt(req.query.limit, 10) || 16));
+    const rails = await getLiftHomeRails(limit);
+    res.json({
+      success: true,
+      rails
+    });
+  } catch (err) {
+    console.warn('[Lift Home Rails] Ошибка загрузки подборок:', err.message);
+    res.json({
+      success: false,
+      rails: { foreignFilms: [], foreignSeries: [], ruFilms: [], ruSeries: [] }
+    });
+  }
+});
+
 app.get('/api/media/catalog', async (req, res) => {
   try {
     let category = req.query.category || 'popular';
     if (category === 'home') category = 'popular';
     const page = parseInt(req.query.page, 10) || 1;
     const source = req.query.source || 'all';
+    const extraFilters = {
+      country: req.query.country || '',
+      exceptCountry: req.query.exceptCountry || '',
+      kpMin: req.query.kpMin || '',
+      kpMax: req.query.kpMax || '',
+      imdbMin: req.query.imdbMin || '',
+      imdbMax: req.query.imdbMax || '',
+      yearFrom: req.query.yearFrom || '',
+      yearTo: req.query.yearTo || '',
+      genre: req.query.genre || '',
+      sort: req.query.sort || ''
+    };
+    const filterSig = Object.entries(extraFilters)
+      .filter(([, v]) => v !== '' && v !== undefined)
+      .map(([k, v]) => `${k}:${v}`)
+      .join('|');
 
-    const cacheKey = `${category}_${page}_${source}`;
+    const cacheKey = filterSig ? `${category}_${page}_${source}_${filterSig}` : `${category}_${page}_${source}`;
     const cachedEntry = memoryCatalogCache.get(cacheKey);
     const now = Date.now();
 
@@ -2084,7 +2216,7 @@ app.get('/api/media/catalog', async (req, res) => {
       if (isStale && !cachedEntry.isRevalidating && !isExpired) {
         cachedEntry.isRevalidating = true;
         // Фоновая тихая ревалидация свежих данных
-        executeCatalogFetch(category, page, source).then(fresh => {
+        executeCatalogFetch(category, page, source, extraFilters).then(fresh => {
           if (fresh && fresh.items && fresh.items.length > 0) {
             memoryCatalogCache.set(cacheKey, {
               items: fresh.items,
@@ -2129,7 +2261,7 @@ app.get('/api/media/catalog', async (req, res) => {
     }
 
     // Если кэша еще нет или он полностью истек (холодный запрос)
-    const fetched = await executeCatalogFetch(category, page, source);
+    const fetched = await executeCatalogFetch(category, page, source, extraFilters);
     let items = fetched.items || [];
     let totalItems = fetched.totalItems || (fetched.totalPages * 20);
     let calculatedTotalPages = fetched.totalPages || 1;
@@ -2220,6 +2352,10 @@ async function executeUnifiedSearch(query, source = 'all') {
       promise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
     ]);
+
+  if (source === 'all' || source === 'lift') {
+    tasks.push(withTimeout(searchLift(query, 24), 7000).catch(() => []));
+  }
 
   if (source === 'all' || source === 'fanfilm4k') {
     tasks.push(withTimeout(searchFanFilm(query), 9000).catch(() => []));
@@ -2332,6 +2468,9 @@ async function executeUnifiedSearch(query, source = 'all') {
         ...item,
         players: item.players ? [...item.players] : []
       };
+      if (item.source === 'lift' || item.lift_id) {
+        initial.lift_id = item.lift_id || String(item.id || '').replace(/^lift_/, '');
+      }
       if (item.source === 'fanfilm4k' || item.fanfilm_4k_url) {
         initial.fanfilm_4k_url = item.link || item.url || item.fanfilm_4k_url;
         initial.is4K = true;
@@ -2346,6 +2485,14 @@ async function executeUnifiedSearch(query, source = 'all') {
       const existing = mergedMap.get(normKey);
 
       // Объединяем источники потоков в единую карточку
+      if (item.source === 'lift' || item.lift_id) {
+        existing.lift_id = item.lift_id || existing.lift_id;
+        existing.rating_kp = existing.rating_kp || item.rating_kp;
+        existing.rating_imdb = existing.rating_imdb || item.rating_imdb;
+        if (item.countries?.length && (!existing.countries || !existing.countries.length)) {
+          existing.countries = item.countries;
+        }
+      }
       if (item.source === 'fanfilm4k' || item.fanfilm_4k_url) {
         existing.fanfilm_4k_url = item.link || item.url || item.fanfilm_4k_url || existing.fanfilm_4k_url;
         existing.is4K = true;
@@ -2394,7 +2541,9 @@ async function executeUnifiedSearch(query, source = 'all') {
     const unifiedPlayers = getAvailablePlayers({
       kp_id: it.kp_id,
       imdb_id: it.imdb_id,
+      lift_id: it.lift_id,
       title,
+      original_title: it.original_title,
       year: it.year,
       media_type: it.media_type,
       genres: it.genres,
@@ -2944,7 +3093,10 @@ app.get('/api/media/item', async (req, res) => {
     let mediaDetails = null;
     let isReleaseUpcoming = Boolean(String(id || '').startsWith('tmdb_up_'));
 
-    if (source === 'anixart' || String(id || '').startsWith('anix_')) {
+    if (source === 'lift' || String(id || '').startsWith('lift_') || req.query.lift_id) {
+      const cleanLiftId = String(req.query.lift_id || id || '').replace(/^lift_/i, '');
+      mediaDetails = await getLiftDetails(cleanLiftId);
+    } else if (source === 'anixart' || String(id || '').startsWith('anix_')) {
       const cleanAnixId = String(id || '').replace('anix_', '');
       mediaDetails = await getAnixartReleaseDetails(cleanAnixId);
     } else if (source === 'anilibria' || String(id || '').startsWith('libria_') || String(id || '').startsWith('anilib')) {
@@ -3680,11 +3832,59 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.players = [];
     }
 
-    // Собираем расширенный список плееров (FanFilm 4K, HD, Kodik, RHS, LostFilm, Kinobox, Vidsrc, VK, RuTube)
+    // Быстрое обогащение через Lift (api.liftw.ws): lift_id, студийные озвучки, рейтинги КП/IMDb, русские роли актеров и части франшизы
+    if (!mediaDetails.is_upcoming && !mediaDetails.lift_id && mediaDetails.title) {
+      try {
+        const matchedLiftId = await Promise.race([
+          resolveLiftMatch({
+            lift_id: req.query.lift_id || '',
+            title: mediaDetails.title,
+            original_title: mediaDetails.original_title,
+            year: mediaDetails.year,
+            is_series: isSeries
+          }),
+          new Promise(r => setTimeout(() => r(null), 2200))
+        ]);
+        if (matchedLiftId) {
+          mediaDetails.lift_id = matchedLiftId;
+          const liftInfo = await Promise.race([
+            getLiftDetails(matchedLiftId),
+            new Promise(r => setTimeout(() => r(null), 2200))
+          ]);
+          if (liftInfo) {
+            if (liftInfo.voiceovers?.length && !mediaDetails.voiceovers?.length) {
+              mediaDetails.voiceovers = liftInfo.voiceovers;
+            }
+            if (liftInfo.franchise_parts?.length && !mediaDetails.franchise_parts?.length) {
+              mediaDetails.franchise_parts = liftInfo.franchise_parts;
+            }
+            if (liftInfo.rating_kp && (!mediaDetails.rating_kp || parseFloat(mediaDetails.rating_kp) === 0)) {
+              mediaDetails.rating_kp = liftInfo.rating_kp;
+            }
+            if (liftInfo.rating_imdb && (!mediaDetails.rating_imdb || parseFloat(mediaDetails.rating_imdb) === 0)) {
+              mediaDetails.rating_imdb = liftInfo.rating_imdb;
+            }
+            if (liftInfo.cast?.length && (!mediaDetails.cast || mediaDetails.cast.length === 0)) {
+              mediaDetails.cast = liftInfo.cast;
+            }
+            if (liftInfo.directors?.length && (!mediaDetails.directors || mediaDetails.directors.length === 0)) {
+              mediaDetails.directors = liftInfo.directors;
+            }
+            if (liftInfo.countries?.length && (!mediaDetails.countries || mediaDetails.countries.length === 0)) {
+              mediaDetails.countries = liftInfo.countries;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Собираем расширенный список плееров (Lift Ad-Free 4K, FanFilm 4K, HD, Kodik, RHS, LostFilm, Kinobox, Vidsrc, VK, RuTube)
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
+      lift_id: mediaDetails.lift_id,
       title: mediaDetails.title,
+      original_title: mediaDetails.original_title,
       year: mediaDetails.year,
       media_type: mediaDetails.media_type,
       genres: mediaDetails.genres,
@@ -3765,9 +3965,10 @@ app.get('/api/media/item', async (req, res) => {
       }
     }
 
-    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
+    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K Ad-Free и 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
     const isAnimeDirect = p => p && isWorkingStream(p) && (p.id === 'anilibria_hls' || p.id === 'anixart_stream');
-    const isReal4kStream = p => p && isWorkingStream(p) && !String(p.url || '').includes('do=search') && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+    const isLiftAdFree = p => p && isWorkingStream(p) && p.id === 'lift_adfree';
+    const isReal4kStream = p => p && isWorkingStream(p) && !String(p.url || '').includes('do=search') && (p.id === 'lift_adfree' || p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K' || p.badge === 'LIFT БЕЗ РЕКЛАМЫ');
     allPlayers.sort((a, b) => {
       const aWorking = isWorkingStream(a);
       const bWorking = isWorkingStream(b);
@@ -3777,6 +3978,10 @@ app.get('/api/media/item', async (req, res) => {
       const bAnime = isAnimeDirect(b);
       if (aAnime && !bAnime) return -1;
       if (!aAnime && bAnime) return 1;
+      const aLift = isLiftAdFree(a);
+      const bLift = isLiftAdFree(b);
+      if (aLift && !bLift) return -1;
+      if (!aLift && bLift) return 1;
       const aIs4k = isReal4kStream(a);
       const bIs4k = isReal4kStream(b);
       if (aIs4k && !bIs4k) return -1;
@@ -4099,6 +4304,56 @@ app.get('/api/media/franchise', async (req, res) => {
     }
 
     const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
+
+    // 0. Хронология франшизы и связанных частей через Lift API (/info/<id> + /info/batch)
+    try {
+      const rawLiftId = (source === 'lift' || String(id || '').startsWith('lift_')) ? String(id).replace(/^lift_/i, '') : '';
+      const matchedLift = rawLiftId || (cleanTitle ? await Promise.race([
+        resolveLiftMatch({ title: cleanTitle }),
+        new Promise(r => setTimeout(() => r(null), 2000))
+      ]) : null);
+      if (matchedLift) {
+        const liftDet = await Promise.race([
+          getLiftDetails(matchedLift),
+          new Promise(r => setTimeout(() => r(null), 2200))
+        ]);
+        if (liftDet && Array.isArray(liftDet.franchise_parts) && liftDet.franchise_parts.length > 0) {
+          const allFranchiseItems = [
+            {
+              id: liftDet.id,
+              lift_id: liftDet.lift_id,
+              source: 'lift',
+              title: liftDet.title,
+              original_title: liftDet.original_title,
+              year: liftDet.year,
+              rating: liftDet.rating,
+              poster: liftDet.poster,
+              media_type: liftDet.media_type,
+              relation: 'Оригинал / Текущий релиз'
+            },
+            ...liftDet.franchise_parts.map(fp => ({
+              ...fp,
+              relation: fp.year && liftDet.year && Number(fp.year) < Number(liftDet.year) ? 'Предыстория / Часть' : 'Продолжение / Часть'
+            }))
+          ];
+          const seenIds = new Set();
+          const dedupFranchise = allFranchiseItems.filter(it => {
+            const k = String(it.lift_id || it.id);
+            if (seenIds.has(k)) return false;
+            seenIds.add(k);
+            return true;
+          }).sort((a, b) => (parseInt(a.year, 10) || 0) - (parseInt(b.year, 10) || 0));
+
+          if (dedupFranchise.length > 1) {
+            return res.json({
+              franchise_name: `Хронология франшизы «${cleanTitle || liftDet.title}»`,
+              total: dedupFranchise.length,
+              items: dedupFranchise
+            });
+          }
+        }
+      }
+    } catch (_) {}
 
     // 1. Аниме-франшизы через Shikimori Related
     const isAnime = source === 'shikimori' || source === 'anixart' || source === 'anilibria' || (media_type && media_type.includes('anime'));
@@ -7066,12 +7321,541 @@ player.innerHTML = '<iframe id="player-iframe" src="' + safeInnerLink + '" width
   }
 });
 
+// ============================================================================
+// LIFT 4K / FHD AD-FREE PLAYER ENGINE & STREAM / DOWNLOAD EXTRACTOR
+// ============================================================================
+
+let cachedLiftCdnJs = '';
+let cachedLiftListenJs = '';
+
+app.get('/api/player/lift-cdn.js', async (req, res) => {
+  try {
+    if (!cachedLiftCdnJs) {
+      const txt = await liftFetchText('https://embed.liftw.ws/cdn.js', 7000);
+      if (txt && txt.length > 100) cachedLiftCdnJs = txt;
+    }
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(cachedLiftCdnJs || '/* lift cdn fallback */');
+  } catch (_) {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    return res.send('/* lift cdn fallback */');
+  }
+});
+
+app.get('/api/player/lift-listen.js', async (req, res) => {
+  try {
+    if (!cachedLiftListenJs) {
+      const txt = await liftFetchText('https://embed.liftw.ws/js/listen-player.js', 7000);
+      if (txt && txt.length > 50) {
+        cachedLiftListenJs = txt.replace(/__s\([^)]*\)/g, 'void 0');
+      }
+    }
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(cachedLiftListenJs || '/* lift listen fallback */');
+  } catch (_) {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    return res.send('/* lift listen fallback */');
+  }
+});
+
+// Получение прямых ссылок HLS / DASH (4K VP9/AV1, 1080p, 720p, 480p), всех студийных озвучек и субтитров для скачивания и выбора потока
+app.get('/api/player/lift-download-options', async (req, res) => {
+  try {
+    const { lift_id, id, title, original_title, year, is_series, season, episode } = req.query;
+    const rawLiftId = lift_id || (String(id || '').startsWith('lift_') ? String(id).replace(/^lift_/i, '') : '');
+    const matchedLiftId = await resolveLiftMatch({
+      lift_id: rawLiftId,
+      title: title || '',
+      original_title: original_title || '',
+      year: year || '',
+      is_series: is_series === '1' || is_series === 'true'
+    });
+
+    if (!matchedLiftId) {
+      return res.json({ success: false, error: 'Релиз не найден в базе прямых потоков Lift' });
+    }
+
+    const data = await getLiftDownloadAndStreamOptions(matchedLiftId, {
+      season: parseInt(season, 10) || 1,
+      episode: parseInt(episode, 10) || 1
+    });
+
+    if (!data) {
+      return res.json({ success: false, error: 'Не удалось извлечь прямые потоки для релиза' });
+    }
+
+    return res.json({
+      success: true,
+      ...data
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Прямой очищенный от рекламы плеер Lift (VenomPlayer 4K/FHD + все озвучки СНГ + субтитры + превью таймлайна + автопропуск заставок)
+app.get('/api/player/lift-embed', async (req, res) => {
+  const { lift_id, title, original_title, year, kp_id, imdb_id, is_series, season, episode } = req.query;
+  const fallbackKinoboxUrl = `/api/player/kinobox-embed?balancer=kinobox&title=${encodeURIComponent(title || '')}${year ? `&year=${encodeURIComponent(year)}` : ''}${kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : ''}${imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : ''}${season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}` : ''}`;
+
+  try {
+    const matchedLiftId = await resolveLiftMatch({
+      lift_id: lift_id || '',
+      title: title || '',
+      original_title: original_title || '',
+      year: year || '',
+      is_series: is_series === '1' || is_series === 'true'
+    });
+
+    if (!matchedLiftId) {
+      return res.redirect(fallbackKinoboxUrl);
+    }
+
+    const embedUrl = `https://embed.liftw.ws/embed/movie/${matchedLiftId}?host=liftw.ws`;
+    let html = await liftFetchText(embedUrl, 9000);
+    if (!html || !html.includes('makePlayer')) {
+      return res.redirect(fallbackKinoboxUrl);
+    }
+
+    const reqSeason = parseInt(season, 10) || 1;
+    const reqEpisode = String(parseInt(episode, 10) || 1);
+
+    // 1. Полное вырезание рекламного блока VAST (pre-roll, mid-roll, post-roll, overlay)
+    html = html.replace(/<script\s+data-name=["']ad["']>[\s\S]*?<\/script>/gi, '<script data-name="ad">var middleCount = 0, adTimeouts = {}, adsConfig = undefined;</script>');
+    html = html.replace(/ads:\s*adsConfig\s*,/g, 'ads: undefined,');
+
+    // 2. Отключение внешних трекеров и сторонних iframe
+    html = html.replace(/<script\s+data-name=["']ss["']>[\s\S]*?<\/script>/gi, '');
+    html = html.replace(/<script\s+data-name=["']ping["']>[\s\S]*?<\/script>/gi, '');
+    html = html.replace(/new\s+Image\(\)\.src\s*=\s*["']https:\/\/s\.myangular\.life\/player\?["']\s*\+\s*s\s*;/g, 'void 0;');
+    html = html.replace(/stats:\s*\[[^\]]*\]\s*,/g, 'stats: [],');
+
+    // 3. Проксирование скриптов cdn.js и listen-player.js через наш сервер (обход проблем с DNS у клиентов)
+    html = html.replace(/src=["']\/\/embed\.liftw\.ws\/cdn\.js["']/gi, 'src="/api/player/lift-cdn.js"');
+    html = html.replace(/src=["']\/\/embed\.liftw\.ws\/js\/listen-player\.js["']/gi, 'src="/api/player/lift-listen.js"');
+
+    // 4. Фирменная стилизация плеера под палитру STORM MULTIMEDIA
+    html = html.replace(
+      /cssVars:\s*\{[^}]+\}/,
+      'cssVars:{"color-text":"rgba(248,250,252,1)","border-radius":"0.5rem","color-buttons":"rgba(255,255,255,1)","color-primary":"rgba(0,210,255,0.92)","background-color-primary":"rgba(11,17,32,0.92)","button-icon-color":"rgba(255,255,255,1)"}'
+    );
+
+    // 5. Установка запрошенного сезона и серии при старте сериала
+    if (reqSeason > 1 || reqEpisode !== '1') {
+      html = html.replace(
+        /current:\s*\{\s*season:\s*\d+\s*,\s*episode:\s*["'][^"']+["']\s*\}/,
+        `current: { season: ${reqSeason}, episode: "${reqEpisode}" }`
+      );
+    }
+
+    // 6. Инъекция моста STORM: память озвучки/субтитров, умный пропуск интро/повтора/титров, синхронизация серий
+    const stormBridgeScript = `
+<style>
+  #storm-skip-widget {
+    position: fixed;
+    right: 24px;
+    bottom: 78px;
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    animation: stormFadeIn 0.25s ease;
+  }
+  @keyframes stormFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .storm-skip-btn {
+    background: linear-gradient(135deg, rgba(0, 210, 255, 0.95), rgba(59, 130, 246, 0.95));
+    color: #060913;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0, 210, 255, 0.38);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .storm-skip-btn:hover {
+    transform: translateY(-1.5px);
+    box-shadow: 0 12px 28px rgba(0, 210, 255, 0.55);
+  }
+  .storm-autoskip-toggle {
+    background: rgba(11, 17, 32, 0.88);
+    color: #cbd5e1;
+    border: 1px solid rgba(0, 210, 255, 0.35);
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+  }
+  .storm-autoskip-toggle.active {
+    color: #00d2ff;
+    border-color: #00d2ff;
+    background: rgba(0, 210, 255, 0.14);
+  }
+</style>
+<div id="storm-skip-widget">
+  <button type="button" id="storm-skip-action-btn" class="storm-skip-btn">⏭ Пропустить заставку</button>
+  <button type="button" id="storm-autoskip-btn" class="storm-autoskip-toggle" title="Автоматический пропуск заставок, повторов и титров">Автопропуск: ВЫКЛ</button>
+</div>
+<script>
+(function() {
+  var LIFT_ID = "${matchedLiftId}";
+  var REQ_SEASON = ${reqSeason};
+  var REQ_EPISODE = "${reqEpisode}";
+  var activeSections = [];
+  var lastSkippedSectionKey = '';
+  var autoSkipEnabled = false;
+  try {
+    autoSkipEnabled = localStorage.getItem('storm_lift_autoskip') === '1';
+  } catch (_) {}
+
+  var widgetEl = document.getElementById('storm-skip-widget');
+  var skipBtnEl = document.getElementById('storm-skip-action-btn');
+  var autoSkipBtnEl = document.getElementById('storm-autoskip-btn');
+  var currentActiveSection = null;
+
+  function updateAutoSkipUi() {
+    if (!autoSkipBtnEl) return;
+    if (autoSkipEnabled) {
+      autoSkipBtnEl.classList.add('active');
+      autoSkipBtnEl.textContent = '⚡ Автопропуск: ВКЛ';
+    } else {
+      autoSkipBtnEl.classList.remove('active');
+      autoSkipBtnEl.textContent = 'Автопропуск: ВЫКЛ';
+    }
+  }
+  updateAutoSkipUi();
+
+  if (autoSkipBtnEl) {
+    autoSkipBtnEl.addEventListener('click', function(e) {
+      e.stopPropagation();
+      autoSkipEnabled = !autoSkipEnabled;
+      try { localStorage.setItem('storm_lift_autoskip', autoSkipEnabled ? '1' : '0'); } catch (_) {}
+      updateAutoSkipUi();
+    });
+  }
+
+  function seekVideoTo(targetSec) {
+    var v = document.querySelector('video');
+    if (v && !isNaN(targetSec)) {
+      v.currentTime = targetSec;
+    }
+  }
+
+  if (skipBtnEl) {
+    skipBtnEl.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (currentActiveSection && typeof currentActiveSection.end === 'number') {
+        seekVideoTo(currentActiveSection.end);
+        if (widgetEl) widgetEl.style.display = 'none';
+      }
+    });
+  }
+
+  function getSectionLabel(type) {
+    if (type === 'repeat') return '⏭ Пропустить повтор';
+    if (type === 'screen' || type === 'intro') return '⏭ Пропустить заставку';
+    if (type === 'titer' || type === 'outro') return '⏭ Пропустить титры';
+    return '⏭ Пропустить фрагмент';
+  }
+
+  function checkTimeForSections(curTime) {
+    if (!Array.isArray(activeSections) || activeSections.length === 0) {
+      if (widgetEl) widgetEl.style.display = 'none';
+      return;
+    }
+    var found = null;
+    for (var i = 0; i < activeSections.length; i++) {
+      var s = activeSections[i];
+      if (s && s.skip !== false && typeof s.start === 'number' && typeof s.end === 'number') {
+        if (curTime >= s.start && curTime < s.end - 1.5) {
+          found = s;
+          break;
+        }
+      }
+    }
+    currentActiveSection = found;
+    if (found) {
+      var secKey = found.type + '_' + found.start + '_' + found.end;
+      if (autoSkipEnabled && lastSkippedSectionKey !== secKey) {
+        lastSkippedSectionKey = secKey;
+        seekVideoTo(found.end);
+        if (widgetEl) widgetEl.style.display = 'none';
+        return;
+      }
+      if (skipBtnEl) skipBtnEl.textContent = getSectionLabel(found.type);
+      if (widgetEl) widgetEl.style.display = 'flex';
+    } else {
+      if (widgetEl) widgetEl.style.display = 'none';
+    }
+  }
+
+  setInterval(function() {
+    var v = document.querySelector('video');
+    if (v && !v.paused) {
+      checkTimeForSections(v.currentTime || 0);
+    }
+  }, 500);
+
+  // Восстановление и сохранение выбранной озвучки и субтитров
+  function applySavedPreferences() {
+    try {
+      if (!window.app || !app._settings || !app._settings.ctrl) return;
+      var ctrl = app._settings.ctrl;
+      var savedAudio = localStorage.getItem('storm_lift_audio_' + LIFT_ID) || localStorage.getItem('storm_lift_default_audio') || '';
+      var savedSub = localStorage.getItem('storm_lift_sub_' + LIFT_ID) || '';
+
+      if (savedAudio && ctrl.sound && ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value)) {
+        var availSounds = ctrl.ls.sound.value;
+        var exactSound = availSounds.find(function(n) { return String(n).toLowerCase() === savedAudio.toLowerCase(); });
+        if (exactSound) ctrl.sound.value = exactSound;
+      }
+      if (savedSub && ctrl.cc && ctrl.ls && ctrl.ls.cc && Array.isArray(ctrl.ls.cc.value)) {
+        var availSubs = ctrl.ls.cc.value;
+        var exactSub = availSubs.find(function(n) { return String(n).toLowerCase() === savedSub.toLowerCase(); });
+        if (exactSub) ctrl.cc.value = exactSub;
+      }
+    } catch (_) {}
+  }
+
+  window.addEventListener('message', function(e) {
+    var d = e.data || {};
+    if (d.type === 'STORM_SET_AUDIO' && d.name && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.sound) {
+      app._settings.ctrl.sound.value = d.name;
+      try {
+        localStorage.setItem('storm_lift_audio_' + LIFT_ID, d.name);
+        localStorage.setItem('storm_lift_default_audio', d.name);
+      } catch (_) {}
+    }
+    if (d.type === 'STORM_SET_SUBTITLE' && d.name !== undefined && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.cc) {
+      app._settings.ctrl.cc.value = d.name;
+      try {
+        localStorage.setItem('storm_lift_sub_' + LIFT_ID, d.name);
+      } catch (_) {}
+    }
+    if (d.type === 'STORM_SET_QUALITY' && d.quality && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.quality) {
+      app._settings.ctrl.quality.value = d.quality;
+    }
+    if (d.event === 'setting' && d.key === 'sound' && d.value) {
+      try {
+        localStorage.setItem('storm_lift_audio_' + LIFT_ID, d.value);
+        localStorage.setItem('storm_lift_default_audio', d.value);
+        window.parent.postMessage({ type: 'STORM_LIFT_PREF_CHANGED', liftId: LIFT_ID, audioTitle: d.value }, '*');
+      } catch (_) {}
+    }
+    if (d.event === 'setting' && d.key === 'cc' && d.value !== undefined) {
+      try {
+        localStorage.setItem('storm_lift_sub_' + LIFT_ID, d.value);
+        window.parent.postMessage({ type: 'STORM_LIFT_PREF_CHANGED', liftId: LIFT_ID, subtitleLabel: d.value }, '*');
+      } catch (_) {}
+    }
+  });
+
+  // Перехват makePlayer или ожидание window.app для чтения секций и сезонов
+  var hookTimer = setInterval(function() {
+    if (!window.app) return;
+    clearInterval(hookTimer);
+    try {
+      if (Array.isArray(window._initialSections) && (!activeSections || activeSections.length === 0)) {
+        activeSections = window._initialSections;
+      }
+      setTimeout(applySavedPreferences, 450);
+      if (app._settings && app._settings.ctrl) {
+        var ctrl = app._settings.ctrl;
+        if (ctrl.sound && typeof ctrl.sound.watch === 'function') {
+          ctrl.sound.watch(function(v) {
+            if (v) {
+              try {
+                localStorage.setItem('storm_lift_audio_' + LIFT_ID, v);
+                localStorage.setItem('storm_lift_default_audio', v);
+              } catch (_) {}
+              window.parent.postMessage({ type: 'STORM_LIFT_PREF_CHANGED', liftId: LIFT_ID, audioTitle: v }, '*');
+            }
+          });
+        }
+        if (ctrl.cc && typeof ctrl.cc.watch === 'function') {
+          ctrl.cc.watch(function(v) {
+            try {
+              localStorage.setItem('storm_lift_sub_' + LIFT_ID, v || '');
+            } catch (_) {}
+            window.parent.postMessage({ type: 'STORM_LIFT_PREF_CHANGED', liftId: LIFT_ID, subtitleLabel: v || '' }, '*');
+          });
+        }
+      }
+      if (typeof app.on === 'function') {
+        app.on('playlistItem', function(ep) {
+          lastSkippedSectionKey = '';
+          if (ep && Array.isArray(ep.sections)) {
+            activeSections = ep.sections;
+          }
+          setTimeout(applySavedPreferences, 350);
+          window.parent.postMessage({
+            type: 'STORM_LIFT_EPISODE_CHANGED',
+            liftId: LIFT_ID,
+            episodeId: ep && ep.id,
+            episode: ep && ep.episode,
+            title: ep && ep.title
+          }, '*');
+        });
+      }
+    } catch (_) {}
+  }, 300);
+})();
+</script>
+`;
+
+    // Также пробрасываем исходные sections в activeSections при инициализации makePlayer
+    html = html.replace(
+      /app\s*=\s*VenomPlayer\.make\(opts\);/,
+      `try {
+        if (opts && Array.isArray(opts.sections)) { window._initialSections = opts.sections; }
+        else if (opts && opts.playlist && Array.isArray(opts.playlist.seasons)) {
+          var curS = opts.playlist.current ? opts.playlist.current.season : 1;
+          var curE = opts.playlist.current ? opts.playlist.current.episode : "1";
+          var sFound = opts.playlist.seasons.find(function(s){ return Number(s.season) === Number(curS); }) || opts.playlist.seasons[0];
+          var eFound = sFound && sFound.episodes ? (sFound.episodes.find(function(e){ return String(e.episode) === String(curE); }) || sFound.episodes[0]) : null;
+          if (eFound && Array.isArray(eFound.sections)) window._initialSections = eFound.sections;
+        }
+      } catch(_) {}
+      app = VenomPlayer.make(opts);`
+    );
+
+    const bridgeWithInitialSections = stormBridgeScript.replace(
+      'var activeSections = [];',
+      'var activeSections = window._initialSections || [];'
+    );
+
+    if (/<\/body>/i.test(html)) {
+      html = html.replace(/<\/body>/i, `${bridgeWithInitialSections}\n</body>`);
+    } else {
+      html += bridgeWithInitialSections;
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.send(html);
+  } catch (err) {
+    console.warn('[Lift Embed Error]:', err.message);
+    return res.redirect(fallbackKinoboxUrl);
+  }
+});
+
 // Получение списка доступных сезонов, серий и студийных озвучек с определением 4K UHD
 app.get('/api/player/series-options', async (req, res) => {
   try {
     const { url: targetUrl, title: mediaTitle, mediaId, tmdbId } = req.query;
     if (!targetUrl) {
       return res.status(400).json({ success: false, error: 'URL не указан' });
+    }
+
+    // Если активен плеер Lift (или запрос к /api/player/lift-embed) — возвращаем точные сезоны, серии, озвучки и секции пропуска из Lift
+    if (targetUrl.includes('/api/player/lift-embed') || targetUrl.includes('liftw.ws') || String(mediaId || '').startsWith('lift_')) {
+      try {
+        let liftIdParam = '';
+        try {
+          const parsedUrl = new URL(targetUrl, 'http://localhost');
+          liftIdParam = parsedUrl.searchParams.get('lift_id') || '';
+        } catch (_) {}
+        if (!liftIdParam && String(mediaId || '').startsWith('lift_')) {
+          liftIdParam = String(mediaId).replace(/^lift_/i, '');
+        }
+        const matchedLiftId = await resolveLiftMatch({
+          lift_id: liftIdParam,
+          title: mediaTitle || '',
+          is_series: true
+        });
+        if (matchedLiftId) {
+          const liftStream = await extractLiftStreamData(matchedLiftId, { season: 1, episode: 1 });
+          if (liftStream) {
+            const voiceTranslations = (liftStream.audioTracks || []).map((name, idx) => ({
+              id: `lift_vo_${idx}`,
+              name,
+              quality: liftStream.dashStreamUrl ? '4K / 1080p' : '1080p FHD',
+              is_uhd: true
+            }));
+
+            if (liftStream.isSeries && liftStream.seasons.length > 0) {
+              const formattedSeasons = liftStream.seasons.map(s => ({
+                season: Number(s.season),
+                name: `Сезон ${s.season}`,
+                episodes_count: s.episodes.length,
+                episodes: s.episodes.map(e => ({
+                  episode: Number(e.episode) || 1,
+                  id: e.id,
+                  name: e.title || `${e.episode} серия`,
+                  duration: e.duration ? `${Math.round(e.duration / 60)} мин.` : '',
+                  sections: e.sections || [],
+                  translations: (e.audioNames || liftStream.audioTracks || []).map((voName, idx) => ({
+                    id: `lift_vo_${idx}`,
+                    name: voName,
+                    quality: '1080p / 4K',
+                    is_uhd: true
+                  }))
+                }))
+              }));
+              return res.json({
+                success: true,
+                type: 'series',
+                source: 'lift',
+                lift_id: matchedLiftId,
+                embed_base: targetUrl,
+                audio_tracks: liftStream.audioTracks || [],
+                subtitles: liftStream.subtitles || [],
+                sections: liftStream.sections || [],
+                active: {
+                  season: formattedSeasons[0].season,
+                  episode: formattedSeasons[0].episodes[0]?.episode || 1,
+                  translation: voiceTranslations[0]?.name || 'Дубляж',
+                  id_translation: voiceTranslations[0]?.id || null,
+                  is_uhd: true
+                },
+                seasons: formattedSeasons
+              });
+            } else {
+              return res.json({
+                success: true,
+                type: 'movie',
+                source: 'lift',
+                lift_id: matchedLiftId,
+                embed_base: targetUrl,
+                audio_tracks: liftStream.audioTracks || [],
+                subtitles: liftStream.subtitles || [],
+                sections: liftStream.sections || [],
+                active: {
+                  season: 1,
+                  episode: 1,
+                  translation: voiceTranslations[0]?.name || 'Дубляж',
+                  id_translation: voiceTranslations[0]?.id || null,
+                  is_uhd: true
+                },
+                seasons: [{
+                  season: 1,
+                  name: 'Фильм',
+                  episodes_count: 1,
+                  episodes: [{
+                    episode: 1,
+                    name: 'Фильм',
+                    translations: voiceTranslations
+                  }]
+                }]
+              });
+            }
+          }
+        }
+      } catch (liftSeriesErr) {
+        console.warn('[Lift Series Options Error]:', liftSeriesErr.message);
+      }
     }
 
     let iframeSrc = targetUrl;

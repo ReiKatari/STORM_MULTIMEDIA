@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.39';
-import { getUser, showToast } from './auth.js?v=1.0.39';
-import { t } from './i18n.js?v=1.0.39';
-import { trackClientAction } from './achievements.js?v=1.0.39';
-import { renderReviewsSection } from './reviews.js?v=1.0.39';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.39';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.39';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.39';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.39';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.39';
-import { saveMediaForOffline } from './offline-storage.js?v=1.0.39';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.39';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.39';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.39';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.39';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.39';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.40';
+import { getUser, showToast } from './auth.js?v=1.0.40';
+import { t } from './i18n.js?v=1.0.40';
+import { trackClientAction } from './achievements.js?v=1.0.40';
+import { renderReviewsSection } from './reviews.js?v=1.0.40';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.40';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.40';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.40';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.40';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.40';
+import { saveMediaForOffline } from './offline-storage.js?v=1.0.40';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.40';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.40';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.40';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.40';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.40';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -192,6 +192,7 @@ let torrentClient = null;
 
 function getSourceName(item) {
   const map = {
+    lift: 'Lift 4K',
     fanfilm4k: 'FanFilm4K',
     tmdb: 'TMDB',
     anixart: 'AniXart',
@@ -1140,6 +1141,26 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     effective4kUrl = `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${safeTitle}`;
   }
 
+  const rawLiftId = mediaItem.lift_id || (String(mediaItem.id || '').startsWith('lift_') ? String(mediaItem.id).replace(/^lift_/i, '') : '');
+  const liftPlayerEntry = {
+    id: 'lift_adfree',
+    name: 'Lift 4K и FHD плеер (Без рекламы • Все озвучки)',
+    type: 'iframe',
+    quality: '4K UHD / 1080p',
+    badge: 'LIFT 4K',
+    status: 'working',
+    status_label: '🟢 Онлайн',
+    audio_info: 'Прямой поток 4K VP9/AV1 и 1080p, все озвучки СНГ (RHS, Дубляж, TVShows, HDRezka, LostFilm) + субтитры и превью таймлайна',
+    speed: '🚀 Прямой CDN без рекламы',
+    url: `/api/player/lift-embed?title=${safeTitle}&original_title=${encodeURIComponent(mediaItem.original_title || '')}${yearQuery}${kpParam}${imdbParam}&lift_id=${encodeURIComponent(rawLiftId)}&is_series=${isSeries ? '1' : '0'}${episodeParam}`,
+    is_recommended: Boolean(rawLiftId || mediaItem.source === 'lift'),
+    recommended_badge: (rawLiftId || mediaItem.source === 'lift') ? '🚀 4K Без рекламы' : ''
+  };
+
+  if ((rawLiftId || mediaItem.source === 'lift') && !isTrulyUpcoming && !isLandyshiItem) {
+    suite.push(liftPlayerEntry);
+  }
+
   if (effective4kUrl && !isTrulyUpcoming && !isLandyshiItem) {
     suite.push({
       id: 'fanfilm4k_uhd',
@@ -1152,9 +1173,13 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
       url: effective4kUrl,
-      is_recommended: !isAnime,
-      recommended_badge: !isAnime ? '🔥 4K По умолчанию' : ''
+      is_recommended: !isAnime && !rawLiftId && mediaItem.source !== 'lift',
+      recommended_badge: (!isAnime && !rawLiftId && mediaItem.source !== 'lift') ? '🔥 4K По умолчанию' : ''
     });
+  }
+
+  if (!rawLiftId && mediaItem.source !== 'lift' && !isTrulyUpcoming && !isLandyshiItem) {
+    suite.push(liftPlayerEntry);
   }
 
   // 2. Kinobox Мультиплеер (Alloha, Collaps, Kodik, HDRezka, Videocdn)
@@ -3264,7 +3289,337 @@ function renderQuickBarDropdowns() {
     };
   }
 
+  // 4. Барабан серий и сезонов (3D Wheel Picker)
+  const wheelBtn = document.getElementById('quick-wheel-picker-btn');
+  if (wheelBtn) {
+    wheelBtn.style.display = isMovie ? 'none' : '';
+    wheelBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeOtherQuickDropdowns(null);
+      openSeriesWheelModal();
+    };
+  }
+
+  // 5. Прямое скачивание и выбор потока 4K / FHD (Lift CDN)
+  const dlBtn = document.getElementById('quick-lift-download-btn');
+  if (dlBtn) {
+    dlBtn.style.display = '';
+    dlBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeOtherQuickDropdowns(null);
+      openLiftDownloadModal();
+    };
+  }
+
   updateInPlayerEpisodeInfo();
+}
+
+/* ==========================================================================
+   3D БАРАБАН ВЫБОРА СЕЗОНА И СЕРИИ (WHEEL PICKER) И ОКНО СКАЧИВАНИЯ LIFT 4K
+   ========================================================================== */
+let tempWheelSeason = 1;
+let tempWheelEpisode = 1;
+
+export function openSeriesWheelModal() {
+  const modal = document.getElementById('series-wheel-modal');
+  const seasonScroll = document.getElementById('wheel-season-scroll');
+  const epScroll = document.getElementById('wheel-episode-scroll');
+  const summaryEl = document.getElementById('wheel-selected-summary');
+  const applyBtn = document.getElementById('series-wheel-apply-btn');
+  const closeBtn = document.getElementById('close-series-wheel-modal');
+  if (!modal || !seasonScroll || !epScroll) return;
+
+  const seasons = (quickBarSeriesData && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0)
+    ? quickBarSeriesData.seasons
+    : [{ season: 1, name: 'Сезон 1', episodes: Array.from({ length: 8 }, (_, i) => ({ episode: i + 1, name: `${i + 1} серия` })) }];
+
+  tempWheelSeason = quickBarActiveSeason || seasons[0].season || 1;
+  tempWheelEpisode = quickBarActiveEpisode || 1;
+
+  const updateWheelSummary = () => {
+    const sObj = seasons.find(s => Number(s.season) === Number(tempWheelSeason)) || seasons[0];
+    const epObj = (sObj?.episodes || []).find(e => Number(e.episode) === Number(tempWheelEpisode));
+    if (summaryEl) {
+      summaryEl.textContent = `Сезон ${tempWheelSeason} • ${epObj?.name || `Серия ${tempWheelEpisode}`}`;
+    }
+  };
+
+  const renderWheelEpisodes = (seasonNum) => {
+    const sObj = seasons.find(s => Number(s.season) === Number(seasonNum)) || seasons[0];
+    const eps = (sObj && Array.isArray(sObj.episodes) && sObj.episodes.length > 0)
+      ? sObj.episodes
+      : Array.from({ length: sObj?.episodes_count || 8 }, (_, i) => ({ episode: i + 1, name: `${i + 1} серия` }));
+
+    if (!eps.some(e => Number(e.episode) === Number(tempWheelEpisode))) {
+      tempWheelEpisode = eps[0]?.episode || 1;
+    }
+
+    const watchedSet = currentMedia?.id ? getWatchedEpisodes(currentMedia.id, seasonNum) : new Set();
+
+    epScroll.innerHTML = eps.map(ep => {
+      const isAct = Number(ep.episode) === Number(tempWheelEpisode);
+      const isW = watchedSet.has(Number(ep.episode));
+      return `
+        <button type="button" class="wheel-picker-item ${isAct ? 'active' : ''} ${isW ? 'watched' : ''}" data-wheel-ep="${ep.episode}">
+          <span class="wheel-item-num">${ep.episode} серия</span>
+          <span class="wheel-item-sub">${escapeHtml(ep.name && ep.name !== `${ep.episode} серия` ? ep.name : (isW ? '✓ Просмотрено' : 'HD / 4K'))}</span>
+        </button>
+      `;
+    }).join('');
+
+    epScroll.querySelectorAll('.wheel-picker-item').forEach(btn => {
+      btn.onclick = () => {
+        tempWheelEpisode = parseInt(btn.dataset.wheelEp, 10) || 1;
+        epScroll.querySelectorAll('.wheel-picker-item').forEach(b => b.classList.toggle('active', b === btn));
+        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        updateWheelSummary();
+      };
+    });
+
+    requestAnimationFrame(() => {
+      const actEl = epScroll.querySelector('.wheel-picker-item.active');
+      if (actEl) actEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+    });
+  };
+
+  seasonScroll.innerHTML = seasons.map(s => {
+    const isAct = Number(s.season) === Number(tempWheelSeason);
+    const epCount = s.episodes_count || (s.episodes ? s.episodes.length : 0);
+    return `
+      <button type="button" class="wheel-picker-item ${isAct ? 'active' : ''}" data-wheel-season="${s.season}">
+        <span class="wheel-item-num">Сезон ${s.season}</span>
+        <span class="wheel-item-sub">${epCount ? `${epCount} сер.` : ''}</span>
+      </button>
+    `;
+  }).join('');
+
+  seasonScroll.querySelectorAll('.wheel-picker-item').forEach(btn => {
+    btn.onclick = () => {
+      tempWheelSeason = parseInt(btn.dataset.wheelSeason, 10) || 1;
+      seasonScroll.querySelectorAll('.wheel-picker-item').forEach(b => b.classList.toggle('active', b === btn));
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      renderWheelEpisodes(tempWheelSeason);
+      updateWheelSummary();
+    };
+  });
+
+  renderWheelEpisodes(tempWheelSeason);
+  updateWheelSummary();
+  modal.style.display = 'flex';
+
+  requestAnimationFrame(() => {
+    const actS = seasonScroll.querySelector('.wheel-picker-item.active');
+    if (actS) actS.scrollIntoView({ behavior: 'instant', block: 'center' });
+  });
+
+  if (closeBtn) {
+    closeBtn.onclick = () => { modal.style.display = 'none'; };
+  }
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  };
+  if (applyBtn) {
+    applyBtn.onclick = async () => {
+      modal.style.display = 'none';
+      if (Number(tempWheelSeason) !== Number(quickBarActiveSeason)) {
+        await selectQuickSeason(tempWheelSeason);
+      }
+      selectQuickEpisode(tempWheelEpisode);
+    };
+  }
+}
+
+export async function openLiftDownloadModal() {
+  const modal = document.getElementById('lift-download-modal');
+  const subtitleEl = document.getElementById('lift-download-subtitle');
+  const qualitiesGrid = document.getElementById('lift-download-qualities-grid');
+  const voicesList = document.getElementById('lift-download-voiceovers-list');
+  const subsRow = document.getElementById('lift-download-subtitles-row');
+  const subsList = document.getElementById('lift-download-subtitles-list');
+  const closeBtn = document.getElementById('close-lift-download-modal');
+  if (!modal || !qualitiesGrid) return;
+
+  modal.style.display = 'flex';
+  if (closeBtn) closeBtn.onclick = () => { modal.style.display = 'none'; };
+  modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
+
+  const cleanT = cleanVideoTitle(currentMedia?.title || 'Видео');
+  const isSer = checkIfMediaIsSeries(currentMedia);
+  if (subtitleEl) {
+    subtitleEl.textContent = isSer
+      ? `${cleanT} — Сезон ${quickBarActiveSeason}, Серия ${quickBarActiveEpisode} (Прямые потоки HLS / DASH без рекламы)`
+      : `${cleanT} (${currentMedia?.year || ''}) — Прямые потоки 4K VP9/AV1 и Full HD без рекламы`;
+  }
+
+  qualitiesGrid.innerHTML = `
+    <div style="grid-column: 1 / -1; text-align: center; padding: 26px; color: var(--text-muted);">
+      <div class="storm-spinner" style="margin: 0 auto 10px;"></div>
+      Извлечение прямых потоков 4K UHD / 1080p, студийных аудиодорожек и субтитров...
+    </div>
+  `;
+  if (voicesList) voicesList.innerHTML = '';
+  if (subsRow) subsRow.style.display = 'none';
+
+  try {
+    const rawLiftId = currentMedia?.lift_id || (String(currentMedia?.id || '').startsWith('lift_') ? String(currentMedia.id).replace(/^lift_/i, '') : '');
+    const params = new URLSearchParams({
+      title: cleanT,
+      original_title: currentMedia?.original_title || '',
+      year: String(currentMedia?.year || ''),
+      lift_id: String(rawLiftId || ''),
+      is_series: isSer ? '1' : '0',
+      season: String(quickBarActiveSeason || 1),
+      episode: String(quickBarActiveEpisode || 1)
+    });
+
+    const res = await fetch(`/api/player/lift-download-options?${params.toString()}`);
+    const data = await res.json();
+
+    if (!data || !data.success) {
+      qualitiesGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 22px; color: var(--text-secondary);">
+          Прямые потоки Lift CDN для данного релиза сейчас недоступны. Вы можете использовать встроенный плеер FanFilm 4K или Kinobox.
+        </div>
+      `;
+      return;
+    }
+
+    const qualities = Array.isArray(data.qualities) ? data.qualities : [];
+    const voiceovers = Array.isArray(data.voiceovers) ? data.voiceovers : [];
+    const subtitles = Array.isArray(data.subtitles) ? data.subtitles : [];
+
+    if (qualities.length === 0 && data.hlsUrl) {
+      qualities.push({
+        height: 1080,
+        label: '1080p Full HD (Master HLS)',
+        resolution: '1920x1080',
+        bandwidth: 6500000,
+        url: data.hlsUrl,
+        type: 'hls',
+        is_4k: false
+      });
+    }
+
+    qualitiesGrid.innerHTML = qualities.map(q => {
+      const mbps = q.bandwidth ? `${(q.bandwidth / 1000000).toFixed(1)} Мбит/с` : (q.is_4k ? '18.5 Мбит/с' : '6.8 Мбит/с');
+      const badgeText = q.is_4k ? '4K UHD • VP9/AV1' : `${q.height}p • HLS`;
+      return `
+        <div class="lift-quality-card ${q.is_4k ? 'is-uhd' : ''}">
+          <div class="lift-quality-card-top">
+            <span class="lift-quality-title">${escapeHtml(q.label || `${q.height}p`)}</span>
+            <span class="lift-quality-badge ${q.is_4k ? 'uhd' : ''}">${badgeText}</span>
+          </div>
+          <div class="lift-quality-meta">
+            <span>Разрешение: <strong>${escapeHtml(q.resolution || `${q.height}p`)}</strong></span>
+            <span>Битрейт: <strong>${mbps}</strong></span>
+          </div>
+          <div class="lift-quality-actions">
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm lift-play-quality-btn" data-q-height="${q.height}" data-q-url="${escapeHtml(q.url)}">
+              ▶ Смотреть ${q.height}p
+            </button>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm lift-copy-stream-btn" data-q-url="${escapeHtml(q.url)}" title="Скопировать прямую ссылку на поток для VLC / IINA / PotPlayer / FFmpeg">
+              📋 Копировать поток
+            </button>
+            <a href="${escapeHtml(q.url)}" target="_blank" rel="noopener" class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration:none;">
+              📥 Поток (.m3u8)
+            </a>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    qualitiesGrid.querySelectorAll('.lift-play-quality-btn').forEach(btn => {
+      btn.onclick = () => {
+        const qHeight = parseInt(btn.dataset.qHeight, 10) || 1080;
+        modal.style.display = 'none';
+        const liftPlayer = currentPlayers?.find(p => p.id === 'lift_adfree');
+        if (liftPlayer && currentActivePlayer?.id !== 'lift_adfree') {
+          selectPlayer(liftPlayer);
+          setTimeout(() => {
+            const ifr = document.querySelector('.cinema-player-iframe');
+            if (ifr && ifr.contentWindow) {
+              ifr.contentWindow.postMessage({ type: 'STORM_SET_QUALITY', quality: qHeight }, '*');
+            }
+          }, 1500);
+        } else {
+          const ifr = document.querySelector('.cinema-player-iframe');
+          if (ifr && ifr.contentWindow) {
+            ifr.contentWindow.postMessage({ type: 'STORM_SET_QUALITY', quality: qHeight }, '*');
+          }
+        }
+        showToast(`🚀 Включено качество ${qHeight}p в плеере Lift 4K`, 'success');
+      };
+    });
+
+    qualitiesGrid.querySelectorAll('.lift-copy-stream-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const streamUrl = btn.dataset.qUrl || '';
+        if (!streamUrl) return;
+        try {
+          await navigator.clipboard.writeText(streamUrl);
+          showToast('📋 Прямая ссылка на поток скопирована! Вставьте её в VLC, IINA, PotPlayer или менеджер закачек', 'success');
+        } catch (_) {
+          showToast('Ссылка: ' + streamUrl, 'info');
+        }
+      };
+    });
+
+    if (voicesList && voiceovers.length > 0) {
+      const savedPref = getPreferredVoiceover() || '';
+      voicesList.innerHTML = voiceovers.map(v => {
+        const isAct = savedPref && v.name.toLowerCase().includes(savedPref.toLowerCase());
+        return `
+          <button type="button" class="storm-chip lift-voice-chip ${isAct ? 'active' : ''}" data-voice-name="${escapeHtml(v.name)}">
+            🎙️ ${escapeHtml(v.name)}
+          </button>
+        `;
+      }).join('');
+
+      voicesList.querySelectorAll('.lift-voice-chip').forEach(chip => {
+        chip.onclick = () => {
+          const vName = chip.dataset.voiceName || '';
+          voicesList.querySelectorAll('.lift-voice-chip').forEach(c => c.classList.toggle('active', c === chip));
+          savePreferredVoiceover(vName);
+          const ifr = document.querySelector('.cinema-player-iframe');
+          if (ifr && ifr.contentWindow) {
+            ifr.contentWindow.postMessage({ type: 'STORM_SET_AUDIO', name: vName }, '*');
+          }
+          const voiceVal = document.getElementById('quick-voiceover-val');
+          if (voiceVal) voiceVal.textContent = vName;
+          showToast(`🎙️ Выбрана студийная озвучка: ${vName}`, 'info');
+        };
+      });
+    }
+
+    if (subsRow && subsList && subtitles.length > 0) {
+      subsRow.style.display = 'block';
+      subsList.innerHTML = [
+        `<button type="button" class="storm-chip lift-sub-chip" data-sub-label="">🚫 Выкл</button>`,
+        ...subtitles.map(s => `
+          <div style="display:inline-flex;align-items:center;gap:4px;">
+            <button type="button" class="storm-chip lift-sub-chip" data-sub-label="${escapeHtml(s.label)}">
+              💬 ${escapeHtml(s.label)}
+            </button>
+            ${s.src ? `<a href="${escapeHtml(s.src)}" target="_blank" rel="noopener" class="storm-chip" title="Скачать файл субтитров .vtt" style="text-decoration:none;padding:4px 8px;">📥 .vtt</a>` : ''}
+          </div>
+        `)
+      ].join('');
+
+      subsList.querySelectorAll('.lift-sub-chip').forEach(chip => {
+        chip.onclick = () => {
+          const sLabel = chip.dataset.subLabel || '';
+          subsList.querySelectorAll('.lift-sub-chip').forEach(c => c.classList.toggle('active', c === chip));
+          const ifr = document.querySelector('.cinema-player-iframe');
+          if (ifr && ifr.contentWindow) {
+            ifr.contentWindow.postMessage({ type: 'STORM_SET_SUBTITLE', name: sLabel }, '*');
+          }
+          showToast(sLabel ? `💬 Включены субтитры: ${sLabel}` : '🚫 Субтитры отключены', 'info');
+        };
+      });
+    }
+  } catch (err) {
+    qualitiesGrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--color-red);">Ошибка получения потоков: ${escapeHtml(err.message)}</div>`;
+  }
 }
 
 function closeOtherQuickDropdowns(activeDropdownId) {
@@ -3432,10 +3787,40 @@ async function updateQuickIframeSrc() {
     }
   }
 
-  // 4. Kodik / FanFilm Iframe
+  // 4. Lift 4K / Kodik / FanFilm Iframe
   const iframe = document.querySelector('.cinema-player-iframe');
   if (iframe) {
-    if (quickBarBaseUrl && (quickBarBaseUrl.includes('fanfilm') || quickBarBaseUrl.includes('stravers'))) {
+    const isLiftSrc = activePlayerId === 'lift_adfree' || (quickBarBaseUrl && quickBarBaseUrl.includes('/api/player/lift-embed')) || (iframe.src && iframe.src.includes('/api/player/lift-embed'));
+    if (isLiftSrc) {
+      const activeTransObj = curEpObj?.translations?.find(t => String(t.id) === String(quickBarActiveTranslationId));
+      try {
+        if (activeTransObj && activeTransObj.name) {
+          iframe.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: activeTransObj.name }, '*');
+        }
+        if (quickBarSeriesData?.type !== 'movie') {
+          iframe.contentWindow?.postMessage({
+            event: 'playlist go',
+            season: quickBarActiveSeason,
+            episode: String(quickBarActiveEpisode)
+          }, '*');
+        }
+      } catch (_) {}
+      if (quickBarSeriesData?.type !== 'movie') {
+        let curSrc = iframe.src || (currentActivePlayer?.url || quickBarBaseUrl || '');
+        if (curSrc) {
+          let newUrl = curSrc;
+          if (newUrl.includes('season=') || newUrl.includes('episode=')) {
+            newUrl = newUrl.replace(/([?&])season=\d+/g, `$1season=${quickBarActiveSeason}`);
+            newUrl = newUrl.replace(/([?&])episode=\d+/g, `$1episode=${quickBarActiveEpisode}`);
+          } else {
+            newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
+          }
+          if (newUrl !== curSrc) {
+            iframe.src = newUrl;
+          }
+        }
+      }
+    } else if (quickBarBaseUrl && (quickBarBaseUrl.includes('fanfilm') || quickBarBaseUrl.includes('stravers'))) {
       const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
       const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
       let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation${titleParam}${yearParam}`;
@@ -3639,6 +4024,23 @@ window.addEventListener('message', (e) => {
     console.warn('[Player] Запуск перехода к следующему источнику:', e.data?.reason);
     switchToNextSource(true);
   }
+  if (e.data?.type === 'STORM_LIFT_PREF_CHANGED') {
+    if (e.data.audioTitle) {
+      savePreferredVoiceover(e.data.audioTitle);
+      const voiceVal = document.getElementById('quick-voiceover-val');
+      if (voiceVal) voiceVal.textContent = e.data.audioTitle;
+    }
+  }
+  if (e.data?.type === 'STORM_LIFT_EPISODE_CHANGED' && e.data.episode) {
+    const epNum = parseInt(e.data.episode, 10);
+    if (epNum && !isNaN(epNum) && epNum !== quickBarActiveEpisode) {
+      quickBarActiveEpisode = epNum;
+      currentEpisodeIndex = epNum;
+      renderQuickBarDropdowns();
+      highlightActiveEpisodeInGrid(epNum);
+      updateInPlayerEpisodeInfo();
+    }
+  }
 });
 
 function playStreamUrl(url) {
@@ -3826,8 +4228,11 @@ function playStreamUrl(url) {
 
   let streamUrl = url;
   const isFanfilmOrStravers = typeof url === 'string' && (url.includes('stravers.live') || url.includes('fanfilm4k') || url.includes('fanfilm'));
+  const isLiftPlayer = typeof url === 'string' && url.includes('/api/player/lift-embed');
 
-  if (isFanfilmOrStravers) {
+  if (isLiftPlayer) {
+    initSeriesQuickBar(url);
+  } else if (isFanfilmOrStravers) {
     const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
     const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
     streamUrl = `/api/player/fanfilm-embed?url=${encodeURIComponent(url)}&hidden=season,episode,translation${titleParam}${yearParam}`;

@@ -52,24 +52,24 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.0.39';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.39';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.39';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.39';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.39';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.39';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.39';
-import { renderSyncModalContent } from './sync-service.js?v=1.0.39';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.39';
-import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.39';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.39';
-import { openRemoteQrModal } from './storm-remote.js?v=1.0.39';
-import { initAdminDashboard } from './admin-dashboard.js?v=1.0.39';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.39';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.39';
-import { getStatusIconSvg } from './status-icons.js?v=1.0.39';
-import { checkForUpdates } from './updater.js?v=1.0.39';
-import { initFormFactorEngine } from './form-factor.js?v=1.0.39';
+import { initTheme, setTheme } from './theme.js?v=1.0.40';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.40';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.40';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.40';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.40';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.40';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.40';
+import { renderSyncModalContent } from './sync-service.js?v=1.0.40';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.40';
+import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.40';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.40';
+import { openRemoteQrModal } from './storm-remote.js?v=1.0.40';
+import { initAdminDashboard } from './admin-dashboard.js?v=1.0.40';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.40';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.40';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.40';
+import { checkForUpdates } from './updater.js?v=1.0.40';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.40';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -756,6 +756,24 @@ export const ALL_CATALOG_GENRES = [
   { id: 'игра', name: 'Игра', label: 'Игра', icon: '🎮' }
 ];
 
+export const ALL_CATALOG_COUNTRIES = [
+  { id: 'all', name: 'Все страны', label: 'Все страны', icon: '🌍' },
+  { id: 'foreign', name: 'Только зарубежные', label: 'Зарубежные', icon: '🌎' },
+  { id: 'Россия', name: 'Россия / СССР', label: 'Россия', icon: '🇷🇺' },
+  { id: 'США', name: 'США', label: 'США', icon: '🇺🇸' },
+  { id: 'Великобритания', name: 'Великобритания', label: 'Великобритания', icon: '🇬🇧' },
+  { id: 'Франция', name: 'Франция', label: 'Франция', icon: '🇫🇷' },
+  { id: 'Южная Корея', name: 'Южная Корея', label: 'Южная Корея', icon: '🇰🇷' },
+  { id: 'Япония', name: 'Япония', label: 'Япония', icon: '🇯🇵' },
+  { id: 'Турция', name: 'Турция', label: 'Турция', icon: '🇹🇷' },
+  { id: 'Германия', name: 'Германия', label: 'Германия', icon: '🇩🇪' },
+  { id: 'Италия', name: 'Италия', label: 'Италия', icon: '🇮🇹' },
+  { id: 'Испания', name: 'Испания', label: 'Испания', icon: '🇪🇸' },
+  { id: 'Китай', name: 'Китай', label: 'Китай', icon: '🇨🇳' },
+  { id: 'Канада', name: 'Канада', label: 'Канада', icon: '🇨🇦' },
+  { id: 'Индия', name: 'Индия', label: 'Индия', icon: '🇮🇳' }
+];
+
 // -------------------------------------------------------------
 // МОБИЛЬНАЯ ШТОРКА ФИЛЬТРОВ И СОРТИРОВКИ (FILTER BOTTOM SHEET)
 // -------------------------------------------------------------
@@ -763,6 +781,7 @@ let currentFilterSheetSort = 'popular';
 let currentFilterSheetRating = 0;
 let currentFilterSheetYear = 'all';
 let currentFilterSheetGenre = 'all';
+let currentFilterSheetCountry = 'all';
 let currentFilterSheetSource = 'all';
 
 function initFilterSheet() {
@@ -831,19 +850,21 @@ function initFilterSheet() {
   if (applyBtn) {
     applyBtn.addEventListener('click', () => {
       const prevSource = currentSource;
+      const prevCountry = currentCountry;
       currentSort = currentFilterSheetSort;
       currentRating = currentFilterSheetRating;
       currentYear = currentFilterSheetYear;
       currentGenre = currentFilterSheetGenre;
+      currentCountry = currentFilterSheetCountry;
       currentSource = currentFilterSheetSource;
 
       syncDesktopFilterLabels();
       updateFilterBadge();
       closeFilterSheet();
 
-      if (currentSource !== prevSource) {
+      if (currentSource !== prevSource || currentCountry !== prevCountry) {
         currentPage = 1;
-        loadCatalog(currentTab, 1);
+        loadCurrentTab();
       } else {
         renderFilteredCatalog();
       }
@@ -880,6 +901,7 @@ function populateFilterSheet() {
   currentFilterSheetRating = currentRating;
   currentFilterSheetYear = currentYear;
   currentFilterSheetGenre = currentGenre;
+  currentFilterSheetCountry = currentCountry;
   currentFilterSheetSource = currentSource;
 
   const sortContainer = document.getElementById('filter-sheet-sorts');
@@ -904,10 +926,27 @@ function populateFilterSheet() {
     });
   }
 
+  const countriesContainer = document.getElementById('filter-sheet-countries');
+  if (countriesContainer) {
+    countriesContainer.innerHTML = ALL_CATALOG_COUNTRIES.map(c => `
+      <button type="button" class="filter-chip ${String(currentFilterSheetCountry).toLowerCase() === String(c.id).toLowerCase() ? 'is-active' : ''}" data-country="${c.id}">
+        ${c.icon ? `<span class="filter-chip-icon">${c.icon}</span> ` : ''}${c.label || c.name}
+      </button>
+    `).join('');
+    countriesContainer.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        countriesContainer.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        currentFilterSheetCountry = chip.dataset.country || 'all';
+      });
+    });
+  }
+
   const sourcesContainer = document.getElementById('filter-sheet-sources');
   if (sourcesContainer) {
     const sources = [
       { id: 'all', label: '🌐 Все источники' },
+      { id: 'lift', label: '🚀 Lift 4K (Без рекламы)' },
       { id: 'rutube', label: '🔴 RuTube' },
       { id: 'vkvideo', label: '🔵 VK Видео' },
       { id: 'fanfilm4k', label: '🎬 FanFilm4K' },
@@ -996,6 +1035,11 @@ function syncDesktopFilterLabels() {
   if (genreLabel) {
     genreLabel.textContent = currentGenre === 'all' ? t('filter_genre_all') : currentGenre.charAt(0).toUpperCase() + currentGenre.slice(1);
   }
+  const countryLabel = document.getElementById('filter-country-label');
+  if (countryLabel) {
+    const foundCountry = ALL_CATALOG_COUNTRIES.find(c => String(c.id).toLowerCase() === String(currentCountry).toLowerCase());
+    countryLabel.textContent = currentCountry === 'all' ? 'Все страны' : (foundCountry ? foundCountry.name : currentCountry);
+  }
   const yearLabel = document.getElementById('filter-year-label');
   if (yearLabel) {
     yearLabel.textContent = currentYear === 'all' ? t('filter_year_all') : currentYear;
@@ -1018,6 +1062,9 @@ function syncDesktopFilterLabels() {
   // Обновляем визуальный активный класс в выпадающих списках десктопа
   document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === currentGenre);
+  });
+  document.querySelectorAll('#filter-country-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', String(el.dataset.value).toLowerCase() === String(currentCountry).toLowerCase());
   });
   document.querySelectorAll('#filter-year-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === currentYear);
@@ -1460,17 +1507,26 @@ export function areMediaListsEquivalent(a, b) {
   return true;
 }
 
+function buildCountryCatalogQuery(countryVal = currentCountry) {
+  if (!countryVal || countryVal === 'all') return '';
+  if (countryVal === 'foreign') {
+    return `&exceptCountry=${encodeURIComponent('Россия')}`;
+  }
+  return `&country=${encodeURIComponent(countryVal)}`;
+}
+
 function scheduleNextPagePrefetch(cat, page, src) {
   clearTimeout(prefetchTimer);
   if (page >= totalCatalogPages) return;
   prefetchTimer = setTimeout(async () => {
-    const nextKey = `${cat}_${page + 1}_${src}`;
+    const countrySuffix = currentCountry && currentCountry !== 'all' ? `_${currentCountry}` : '';
+    const nextKey = `${cat}_${page + 1}_${src}${countrySuffix}`;
     if (clientTabCache.has(nextKey)) return;
     try {
       const headers = {};
       const token = localStorage.getItem('storm_token');
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`/api/media/catalog?category=${cat}&page=${page + 1}&source=${src}`, {
+      const res = await fetch(`/api/media/catalog?category=${cat}&page=${page + 1}&source=${src}${buildCountryCatalogQuery()}`, {
         headers,
         signal: AbortSignal.timeout(8000)
       });
@@ -1905,7 +1961,8 @@ async function loadCurrentTab() {
   if (currentPage > defPages) {
     currentPage = defPages;
   }
-  const cacheKey = `${category}_${currentPage}_${currentSource}`;
+  const countrySuffix = currentCountry && currentCountry !== 'all' ? `_${currentCountry}` : '';
+  const cacheKey = `${category}_${currentPage}_${currentSource}${countrySuffix}`;
   const loadSeq = ++activeTabLoadSeq;
 
   if (clientTabCache.has(cacheKey)) {
@@ -1930,7 +1987,7 @@ async function loadCurrentTab() {
       scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
       const baseline = getBaselineCatalog(category);
-      if (baseline && baseline.length > 0) {
+      if (baseline && baseline.length > 0 && currentCountry === 'all') {
         rawCatalogItems = baseline;
         renderFilteredCatalog();
       } else {
@@ -1945,7 +2002,7 @@ async function loadCurrentTab() {
     const token = localStorage.getItem('storm_token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}`, {
+    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}${buildCountryCatalogQuery()}`, {
       headers,
       signal: AbortSignal.timeout(12000)
     });
@@ -1974,7 +2031,7 @@ async function loadCurrentTab() {
     } else {
       // Если по текущему источнику 0 элементов, пробуем сводный каталог
       try {
-        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all`, {
+        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all${buildCountryCatalogQuery()}`, {
           headers,
           signal: AbortSignal.timeout(8000)
         });
@@ -2721,18 +2778,79 @@ function createRailCardHtml(item, idx, isWide = false) {
 const DEFAULT_HOME_SECTIONS = [
   { id: 'rail-continue', name: 'Продолжить просмотр', enabled: true },
   { id: 'rail-trending', name: 'Горячие премьеры', enabled: true },
+  { id: 'rail-lift-foreign-films', name: 'Популярные зарубежные фильмы', enabled: true },
+  { id: 'rail-lift-foreign-series', name: 'Популярные зарубежные сериалы', enabled: true },
+  { id: 'rail-lift-ru-films', name: 'Популярные российские фильмы', enabled: true },
+  { id: 'rail-lift-ru-series', name: 'Популярные российские сериалы', enabled: true },
   { id: 'rail-movies', name: 'Популярные фильмы', enabled: true },
   { id: 'rail-series', name: 'Лучшие сериалы', enabled: true },
   { id: 'rail-anime', name: 'Топ аниме', enabled: true },
   { id: 'rail-top-rated', name: 'Шедевры мирового кино', enabled: true }
 ];
 
+let cachedLiftHomeRails = null;
+let isFetchingLiftHomeRails = false;
+
+export async function ensureLiftHomeRailsLoaded() {
+  if (cachedLiftHomeRails) return cachedLiftHomeRails;
+  try {
+    const raw = localStorage.getItem('storm_lift_home_rails_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.rails && (Date.now() - (parsed.ts || 0) < 1000 * 60 * 30)) {
+        cachedLiftHomeRails = parsed.rails;
+      }
+    }
+  } catch (_) {}
+
+  if (!isFetchingLiftHomeRails) {
+    isFetchingLiftHomeRails = true;
+    fetch('/api/lift/home-rails', { signal: AbortSignal.timeout(10000) })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        isFetchingLiftHomeRails = false;
+        if (data && data.rails) {
+          const hadBefore = Boolean(cachedLiftHomeRails);
+          cachedLiftHomeRails = data.rails;
+          try {
+            localStorage.setItem('storm_lift_home_rails_v1', JSON.stringify({
+              ts: Date.now(),
+              rails: data.rails
+            }));
+          } catch (_) {}
+          if (!hadBefore && currentTab === 'home') {
+            lastRenderedHomeKey = '';
+            renderHomeView(rawCatalogItems);
+          }
+        }
+      })
+      .catch(() => {
+        isFetchingLiftHomeRails = false;
+      });
+  }
+  return cachedLiftHomeRails;
+}
+
 export function getHomeSectionsConfig() {
   try {
     const raw = localStorage.getItem('storm_home_sections_config');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const existingIds = new Set(parsed.map(s => s.id));
+        const missing = DEFAULT_HOME_SECTIONS.filter(d => !existingIds.has(d.id)).map(s => ({ ...s }));
+        if (missing.length > 0) {
+          const merged = [...parsed];
+          const trendingIdx = merged.findIndex(s => s.id === 'rail-trending');
+          if (trendingIdx >= 0) {
+            merged.splice(trendingIdx + 1, 0, ...missing);
+          } else {
+            merged.push(...missing);
+          }
+          return merged;
+        }
+        return parsed;
+      }
     }
   } catch (_) {}
   return DEFAULT_HOME_SECTIONS.map(s => ({ ...s }));
@@ -2916,7 +3034,9 @@ function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
-  const currentHomeKey = `${(items || []).map(x => `${x.id || x.media_id}:${x.user_status || ''}`).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}`;
+  ensureLiftHomeRailsLoaded();
+  const hasLiftRails = Boolean(cachedLiftHomeRails && (cachedLiftHomeRails.foreignFilms?.length || cachedLiftHomeRails.ruFilms?.length));
+  const currentHomeKey = `${(items || []).map(x => `${x.id || x.media_id}:${x.user_status || ''}`).join(',')}_cnt_${(Array.isArray(cachedContinueHistory) ? cachedContinueHistory : []).map(x => `${x.media_id || x.id}:${x.progress_percent}`).join(',')}_kid_${isKidModeActive()}_lift_${hasLiftRails}`;
   if (container.dataset.renderedView === 'home' && lastRenderedHomeKey === currentHomeKey) {
     return;
   }
@@ -3721,6 +3841,53 @@ function renderHomeView(items) {
     });
   }
 
+  if (cachedLiftHomeRails) {
+    if (Array.isArray(cachedLiftHomeRails.foreignFilms) && cachedLiftHomeRails.foreignFilms.length > 0) {
+      rails.push({
+        id: 'rail-lift-foreign-films',
+        icon: '🌎',
+        title: 'Популярные зарубежные фильмы',
+        category: 'movies',
+        country: 'foreign',
+        isWide: false,
+        items: deduplicateMediaList(cachedLiftHomeRails.foreignFilms).slice(0, 28)
+      });
+    }
+    if (Array.isArray(cachedLiftHomeRails.foreignSeries) && cachedLiftHomeRails.foreignSeries.length > 0) {
+      rails.push({
+        id: 'rail-lift-foreign-series',
+        icon: '📺',
+        title: 'Популярные зарубежные сериалы',
+        category: 'series',
+        country: 'foreign',
+        isWide: false,
+        items: deduplicateMediaList(cachedLiftHomeRails.foreignSeries).slice(0, 28)
+      });
+    }
+    if (Array.isArray(cachedLiftHomeRails.ruFilms) && cachedLiftHomeRails.ruFilms.length > 0) {
+      rails.push({
+        id: 'rail-lift-ru-films',
+        icon: '🇷🇺',
+        title: 'Популярные российские фильмы',
+        category: 'movies',
+        country: 'Россия',
+        isWide: false,
+        items: deduplicateMediaList(cachedLiftHomeRails.ruFilms).slice(0, 28)
+      });
+    }
+    if (Array.isArray(cachedLiftHomeRails.ruSeries) && cachedLiftHomeRails.ruSeries.length > 0) {
+      rails.push({
+        id: 'rail-lift-ru-series',
+        icon: '🎬',
+        title: 'Популярные российские сериалы',
+        category: 'series',
+        country: 'Россия',
+        isWide: false,
+        items: deduplicateMediaList(cachedLiftHomeRails.ruSeries).slice(0, 28)
+      });
+    }
+  }
+
   if (movieItems.length > 0) {
     rails.push({
       id: 'rail-movies',
@@ -3826,6 +3993,11 @@ function renderHomeView(items) {
     const seeAllBtn = railEl.querySelector('.rail-see-all-btn');
     if (seeAllBtn) {
       seeAllBtn.onclick = () => {
+        if (railData.country) {
+          currentCountry = railData.country;
+          syncDesktopFilterLabels();
+          updateFilterBadge();
+        }
         switchTab(railData.category);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
@@ -4455,6 +4627,7 @@ function getStatusBadge(status) {
 function getSourceBadge(item) {
   const s = (item.source || '').toLowerCase();
   const badges = {
+    lift: { name: 'LIFT 4K • БЕЗ РЕКЛАМЫ', bg: 'linear-gradient(135deg,#00d2ff 0%,#7c3aed 100%)' },
     fanfilm4k: { name: 'FANFILM 4K', bg: 'linear-gradient(135deg,#00d2ff 0%,#0072ff 100%)' },
     anilibria: { name: 'ANILIBRIA', bg: 'linear-gradient(135deg,#e11d48 0%,#9f1239 100%)' },
     anixart: { name: 'ANIXART', bg: 'linear-gradient(135deg,#8b5cf6 0%,#6d28d9 100%)' },
@@ -4483,6 +4656,7 @@ function getSourceBadge(item) {
 
 function getSourceName(item) {
   const map = {
+    lift: 'Lift 4K (Без рекламы)',
     fanfilm4k: 'FanFilm4K (4K UHD)',
     tmdb: 'TMDB (World Cinema)',
     anixart: 'AniXart',
@@ -4814,6 +4988,7 @@ function initSourceFilterDropdown() {
 
   const sources = [
     { id: 'all', badge: '🌐', name: 'Все источники', desc: 'Объединенная база релизов' },
+    { id: 'lift', badge: '🚀', name: 'Lift 4K (Без рекламы • Все озвучки)', desc: 'Прямой поток до 4K UHD без рекламы, все студии дубляжа и Smart Skip' },
     { id: 'rutube', badge: '🔴', name: 'RuTube (Официальный каталог)', desc: 'Лицензионные фильмы, сериалы и шоу в Full HD' },
     { id: 'vkvideo', badge: '🔵', name: 'VK Видео (Фильмы и дубляж)', desc: 'Студийные переводы, новинки и сериалы' },
     { id: 'fanfilm4k', badge: '🎬', name: 'FanFilm4K (4K Ultra HD)', desc: 'Фильмы и сериалы в 4K UHD' },
@@ -5029,6 +5204,22 @@ export function initFilterDropdowns() {
     }
   });
 
+  // 1.5. Страна производства
+  setupFilterDropdown({
+    dropdownId: 'filter-country-dropdown',
+    triggerId: 'filter-country-trigger',
+    labelId: 'filter-country-label',
+    menuId: 'filter-country-menu',
+    listId: 'filter-country-list',
+    items: ALL_CATALOG_COUNTRIES,
+    getActiveVal: () => currentCountry,
+    onSelect: (id) => {
+      currentCountry = id;
+      currentPage = 1;
+      loadCurrentTab();
+    }
+  });
+
   // 2. Года
   const years = [
     { id: 'all', name: 'Все года', icon: '📅' },
@@ -5146,6 +5337,7 @@ export function initFilterDropdowns() {
 
 export function resetAllFilters() {
   const prevSource = currentSource;
+  const prevCountry = currentCountry;
   currentGenre = 'all';
   currentCountry = 'all';
   currentYear = 'all';
@@ -5154,6 +5346,7 @@ export function resetAllFilters() {
   currentSort = 'newest';
   currentSource = 'all';
   currentFilterSheetGenre = 'all';
+  currentFilterSheetCountry = 'all';
   currentFilterSheetYear = 'all';
   currentFilterSheetRating = 0;
   currentFilterSheetSort = 'newest';
@@ -5161,6 +5354,9 @@ export function resetAllFilters() {
 
   const genreLabel = document.getElementById('filter-genre-label');
   if (genreLabel) genreLabel.textContent = 'Все жанры';
+
+  const countryLabel = document.getElementById('filter-country-label');
+  if (countryLabel) countryLabel.textContent = 'Все страны';
 
   const yearLabel = document.getElementById('filter-year-label');
   if (yearLabel) yearLabel.textContent = 'Все года';
@@ -5180,6 +5376,9 @@ export function resetAllFilters() {
   document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === 'all');
   });
+  document.querySelectorAll('#filter-country-list .storm-dropdown-item').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.value === 'all');
+  });
   document.querySelectorAll('#filter-year-list .storm-dropdown-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.value === 'all');
   });
@@ -5194,9 +5393,9 @@ export function resetAllFilters() {
   });
 
   updateFilterBadge();
-  if (prevSource !== 'all') {
+  if (prevSource !== 'all' || prevCountry !== 'all') {
     currentPage = 1;
-    loadCatalog(currentTab, 1);
+    loadCurrentTab();
   } else {
     renderFilteredCatalog();
   }
@@ -5649,12 +5848,27 @@ export function renderFilteredCatalog() {
   if (!isSearching && currentCountry !== 'all') {
     const targetCountry = currentCountry.toLowerCase().trim();
     items = items.filter(item => {
+      const hasCountryMeta = Boolean(
+        (Array.isArray(item.countries) && item.countries.length > 0) ||
+        (typeof item.country === 'string' && item.country.trim().length > 0)
+      );
+      if (targetCountry === 'foreign') {
+        const isRussian = (val) => {
+          if (!val) return false;
+          if (Array.isArray(val)) return val.some(c => /росси|ссср|russia|ussr/i.test(String(c)));
+          return /росси|ссср|russia|ussr/i.test(String(val));
+        };
+        return !isRussian(item.countries) && !isRussian(item.country);
+      }
+      if (!hasCountryMeta && item.source === 'lift') {
+        return true;
+      }
       const checkCountry = (val) => {
         if (!val) return false;
         if (Array.isArray(val)) {
-          return val.some(c => String(c).toLowerCase().includes(targetCountry));
+          return val.some(c => String(c).toLowerCase().includes(targetCountry) || (targetCountry === 'россия' && /росси|ссср/i.test(String(c))));
         }
-        return String(val).toLowerCase().includes(targetCountry);
+        return String(val).toLowerCase().includes(targetCountry) || (targetCountry === 'россия' && /росси|ссср/i.test(String(val)));
       };
       return checkCountry(item.countries) ||
              checkCountry(item.country) ||
