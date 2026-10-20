@@ -14,7 +14,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 52
-        versionName = "1.0.42"
+        versionName = "1.0.43"
     }
 
     val stormSigningProps = Properties().apply {

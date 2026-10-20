@@ -195,9 +195,9 @@ class MainActivity : ComponentActivity() {
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.42"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.43"
         } catch (_: Throwable) {
-            "1.0.42"
+            "1.0.43"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -466,9 +466,9 @@ class MainActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.42"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.43"
             } catch (_: Throwable) {
-                "1.0.42"
+                "1.0.43"
             }
         }
 
