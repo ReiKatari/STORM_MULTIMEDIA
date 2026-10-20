@@ -69,3 +69,5 @@ local.properties
 .repowise/
 .om-project
 
+
+android_build/app/src/main/assets/public/

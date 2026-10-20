@@ -833,6 +833,7 @@ app.get('/api/auth/device/poll', (req, res) => {
 // МОНИТОРИНГ ЗДОРОВЬЯ ИСТОЧНИКОВ (SMART HEALTH CHECK)
 // ==========================================
 const sourceHealthStatus = {
+  lift_adfree: { status: 'healthy', latency: 26, lastCheck: Date.now() },
   fanfilm4k_uhd: { status: 'healthy', latency: 40, lastCheck: Date.now() },
   kodik_direct: { status: 'healthy', latency: 32, lastCheck: Date.now() },
   rutube_stream: { status: 'healthy', latency: 45, lastCheck: Date.now() },
@@ -855,7 +856,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.31',
+    version: '1.0.41',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -7393,6 +7394,73 @@ app.get('/api/player/lift-download-options', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Скачивание отдельных файлов субтитров .vtt для внешних плееров (VLC / IINA / PotPlayer)
+app.get('/api/player/lift-subtitle.vtt', async (req, res) => {
+  try {
+    const rawUrl = String(req.query.url || '').trim();
+    if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
+      return res.status(400).send('Invalid subtitle URL');
+    }
+    const cleanFilename = String(req.query.filename || 'subtitles.vtt')
+      .replace(/[^a-zA-Z0-9а-яА-ЯёЁ._ -]/g, '_')
+      .replace(/\.vtt$/i, '') + '.vtt';
+    const asciiFallback = cleanFilename.replace(/[^\x20-\x7E]/g, '_') || 'subtitles.vtt';
+
+    const r = await liftRequestRaw(rawUrl, {
+      origin: 'https://embed.liftw.ws',
+      referer: 'https://embed.liftw.ws/',
+      timeout: 8000
+    });
+    if (!r.ok) {
+      return res.status(502).send('Failed to fetch subtitle file');
+    }
+    const vttText = r.text();
+    res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(cleanFilename)}`
+    );
+    return res.send(vttText);
+  } catch (err) {
+    return res.status(500).send(`Subtitle error: ${err.message}`);
+  }
+});
+
+// Генерация готового плейлиста .m3u8 / .m3u для запуска потока в VLC, IINA, PotPlayer и на Smart TV
+app.get('/api/player/lift-playlist.m3u8', (req, res) => {
+  const streamUrl = String(req.query.url || '').trim();
+  const title = String(req.query.title || 'STORM MULTIMEDIA 4K Stream').replace(/[\r\n]+/g, ' ').trim();
+  const quality = String(req.query.quality || '1080p').replace(/[\r\n]+/g, '').trim();
+  const voice = String(req.query.voice || '').replace(/[\r\n]+/g, '').trim();
+  if (!streamUrl || !/^https?:\/\//i.test(streamUrl)) {
+    return res.status(400).send('Invalid stream URL');
+  }
+  const displayTitle = `${title} [${quality}${voice ? ' • ' + voice : ''}]`;
+  const safeBaseName = title.replace(/[^a-zA-Z0-9а-яА-ЯёЁ._ -]/g, '_').slice(0, 60) || 'STORM_Stream';
+  const asciiBaseName = safeBaseName.replace(/[^\x20-\x7E]/g, '_') || 'STORM_Stream';
+  const fileName = `${safeBaseName}_${quality}.m3u`;
+  const asciiFileName = `${asciiBaseName}_${quality}.m3u`;
+
+  const m3uContent = [
+    '#EXTM3U',
+    `#PLAYLIST:${displayTitle}`,
+    '#EXTVLCOPT:http-referrer=https://embed.liftw.ws/',
+    '#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    '#EXTVLCOPT:network-caching=1500',
+    `#EXTINF:-1 group-title="STORM MULTIMEDIA",${displayTitle}`,
+    streamUrl
+  ].join('\r\n') + '\r\n';
+
+  res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${asciiFileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+  );
+  return res.send(m3uContent);
 });
 
 // Прямой очищенный от рекламы плеер Lift (VenomPlayer 4K/FHD + все озвучки СНГ + субтитры + превью таймлайна + автопропуск заставок)

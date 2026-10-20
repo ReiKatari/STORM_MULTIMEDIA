@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.40';
-import { getUser, showToast } from './auth.js?v=1.0.40';
-import { t } from './i18n.js?v=1.0.40';
-import { trackClientAction } from './achievements.js?v=1.0.40';
-import { renderReviewsSection } from './reviews.js?v=1.0.40';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.40';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.40';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.40';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.40';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.40';
-import { saveMediaForOffline } from './offline-storage.js?v=1.0.40';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.40';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.40';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.40';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.40';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.40';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.41';
+import { getUser, showToast } from './auth.js?v=1.0.41';
+import { t } from './i18n.js?v=1.0.41';
+import { trackClientAction } from './achievements.js?v=1.0.41';
+import { renderReviewsSection } from './reviews.js?v=1.0.41';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi } from './watch-together.js?v=1.0.41';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.41';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.41';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.41';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.41';
+import { saveMediaForOffline } from './offline-storage.js?v=1.0.41';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.41';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.41';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.41';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.41';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.41';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -114,13 +114,22 @@ export function setAdblockEnabled(val) {
   } catch (_) {}
 }
 
+// Однократная миграция плеера по умолчанию на «Lift 4K и FHD (Без рекламы • Все озвучки)» (lift_adfree)
+try {
+  if (!localStorage.getItem('storm_default_player_v41_migrated')) {
+    localStorage.setItem('storm_default_player', 'lift_adfree');
+    localStorage.setItem('storm_default_player_v41_migrated', '1');
+  }
+} catch (_) {}
+
 export function getPreferredDefaultPlayerId() {
-  return localStorage.getItem('storm_default_player') || 'fanfilm4k_uhd';
+  return localStorage.getItem('storm_default_player') || 'lift_adfree';
 }
 
 export function setPreferredDefaultPlayerId(playerId) {
-  const cleanId = String(playerId || 'fanfilm4k_uhd').trim();
+  const cleanId = String(playerId || 'lift_adfree').trim();
   localStorage.setItem('storm_default_player', cleanId);
+  localStorage.setItem('storm_default_player_v41_migrated', '1');
 }
 
 export function getSafePersonPhotoUrl(photo) {
@@ -1680,11 +1689,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
   currentPlayers = [...fallbackSuite];
   renderPlayerSources(currentPlayers);
 
-  // Определяем стартовый рекомендуемый плеер с защитой от удаленных 4K архивов
+  // Определяем стартовый рекомендуемый плеер с приоритетом выбранного в профиле (по умолчанию: lift_adfree)
   const isDomestic = isDomesticContent(mediaItem, cleanTitle);
   const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
   const isStable = p => isWorking(p) && Boolean(p.url);
-  const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+  const isReal4k = p => p && (p.id === 'lift_adfree' || p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || (p.quality || '').includes('4K') || p.badge === 'FANFILM 4K' || p.badge === 'LIFT БЕЗ РЕКЛАМЫ');
   const itemYr = parseInt(currentMedia?.year || mediaItem?.year || '2026', 10);
   const preferStableKodik = itemYr < 2020;
 
@@ -1692,14 +1701,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const isLandyshiItem = isLandyshiMedia;
   const preferredId = getPreferredDefaultPlayerId();
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
-  if (!initialChoice && preferredId && preferredId !== 'fanfilm4k_uhd' && !isLandyshiMedia) {
+  if (!initialChoice && preferredId && !isLandyshiMedia) {
     initialChoice = currentPlayers.find(p => p.id === preferredId && isStable(p)) || null;
   }
   if (!initialChoice) {
-    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-    const fourKInitial = currentPlayers.find(p => isReal4k(p) && isStable(p));
-    if (fourKInitial && !isLandyshiMedia) {
-      initialChoice = fourKInitial;
+    // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K и FHD (Без рекламы • Все озвучки) -> 4K Ultra HD (FanFilm4K)
+    const liftOrFourKInitial = currentPlayers.find(p => p.id === 'lift_adfree' && isStable(p))
+      || currentPlayers.find(p => isReal4k(p) && isStable(p));
+    if (liftOrFourKInitial && !isLandyshiMedia) {
+      initialChoice = liftOrFourKInitial;
     } else if (isLandyshiMedia) {
       initialChoice = currentPlayers.find(p => p.id === 'rutube_direct_hls' && isWorking(p))
         || currentPlayers.find(p => p.id === 'vk_video_stream' && isWorking(p))
@@ -1842,7 +1852,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
         let defaultPlayer = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
         const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
         const isStable = p => isWorking(p) && Boolean(p.url);
-        const isReal4k = p => p && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+        const isReal4k = p => p && (p.id === 'lift_adfree' || p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || (p.quality || '').includes('4K') || p.badge === 'FANFILM 4K' || p.badge === 'LIFT БЕЗ РЕКЛАМЫ');
         const hasOnlineStream = currentPlayers.some(isStable);
 
         const isCarrieItem = /кэрри|carrie/i.test(currentMedia?.title || '') && parseInt(currentMedia?.year || '2026', 10) >= 2026;
@@ -1871,13 +1881,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
           currentMedia.is_upcoming = false;
           if (!defaultPlayer) {
             const prefPlayerId = getPreferredDefaultPlayerId();
-            if (prefPlayerId && prefPlayerId !== 'fanfilm4k_uhd' && !isLandyshiItem) {
+            if (prefPlayerId && !isLandyshiItem) {
               defaultPlayer = currentPlayers.find(p => p.id === prefPlayerId && isStable(p)) || null;
             }
           }
           if (!defaultPlayer) {
-            // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: 4K Ultra HD Плеер (FanFilm4K) по умолчанию везде!
-            const fourKPlayer = currentPlayers.find(p => isReal4k(p) && isStable(p));
+            // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K и FHD (Без рекламы • Все озвучки) -> 4K Ultra HD (FanFilm4K)
+            const fourKPlayer = currentPlayers.find(p => p.id === 'lift_adfree' && isStable(p))
+              || currentPlayers.find(p => isReal4k(p) && isStable(p));
             if (fourKPlayer && !isLandyshiItem) {
               defaultPlayer = fourKPlayer;
             } else if (isLandyshiItem) {
@@ -2047,14 +2058,33 @@ function renderPlayerSources(players) {
     return true;
   });
 
-  // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Рабочие потоки всегда первыми! 4K Ultra HD Плеер (FanFilm4K) на первом месте среди РАБОЧИХ!
+  // Привязываем кнопку «📥 Скачать 4K / FHD» в панели под плеером
+  const underPlayerDlBtn = document.getElementById('under-player-lift-download-btn');
+  if (underPlayerDlBtn) {
+    underPlayerDlBtn.onclick = (e) => {
+      e.stopPropagation();
+      openLiftDownloadModal();
+    };
+  }
+
+  // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Рабочие потоки всегда первыми! Выбранный плеер по умолчанию (Lift 4K и FHD Без рекламы) на первом месте!
+  const prefPlayerId = getPreferredDefaultPlayerId();
   const isWorking = p => p && p.status !== 'broken' && !p.status_label?.includes('Недоступен');
-  const isReal4k = p => p && isWorking(p) && (p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K');
+  const isLiftAdFree = p => p && isWorking(p) && p.id === 'lift_adfree';
+  const isReal4k = p => p && isWorking(p) && (p.id === 'lift_adfree' || p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || (p.quality || '').includes('4K') || p.badge === 'FANFILM 4K' || p.badge === 'LIFT БЕЗ РЕКЛАМЫ');
   validPlayers.sort((a, b) => {
     const aWork = isWorking(a);
     const bWork = isWorking(b);
     if (aWork && !bWork) return -1;
     if (!aWork && bWork) return 1;
+    const aPref = aWork && a.id === prefPlayerId;
+    const bPref = bWork && b.id === prefPlayerId;
+    if (aPref && !bPref) return -1;
+    if (!aPref && bPref) return 1;
+    const aLift = isLiftAdFree(a);
+    const bLift = isLiftAdFree(b);
+    if (aLift && !bLift) return -1;
+    if (!aLift && bLift) return 1;
     const aIs4k = isReal4k(a);
     const bIs4k = isReal4k(b);
     if (aIs4k && !bIs4k) return -1;
@@ -3412,8 +3442,13 @@ export function openSeriesWheelModal() {
     if (actS) actS.scrollIntoView({ behavior: 'instant', block: 'center' });
   });
 
-  if (closeBtn) {
-    closeBtn.onclick = () => { modal.style.display = 'none'; };
+  const wheelCloseBtn = closeBtn || document.getElementById('series-wheel-close-btn');
+  const cancelBtn = document.getElementById('series-wheel-cancel-btn');
+  if (wheelCloseBtn) {
+    wheelCloseBtn.onclick = () => { modal.style.display = 'none'; };
+  }
+  if (cancelBtn) {
+    cancelBtn.onclick = () => { modal.style.display = 'none'; };
   }
   modal.onclick = (e) => {
     if (e.target === modal) modal.style.display = 'none';
@@ -3432,29 +3467,58 @@ export function openSeriesWheelModal() {
 export async function openLiftDownloadModal() {
   const modal = document.getElementById('lift-download-modal');
   const subtitleEl = document.getElementById('lift-download-subtitle');
+  const externalBar = document.getElementById('lift-download-external-bar');
   const qualitiesGrid = document.getElementById('lift-download-qualities-grid');
   const voicesList = document.getElementById('lift-download-voiceovers-list');
   const subsRow = document.getElementById('lift-download-subtitles-row');
   const subsList = document.getElementById('lift-download-subtitles-list');
-  const closeBtn = document.getElementById('close-lift-download-modal');
+  const closeBtn = document.getElementById('close-lift-download-modal') || document.getElementById('lift-download-close-btn');
   if (!modal || !qualitiesGrid) return;
 
   modal.style.display = 'flex';
   if (closeBtn) closeBtn.onclick = () => { modal.style.display = 'none'; };
   modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
 
+  const copyStreamText = async (textToCopy, btnEl, toastMessage) => {
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+    } catch (_) {
+      const ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (__) {}
+      ta.remove();
+    }
+    if (btnEl) {
+      const origHtml = btnEl.dataset.origHtml || btnEl.innerHTML;
+      btnEl.dataset.origHtml = origHtml;
+      btnEl.innerHTML = '✅ Скопировано!';
+      setTimeout(() => { btnEl.innerHTML = origHtml; }, 1800);
+    }
+    showToast(toastMessage || '📋 Прямая ссылка скопирована в буфер обмена!', 'success');
+  };
+
   const cleanT = cleanVideoTitle(currentMedia?.title || 'Видео');
   const isSer = checkIfMediaIsSeries(currentMedia);
+  const fullMediaLabel = isSer
+    ? `${cleanT} S${String(quickBarActiveSeason || 1).padStart(2, '0')}E${String(quickBarActiveEpisode || 1).padStart(2, '0')}`
+    : `${cleanT}${currentMedia?.year ? ` (${currentMedia.year})` : ''}`;
+
   if (subtitleEl) {
     subtitleEl.textContent = isSer
-      ? `${cleanT} — Сезон ${quickBarActiveSeason}, Серия ${quickBarActiveEpisode} (Прямые потоки HLS / DASH без рекламы)`
-      : `${cleanT} (${currentMedia?.year || ''}) — Прямые потоки 4K VP9/AV1 и Full HD без рекламы`;
+      ? `${cleanT} — Сезон ${quickBarActiveSeason}, Серия ${quickBarActiveEpisode} • Прямые потоки .m3u8 / .mpd для VLC, IINA, PotPlayer и субтитры .vtt`
+      : `${cleanT} (${currentMedia?.year || ''}) • Прямые потоки 4K VP9/AV1 (.mpd) и Full HD (.m3u8) без рекламы + субтитры .vtt`;
   }
 
+  if (externalBar) externalBar.style.display = 'none';
   qualitiesGrid.innerHTML = `
     <div style="grid-column: 1 / -1; text-align: center; padding: 26px; color: var(--text-muted);">
       <div class="storm-spinner" style="margin: 0 auto 10px;"></div>
-      Извлечение прямых потоков 4K UHD / 1080p, студийных аудиодорожек и субтитров...
+      Извлечение прямых потоков 4K UHD / 1080p (.m3u8 / .mpd), студийных аудиодорожек и файлов субтитров .vtt...
     </div>
   `;
   if (voicesList) voicesList.innerHTML = '';
@@ -3495,14 +3559,84 @@ export async function openLiftDownloadModal() {
         resolution: '1920x1080',
         bandwidth: 6500000,
         url: data.hlsUrl,
+        hlsUrl: data.hlsUrl,
+        dashUrl: data.dashUrl || '',
         type: 'hls',
         is_4k: false
       });
     }
 
+    const bestHlsStream = qualities.find(q => q.hlsUrl && q.hlsUrl.includes('x-bc.interkh.com'))?.hlsUrl
+      || qualities.find(q => q.hlsUrl)?.hlsUrl
+      || data.hlsMasterUrl
+      || data.hlsUrl
+      || qualities[0]?.url
+      || '';
+    const bestDashStream = data.dashManifestUrl || data.dashUrl || qualities.find(q => q.dashUrl)?.dashUrl || '';
+    const activeVoiceLabel = getPreferredVoiceover() || voiceovers[0]?.name || 'Дубляж';
+
+    if (externalBar && (bestHlsStream || bestDashStream)) {
+      const playlistDownloadHref = `/api/player/lift-playlist.m3u8?url=${encodeURIComponent(bestHlsStream || bestDashStream)}&title=${encodeURIComponent(fullMediaLabel)}&quality=${encodeURIComponent(qualities[0]?.height ? `${qualities[0].height}p` : '4K_FHD')}&voice=${encodeURIComponent(activeVoiceLabel)}`;
+      externalBar.style.display = 'block';
+      externalBar.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 800; color: #38bdf8;">⚡ Внешние плееры (VLC / IINA / PotPlayer) и прямые ссылки в 1 клик</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Для ПК и Smart TV</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            ${bestHlsStream ? `
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="lift-copy-master-m3u8-btn" data-stream-url="${escapeHtml(bestHlsStream)}" title="В один клик скопировать прямую ссылку на поток .m3u8">
+                📋 Скопировать .m3u8
+              </button>
+            ` : ''}
+            ${bestDashStream ? `
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="lift-copy-master-mpd-btn" data-stream-url="${escapeHtml(bestDashStream)}" style="border-color: rgba(168, 85, 247, 0.45);" title="В один клик скопировать прямую ссылку на поток .mpd (DASH VP9/AV1)">
+                📋 Скопировать .mpd (DASH)
+              </button>
+            ` : ''}
+            <a href="vlc://${escapeHtml(bestHlsStream || bestDashStream)}" class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration: none; border-color: rgba(249, 115, 22, 0.45);" title="Открыть прямой поток в VLC Media Player">
+              🟠 VLC
+            </a>
+            <a href="iina://weblink?url=${encodeURIComponent(bestHlsStream || bestDashStream)}" class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration: none; border-color: rgba(168, 85, 247, 0.45);" title="Открыть прямой поток в IINA (macOS)">
+              🟣 IINA
+            </a>
+            <a href="potplayer://${escapeHtml(bestHlsStream || bestDashStream)}" class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration: none; border-color: rgba(59, 130, 246, 0.45);" title="Открыть прямой поток в PotPlayer (Windows)">
+              🔵 PotPlayer
+            </a>
+            <a href="${escapeHtml(playlistDownloadHref)}" download class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration: none; border-color: rgba(16, 185, 129, 0.45);" title="Скачать готовый файл плейлиста .m3u для запуска на ПК или Smart TV">
+              📥 Плейлист .m3u
+            </a>
+          </div>
+        </div>
+      `;
+
+      const copyM3u8Btn = externalBar.querySelector('#lift-copy-master-m3u8-btn');
+      if (copyM3u8Btn) {
+        copyM3u8Btn.onclick = () => copyStreamText(
+          copyM3u8Btn.dataset.streamUrl,
+          copyM3u8Btn,
+          '📋 Прямая ссылка .m3u8 скопирована! Вставьте её в VLC, IINA или PotPlayer (Ctrl+V)'
+        );
+      }
+      const copyMpdBtn = externalBar.querySelector('#lift-copy-master-mpd-btn');
+      if (copyMpdBtn) {
+        copyMpdBtn.onclick = () => copyStreamText(
+          copyMpdBtn.dataset.streamUrl,
+          copyMpdBtn,
+          '📋 Прямая ссылка .mpd (DASH) скопирована! Вставьте её в VLC, IINA или PotPlayer'
+        );
+      }
+    }
+
     qualitiesGrid.innerHTML = qualities.map(q => {
       const mbps = q.bandwidth ? `${(q.bandwidth / 1000000).toFixed(1)} Мбит/с` : (q.is_4k ? '18.5 Мбит/с' : '6.8 Мбит/с');
-      const badgeText = q.is_4k ? '4K UHD • VP9/AV1' : `${q.height}p • HLS`;
+      const badgeText = q.is_4k ? '4K UHD • VP9/AV1' : `${q.height}p • ${escapeHtml(q.codec || 'HLS')}`;
+      const hlsTarget = q.hlsUrl || (q.protocol === 'hls' ? q.url : '') || bestHlsStream;
+      const dashTarget = q.dashUrl || (q.protocol === 'dash' ? q.url : '') || '';
+      const primaryTarget = hlsTarget || dashTarget || q.url;
+      const m3uCardHref = `/api/player/lift-playlist.m3u8?url=${encodeURIComponent(primaryTarget)}&title=${encodeURIComponent(fullMediaLabel)}&quality=${encodeURIComponent(`${q.height}p`)}&voice=${encodeURIComponent(activeVoiceLabel)}`;
+
       return `
         <div class="lift-quality-card ${q.is_4k ? 'is-uhd' : ''}">
           <div class="lift-quality-card-top">
@@ -3513,15 +3647,22 @@ export async function openLiftDownloadModal() {
             <span>Разрешение: <strong>${escapeHtml(q.resolution || `${q.height}p`)}</strong></span>
             <span>Битрейт: <strong>${mbps}</strong></span>
           </div>
-          <div class="lift-quality-actions">
-            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm lift-play-quality-btn" data-q-height="${q.height}" data-q-url="${escapeHtml(q.url)}">
+          <div class="lift-quality-actions" style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm lift-play-quality-btn" data-q-height="${q.height}" data-q-url="${escapeHtml(primaryTarget)}">
               ▶ Смотреть ${q.height}p
             </button>
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm lift-copy-stream-btn" data-q-url="${escapeHtml(q.url)}" title="Скопировать прямую ссылку на поток для VLC / IINA / PotPlayer / FFmpeg">
-              📋 Копировать поток
-            </button>
-            <a href="${escapeHtml(q.url)}" target="_blank" rel="noopener" class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration:none;">
-              📥 Поток (.m3u8)
+            ${hlsTarget ? `
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm lift-copy-stream-btn" data-q-url="${escapeHtml(hlsTarget)}" data-q-ext=".m3u8" title="В один клик скопировать прямую ссылку .m3u8 для VLC / IINA / PotPlayer">
+                📋 .m3u8
+              </button>
+            ` : ''}
+            ${dashTarget ? `
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm lift-copy-stream-btn" data-q-url="${escapeHtml(dashTarget)}" data-q-ext=".mpd" title="В один клик скопировать прямую ссылку .mpd (DASH) для VLC / IINA / PotPlayer">
+                📋 .mpd
+              </button>
+            ` : ''}
+            <a href="${escapeHtml(m3uCardHref)}" download class="storm-btn storm-btn-secondary storm-btn-sm" style="text-decoration:none;" title="Скачать плейлист .m3u для VLC / PotPlayer / Smart TV">
+              📥 .m3u
             </a>
           </div>
         </div>
@@ -3552,26 +3693,32 @@ export async function openLiftDownloadModal() {
     });
 
     qualitiesGrid.querySelectorAll('.lift-copy-stream-btn').forEach(btn => {
-      btn.onclick = async () => {
+      btn.onclick = () => {
         const streamUrl = btn.dataset.qUrl || '';
-        if (!streamUrl) return;
-        try {
-          await navigator.clipboard.writeText(streamUrl);
-          showToast('📋 Прямая ссылка на поток скопирована! Вставьте её в VLC, IINA, PotPlayer или менеджер закачек', 'success');
-        } catch (_) {
-          showToast('Ссылка: ' + streamUrl, 'info');
-        }
+        const ext = btn.dataset.qExt || '.m3u8';
+        copyStreamText(
+          streamUrl,
+          btn,
+          `📋 Прямая ссылка на поток (${ext}) скопирована! Вставьте её в VLC, IINA или PotPlayer`
+        );
       };
     });
 
     if (voicesList && voiceovers.length > 0) {
       const savedPref = getPreferredVoiceover() || '';
-      voicesList.innerHTML = voiceovers.map(v => {
-        const isAct = savedPref && v.name.toLowerCase().includes(savedPref.toLowerCase());
+      voicesList.innerHTML = voiceovers.map((v, vIdx) => {
+        const isAct = savedPref ? v.name.toLowerCase().includes(savedPref.toLowerCase()) : vIdx === 0;
         return `
-          <button type="button" class="storm-chip lift-voice-chip ${isAct ? 'active' : ''}" data-voice-name="${escapeHtml(v.name)}">
-            🎙️ ${escapeHtml(v.name)}
-          </button>
+          <div style="display: inline-flex; align-items: center; gap: 4px;">
+            <button type="button" class="storm-chip lift-voice-chip ${isAct ? 'active' : ''}" data-voice-name="${escapeHtml(v.name)}">
+              🎙️ ${escapeHtml(v.name)}
+            </button>
+            ${v.hlsUri ? `
+              <button type="button" class="storm-chip lift-copy-audio-btn" data-audio-url="${escapeHtml(v.hlsUri)}" data-voice-name="${escapeHtml(v.name)}" title="Скопировать прямую ссылку .m3u8 на аудиодорожку «${escapeHtml(v.name)}»" style="padding: 4px 8px; font-size: 11px;">
+                📋 .m3u8
+              </button>
+            ` : ''}
+          </div>
         `;
       }).join('');
 
@@ -3589,20 +3736,45 @@ export async function openLiftDownloadModal() {
           showToast(`🎙️ Выбрана студийная озвучка: ${vName}`, 'info');
         };
       });
+
+      voicesList.querySelectorAll('.lift-copy-audio-btn').forEach(btn => {
+        btn.onclick = () => {
+          copyStreamText(
+            btn.dataset.audioUrl,
+            btn,
+            `📋 Аудиопоток .m3u8 (${btn.dataset.voiceName || 'Озвучка'}) скопирован!`
+          );
+        };
+      });
     }
 
     if (subsRow && subsList && subtitles.length > 0) {
       subsRow.style.display = 'block';
       subsList.innerHTML = [
         `<button type="button" class="storm-chip lift-sub-chip" data-sub-label="">🚫 Выкл</button>`,
-        ...subtitles.map(s => `
-          <div style="display:inline-flex;align-items:center;gap:4px;">
-            <button type="button" class="storm-chip lift-sub-chip" data-sub-label="${escapeHtml(s.label)}">
-              💬 ${escapeHtml(s.label)}
-            </button>
-            ${s.src ? `<a href="${escapeHtml(s.src)}" target="_blank" rel="noopener" class="storm-chip" title="Скачать файл субтитров .vtt" style="text-decoration:none;padding:4px 8px;">📥 .vtt</a>` : ''}
-          </div>
-        `)
+        ...subtitles.map(s => {
+          const subLabel = s.label || s.name || 'Субтитры';
+          const subUrl = s.url || s.src || '';
+          const subFilename = `${fullMediaLabel}_${subLabel}.vtt`;
+          const downloadProxyUrl = subUrl
+            ? `/api/player/lift-subtitle.vtt?url=${encodeURIComponent(subUrl)}&filename=${encodeURIComponent(subFilename)}`
+            : '';
+          return `
+            <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(15,23,42,0.55);padding:3px 6px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);">
+              <button type="button" class="storm-chip lift-sub-chip" data-sub-label="${escapeHtml(subLabel)}" title="Включить субтитры в плеере">
+                💬 ${escapeHtml(subLabel)}
+              </button>
+              ${downloadProxyUrl ? `
+                <a href="${escapeHtml(downloadProxyUrl)}" download="${escapeHtml(subFilename)}" class="storm-chip" title="Скачать отдельный файл субтитров .vtt для VLC / IINA / PotPlayer" style="text-decoration:none;padding:4px 8px;background:rgba(16,185,129,0.18);border-color:rgba(16,185,129,0.4);color:#10b981;font-weight:700;">
+                  📥 Скачать .vtt
+                </a>
+                <button type="button" class="storm-chip lift-copy-sub-btn" data-sub-url="${escapeHtml(subUrl)}" data-sub-label="${escapeHtml(subLabel)}" title="Скопировать прямую ссылку на файл субтитров .vtt" style="padding:4px 8px;">
+                  📋 .vtt
+                </button>
+              ` : ''}
+            </div>
+          `;
+        })
       ].join('');
 
       subsList.querySelectorAll('.lift-sub-chip').forEach(chip => {
@@ -3614,6 +3786,16 @@ export async function openLiftDownloadModal() {
             ifr.contentWindow.postMessage({ type: 'STORM_SET_SUBTITLE', name: sLabel }, '*');
           }
           showToast(sLabel ? `💬 Включены субтитры: ${sLabel}` : '🚫 Субтитры отключены', 'info');
+        };
+      });
+
+      subsList.querySelectorAll('.lift-copy-sub-btn').forEach(btn => {
+        btn.onclick = () => {
+          copyStreamText(
+            btn.dataset.subUrl,
+            btn,
+            `📋 Прямая ссылка на субтитры .vtt (${btn.dataset.subLabel || ''}) скопирована!`
+          );
         };
       });
     }
@@ -8521,6 +8703,10 @@ function renderPlayerUtilityButtons() {
               <span class="studio-tab-icon">🧬</span>
               <span class="studio-tab-text">Франшиза</span>
             </button>
+            <button type="button" class="studio-tab-btn" id="studio-tab-download" title="Скачать 4K / FHD: прямые ссылки на потоки .m3u8 / .mpd для VLC, IINA, PotPlayer и субтитры .vtt" style="border-color: rgba(16, 185, 129, 0.4);">
+              <span class="studio-tab-icon">📥</span>
+              <span class="studio-tab-text">Скачать 4K / FHD</span>
+            </button>
           </div>
         </div>
 
@@ -8843,6 +9029,14 @@ function renderPlayerUtilityButtons() {
   if (tabCleanView) {
     tabCleanView.onclick = () => {
       toggleCleanViewModal();
+    };
+  }
+
+  // 7b. Менеджер потоков «📥 Скачать 4K / FHD» для внешних плееров (VLC / IINA / PotPlayer)
+  const tabDownload = container.querySelector('#studio-tab-download');
+  if (tabDownload) {
+    tabDownload.onclick = () => {
+      openLiftDownloadModal();
     };
   }
 

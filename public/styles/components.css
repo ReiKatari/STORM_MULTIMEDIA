@@ -10842,9 +10842,35 @@ body.cinema-focus-active::-webkit-scrollbar,
   margin-top: 2px;
 }
 
+.under-player-download-btn {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 12px rgba(16, 185, 129, 0.18);
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.under-player-download-btn:hover {
+  transform: translateY(-1.5px);
+  border-color: #10b981 !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55), 0 0 18px rgba(16, 185, 129, 0.35);
+}
+
+.under-player-download-btn:active {
+  transform: translateY(1.5px) scale(0.98);
+}
+
+.lift-voice-chip.active,
+.lift-sub-chip.active {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(168, 85, 247, 0.22)) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
 @media (max-width: 640px) {
   .wheel-picker-columns {
     grid-template-columns: 1fr;
     height: 360px;
+  }
+  .under-player-download-btn {
+    width: 100%;
   }
 }

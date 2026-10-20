@@ -696,8 +696,9 @@ export async function extractLiftStreamData(liftId, { season = '', episode = '' 
     const unixMatch = html.match(/unixTime\s*=\s*(\d+)/);
     const unixTime = unixMatch ? Number(unixMatch[1]) : Math.floor(Date.now() / 1000);
 
-    const varMatches = [...html.matchAll(/([a-f0-9]{10,})\s*=\s*["']([a-f0-9]+)["']/g)];
-    const streamToken = varMatches.length ? varMatches[varMatches.length - 1][2] : '';
+    const tokenAfterLol = html.match(/lol\s*=\s*['"][^'"]*['"]\s*,\s*[a-zA-Z0-9_]+\s*=\s*["']([a-f0-9]{6,})["']/);
+    const varMatches = [...html.matchAll(/\b([a-f0-9]{6,})\s*=\s*["']([a-f0-9]{6,})["']/g)];
+    const streamToken = tokenAfterLol ? tokenAfterLol[1] : (varMatches.length ? varMatches[varMatches.length - 1][2] : '');
 
     // 2. Извлекаем глобальный preview (WebP раскадровку на таймлайне)
     const previewMatch = html.match(/preview:\s*(\{[^}]+\})/);
@@ -891,6 +892,7 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
 
   const cipheredHls = src.hls ? buildLiftCdnCipherUrl(src.hls, data.unixTime) : '';
   const cipheredDash = (src.dash || src.dasha) ? buildLiftCdnCipherUrl(src.dash || src.dasha, data.unixTime) : '';
+  const cipheredDasha = src.dasha ? buildLiftCdnCipherUrl(src.dasha, data.unixTime) : '';
 
   // Парсим HLS master.m3u8 и DASH .mpd параллельно через шифрованный /x-en-x/ шлюз CDN
   await Promise.all([
@@ -907,13 +909,22 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
           if (m3u8.includes('#EXTM3U')) {
             const lines = m3u8.split(/\r?\n/);
 
-            let audioIdx = 0;
+            // Предпочитаем стабильный узел x-bc.interkh.com (failover-audio-0) для прямого воспроизведения в VLC / IINA / PotPlayer
+            let audioPrimaryIdx = 0;
+            let audioFailoverIdx = 0;
             for (const line of lines) {
-              if (line.startsWith('#EXT-X-MEDIA:TYPE=AUDIO') && line.includes('GROUP-ID="audio0"')) {
+              if (line.startsWith('#EXT-X-MEDIA:TYPE=AUDIO')) {
                 const uriMatch = line.match(/URI="([^"]+)"/);
-                if (uriMatch && audioTracks[audioIdx]) {
-                  audioTracks[audioIdx].hlsUri = uriMatch[1].startsWith('http') ? uriMatch[1] : new URL(uriMatch[1], cipheredHls).toString();
-                  audioIdx++;
+                if (!uriMatch) continue;
+                const resolvedAudioUri = uriMatch[1].startsWith('http') ? uriMatch[1] : new URL(uriMatch[1], cipheredHls).toString();
+                if (line.includes('GROUP-ID="failover-audio-0"') && audioTracks[audioFailoverIdx]) {
+                  audioTracks[audioFailoverIdx].hlsUri = resolvedAudioUri;
+                  audioFailoverIdx++;
+                } else if (line.includes('GROUP-ID="audio0"') && audioTracks[audioPrimaryIdx]) {
+                  if (!audioTracks[audioPrimaryIdx].hlsUri) {
+                    audioTracks[audioPrimaryIdx].hlsUri = resolvedAudioUri;
+                  }
+                  audioPrimaryIdx++;
                 }
               }
             }
@@ -929,6 +940,7 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
                   const width = Number(resMatch[1]);
                   const height = Number(resMatch[2]);
                   const stdHeight = normalizeStandardHeight(width, height);
+                  const isFastEdge = streamUrl.includes('x-bc.interkh.com');
                   if (!qualitiesMap.has(stdHeight)) {
                     qualitiesMap.set(stdHeight, {
                       height: stdHeight,
@@ -939,8 +951,16 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
                       bandwidth: bwMatch ? Number(bwMatch[1]) : 0,
                       protocol: 'hls',
                       is_4k: stdHeight >= 2160,
-                      url: streamUrl
+                      url: streamUrl,
+                      hlsUrl: streamUrl,
+                      dashUrl: cipheredDash || ''
                     });
+                  } else if (isFastEdge) {
+                    const existing = qualitiesMap.get(stdHeight);
+                    existing.hlsUrl = streamUrl;
+                    if (existing.protocol === 'hls') {
+                      existing.url = streamUrl;
+                    }
                   }
                 }
               }
@@ -983,12 +1003,17 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
                     bandwidth: bwMatch ? Number(bwMatch[1]) : 0,
                     protocol: 'dash',
                     is_4k: stdHeight >= 2160,
-                    url: cipheredDash
+                    url: cipheredDash,
+                    hlsUrl: cipheredHls || '',
+                    dashUrl: cipheredDash
                   });
                 } else {
                   const existing = qualitiesMap.get(stdHeight);
                   existing.codec = `H.264 (HLS) + ${isAv1 ? 'AV1' : 'VP9'} (DASH)`;
                   existing.dashUrl = cipheredDash;
+                  if (bwMatch && Number(bwMatch[1]) > (existing.bandwidth || 0)) {
+                    existing.bandwidth = Number(bwMatch[1]);
+                  }
                 }
               }
             }
@@ -1009,7 +1034,9 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
       bandwidth: 6800000,
       protocol: 'hls',
       is_4k: false,
-      url: baseStream
+      url: baseStream,
+      hlsUrl: cipheredHls || baseStream,
+      dashUrl: cipheredDash || ''
     });
     qualitiesMap.set(720, {
       height: 720,
@@ -1020,7 +1047,9 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
       bandwidth: 3400000,
       protocol: 'hls',
       is_4k: false,
-      url: baseStream
+      url: baseStream,
+      hlsUrl: cipheredHls || baseStream,
+      dashUrl: cipheredDash || ''
     });
   }
 
@@ -1028,6 +1057,22 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
   if (videoQualities.length > 0) {
     videoQualities[0].selected = true;
   }
+
+  // Нормализуем субтитры (.vtt), чтобы всегда были и name/label, и url/src
+  const normalizedSubtitles = (Array.isArray(src.cc) ? src.cc : []).map((sub, idx) => {
+    const rawUrl = String(sub.url || sub.src || '').trim();
+    const fullUrl = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+    const label = String(sub.name || sub.label || `Субтитры #${idx + 1}`).trim();
+    const lang = /рус|rus|ru/i.test(label) ? 'ru' : (/укр|ukr|uk/i.test(label) ? 'uk' : 'en');
+    return {
+      id: idx + 1,
+      name: label,
+      label,
+      url: fullUrl,
+      src: fullUrl,
+      lang
+    };
+  }).filter(s => Boolean(s.url));
 
   return {
     ok: true,
@@ -1039,12 +1084,12 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
     dashUrl: cipheredDash || src.dash || src.dasha,
     hlsMasterUrl: cipheredHls || src.hls,
     dashManifestUrl: cipheredDash || src.dash,
-    dashaManifestUrl: src.dasha,
+    dashaManifestUrl: cipheredDasha || src.dasha,
     qualities: videoQualities,
     videoQualities,
     voiceovers: audioTracks,
     audioTracks,
-    subtitles: Array.isArray(src.cc) ? src.cc : [],
+    subtitles: normalizedSubtitles,
     sections: Array.isArray(src.seasons) ? [] : (src.sections || []),
     preview: src.preview || null,
     thumbnailsVtt: src.preview?.src || '',

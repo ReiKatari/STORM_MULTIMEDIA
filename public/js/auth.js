@@ -578,16 +578,26 @@ export function openProfileModal() {
   }
 
   // Настройки плеера по умолчанию, AdShield, CleanView, Smart Skip и Ambilight
+  try {
+    if (!localStorage.getItem('storm_default_player_v41_migrated')) {
+      localStorage.setItem('storm_default_player', 'lift_adfree');
+      localStorage.setItem('storm_default_player_v41_migrated', '1');
+    }
+  } catch (_) {}
+
   const defaultPlayerSelect = document.getElementById('profile-default-player-select');
   if (defaultPlayerSelect) {
-    defaultPlayerSelect.value = localStorage.getItem('storm_default_player') || 'fanfilm4k_uhd';
+    const savedDefaultPlayer = localStorage.getItem('storm_default_player') || 'lift_adfree';
+    defaultPlayerSelect.value = savedDefaultPlayer;
     defaultPlayerSelect.onchange = (e) => {
-      const val = e.target.value || 'fanfilm4k_uhd';
+      const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
+      localStorage.setItem('storm_default_player_v41_migrated', '1');
       import('./player.js').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
-      showToast('Плеер по умолчанию сохранен', 'success');
+      const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
+      showToast(`🎬 Плеер по умолчанию: ${selectedOptionText}`, 'success');
     };
   }
 
