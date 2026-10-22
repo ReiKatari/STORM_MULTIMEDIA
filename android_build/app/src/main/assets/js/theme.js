@@ -68,6 +68,18 @@ export function getTheme() {
   return currentTheme;
 }
 
+export function getAccent() {
+  return currentAccent;
+}
+
+export function getFont() {
+  return currentFont;
+}
+
+export function getUiScale() {
+  return currentUiScale;
+}
+
 export function setTheme(themeName) {
   if (THEMES.includes(themeName)) {
     currentTheme = themeName;
@@ -83,6 +95,10 @@ export function setTheme(themeName) {
     if (headerThemeSelect && headerThemeSelect.value !== themeName) {
       headerThemeSelect.value = themeName;
     }
+
+    document.querySelectorAll('.drawer-theme-card, .profile-theme-swatch-card').forEach(card => {
+      card.classList.toggle('active', card.dataset.themeName === themeName);
+    });
   }
 }
 
@@ -97,6 +113,10 @@ export function setAccent(accentName) {
     safeSetStorage('storm_accent', accentName);
     const select = document.getElementById('profile-accent-select');
     if (select && select.value !== accentName) select.value = accentName;
+
+    document.querySelectorAll('.profile-accent-dot').forEach(dot => {
+      dot.classList.toggle('active', dot.dataset.accent === accentName);
+    });
   }
 }
 
@@ -186,10 +206,9 @@ export function initTheme() {
 
   // Глобальный тактильный отклик (Haptic Feedback) на всех 3D кнопках и элементах управления
   document.addEventListener('pointerdown', (e) => {
-    const interactive = e.target && e.target.closest && e.target.closest('button, .storm-btn, .storm-tab-btn, .mobile-bottom-nav-item, .storm-dropdown-trigger, .media-card');
+    const interactive = e.target && e.target.closest && e.target.closest('button, .storm-btn, .storm-tab-btn, .mobile-bottom-nav-item, .storm-dropdown-trigger, .media-card, .profile-interactive-stat-card');
     if (interactive) {
       triggerHapticFeedback(8);
     }
   }, { passive: true });
 }
-

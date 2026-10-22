@@ -52,27 +52,30 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.0.43';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.43';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.43';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.43';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.43';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.43';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.43';
-import { renderSyncModalContent } from './sync-service.js?v=1.0.43';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.43';
-import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.43';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.43';
-import { openRemoteQrModal } from './storm-remote.js?v=1.0.43';
-import { initAdminDashboard } from './admin-dashboard.js?v=1.0.43';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.43';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.43';
-import { getStatusIconSvg } from './status-icons.js?v=1.0.43';
-import { checkForUpdates } from './updater.js?v=1.0.43';
-import { initFormFactorEngine } from './form-factor.js?v=1.0.43';
+import { initTheme, setTheme } from './theme.js?v=1.0.44';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.44';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.44';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.44';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.44';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.44';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.44';
+import { renderSyncModalContent } from './sync-service.js?v=1.0.44';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.44';
+import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.44';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.44';
+import { openRemoteQrModal } from './storm-remote.js?v=1.0.44';
+import { initAdminDashboard } from './admin-dashboard.js?v=1.0.44';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.44';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.44';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.44';
+import { checkForUpdates } from './updater.js?v=1.0.44';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.44';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
+let currentCardDensity = localStorage.getItem('storm_card_density') || 'normal';
+let inPageQuickQuery = '';
+let only4KQuickFilter = false;
 let currentSource = 'all';
 let currentSort = 'newest';
 let currentGenre = 'all';
@@ -157,6 +160,9 @@ async function startStormApp() {
   }
 
   // 3. Отказоустойчивая инициализация подсистем интерфейса в изолированных error boundary
+  try {
+    document.body.dataset.cardDensity = currentCardDensity || 'standard';
+  } catch (_) {}
   try { initPwaServiceWorker(); } catch (e) { console.warn('initPwaServiceWorker error:', e); }
   try { initViewModes(); } catch (e) { console.warn('initViewModes error:', e); }
   try { initTabs(); } catch (e) { console.warn('initTabs error:', e); }
@@ -164,7 +170,14 @@ async function startStormApp() {
   try { initFilterSheet(); } catch (e) { console.warn('initFilterSheet error:', e); }
   try { initCardActionSheet(); } catch (e) { console.warn('initCardActionSheet error:', e); }
   try { initSearch(); } catch (e) { console.warn('initSearch error:', e); }
+  try { initLiveSearchSuggestions(); } catch (e) { console.warn('initLiveSearchSuggestions error:', e); }
+  try { initStormTooltips(); } catch (e) { console.warn('initStormTooltips error:', e); }
   try { initScrollToTop(); } catch (e) { console.warn('initScrollToTop error:', e); }
+  try {
+    window.addEventListener('scroll', () => {
+      if (typeof hideCardHoverPreview === 'function') hideCardHoverPreview();
+    }, { passive: true });
+  } catch (_) {}
   try { initFilterDropdowns(); } catch (e) { console.warn('initFilterDropdowns error:', e); }
   try { initModals(); } catch (e) { console.warn('initModals error:', e); }
   try { initProfileHandlers(); } catch (e) { console.warn('initProfileHandlers error:', e); }
@@ -570,24 +583,31 @@ if (typeof window !== 'undefined') {
   window.closeExitConfirmModal = closeExitConfirmModal;
 }
 
-export function switchTab(tab) {
+export function switchTab(tab, options = {}) {
   closePlayerModal();
   closeAllActiveModals();
   closeMobileDrawer();
   currentTab = tab;
   document.body.dataset.activeTab = tab;
   currentPage = 1;
+  inPageQuickQuery = '';
   const defPages = CATEGORY_DEFAULT_PAGES[tab] || 100;
   totalCatalogPages = defPages;
   totalCatalogItems = defPages * 20;
 
   if (tab !== 'home') {
     hideHeroShowcase();
+  } else {
+    const qBar = document.getElementById('storm-quick-catalog-bar');
+    if (qBar) {
+      qBar.style.display = 'none';
+      qBar.innerHTML = '';
+    }
   }
 
   if (tab === 'bookmarks') {
     resetAllFilters();
-    currentBookmarkSubTab = 'all';
+    currentBookmarkSubTab = options.subTab || 'all';
     activeViewingCustomList = null;
   } else {
     const bSubnav = document.getElementById('bookmarks-subnav-container');
@@ -2731,27 +2751,34 @@ function createRailCardHtml(item, idx, isWide = false) {
   }
 
   const isExplicitMovie = item.media_type === 'movie' || item.category === 'Фильм' || catLabel === 'Фильм' || tNorm.includes('дюна');
+  const primaryQualityBadge = isUpcoming
+    ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>'
+    : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
+  const secondaryContextBadge = item.next_up
+    ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
+    : ((!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
+      ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
+      : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
+
+  const bmIcon = item.user_status === 'favorite' ? '❤️' : (item.user_status === 'completed' ? '✅' : (item.user_status ? '🔖' : '＋'));
+  const bmTitle = item.user_status ? `В закладках (${getStatusLabel(item.user_status)}) • Нажмите для смены` : 'Быстро добавить в «В планах»';
+
   return `
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
           ${getMediaCardImgHtml(poster, item.title)}
           <div class="media-card-badges">
-            ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>' : ''}
-            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
-            ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
-            ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
-            ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
-            ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
-            ${(!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал')) ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
-            ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
+            ${primaryQualityBadge}
+            ${secondaryContextBadge}
           </div>
           <div class="media-card-top-right">
             ${isWatched ? '<span class="media-card-watched-tag" title="Просмотрено">✓</span>' : ''}
             ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
           </div>
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
-          <button type="button" class="media-card-menu-btn" title="Опции">⋮</button>
+          <button type="button" class="media-card-bookmark-btn ${item.user_status ? 'is-bookmarked' : ''}" title="${bmTitle}">${bmIcon}</button>
+          <button type="button" class="media-card-menu-btn" title="Все действия и коллекции">⋮</button>
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
@@ -2773,6 +2800,43 @@ function createRailCardHtml(item, idx, isWide = false) {
       </div>
     </div>
   `;
+}
+
+async function handleQuickCardBookmark(item, btnEl) {
+  if (!item) return;
+  const current = resolveMediaUserStatus(item) || item.user_status || null;
+  let nextStatus = 'plan';
+  let toastMsg = `📌 «${item.title}» добавлено в список «В планах»`;
+
+  if (!current) {
+    nextStatus = 'plan';
+    toastMsg = `📌 «${item.title}» добавлено в «В планах»`;
+  } else if (current === 'plan' || current === 'planned') {
+    nextStatus = 'favorite';
+    toastMsg = `❤️ «${item.title}» отмечено как «Любимое»`;
+  } else if (current === 'favorite') {
+    nextStatus = 'watching';
+    toastMsg = `▶️ «${item.title}» перенесено в «Смотрю»`;
+  } else {
+    openCardActionSheet(item);
+    return;
+  }
+
+  item.user_status = nextStatus;
+  if (btnEl) {
+    btnEl.classList.add('is-bookmarked');
+    btnEl.textContent = nextStatus === 'favorite' ? '❤️' : '🔖';
+    btnEl.title = `В закладках (${getStatusLabel(nextStatus)}) • Нажмите для смены`;
+  }
+
+  try {
+    await saveBookmarkStatus(item, nextStatus);
+    updateCardsInDOM(item.id, item.title, nextStatus, nextStatus === 'completed');
+    showToast(toastMsg, 'success');
+  } catch (_) {
+    updateCardsInDOM(item.id, item.title, nextStatus, false);
+    showToast(toastMsg, 'success');
+  }
 }
 
 // -------------------------------------------------------------
@@ -3015,7 +3079,7 @@ export function updateCardsInDOM(mediaId, title = '', status = null, isWatched =
       }
     }
 
-    // 2. Обновляем галочку просмотрено (✓)
+    // 2. Обновляем галочку просмотрено (✓) и кнопку быстрой закладки
     const topRight = card.querySelector('.media-card-top-right');
     if (topRight) {
       const oldTag = topRight.querySelector('.media-card-watched-tag');
@@ -3027,6 +3091,14 @@ export function updateCardsInDOM(mediaId, title = '', status = null, isWatched =
       } else {
         if (oldTag) oldTag.remove();
       }
+    }
+
+    const bmBtn = card.querySelector('.media-card-bookmark-btn');
+    if (bmBtn) {
+      const hasSt = Boolean(status && status !== 'none');
+      bmBtn.classList.toggle('is-bookmarked', hasSt);
+      bmBtn.textContent = status === 'favorite' ? '❤️' : (status === 'completed' ? '✅' : (hasSt ? '🔖' : '＋'));
+      bmBtn.title = hasSt ? `В закладках (${getStatusLabel(status)}) • Нажмите для смены` : 'Быстро добавить в «В планах»';
     }
   });
 }
@@ -3946,15 +4018,29 @@ function renderHomeView(items) {
     .filter(r => configOrderMap.has(r.id))
     .sort((a, b) => (configOrderMap.get(a.id) ?? 99) - (configOrderMap.get(b.id) ?? 99));
 
+  const quickCatalogBar = document.getElementById('storm-quick-catalog-bar');
+  if (quickCatalogBar) {
+    quickCatalogBar.style.display = 'none';
+  }
+
   container.innerHTML = `
-    <div class="home-rails-top-bar" style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0 16px 0; padding: 0 4px; flex-wrap: wrap; gap: 8px;">
-      ${isKidModeActive() ? `
-        <div class="kids-mode-active-indicator" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(0, 255, 102, 0.12); border: 1px solid #00ff66; border-radius: 20px; font-size: 12px; font-weight: 700; color: #00ff66;">
-          <span>👶</span>
-          <span>Детский безопасный режим (18+ скрыто)</span>
-        </div>
-      ` : '<div></div>'}
-      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="btn-edit-home-sections" style="display: inline-flex; align-items: center; gap: 6px;" title="Изменить порядок и видимость блоков главной страницы">
+    <div class="home-rails-top-bar">
+      <div class="home-rail-jump-pills" id="home-rail-jump-pills">
+        ${isKidModeActive() ? `
+          <span class="kids-mode-active-indicator">
+            <span>👶</span>
+            <span>Детский режим</span>
+          </span>
+        ` : ''}
+        ${finalRails.map((rail, rIdx) => `
+          <button type="button" class="home-rail-jump-chip ${rIdx === 0 ? 'is-active' : ''}" data-jump-rail="${rail.id}" title="Быстрый переход к разделу «${escapeHtml(rail.title)}»">
+            <span class="jump-chip-icon">${rail.icon}</span>
+            <span class="jump-chip-text">${rail.title}</span>
+            <span class="jump-chip-count">${rail.items.length}</span>
+          </button>
+        `).join('')}
+      </div>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm home-customize-btn" id="btn-edit-home-sections" title="Изменить порядок и видимость подборок главной страницы">
         <span>⚙️</span>
         <span>Настроить витрину</span>
       </button>
@@ -3967,15 +4053,16 @@ function renderHomeView(items) {
             <div class="rail-title-wrap">
               <span class="rail-icon">${rail.icon}</span>
               <h3 class="rail-title">${rail.title}</h3>
+              <span class="rail-count-pill">${rail.items.length}</span>
             </div>
-            <button type="button" class="rail-see-all-btn" data-category="${rail.category}"><span>${t('rail_see_all')}</span> <span class="rail-see-all-arrow">→</span></button>
+            <button type="button" class="rail-see-all-btn" data-category="${rail.category}" title="Открыть полный каталог раздела"><span>${t('rail_see_all')}</span> <span class="rail-see-all-arrow">→</span></button>
           </div>
           <div class="rail-carousel-wrap">
-            <button type="button" class="rail-nav-btn rail-nav-prev" aria-label="Назад">❮</button>
+            <button type="button" class="rail-nav-btn rail-nav-prev" aria-label="Назад" title="Прокрутить ленту влево">❮</button>
             <div class="rail-carousel">
               ${rail.items.map((item, idx) => createRailCardHtml(item, idx, rail.isWide)).join('')}
             </div>
-            <button type="button" class="rail-nav-btn rail-nav-next" aria-label="Вперёд">❯</button>
+            <button type="button" class="rail-nav-btn rail-nav-next" aria-label="Вперёд" title="Прокрутить ленту вправо">❯</button>
           </div>
         </section>
       `).join('')}
@@ -3985,6 +4072,25 @@ function renderHomeView(items) {
   const editSectionsBtn = container.querySelector('#btn-edit-home-sections');
   if (editSectionsBtn) {
     editSectionsBtn.onclick = () => openHomeSectionsModal();
+  }
+
+  // Быстрый переход к любому рейлу по клику на чип навигации
+  const jumpPillsWrap = container.querySelector('#home-rail-jump-pills');
+  if (jumpPillsWrap) {
+    enableHorizontalDragScroll(jumpPillsWrap);
+    jumpPillsWrap.querySelectorAll('.home-rail-jump-chip').forEach(chip => {
+      chip.onclick = () => {
+        const railId = chip.getAttribute('data-jump-rail');
+        jumpPillsWrap.querySelectorAll('.home-rail-jump-chip').forEach(c => c.classList.remove('is-active'));
+        chip.classList.add('is-active');
+        const targetRail = container.querySelector(`.storm-media-rail[data-rail="${railId}"]`);
+        if (targetRail) {
+          targetRail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetRail.classList.add('rail-highlight-pulse');
+          setTimeout(() => targetRail.classList.remove('rail-highlight-pulse'), 1400);
+        }
+      };
+    });
   }
 
   // Подключение обработчиков для каждого рейла
@@ -4006,18 +4112,22 @@ function renderHomeView(items) {
       };
     }
 
-    // Стрелки прокрутки на десктопе
+    // Стрелки прокрутки и перетаскивание мышью на десктопе
     const carousel = railEl.querySelector('.rail-carousel');
     const prevBtn = railEl.querySelector('.rail-nav-prev');
     const nextBtn = railEl.querySelector('.rail-nav-next');
 
+    if (carousel) {
+      enableHorizontalDragScroll(carousel);
+    }
+
     if (carousel && prevBtn && nextBtn) {
       prevBtn.onclick = () => {
-        const step = Math.max(300, Math.round(carousel.clientWidth * 0.75));
+        const step = Math.max(300, Math.round(carousel.clientWidth * 0.78));
         carousel.scrollBy({ left: -step, behavior: 'smooth' });
       };
       nextBtn.onclick = () => {
-        const step = Math.max(300, Math.round(carousel.clientWidth * 0.75));
+        const step = Math.max(300, Math.round(carousel.clientWidth * 0.78));
         carousel.scrollBy({ left: step, behavior: 'smooth' });
       };
     }
@@ -4027,7 +4137,18 @@ function renderHomeView(items) {
       const item = railData.items[cIdx];
       if (!item) return;
 
-      card.onclick = () => openPlayerModal(item);
+      card.onclick = () => {
+        if (carousel && carousel.dataset.isDragging === 'true') return;
+        openPlayerModal(item);
+      };
+
+      const bmBtn = card.querySelector('.media-card-bookmark-btn');
+      if (bmBtn) {
+        bmBtn.onclick = (e) => {
+          e.stopPropagation();
+          handleQuickCardBookmark(item, bmBtn);
+        };
+      }
 
       const menuBtn = card.querySelector('.media-card-menu-btn');
       if (menuBtn) {
@@ -4044,19 +4165,6 @@ function renderHomeView(items) {
         openRadialActionRing(e, item);
       };
 
-      // Долгое нажатие на сенсорных экранах (Mobile Radial Action Ring)
-      let touchTimer = null;
-      card.ontouchstart = (e) => {
-        touchTimer = setTimeout(() => {
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            try { navigator.vibrate(15); } catch (_) {}
-          }
-          openRadialActionRing(e, item);
-        }, 500);
-      };
-      card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
-      card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
-
       // Видеопревью при наведении курсора на десктопе
       card.onmouseenter = () => {
         clearTimeout(hoverCloseTimer);
@@ -4065,14 +4173,14 @@ function renderHomeView(items) {
           if (card.matches(':hover') && card.isConnected) {
             showCardHoverPreview(card, item);
           }
-        }, 2000);
+        }, 950);
       };
 
       card.onmouseleave = () => {
         clearTimeout(hoverPreviewTimer);
         hoverCloseTimer = setTimeout(() => {
           hideCardHoverPreview();
-        }, 280);
+        }, 220);
       };
     });
   });
@@ -4101,7 +4209,7 @@ function renderMediaItems(items) {
   if (!items || items.length === 0) {
     renderCatalogPagination(0);
     const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-    const isFiltered = !isSearching && (currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'newest');
+    const isFiltered = !isSearching && (currentGenre !== 'all' || currentCountry !== 'all' || currentYear !== 'all' || currentRating > 0 || currentSort !== 'newest' || Boolean(inPageQuickQuery) || only4KQuickFilter);
     container.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
         <div style="font-size: 42px; margin-bottom: 12px;">${currentTab === 'continue' ? '⏱️' : '📂'}</div>
@@ -4127,7 +4235,11 @@ function renderMediaItems(items) {
     }
     const emptyResetBtn = document.getElementById('empty-reset-filters-btn');
     if (emptyResetBtn) {
-      emptyResetBtn.onclick = () => resetAllFilters();
+      emptyResetBtn.onclick = () => {
+        inPageQuickQuery = '';
+        only4KQuickFilter = false;
+        resetAllFilters();
+      };
     }
     const emptyRetryBtn = document.getElementById('empty-retry-btn');
     if (emptyRetryBtn) {
@@ -4167,35 +4279,39 @@ function renderMediaItems(items) {
       );
       const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K')));
       const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
-      const hasHdr = !isUpcoming && (item.isHDR || (item.quality && item.quality.toLowerCase().includes('hdr')));
-      const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
-      const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
       const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming));
       const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
       const yr = getMediaYear(item);
       const catLabel = getMediaCategoryLabel(item, currentTab);
       const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
 
+      const primaryQualityBadge = isUpcoming
+        ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>'
+        : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
+      const secondaryContextBadge = item.next_up
+        ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
+        : ((item.media_type === 'series' || catLabel === 'Сериал')
+          ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
+          : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
+
+      const bmIcon = item.user_status === 'favorite' ? '❤️' : (item.user_status === 'completed' ? '✅' : (item.user_status ? '🔖' : '＋'));
+      const bmTitle = item.user_status ? `В закладках (${getStatusLabel(item.user_status)}) • Нажмите для смены` : 'Быстро добавить в «В планах»';
+
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
           ${getMediaCardImgHtml(poster, item.title)}
           <div class="media-card-badges">
-            ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:700;">Ожидается</span>' : ''}
-            ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
-            ${hasHdr ? '<span class="storm-badge storm-badge-hdr">HDR10</span>' : ''}
-            ${hasAtmos ? '<span class="storm-badge storm-badge-atmos">Dolby Atmos</span>' : ''}
-            ${has60Fps ? '<span class="storm-badge storm-badge-fps">60 FPS</span>' : ''}
-            ${hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''}
-            ${(item.media_type === 'series' || catLabel === 'Сериал') ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>' : ''}
-            ${item.next_up ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>` : ''}
+            ${primaryQualityBadge}
+            ${secondaryContextBadge}
           </div>
           <div class="media-card-top-right">
             ${isWatched ? '<span class="media-card-watched-tag" title="Просмотрено">✓</span>' : ''}
             ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
           </div>
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
-          <button type="button" class="media-card-menu-btn" title="Опции" data-idx="${idx}">⋮</button>
+          <button type="button" class="media-card-bookmark-btn ${item.user_status ? 'is-bookmarked' : ''}" title="${bmTitle}" data-idx="${idx}">${bmIcon}</button>
+          <button type="button" class="media-card-menu-btn" title="Все действия и коллекции" data-idx="${idx}">⋮</button>
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
           </div>
@@ -4220,7 +4336,7 @@ function renderMediaItems(items) {
 
     // Гарантируем 100% заполнение всех рядов сетки без пустых мест на промежуточных страницах
     const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-    if (!isSearching && !['home', 'continue', 'bookmarks', 'offline'].includes(currentTab) && currentPage < totalCatalogPages) {
+    if (!isSearching && !['home', 'continue', 'bookmarks', 'offline'].includes(currentTab) && currentPage < totalCatalogPages && !inPageQuickQuery && !only4KQuickFilter) {
       const renderedCards = Array.from(container.querySelectorAll('.media-card'));
       if (renderedCards.length > 1) {
         const firstTop = Math.round(renderedCards[0].offsetTop);
@@ -4246,6 +4362,14 @@ function renderMediaItems(items) {
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card.onclick = () => openPlayerModal(items[idx]);
 
+      const bmBtn = card.querySelector('.media-card-bookmark-btn');
+      if (bmBtn) {
+        bmBtn.onclick = (e) => {
+          e.stopPropagation();
+          handleQuickCardBookmark(items[idx], bmBtn);
+        };
+      }
+
       const menuBtn = card.querySelector('.media-card-menu-btn');
       if (menuBtn) {
         menuBtn.onclick = (e) => {
@@ -4261,20 +4385,7 @@ function renderMediaItems(items) {
         openRadialActionRing(e, items[idx]);
       };
 
-      // Долгое нажатие на сенсорных экранах (Mobile Radial Action Ring)
-      let touchTimer = null;
-      card.ontouchstart = (e) => {
-        touchTimer = setTimeout(() => {
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            try { navigator.vibrate(15); } catch (_) {}
-          }
-          openRadialActionRing(e, items[idx]);
-        }, 500);
-      };
-      card.ontouchend = () => { if (touchTimer) clearTimeout(touchTimer); };
-      card.ontouchmove = () => { if (touchTimer) clearTimeout(touchTimer); };
-
-      // Видеопревью при наведении курсора (Video Hover Preview) с задержкой 2 секунды
+      // Видеопревью при наведении курсора (Video Hover Preview)
       card.onmouseenter = () => {
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverPreviewTimer);
@@ -4282,14 +4393,14 @@ function renderMediaItems(items) {
           if (card.matches(':hover') && card.isConnected) {
             showCardHoverPreview(card, items[idx]);
           }
-        }, 2000);
+        }, 950);
       };
 
       card.onmouseleave = () => {
         clearTimeout(hoverPreviewTimer);
         hoverCloseTimer = setTimeout(() => {
           hideCardHoverPreview();
-        }, 280);
+        }, 220);
       };
     });
     renderCatalogPagination(items.length);
@@ -5434,6 +5545,7 @@ function renderBookmarksSubNav(counts) {
     { id: 'completed', icon: '✓', label: t('bookmarks_subtab_completed') || 'Просмотрено', count: counts.completed || 0 },
     { id: 'hold', icon: '⏸️', label: t('bookmarks_subtab_hold') || 'Отложено', count: counts.hold || 0 },
     { id: 'dropped', icon: '❌', label: t('bookmarks_subtab_dropped') || 'Заброшено', count: counts.dropped || 0 },
+    { id: 'wont_watch', icon: '🚫', label: t('bookmarks_subtab_wont_watch') || 'Не буду смотреть', count: counts.wont_watch || 0 },
     { id: 'lists', icon: '📁', label: t('bookmarks_subtab_lists') || 'Мои коллекции', count: counts.lists || 0 }
   ];
 
@@ -5774,11 +5886,17 @@ export function renderFilteredCatalog() {
       completed: rawCatalogItems.filter(it => it.user_status === 'completed').length,
       hold: rawCatalogItems.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold').length,
       dropped: rawCatalogItems.filter(it => it.user_status === 'dropped').length,
+      wont_watch: rawCatalogItems.filter(it => it.user_status === 'wont_watch').length,
       lists: cachedCustomLists.length
     };
     renderBookmarksSubNav(counts);
 
     if (currentBookmarkSubTab === 'lists') {
+      const qBar = document.getElementById('storm-quick-catalog-bar');
+      if (qBar) {
+        qBar.style.display = 'none';
+        qBar.innerHTML = '';
+      }
       if (activeViewingCustomList) {
         renderCustomListDetailView(activeViewingCustomList);
         return;
@@ -5976,17 +6094,429 @@ export function renderFilteredCatalog() {
     items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
   }
 
+  // Быстрая внутристраничная фильтрация (поиск по разделу и фильтр «Только 4K»)
+  if (only4KQuickFilter && (currentTab !== 'home' || isFiltered || isSearching)) {
+    items = items.filter(it => it.is4K === true || (it.quality && String(it.quality).includes('4K')));
+  }
+  if (inPageQuickQuery && inPageQuickQuery.trim().length > 0 && (currentTab !== 'home' || isFiltered || isSearching)) {
+    const qNorm = inPageQuickQuery.trim().toLowerCase();
+    items = items.filter(it => {
+      const hay = `${it.title || ''} ${it.original_title || ''} ${it.year || ''} ${Array.isArray(it.genres) ? it.genres.join(' ') : (it.genres || '')}`.toLowerCase();
+      return hay.includes(qNorm);
+    });
+  }
+
   currentItems = items;
 
   const heroContainer = document.getElementById('hero-showcase-container');
 
   // Если мы на вкладке Главная и нет фильтрации/поиска - отображаем кинематографичный вид Emby/Plex
   if (currentTab === 'home' && !isFiltered && (!searchQuery || !searchQuery.trim())) {
+    const qBar = document.getElementById('storm-quick-catalog-bar');
+    if (qBar) {
+      qBar.style.display = 'none';
+      qBar.innerHTML = '';
+    }
     renderHomeView(currentItems);
   } else {
     hideHeroShowcase();
+    renderQuickCatalogBar(currentItems.length);
     renderMediaItems(currentItems);
   }
+}
+
+export function renderQuickCatalogBar(shownCount = 0) {
+  const qBar = document.getElementById('storm-quick-catalog-bar');
+  if (!qBar) return;
+
+  if (currentTab === 'offline' || (currentTab === 'bookmarks' && currentBookmarkSubTab === 'lists')) {
+    qBar.style.display = 'none';
+    qBar.innerHTML = '';
+    return;
+  }
+
+  qBar.style.display = 'flex';
+
+  const tabTitles = {
+    home: 'Результаты каталога',
+    new: '✨ Новинки кинопроката',
+    movies: '🎬 Фильмы',
+    series: '📺 Сериалы',
+    cartoons: '🎨 Мультфильмы',
+    'cartoon-series': '🎠 Мультсериалы',
+    'anime-movies': '🌸 Аниме-фильмы',
+    'anime-series': '⛩️ Аниме-сериалы',
+    continue: '⏯️ Продолжить просмотр',
+    bookmarks: '🔖 Мои списки и закладки'
+  };
+  const sectionLabel = (searchQuery && searchQuery.trim().length >= 2)
+    ? `🔍 Поиск: «${escapeHtml(searchQuery.trim())}»`
+    : (tabTitles[currentTab] || 'Каталог медиа');
+
+  // Если панель уже отрендерена для текущей вкладки и пользователь печатает в быстром фильтре — обновляем только счётчик
+  const existingInput = qBar.querySelector('#quick-inpage-filter-input');
+  if (existingInput && document.activeElement === existingInput) {
+    const countBadge = qBar.querySelector('#quick-catalog-count-badge');
+    if (countBadge) countBadge.textContent = `${shownCount} шт.`;
+    return;
+  }
+
+  const quickGenres = [
+    { id: 'all', label: 'Все' },
+    { id: 'фантастика', label: '🚀 Фантастика' },
+    { id: 'боевик', label: '💥 Боевик' },
+    { id: 'триллер', label: '🔪 Триллер' },
+    { id: 'комедия', label: '😄 Комедия' },
+    { id: 'драма', label: '🎭 Драма' },
+    { id: 'фэнтези', label: '🧙 Фэнтези' },
+    { id: 'детектив', label: '🕵️ Детектив' },
+    { id: 'приключения', label: '🧭 Приключения' }
+  ];
+
+  const showGenreChips = !['bookmarks', 'continue'].includes(currentTab) && !(searchQuery && searchQuery.trim().length >= 2);
+
+  qBar.innerHTML = `
+    <div class="quick-catalog-bar-top">
+      <div class="quick-catalog-title-wrap">
+        <span class="quick-catalog-section-title">${sectionLabel}</span>
+        <span class="quick-catalog-count-badge" id="quick-catalog-count-badge">${shownCount} шт.</span>
+      </div>
+      <div class="quick-catalog-controls">
+        <div class="quick-inpage-search-wrap">
+          <span class="quick-inpage-search-icon">🔎</span>
+          <input type="text" id="quick-inpage-filter-input" class="quick-inpage-search-input" placeholder="Быстрый фильтр на странице..." value="${escapeHtml(inPageQuickQuery || '')}">
+          ${inPageQuickQuery ? `<button type="button" class="quick-inpage-clear-btn" id="quick-inpage-clear-btn" title="Очистить">✕</button>` : ''}
+        </div>
+        <button type="button" class="quick-catalog-pill-btn ${only4KQuickFilter ? 'active' : ''}" id="quick-filter-4k-toggle" title="Показать только релизы в 4K UHD">
+          ✨ 4K UHD
+        </button>
+        <div class="quick-density-switcher" role="group" aria-label="Размер карточек">
+          <button type="button" class="quick-density-btn ${currentCardDensity === 'large' ? 'active' : ''}" data-density="large" title="Крупные постеры">Крупно</button>
+          <button type="button" class="quick-density-btn ${(!currentCardDensity || currentCardDensity === 'standard') ? 'active' : ''}" data-density="standard" title="Стандартная сетка">Стандарт</button>
+          <button type="button" class="quick-density-btn ${currentCardDensity === 'compact' ? 'active' : ''}" data-density="compact" title="Компактная сетка (больше карточек)">Компакт</button>
+        </div>
+      </div>
+    </div>
+    ${showGenreChips ? `
+      <div class="quick-catalog-genre-strip" id="quick-catalog-genre-strip">
+        ${quickGenres.map(g => `
+          <button type="button" class="quick-genre-pill ${String(currentGenre).toLowerCase() === g.id ? 'active' : ''}" data-qgenre="${g.id}">
+            ${g.label}
+          </button>
+        `).join('')}
+      </div>
+    ` : ''}
+  `;
+
+  const inpageInput = qBar.querySelector('#quick-inpage-filter-input');
+  if (inpageInput) {
+    inpageInput.oninput = (e) => {
+      inPageQuickQuery = e.target.value;
+      renderFilteredCatalog();
+    };
+  }
+  const clearInpageBtn = qBar.querySelector('#quick-inpage-clear-btn');
+  if (clearInpageBtn) {
+    clearInpageBtn.onclick = () => {
+      inPageQuickQuery = '';
+      renderFilteredCatalog();
+    };
+  }
+
+  const toggle4kBtn = qBar.querySelector('#quick-filter-4k-toggle');
+  if (toggle4kBtn) {
+    toggle4kBtn.onclick = () => {
+      only4KQuickFilter = !only4KQuickFilter;
+      renderFilteredCatalog();
+    };
+  }
+
+  qBar.querySelectorAll('.quick-density-btn').forEach(btn => {
+    btn.onclick = () => {
+      const d = btn.dataset.density || 'standard';
+      currentCardDensity = d;
+      localStorage.setItem('storm_card_density', d);
+      document.body.dataset.cardDensity = d;
+      qBar.querySelectorAll('.quick-density-btn').forEach(b => b.classList.toggle('active', b === btn));
+    };
+  });
+
+  const gStrip = qBar.querySelector('#quick-catalog-genre-strip');
+  if (gStrip) {
+    enableHorizontalDragScroll(gStrip);
+    gStrip.querySelectorAll('.quick-genre-pill').forEach(pill => {
+      pill.onclick = () => {
+        const gId = pill.dataset.qgenre || 'all';
+        currentGenre = gId;
+        syncDesktopFilterLabels();
+        renderFilteredCatalog();
+      };
+    });
+  }
+}
+
+export function enableHorizontalDragScroll(el) {
+  if (!el || el.dataset.dragScrollBound === '1') return;
+  el.dataset.dragScrollBound = '1';
+
+  let isDown = false;
+  let startX = 0;
+  let scrollLeft = 0;
+  let movedDistance = 0;
+
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('button.media-card-options-btn, button.media-card-bookmark-btn')) return;
+    isDown = true;
+    movedDistance = 0;
+    startX = e.pageX - el.offsetLeft;
+    scrollLeft = el.scrollLeft;
+    el.classList.add('is-dragging-scroll');
+  });
+
+  el.addEventListener('mouseleave', () => {
+    if (!isDown) return;
+    isDown = false;
+    el.classList.remove('is-dragging-scroll');
+  });
+
+  el.addEventListener('mouseup', () => {
+    if (!isDown) return;
+    isDown = false;
+    setTimeout(() => el.classList.remove('is-dragging-scroll'), 40);
+  });
+
+  el.addEventListener('mousemove', (e) => {
+    if (!isDown) return;
+    const x = e.pageX - el.offsetLeft;
+    const walk = (x - startX) * 1.4;
+    movedDistance = Math.max(movedDistance, Math.abs(x - startX));
+    if (movedDistance > 6) {
+      e.preventDefault();
+      el.scrollLeft = scrollLeft - walk;
+    }
+  });
+
+  el.addEventListener('click', (e) => {
+    if (movedDistance > 12) {
+      e.stopPropagation();
+      e.preventDefault();
+      movedDistance = 0;
+    }
+  }, true);
+}
+
+function initLiveSearchSuggestions() {
+  const input = document.getElementById('global-search-input');
+  const box = document.getElementById('storm-search-suggestions');
+  if (!input || !box) return;
+
+  const hideSuggestions = () => {
+    box.style.display = 'none';
+  };
+
+  const renderSuggestions = (q) => {
+    const query = (q || '').trim().toLowerCase();
+    const pool = deduplicateMediaList([
+      ...(rawCatalogItems || []),
+      ...(getBaselineCatalog('popular') || []),
+      ...(getBaselineCatalog('movies') || []),
+      ...(getBaselineCatalog('series') || [])
+    ]);
+
+    if (!query) {
+      let recentSearches = [];
+      try {
+        recentSearches = JSON.parse(localStorage.getItem('storm_recent_searches') || '[]');
+      } catch (_) {}
+      const topQuick = pool.slice(0, 5);
+
+      box.innerHTML = `
+        <div class="search-suggestions-section">
+          <div class="search-suggestions-header">
+            <span>🔥 Быстрый выбор и популярные запросы</span>
+            ${recentSearches.length > 0 ? `<button type="button" class="search-clear-history-btn" id="clear-recent-searches-btn">Очистить историю</button>` : ''}
+          </div>
+          <div class="search-quick-tags">
+            ${(recentSearches.length > 0 ? recentSearches.slice(0, 5) : ['Дюна', 'Интерстеллар', 'Джек Ричер', 'Оппенгеймер', 'Дандадан', '4K UHD']).map(tag => `
+              <button type="button" class="search-quick-tag-chip" data-stag="${escapeHtml(tag)}">🔍 ${escapeHtml(tag)}</button>
+            `).join('')}
+          </div>
+        </div>
+        ${topQuick.length > 0 ? `
+          <div class="search-suggestions-section">
+            <div class="search-suggestions-header"><span>⚡ Рекомендуем посмотреть сейчас</span></div>
+            <div class="search-suggestions-list">
+              ${topQuick.map((it, idx) => `
+                <div class="search-suggestion-item" data-sidx="${idx}">
+                  <img src="${getSafePosterUrl(it.poster, it.title)}" alt="" class="search-suggestion-poster">
+                  <div class="search-suggestion-info">
+                    <div class="search-suggestion-title">${escapeHtml(formatMediaTitle(it))}</div>
+                    <div class="search-suggestion-meta">${escapeHtml(getMediaYear(it) || it.year || '2025')} • ${escapeHtml(getMediaCategoryLabel(it))}${it.rating ? ` • ★ ${it.rating}` : ''}</div>
+                  </div>
+                  <span class="search-suggestion-play">▶ Смотреть</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `;
+      box.style.display = 'block';
+
+      const clearHistBtn = box.querySelector('#clear-recent-searches-btn');
+      if (clearHistBtn) {
+        clearHistBtn.onclick = (e) => {
+          e.stopPropagation();
+          localStorage.removeItem('storm_recent_searches');
+          renderSuggestions('');
+        };
+      }
+      box.querySelectorAll('.search-quick-tag-chip').forEach(chip => {
+        chip.onclick = (e) => {
+          e.stopPropagation();
+          const val = chip.dataset.stag || '';
+          input.value = val;
+          hideSuggestions();
+          executeSearch(val);
+        };
+      });
+      box.querySelectorAll('.search-suggestion-item').forEach(row => {
+        row.onclick = (e) => {
+          e.stopPropagation();
+          const item = topQuick[parseInt(row.dataset.sidx, 10)];
+          hideSuggestions();
+          if (item) openPlayerModal(item);
+        };
+      });
+      return;
+    }
+
+    const matched = pool.filter(it => {
+      const hay = `${it.title || ''} ${it.original_title || ''} ${it.year || ''}`.toLowerCase();
+      return hay.includes(query);
+    }).slice(0, 6);
+
+    if (matched.length === 0) {
+      box.style.display = 'none';
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="search-suggestions-section">
+        <div class="search-suggestions-header"><span>⚡ Мгновенные совпадения (${matched.length})</span></div>
+        <div class="search-suggestions-list">
+          ${matched.map((it, idx) => `
+            <div class="search-suggestion-item" data-sidx="${idx}">
+              <img src="${getSafePosterUrl(it.poster, it.title)}" alt="" class="search-suggestion-poster">
+              <div class="search-suggestion-info">
+                <div class="search-suggestion-title">${escapeHtml(formatMediaTitle(it))}</div>
+                <div class="search-suggestion-meta">${escapeHtml(getMediaYear(it) || it.year || '')} • ${escapeHtml(getMediaCategoryLabel(it))}${it.rating ? ` • ★ ${it.rating}` : ''}</div>
+              </div>
+              <span class="search-suggestion-play">▶ Открыть</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    box.style.display = 'block';
+
+    box.querySelectorAll('.search-suggestion-item').forEach(row => {
+      row.onclick = (e) => {
+        e.stopPropagation();
+        const item = matched[parseInt(row.dataset.sidx, 10)];
+        hideSuggestions();
+        if (item) {
+          try {
+            const recent = JSON.parse(localStorage.getItem('storm_recent_searches') || '[]');
+            const cleanT = formatMediaTitle(item);
+            const nextRecent = [cleanT, ...recent.filter(x => x !== cleanT)].slice(0, 8);
+            localStorage.setItem('storm_recent_searches', JSON.stringify(nextRecent));
+          } catch (_) {}
+          openPlayerModal(item);
+        }
+      };
+    });
+  };
+
+  input.addEventListener('focus', () => {
+    renderSuggestions(input.value);
+  });
+
+  input.addEventListener('input', () => {
+    renderSuggestions(input.value);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#storm-search-box')) {
+      hideSuggestions();
+    }
+  });
+}
+
+function initStormTooltips() {
+  if (typeof window === 'undefined' || window.matchMedia('(pointer: coarse)').matches) return;
+  let tooltipEl = document.getElementById('storm-floating-tooltip');
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.id = 'storm-floating-tooltip';
+    tooltipEl.className = 'storm-floating-tooltip';
+    document.body.appendChild(tooltipEl);
+  }
+
+  let activeTarget = null;
+  let showTimer = null;
+
+  const hideTooltip = () => {
+    clearTimeout(showTimer);
+    if (tooltipEl) tooltipEl.classList.remove('is-visible');
+    if (activeTarget && activeTarget.dataset.stormSavedTitle) {
+      activeTarget.setAttribute('title', activeTarget.dataset.stormSavedTitle);
+      delete activeTarget.dataset.stormSavedTitle;
+    }
+    activeTarget = null;
+  };
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('[data-storm-tooltip], button[title], a[title], .profile-interactive-stat-card[title]');
+    if (!target || target.closest('.media-card')) return;
+
+    const text = target.getAttribute('data-storm-tooltip') || target.getAttribute('title');
+    if (!text || text.trim().length === 0) return;
+
+    if (target.hasAttribute('title')) {
+      target.dataset.stormSavedTitle = target.getAttribute('title');
+      target.removeAttribute('title');
+    }
+
+    activeTarget = target;
+    clearTimeout(showTimer);
+    showTimer = setTimeout(() => {
+      if (!activeTarget || !activeTarget.isConnected) return;
+      tooltipEl.textContent = text;
+      tooltipEl.classList.add('is-visible');
+
+      const rect = activeTarget.getBoundingClientRect();
+      const ttRect = tooltipEl.getBoundingClientRect();
+      let top = rect.bottom + 8;
+      let left = rect.left + (rect.width - ttRect.width) / 2;
+
+      if (top + ttRect.height > window.innerHeight - 10) {
+        top = rect.top - ttRect.height - 8;
+      }
+      left = Math.max(10, Math.min(window.innerWidth - ttRect.width - 10, left));
+
+      tooltipEl.style.top = `${Math.round(top)}px`;
+      tooltipEl.style.left = `${Math.round(left)}px`;
+    }, 220);
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (activeTarget && !activeTarget.contains(e.relatedTarget)) {
+      hideTooltip();
+    }
+  });
+
+  window.addEventListener('scroll', hideTooltip, { passive: true });
+  document.addEventListener('mousedown', hideTooltip, { passive: true });
 }
 
 export async function applyGenreFilter(genre) {
@@ -6950,7 +7480,7 @@ function initMobileDrawer() {
   // 8 визуальных карточек тем оформления в шторке
   const currentTheme = localStorage.getItem('storm_theme') || 'STORM DARK';
   document.querySelectorAll('.drawer-theme-card').forEach(card => {
-    const tName = card.dataset.themeName;
+    const tName = card.dataset.themeName || card.dataset.drawerTheme;
     card.classList.toggle('active', tName === currentTheme);
     card.onclick = () => {
       document.querySelectorAll('.drawer-theme-card').forEach(c => c.classList.remove('active'));

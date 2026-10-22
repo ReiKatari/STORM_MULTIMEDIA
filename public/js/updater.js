@@ -6,7 +6,7 @@
 
 import { showToast } from './auth.js';
 
-export const CURRENT_APP_VERSION = '1.0.43';
+export const CURRENT_APP_VERSION = '1.0.44';
 
 export function getActiveAppVersion() {
   let ver = CURRENT_APP_VERSION;

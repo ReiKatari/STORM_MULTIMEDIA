@@ -9,10 +9,10 @@
   <meta name="theme-color" content="#8b5cf6">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.43">
-  <link rel="stylesheet" href="/styles/components.css?v=1.0.43">
-  <link rel="stylesheet" href="/styles/main.css?v=1.0.43">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.43">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.44">
+  <link rel="stylesheet" href="/styles/components.css?v=1.0.44">
+  <link rel="stylesheet" href="/styles/main.css?v=1.0.44">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.44">
 </head>
 <body data-active-tab="home">
 
@@ -26,7 +26,7 @@
       </button>
 
       <!-- Логотип и название экосистемы -->
-      <a href="#home" class="storm-brand" onclick="window.switchTab?.('home'); return false;">
+      <a href="#home" class="storm-brand" onclick="window.switchTab?.('home'); return false;" title="Перейти на главную витрину STORM MULTIMEDIA">
         <img src="/assets/favicon.svg" alt="STORM MULTIMEDIA" class="storm-brand-logo">
         <div class="storm-brand-text">
           <span class="storm-brand-title" data-i18n="brand_title">STORM MULTIMEDIA</span>
@@ -34,8 +34,8 @@
         </div>
       </a>
 
-      <!-- Поле глобального полнотекстового поиска с голосовым вводом -->
-      <div class="storm-search-box">
+      <!-- Поле глобального полнотекстового поиска с голосовым вводом и живыми подсказками -->
+      <div class="storm-search-box" id="storm-search-box">
         <span class="storm-search-icon">🔍</span>
         <input type="text" id="global-search-input" class="storm-search-input" placeholder="Поиск фильмов, сериалов и аниме..." data-i18n-placeholder="search_placeholder" autocomplete="off">
         <div class="storm-search-right-tools">
@@ -43,53 +43,50 @@
           <button type="button" id="search-clear-btn" class="storm-search-clear" title="Очистить поиск (Esc)">✕</button>
           <button type="button" id="voice-search-btn" class="storm-search-mic" title="Голосовой поиск и команды">🎙️</button>
         </div>
+        <!-- Выпадающая панель живых подсказок, недавних запросов и быстрых жанров -->
+        <div class="storm-search-suggestions" id="storm-search-suggestions" style="display: none;"></div>
       </div>
 
       <!-- Действия: Темы и аккаунт -->
       <div class="storm-nav-actions">
         <!-- Кнопка ИИ-советника (STORM NEURAL RECOMMENDER) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-recommender-btn" title="ИИ-советник на вечер (STORM NEURAL RECOMMENDER)">
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-recommender-btn" title="ИИ-советник на вечер: персональный подбор по настроению">
           <span>🧠</span> <span class="btn-text">Советник</span>
         </button>
 
         <!-- Кнопка Календаря релизов -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-calendar-btn" title="Календарь выхода новых эпизодов">
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-calendar-btn" title="Календарь выхода новых серий и расписание онгоингов">
           <span>📅</span> <span class="btn-text">Календарь</span>
         </button>
 
         <!-- Кнопка Пульта со смартфона (STORM REMOTE) -->
         <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-remote-btn" title="Пульт управления со смартфона (STORM REMOTE)">
-          <span>📱</span> Пульт
+          <span>📱</span> <span class="btn-text">Пульт</span>
         </button>
 
-        <!-- Кнопка Адаптивного триумвирата интерфейсов (ПК / Мобильный / ТВ) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="form-factor-switcher-btn" title="Режим интерфейса (ПК / Мобильный / ТВ)">
+        <!-- Единая кнопка адаптивного режима интерфейса (ПК / Мобильный / Smart TV) -->
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="form-factor-switcher-btn" title="Выбор режима интерфейса: ПК, Мобильный или Smart TV">
           <span id="form-factor-icon">🖥️</span> <span id="form-factor-label">ПК</span>
         </button>
 
-        <!-- Кнопка Smart TV режима -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-tv-mode-btn" title="Режим Smart TV">
-          <span>📺</span> ТВ-режим
-        </button>
-
         <!-- Кнопка Кинокомнаты (Watch Together) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-rooms-btn" title="Комната совместного просмотра">
-          <span>👥</span> Кинозал
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-rooms-btn" title="Кинозал совместного просмотра с друзьями и чатом">
+          <span>👥</span> <span class="btn-text">Кинозал</span>
         </button>
 
         <!-- Кнопка Профилей семьи и детского режима -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-family-btn" title="Семейные профили и детский режим">
-          <span id="active-profile-avatar-icon">👑</span> <span id="active-profile-name-label">Семья</span>
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-family-btn" title="Семейные профили и детский безопасный режим">
+          <span id="active-profile-avatar-icon">👑</span> <span id="active-profile-name-label" class="btn-text">Семья</span>
         </button>
 
         <!-- Кнопка Синхронизации (Shikimori, MAL, Кинопоиск и бэкап) -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-sync-btn" title="Синхронизация и бэкап">
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-sync-btn" title="Синхронизация списков (Shikimori, MAL, Кинопоиск) и резервный бэкап">
           <span>🔄</span>
         </button>
 
         <!-- Кнопка профиля и настроек -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-profile-btn" title="Профиль и темы оформления">
-          <span>⚙️</span> Профиль
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-profile-btn" title="Мой профиль, статистика, темы оформления и настройки плеера">
+          <span>⚙️</span> <span class="btn-text">Профиль</span>
         </button>
 
         <!-- Кнопка входа -->
@@ -285,6 +282,9 @@
     <!-- Подпанель навигации по закладкам и коллекциям -->
     <div id="bookmarks-subnav-container" class="bookmarks-subnav-container" style="display: none;"></div>
 
+    <!-- Быстрая панель фильтрации, сортировки и мгновенного поиска внутри текущего раздела -->
+    <div id="storm-quick-catalog-bar" class="storm-quick-catalog-bar" style="display: none;"></div>
+
     <div class="media-container view-grid" id="media-render-container">
       <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
       <div class="storm-skeleton-card"><div class="storm-skeleton-poster"></div><div class="storm-skeleton-content"><div class="storm-skeleton-line"></div><div class="storm-skeleton-line short"></div></div></div>
@@ -389,8 +389,8 @@
                 <span class="quick-dropdown-val" style="font-weight: 700;">Барабан серий</span>
               </button>
 
-              <!-- 5. Быстрое скачивание с выбором качества 4K/1080p и озвучки -->
-              <button type="button" class="quick-dropdown-trigger" id="quick-lift-download-btn" title="Скачать видео или поток с выбором разрешения (4K / 1080p / 720p) и озвучки" style="flex: 0 0 auto; padding: 8px 14px; gap: 6px; border-color: rgba(16, 185, 129, 0.4);">
+              <!-- 5. Быстрое скачивание (скрыто в верхней полосе, чтобы не дублировать основную кнопку под плеером) -->
+              <button type="button" class="quick-dropdown-trigger" id="quick-lift-download-btn" title="Скачать видео или поток с выбором разрешения (4K / 1080p / 720p) и озвучки" style="display: none;">
                 <span class="quick-dropdown-icon">📥</span>
                 <span class="quick-dropdown-val" style="font-weight: 700;">Скачать 4K / FHD</span>
               </button>
@@ -678,147 +678,338 @@
   <div class="storm-modal-backdrop" id="profile-modal">
     <div class="storm-modal profile-modal-dialog">
       <div class="storm-modal-header">
-        <h3 class="storm-modal-title" data-i18n="auth_profile">Мой профиль</h3>
-        <button type="button" class="storm-modal-close">✕</button>
+        <h3 class="storm-modal-title" data-i18n="auth_profile">Мой профиль и центр управления</h3>
+        <button type="button" class="storm-modal-close" title="Закрыть окно (Esc)">✕</button>
       </div>
       <div class="storm-modal-body">
         <!-- Вкладки профиля -->
         <div class="profile-tab-links">
-          <button class="profile-tab-link active" data-ptab="overview">Обзор и статистика</button>
-          <button class="profile-tab-link" data-ptab="achievements" id="profile-tab-achievements">Достижения (67)</button>
-          <button class="profile-tab-link" data-ptab="edit">Смена аватарки и данных</button>
-          <button class="profile-tab-link" data-ptab="security">Безопасность</button>
+          <button class="profile-tab-link active" data-ptab="overview">📊 Обзор и настройки</button>
+          <button class="profile-tab-link" data-ptab="achievements" id="profile-tab-achievements">🏆 Достижения (67)</button>
+          <button class="profile-tab-link" data-ptab="edit">🎨 Аватарка и данные</button>
+          <button class="profile-tab-link" data-ptab="security">🛡️ Безопасность и бэкап</button>
         </div>
 
         <!-- 1. Обзор и статистика -->
         <div id="ptab-content-overview">
-          <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
-            <img src="assets/avatar_default.svg" alt="Avatar" id="profile-avatar" style="width: 68px; height: 68px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow); object-fit: cover;" onerror="this.src='assets/avatar_default.svg'">
-            <div>
-              <h4 id="profile-username" style="font-size: 19px; margin: 0; font-weight: 800;">Пользователь</h4>
-              <div id="profile-email" style="font-size: 12px; color: var(--text-muted);">user@example.com</div>
-              <div style="font-size: 11px; color: var(--accent); margin-top: 4px;">Зарегистрирован: <span id="profile-date">—</span></div>
-            </div>
-          </div>
-
-          <!-- Расширенная сетка статистики всех статусов -->
-          <div class="profile-stats-grid">
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: var(--accent);" id="profile-stat-hours">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_total_hours">Часов просмотра</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: var(--color-cyan);" id="profile-stat-watching">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_watching">В процессе</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: var(--color-amber);" id="profile-stat-planned">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_planned">В планах</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: var(--color-green);" id="profile-stat-completed">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_completed">Завершено</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: #ff007f;" id="profile-stat-favorites">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_favorites">Любимых</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: #06b6d4;" id="profile-stat-onhold">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_on_hold">Отложено</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: #ef4444;" id="profile-stat-dropped">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_dropped">Заброшено</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: #64748b;" id="profile-stat-wontwatch">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_wont_watch">Не буду смотреть</div>
-            </div>
-          </div>
-
-          <!-- Списки и закладки пользователя -->
-          <div class="profile-stats-grid-dual">
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: var(--color-amber);" id="profile-stat-bookmarks">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_bookmarks">Всего в закладках</div>
-            </div>
-            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-subtle);">
-              <div style="font-size: 20px; font-weight: 800; color: var(--color-purple);" id="profile-stat-lists">0</div>
-              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="stats_custom_lists">Своих списков</div>
-            </div>
-          </div>
-
-          <!-- Настройка языка интерфейса внутри профиля (11 языков, автоопределение ОС) -->
-          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-            <div>
-              <div style="font-weight: 700; font-size: 13px;" data-i18n="lang_select_title">Язык интерфейса</div>
-              <div style="font-size: 11px; color: var(--text-muted);">11 локализаций STORM MULTIMEDIA (автоопределение языка ОС)</div>
-            </div>
-            <select class="storm-select" id="profile-lang-select" style="min-width: 190px;">
-              <option value="ru">RU • Русский</option>
-              <option value="en">EN • English</option>
-              <option value="de">DE • Deutsch</option>
-              <option value="fr">FR • Français</option>
-              <option value="zh">ZH • 简体中文</option>
-              <option value="ko">KO • 한국어</option>
-              <option value="ja">JA • 日本語</option>
-              <option value="es">ES • Español</option>
-              <option value="it">IT • Italiano</option>
-              <option value="pt">PT • Português</option>
-              <option value="hi">HI • हिन्दी</option>
-            </select>
-          </div>
-
-          <!-- Выбор визуальной темы оформления (9 эталонных стилей STORM AURORA FLUID) -->
-          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
-            <div>
-              <div style="font-weight: 700; font-size: 13px;">Тема оформления</div>
-              <div style="font-size: 11px; color: var(--text-muted);">9 эталонных стилей экосистемы STORM AURORA FLUID</div>
-            </div>
-            <select class="storm-select" id="profile-theme-select" style="min-width: 210px;">
-              <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
-              <option value="STORM NIGHT">STORM NIGHT</option>
-              <option value="STORM DARK">STORM DARK</option>
-              <option value="STORM DAY">STORM DAY</option>
-              <option value="STORM FANTASY">STORM FANTASY</option>
-              <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
-              <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
-              <option value="STORM ELEMENTAL">STORM ELEMENTAL</option>
-              <option value="STORM">STORM</option>
-              <option value="STORM MATRIX">STORM MATRIX</option>
-            </select>
-          </div>
-
-          <!-- Выбор акцентного цвета (13 акцентов), динамического шрифта (10 шрифтов) и масштаба UI -->
-          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-              <div>
-                <div style="font-weight: 700; font-size: 13px;">Акцентный цвет</div>
-                <div style="font-size: 11px; color: var(--text-muted);">13 динамических неоновых оттенков подсветки</div>
+          <!-- Герой-карточка пользователя с рангом и прогрессом -->
+          <div class="profile-hero-card" id="profile-hero-card">
+            <div class="profile-hero-top">
+              <div class="profile-avatar-wrap" id="profile-avatar-quick-edit" title="Нажмите, чтобы сменить аватарку">
+                <img src="assets/avatar_default.svg" alt="Avatar" id="profile-avatar" onerror="this.src='assets/avatar_default.svg'">
+                <span class="profile-avatar-edit-badge">📷</span>
               </div>
-              <select class="storm-select" id="profile-accent-select" style="min-width: 210px;">
-                <option value="default">По умолчанию (от темы)</option>
-                <option value="violet">💜 Violet (#8B5CF6)</option>
-                <option value="cyan">🩵 Cyan (#06B6D4)</option>
-                <option value="blue">💙 Electric Blue (#3B82F6)</option>
-                <option value="indigo">🔮 Royal Indigo (#6366F1)</option>
-                <option value="teal">🌊 Teal Mint (#14B8A6)</option>
-                <option value="emerald">💚 Emerald Green (#10B981)</option>
-                <option value="lime">🍀 Neon Lime (#84CC16)</option>
-                <option value="amber">💛 Amber Gold (#F59E0B)</option>
-                <option value="orange">🧡 Solar Orange (#F97316)</option>
-                <option value="crimson">❤️ Crimson Red (#EF4444)</option>
-                <option value="rose">🌹 Rose Pink (#F43F5E)</option>
-                <option value="magenta">🩷 Magenta Fuchsia (#EC4899)</option>
-                <option value="platinum">🤍 Platinum Silver (#E2E8F0)</option>
-              </select>
+              <div class="profile-hero-info">
+                <div class="profile-hero-name-row">
+                  <h4 id="profile-username">Пользователь</h4>
+                  <span class="profile-status-pill" id="profile-online-badge">🟢 Активен</span>
+                </div>
+                <div id="profile-email" class="profile-hero-email">user@example.com</div>
+                <div id="profile-bio-display" class="profile-hero-bio">Ценитель качественного кино и 4K UHD релизов</div>
+                <div class="profile-hero-meta">
+                  <span>📅 В экосистеме с: <strong id="profile-date">—</strong></span>
+                  <span class="profile-meta-dot">•</span>
+                  <span id="profile-sync-state-label">⚡ Локальная и облачная база</span>
+                </div>
+              </div>
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm profile-hero-edit-btn" id="profile-jump-edit-btn" title="Редактировать аватарку, имя и статус">
+                <span>✏️</span> <span>Изменить</span>
+              </button>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+            <!-- Карточка ранга киномана и шкалы опыта (XP) -->
+            <div class="profile-rank-box" id="profile-rank-card">
+              <div class="profile-rank-header">
+                <div class="profile-rank-title-wrap">
+                  <span class="profile-rank-icon" id="profile-rank-icon">🎬</span>
+                  <div>
+                    <div class="profile-rank-name" id="profile-rank-name">Киноман-исследователь</div>
+                    <div class="profile-rank-sub" id="profile-rank-sub">Активность в кинозале и коллекциях</div>
+                  </div>
+                </div>
+                <div class="profile-rank-badges">
+                  <span class="profile-level-pill" id="profile-level-pill">Уровень 1</span>
+                  <span class="profile-xp-pill" id="profile-xp-pill">0 XP</span>
+                </div>
+              </div>
+              <div class="profile-xp-bar-track">
+                <div class="profile-xp-bar-fill" id="profile-xp-bar-fill" style="width: 18%;"></div>
+              </div>
+              <div class="profile-rank-footer">
+                <span id="profile-xp-hint">Смотрите фильмы и пополняйте списки для повышения ранга</span>
+                <button type="button" class="profile-ach-jump-link" id="profile-jump-achievements-btn">Все достижения ➔</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Заголовок интерактивной статистики -->
+          <div class="profile-section-heading">
+            <span>📊 Интерактивная статистика списков</span>
+            <span class="profile-section-hint">Нажмите на любую карточку, чтобы открыть список</span>
+          </div>
+
+          <!-- Расширенная сетка интерактивных 3D-карточек всех статусов -->
+          <div class="profile-stats-grid">
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="continue" title="Открыть историю и продолжить просмотр">
+              <div class="pstat-top">
+                <span class="pstat-icon">⏱️</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: var(--accent);" id="profile-stat-hours">0</div>
+              <div class="pstat-label" data-i18n="stats_total_hours">Часов просмотра</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="watching" title="Открыть список «Смотрю сейчас»">
+              <div class="pstat-top">
+                <span class="pstat-icon">▶️</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: var(--color-cyan);" id="profile-stat-watching">0</div>
+              <div class="pstat-label" data-i18n="stats_watching">В процессе</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="plan" title="Открыть список «В планах»">
+              <div class="pstat-top">
+                <span class="pstat-icon">📌</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: var(--color-amber);" id="profile-stat-planned">0</div>
+              <div class="pstat-label" data-i18n="stats_planned">В планах</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="completed" title="Открыть список «Просмотрено»">
+              <div class="pstat-top">
+                <span class="pstat-icon">✅</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: var(--color-green);" id="profile-stat-completed">0</div>
+              <div class="pstat-label" data-i18n="stats_completed">Завершено</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="favorite" title="Открыть список «Любимое»">
+              <div class="pstat-top">
+                <span class="pstat-icon">❤️</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: #ff007f;" id="profile-stat-favorites">0</div>
+              <div class="pstat-label" data-i18n="stats_favorites">Любимых</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="hold" title="Открыть список «Отложено»">
+              <div class="pstat-top">
+                <span class="pstat-icon">⏸️</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: #06b6d4;" id="profile-stat-onhold">0</div>
+              <div class="pstat-label" data-i18n="stats_on_hold">Отложено</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="dropped" title="Открыть список «Брошено»">
+              <div class="pstat-top">
+                <span class="pstat-icon">🗑️</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: #ef4444;" id="profile-stat-dropped">0</div>
+              <div class="pstat-label" data-i18n="stats_dropped">Заброшено</div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card" data-stat-target="wont_watch" title="Открыть список «Не буду смотреть»">
+              <div class="pstat-top">
+                <span class="pstat-icon">🚫</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+              <div class="pstat-val" style="color: #94a3b8;" id="profile-stat-wontwatch">0</div>
+              <div class="pstat-label" data-i18n="stats_wont_watch">Не буду смотреть</div>
+            </button>
+          </div>
+
+          <!-- Списки и закладки пользователя (широкие интерактивные карточки) -->
+          <div class="profile-stats-grid-dual">
+            <button type="button" class="profile-interactive-stat-card profile-stat-wide" data-stat-target="all" title="Перейти ко всем закладкам">
+              <div class="pstat-wide-left">
+                <span class="pstat-wide-icon">📑</span>
+                <div>
+                  <div class="pstat-label" data-i18n="stats_bookmarks">Всего в закладках</div>
+                  <div class="pstat-sub">Единый каталог сохранённых тайтлов</div>
+                </div>
+              </div>
+              <div class="pstat-wide-right">
+                <span class="pstat-val" style="color: var(--color-amber);" id="profile-stat-bookmarks">0</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+            </button>
+
+            <button type="button" class="profile-interactive-stat-card profile-stat-wide" data-stat-target="lists" title="Открыть пользовательские коллекции и списки">
+              <div class="pstat-wide-left">
+                <span class="pstat-wide-icon">📁</span>
+                <div>
+                  <div class="pstat-label" data-i18n="stats_custom_lists">Своих коллекций</div>
+                  <div class="pstat-sub">Персональные тематические подборки</div>
+                </div>
+              </div>
+              <div class="pstat-wide-right">
+                <span class="pstat-val" style="color: var(--color-purple);" id="profile-stat-lists">0</span>
+                <span class="pstat-arrow">↗</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Быстрый центр сервисов экосистемы в профиле -->
+          <div class="profile-section-heading" style="margin-top: 16px;">
+            <span>🚀 Быстрый доступ к сервисам STORM</span>
+            <span class="profile-section-hint">Инструменты экосистемы в один клик</span>
+          </div>
+          <div class="profile-quick-hub-grid" id="profile-quick-hub-grid">
+            <button type="button" class="profile-hub-card" id="profile-hub-recommender">
+              <span class="profile-hub-icon">🧠</span>
+              <div class="profile-hub-texts">
+                <span class="profile-hub-title">ИИ-советник</span>
+                <span class="profile-hub-desc">Подбор фильма на вечер</span>
+              </div>
+            </button>
+            <button type="button" class="profile-hub-card" id="profile-hub-calendar">
+              <span class="profile-hub-icon">📅</span>
+              <div class="profile-hub-texts">
+                <span class="profile-hub-title">Календарь серий</span>
+                <span class="profile-hub-desc">Даты выхода эпизодов</span>
+              </div>
+            </button>
+            <button type="button" class="profile-hub-card" id="profile-hub-rooms">
+              <span class="profile-hub-icon">👥</span>
+              <div class="profile-hub-texts">
+                <span class="profile-hub-title">Кинозал</span>
+                <span class="profile-hub-desc">Смотреть вместе с друзьями</span>
+              </div>
+            </button>
+            <button type="button" class="profile-hub-card" id="profile-hub-sync">
+              <span class="profile-hub-icon">🔄</span>
+              <div class="profile-hub-texts">
+                <span class="profile-hub-title">Синхронизация</span>
+                <span class="profile-hub-desc">Импорт и экспорт списков</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Визуальный центр кастомизации: Темы оформления, Акцентные цвета, Шрифты и Масштаб -->
+          <div class="profile-settings-card" style="margin-top: 16px;">
+            <div class="profile-settings-card-header">
+              <span>🎨</span>
+              <span>Персонализация и оформление STORM AURORA FLUID</span>
+            </div>
+
+            <!-- Визуальная галерея тем (Swatches) + выпадающий список -->
+            <div class="profile-setting-block">
+              <div class="profile-setting-row">
+                <div>
+                  <div class="profile-setting-title">Тема оформления</div>
+                  <div class="profile-setting-desc">Нажмите на карточку стиля для мгновенного переключения</div>
+                </div>
+                <select class="storm-select" id="profile-theme-select" style="min-width: 210px;">
+                  <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
+                  <option value="STORM NIGHT">STORM NIGHT</option>
+                  <option value="STORM DARK">STORM DARK</option>
+                  <option value="STORM DAY">STORM DAY</option>
+                  <option value="STORM FANTASY">STORM FANTASY</option>
+                  <option value="STORM CYBERPUNK">STORM CYBERPUNK</option>
+                  <option value="STORM WARHAMMER 40K">STORM WARHAMMER 40K</option>
+                  <option value="STORM ELEMENTAL">STORM ELEMENTAL</option>
+                  <option value="STORM">STORM</option>
+                  <option value="STORM MATRIX">STORM MATRIX</option>
+                </select>
+              </div>
+
+              <!-- Интерактивные превью-карточки тем -->
+              <div class="profile-theme-swatches" id="profile-theme-swatches">
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM MIDNIGHT" title="Аметистовая полночь (По умолчанию)">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #141026 55%, #8b5cf6 100%);"></span>
+                  <span class="swatch-name">Midnight</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM DARK" title="Тёмный киберпанк-сланец (Cyan)">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #0d131f 55%, #00d2ff 100%);"></span>
+                  <span class="swatch-name">Dark</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM NIGHT" title="Глубокий OLED чёрный">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #050508 55%, #00f0ff 100%);"></span>
+                  <span class="swatch-name">Night OLED</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM CYBERPUNK" title="Неон Найт-Сити">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #160924 55%, #ff007f 100%);"></span>
+                  <span class="swatch-name">Cyberpunk</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM FANTASY" title="Королевское золото">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #17121e 55%, #f59e0b 100%);"></span>
+                  <span class="swatch-name">Fantasy</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM WARHAMMER 40K" title="Имперская готика">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #121010 55%, #d4af37 100%);"></span>
+                  <span class="swatch-name">Warhammer</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM MATRIX" title="Матричный изумрудный неон">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #06150d 55%, #00ff66 100%);"></span>
+                  <span class="swatch-name">Matrix</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM ELEMENTAL" title="Природная бирюза">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #0b1922 55%, #00e5ff 100%);"></span>
+                  <span class="swatch-name">Elemental</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM" title="Фирменный багровый шторм">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #140d16 55%, #e11d48 100%);"></span>
+                  <span class="swatch-name">Storm Crimson</span>
+                </button>
+                <button type="button" class="profile-theme-swatch-card" data-theme-swatch="STORM DAY" title="Контрастная светлая тема">
+                  <span class="swatch-preview" style="background: linear-gradient(135deg, #f1f5f9 55%, #0284c7 100%);"></span>
+                  <span class="swatch-name">Day Light</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Акцентный цвет: палитра неоновых точек + выпадающий список -->
+            <div class="profile-setting-block">
+              <div class="profile-setting-row">
+                <div>
+                  <div class="profile-setting-title">Акцентный цвет подсветки</div>
+                  <div class="profile-setting-desc">13 динамических неоновых оттенков для кнопок и свечения</div>
+                </div>
+                <select class="storm-select" id="profile-accent-select" style="min-width: 210px;">
+                  <option value="default">По умолчанию (от темы)</option>
+                  <option value="violet">💜 Violet (#8B5CF6)</option>
+                  <option value="cyan">🩵 Cyan (#06B6D4)</option>
+                  <option value="blue">💙 Electric Blue (#3B82F6)</option>
+                  <option value="indigo">🔮 Royal Indigo (#6366F1)</option>
+                  <option value="teal">🌊 Teal Mint (#14B8A6)</option>
+                  <option value="emerald">💚 Emerald Green (#10B981)</option>
+                  <option value="lime">🍀 Neon Lime (#84CC16)</option>
+                  <option value="amber">💛 Amber Gold (#F59E0B)</option>
+                  <option value="orange">🧡 Solar Orange (#F97316)</option>
+                  <option value="crimson">❤️ Crimson Red (#EF4444)</option>
+                  <option value="rose">🌹 Rose Pink (#F43F5E)</option>
+                  <option value="magenta">🩷 Magenta Fuchsia (#EC4899)</option>
+                  <option value="platinum">🤍 Platinum Silver (#E2E8F0)</option>
+                </select>
+              </div>
+              <div class="profile-accent-dots" id="profile-accent-dots">
+                <button type="button" class="profile-accent-dot" data-accent-dot="default" title="По умолчанию (от активной темы)" style="background: conic-gradient(#8b5cf6, #06b6d4, #10b981, #f59e0b, #ef4444, #8b5cf6);"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="violet" title="Violet (#8B5CF6)" style="background: #8b5cf6;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="cyan" title="Cyan (#06B6D4)" style="background: #06b6d4;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="blue" title="Electric Blue (#3B82F6)" style="background: #3b82f6;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="indigo" title="Royal Indigo (#6366F1)" style="background: #6366f1;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="teal" title="Teal Mint (#14B8A6)" style="background: #14b8a6;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="emerald" title="Emerald Green (#10B981)" style="background: #10b981;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="lime" title="Neon Lime (#84CC16)" style="background: #84cc16;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="amber" title="Amber Gold (#F59E0B)" style="background: #f59e0b;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="orange" title="Solar Orange (#F97316)" style="background: #f97316;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="crimson" title="Crimson Red (#EF4444)" style="background: #ef4444;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="rose" title="Rose Pink (#F43F5E)" style="background: #f43f5e;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="magenta" title="Magenta Fuchsia (#EC4899)" style="background: #ec4899;"></button>
+                <button type="button" class="profile-accent-dot" data-accent-dot="platinum" title="Platinum Silver (#E2E8F0)" style="background: #e2e8f0;"></button>
+              </div>
+            </div>
+
+            <!-- Шрифт, Масштаб и Язык -->
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Шрифт интерфейса</div>
-                <div style="font-size: 11px; color: var(--text-muted);">10 динамических гарнитур STORM AURORA FLUID</div>
+                <div class="profile-setting-title">Шрифт интерфейса</div>
+                <div class="profile-setting-desc">10 динамических гарнитур STORM AURORA FLUID</div>
               </div>
               <select class="storm-select" id="profile-font-select" style="min-width: 210px;">
                 <option value="Inter">Inter Variable (По умолчанию)</option>
@@ -834,10 +1025,10 @@
               </select>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Масштаб интерфейса</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Динамическое масштабирование элементов (75% – 150%)</div>
+                <div class="profile-setting-title">Масштаб интерфейса</div>
+                <div class="profile-setting-desc">Динамическое масштабирование элементов (85% – 135%)</div>
               </div>
               <select class="storm-select" id="profile-scale-select" style="min-width: 210px;">
                 <option value="0.85">85% (Компактный)</option>
@@ -848,21 +1039,42 @@
                 <option value="1.35">135% (Для ТВ и планшетов)</option>
               </select>
             </div>
+
+            <div class="profile-setting-row" style="border-bottom: none; padding-bottom: 0;">
+              <div>
+                <div class="profile-setting-title" data-i18n="lang_select_title">Язык интерфейса</div>
+                <div class="profile-setting-desc">11 локализаций STORM MULTIMEDIA (автоопределение языка ОС)</div>
+              </div>
+              <select class="storm-select" id="profile-lang-select" style="min-width: 210px;">
+                <option value="ru">RU • Русский</option>
+                <option value="en">EN • English</option>
+                <option value="de">DE • Deutsch</option>
+                <option value="fr">FR • Français</option>
+                <option value="zh">ZH • 简体中文</option>
+                <option value="ko">KO • 한국어</option>
+                <option value="ja">JA • 日本語</option>
+                <option value="es">ES • Español</option>
+                <option value="it">IT • Italiano</option>
+                <option value="pt">PT • Português</option>
+                <option value="hi">HI • हिन्दी</option>
+              </select>
+            </div>
           </div>
 
           <!-- Настройки плеера по умолчанию, блокировки рекламы и воспроизведения -->
-          <div style="background: var(--bg-tertiary); padding: 16px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
-            <div style="font-weight: 800; font-size: 13px; color: var(--accent-primary); display: flex; align-items: center; gap: 8px;">
-              <span>🎬</span> Плеер, качество и защита от рекламы
+          <div class="profile-settings-card" style="margin-top: 12px;">
+            <div class="profile-settings-card-header">
+              <span>🎬</span>
+              <span>Плеер, качество 4K UHD и защита от рекламы</span>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <div class="profile-setting-title" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                   <span>Плеер по умолчанию</span>
                   <span class="storm-badge" style="font-size: 10px; padding: 2px 6px; background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">Без рекламы • Автопропуск</span>
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted);">Открывает любые фильмы и сериалы сразу в чистом мультитрековом плеере с автопропуском заставок</div>
+                <div class="profile-setting-desc">Открывает любые фильмы и сериалы сразу в чистом мультитрековом плеере с автопропуском заставок</div>
               </div>
               <select class="storm-select" id="profile-default-player-select" style="min-width: 250px;">
                 <option value="lift_adfree" selected>🔥 Lift 4K и FHD (Без рекламы • Все озвучки)</option>
@@ -874,10 +1086,10 @@
               </select>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Блокировка рекламы и VAST-вставок (AdShield)</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Вырезание рекламных роликов, баннеров и ускорение вставок в 16 раз</div>
+                <div class="profile-setting-title">Блокировка рекламы и VAST-вставок (AdShield)</div>
+                <div class="profile-setting-desc">Вырезание рекламных роликов, баннеров и ускорение вставок в 16 раз</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-adblock-toggle" checked>
@@ -885,10 +1097,10 @@
               </label>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Маскирование водяных знаков (CleanView)</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Бесшовное оптическое скрытие вшитых логотипов букмекеров</div>
+                <div class="profile-setting-title">Маскирование водяных знаков (CleanView)</div>
+                <div class="profile-setting-desc">Бесшовное оптическое скрытие вшитых логотипов букмекеров</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-cleanview-toggle">
@@ -896,10 +1108,10 @@
               </label>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Автопропуск заставок и титров (Smart Skip)</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Автоматический переход через опенинги и показ кнопки пропуска</div>
+                <div class="profile-setting-title">Автопропуск заставок и титров (Smart Skip)</div>
+                <div class="profile-setting-desc">Автоматический переход через опенинги и показ кнопки пропуска</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-autoskip-toggle" checked>
@@ -907,10 +1119,10 @@
               </label>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div class="profile-setting-row">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Автопереключение серий и резервный плеер</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Бесшовный переход к следующей серии и автозамена при сбое источника</div>
+                <div class="profile-setting-title">Автопереключение серий и резервный плеер</div>
+                <div class="profile-setting-desc">Бесшовный переход к следующей серии и автозамена при сбое источника</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-autonext-toggle" checked>
@@ -918,10 +1130,10 @@
               </label>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div class="profile-setting-row" style="border-bottom: none; padding-bottom: 0;">
               <div>
-                <div style="font-weight: 700; font-size: 13px;">Кинотеатральная подсветка Ambilight</div>
-                <div style="font-size: 11px; color: var(--text-muted);">Динамическое фоновое свечение вокруг экрана плеера</div>
+                <div class="profile-setting-title">Кинотеатральная подсветка Ambilight</div>
+                <div class="profile-setting-desc">Динамическое фоновое свечение вокруг экрана плеера</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-ambilight-toggle" checked>
@@ -931,10 +1143,10 @@
           </div>
 
           <!-- Проверка обновлений STORM MULTIMEDIA -->
-          <div style="background: var(--bg-tertiary); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px;">
+          <div class="profile-settings-card" style="margin-top: 12px; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.43 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.44 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -950,69 +1162,144 @@
         <!-- 3. Смена аватарки и данных -->
         <div id="ptab-content-edit" style="display: none;">
           <form id="edit-profile-form">
+            <!-- Живое превью аватарки и карточки профиля -->
+            <div class="profile-edit-preview-banner">
+              <img src="assets/avatar_default.svg" alt="Preview" id="edit-avatar-live-preview" onerror="this.src='assets/avatar_default.svg'">
+              <div>
+                <div style="font-size: 14px; font-weight: 800; color: var(--text-primary);">Предпросмотр вашего образа</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Выберите фирменный аватар из коллекции ниже, сгенерируйте случайный или загрузите своё изображение</div>
+              </div>
+            </div>
+
             <!-- Выбор пресетов аватарок -->
             <div style="margin-bottom: 16px;">
-              <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Выберите аватарку из коллекции:</label>
+              <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; display: block;">Фирменная коллекция аватарок STORM:</label>
               <div class="profile-avatar-presets" id="avatar-presets-container">
                 <!-- Заполняется JS -->
               </div>
             </div>
 
             <!-- Случайная аватарка или своя ссылка -->
-            <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
               <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="random-avatar-btn">🎲 Случайный аватар</button>
               <label class="storm-btn storm-btn-secondary storm-btn-sm" style="margin: 0; cursor: pointer;">
-                📁 Загрузить файл
+                📁 Загрузить с устройства
                 <input type="file" id="avatar-file-input" accept="image/*" style="display: none;">
               </label>
             </div>
 
             <div class="filter-group" style="margin-bottom: 12px;">
-              <label>Или укажите прямую ссылку на аватарку:</label>
+              <label>Или укажите прямую ссылку на изображение:</label>
               <input type="url" class="storm-input" id="edit-avatar-url" placeholder="https://example.com/avatar.jpg">
             </div>
 
             <div class="filter-group" style="margin-bottom: 12px;">
-              <label>Имя пользователя:</label>
-              <input type="text" class="storm-input" id="edit-profile-username" required>
+              <label>Имя пользователя (никнейм):</label>
+              <input type="text" class="storm-input" id="edit-profile-username" required placeholder="Ваш никнейм">
+            </div>
+
+            <div class="filter-group" style="margin-bottom: 12px;">
+              <label>Электронная почта:</label>
+              <input type="email" class="storm-input" id="edit-profile-email" required placeholder="user@example.com">
             </div>
 
             <div class="filter-group" style="margin-bottom: 18px;">
-              <label>Электронная почта:</label>
-              <input type="email" class="storm-input" id="edit-profile-email" required>
+              <label>Персональный статус / подпись в профиле:</label>
+              <input type="text" class="storm-input" id="edit-profile-bio" maxlength="90" placeholder="Например: Люблю киберпанк, аниме и кино в 4K UHD">
             </div>
 
-            <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">Сохранить изменения</button>
+            <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">💾 Сохранить изменения профиля</button>
           </form>
         </div>
 
-        <!-- 4. Безопасность и смена пароля -->
+        <!-- 4. Безопасность, резервное копирование и семейный контроль -->
         <div id="ptab-content-security" style="display: none;">
-          <form id="change-password-form">
-            <div class="filter-group" style="margin-bottom: 12px;">
-              <label>Текущий пароль:</label>
-              <input type="password" class="storm-input" id="old-password" required autocomplete="current-password">
+          <!-- Быстрое управление семейным/детским режимом и приватностью -->
+          <div class="profile-settings-card" style="margin-bottom: 16px;">
+            <div class="profile-settings-card-header">
+              <span>🛡️</span>
+              <span>Контент-фильтр и приватность</span>
             </div>
-            <div class="filter-group" style="margin-bottom: 12px;">
-              <label>Новый пароль (не менее 6 символов):</label>
-              <input type="password" class="storm-input" id="new-password" required autocomplete="new-password">
+            <div class="profile-setting-row">
+              <div>
+                <div class="profile-setting-title">Детский безопасный режим (Фильтр 18+)</div>
+                <div class="profile-setting-desc">Скрывает взрослый контент и триллеры 18+ из выдачи и поиска</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-security-kid-toggle">
+                <span class="slider"></span>
+              </label>
             </div>
-            <div class="filter-group" style="margin-bottom: 18px;">
-              <label>Повторите новый пароль:</label>
-              <input type="password" class="storm-input" id="confirm-password" required autocomplete="new-password">
+            <div class="profile-setting-row" style="border-bottom: none; padding-bottom: 0;">
+              <div>
+                <div class="profile-setting-title">Сохранять локальную историю поиска и просмотров</div>
+                <div class="profile-setting-desc">Позволяет мгновенно продолжать просмотр с последней секунды</div>
+              </div>
+              <label class="storm-toggle-switch">
+                <input type="checkbox" id="profile-security-history-toggle" checked>
+                <span class="slider"></span>
+              </label>
             </div>
-            <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">Обновить пароль</button>
-          </form>
+          </div>
+
+          <!-- Резервное копирование закладок, списков и истории (JSON) и очистка кэша -->
+          <div class="profile-settings-card" style="margin-bottom: 16px;">
+            <div class="profile-settings-card-header">
+              <span>💾</span>
+              <span>Резервная копия данных и управление памятью</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0; line-height: 1.5;">
+              Сохраните полную копию всех ваших закладок, списков, прогресса серий и настроек в файл JSON или восстановите их на другом устройстве.
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-export-json-btn" style="flex: 1 1 180px;">
+                <span>📥</span> <span>Экспорт базы (JSON)</span>
+              </button>
+              <label class="storm-btn storm-btn-secondary storm-btn-sm" style="flex: 1 1 180px; margin: 0; cursor: pointer;">
+                <span>📤</span> <span>Импорт базы (JSON)</span>
+                <input type="file" id="profile-import-json-input" accept=".json,application/json" style="display: none;">
+              </label>
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-clear-cache-btn" style="flex: 1 1 180px;">
+                <span>🧹</span> <span>Очистить кэш каталога</span>
+              </button>
+            </div>
+          </div>
 
           <!-- Привязка ТВ-устройства по одноразовому коду -->
-          <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-subtle);">
-            <h5 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: var(--accent);">📺 Привязать ТВ-устройство</h5>
-            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
+          <div class="profile-settings-card" style="margin-bottom: 16px;">
+            <div class="profile-settings-card-header">
+              <span>📺</span>
+              <span>Быстрая привязка Smart TV</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0; line-height: 1.5;">
               Введите 6-значный одноразовый код (ST-XXXX), отображаемый на экране телевизора или ТВ-приставки, чтобы мгновенно авторизовать устройство.
             </p>
             <form id="verify-tv-device-form" style="display: flex; gap: 8px;">
               <input type="text" class="storm-input" id="tv-device-code-input" placeholder="Код ST-XXXX" style="text-transform: uppercase; font-family: monospace; font-weight: 700; letter-spacing: 2px;" required maxlength="10">
               <button type="submit" class="storm-btn storm-btn-primary" id="verify-tv-device-btn">Подтвердить</button>
+            </form>
+          </div>
+
+          <!-- Смена пароля аккаунта -->
+          <div class="profile-settings-card">
+            <div class="profile-settings-card-header">
+              <span>🔐</span>
+              <span>Смена пароля аккаунта</span>
+            </div>
+            <form id="change-password-form">
+              <div class="filter-group" style="margin-bottom: 12px;">
+                <label>Текущий пароль:</label>
+                <input type="password" class="storm-input" id="old-password" required autocomplete="current-password">
+              </div>
+              <div class="filter-group" style="margin-bottom: 12px;">
+                <label>Новый пароль (не менее 6 символов):</label>
+                <input type="password" class="storm-input" id="new-password" required autocomplete="new-password">
+              </div>
+              <div class="filter-group" style="margin-bottom: 14px;">
+                <label>Повторите новый пароль:</label>
+                <input type="password" class="storm-input" id="confirm-password" required autocomplete="new-password">
+              </div>
+              <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%;">Обновить пароль</button>
             </form>
           </div>
         </div>
@@ -1117,6 +1404,43 @@
           <button type="button" class="drawer-sleep-cancel-btn" id="drawer-sleep-cancel-btn">Отмена</button>
         </div>
 
+        <!-- Быстрая смена темы оформления прямо в мобильном меню -->
+        <div class="mobile-drawer-section-title">🎨 Тема оформления</div>
+        <div class="mobile-drawer-theme-strip" id="mobile-drawer-theme-strip">
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM MIDNIGHT">
+            <span class="drawer-theme-dot" style="background: #8b5cf6;"></span>
+            <span>Midnight</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM DARK">
+            <span class="drawer-theme-dot" style="background: #00d2ff;"></span>
+            <span>Dark</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM NIGHT">
+            <span class="drawer-theme-dot" style="background: #00f0ff;"></span>
+            <span>Night OLED</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM CYBERPUNK">
+            <span class="drawer-theme-dot" style="background: #ff007f;"></span>
+            <span>Cyberpunk</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM FANTASY">
+            <span class="drawer-theme-dot" style="background: #f59e0b;"></span>
+            <span>Fantasy</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM MATRIX">
+            <span class="drawer-theme-dot" style="background: #00ff66;"></span>
+            <span>Matrix</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM WARHAMMER 40K">
+            <span class="drawer-theme-dot" style="background: #d4af37;"></span>
+            <span>Warhammer</span>
+          </button>
+          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM DAY">
+            <span class="drawer-theme-dot" style="background: #0284c7;"></span>
+            <span>Day Light</span>
+          </button>
+        </div>
+
         <!-- Раздел функций экосистемы -->
         <div class="mobile-drawer-section-title">Сервисы и возможности</div>
         <div class="mobile-drawer-nav-list">
@@ -1165,15 +1489,8 @@
           <button type="button" class="mobile-drawer-nav-item" id="drawer-form-factor-btn">
             <span class="mobile-nav-icon">📐</span>
             <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Форм-фактор интерфейса</span>
+              <span class="mobile-nav-title">Режим интерфейса и ТВ</span>
               <span class="mobile-nav-desc">ПК, Мобильный или Smart TV</span>
-            </div>
-          </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-tv-mode-btn">
-            <span class="mobile-nav-icon">📺</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">ТВ-режим</span>
-              <span class="mobile-nav-desc">Интерфейс для ТВ и геймпада</span>
             </div>
           </button>
           <button type="button" class="mobile-drawer-nav-item" id="drawer-profile-settings-btn">
@@ -1492,7 +1809,7 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.43"></script>
+  <script type="module" src="/js/app.js?v=1.0.44"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
   <script>

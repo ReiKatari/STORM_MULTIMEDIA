@@ -434,43 +434,62 @@ export const AVATAR_PRESETS = [
   { id: 'ide-1', name: 'Quantum Core', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=StormMaster' }
 ];
 
-export async function updateProfile(username, email, avatar) {
-  if (!currentUser) return false;
-  try {
-    const res = await fetch('/api/auth/profile/update', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('storm_token')}`
-      },
-      body: JSON.stringify({ username, email, avatar })
-    });
+export async function updateProfile(username, email, avatar, bio = '') {
+  const cleanUser = String(username || '').trim() || 'Пользователь';
+  const cleanEmail = String(email || '').trim() || 'user@storm.local';
+  const cleanAvatar = String(avatar || '').trim() || 'assets/avatar_default.svg';
+  const cleanBio = String(bio || '').trim();
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Ошибка обновления профиля');
-    }
-
-    const data = await res.json();
-    currentUser = { ...currentUser, ...(data.user || data) };
-    localStorage.setItem('storm_user', JSON.stringify(currentUser));
-
-    // Синхронизируем также основной профиль в семейных профилях
-    const primary = familyProfiles.find(p => p.id === 'primary' || p.isDefault);
-    if (primary) {
-      primary.name = currentUser.username;
-      if (currentUser.avatar) primary.avatar = currentUser.avatar;
-      saveFamilyProfiles([...familyProfiles]);
-    }
-
-    updateAuthUI();
-    notifyAuthChanged();
-    showToast('Профиль успешно обновлен!', 'success');
-    return true;
-  } catch (err) {
-    showToast(err.message, 'error');
-    return false;
+  if (cleanBio) {
+    localStorage.setItem('storm_profile_bio', cleanBio);
+  } else {
+    localStorage.removeItem('storm_profile_bio');
   }
+
+  // Если гость или офлайн-пользователь — создаём/обновляем локальную учётную запись
+  if (!currentUser) {
+    loginOfflineUser(cleanUser);
+  }
+
+  try {
+    const token = localStorage.getItem('storm_token') || '';
+    if (token && !token.startsWith('offline_') && !token.startsWith('guest_')) {
+      const res = await fetch('/api/auth/profile/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ username: cleanUser, email: cleanEmail, avatar: cleanAvatar })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        currentUser = { ...currentUser, ...(data.user || data), bio: cleanBio };
+      } else {
+        currentUser = { ...currentUser, username: cleanUser, email: cleanEmail, avatar: cleanAvatar, bio: cleanBio };
+      }
+    } else {
+      currentUser = { ...currentUser, username: cleanUser, email: cleanEmail, avatar: cleanAvatar, bio: cleanBio };
+    }
+  } catch (_) {
+    currentUser = { ...currentUser, username: cleanUser, email: cleanEmail, avatar: cleanAvatar, bio: cleanBio };
+  }
+
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
+
+  // Синхронизируем также основной профиль в семейных профилях
+  const primary = familyProfiles.find(p => p.id === 'primary' || p.isDefault);
+  if (primary) {
+    primary.name = currentUser.username;
+    if (currentUser.avatar) primary.avatar = currentUser.avatar;
+    saveFamilyProfiles([...familyProfiles]);
+  }
+
+  updateAuthUI();
+  notifyAuthChanged();
+  showToast('✅ Профиль успешно обновлён!', 'success');
+  return true;
 }
 
 export async function changePassword(oldPassword, newPassword) {
@@ -498,6 +517,115 @@ export async function changePassword(oldPassword, newPassword) {
   }
 }
 
+function computeLocalAndMergedProfileStats(serverStats = {}) {
+  let localBookmarks = [];
+  let localContinue = [];
+  let localLists = [];
+  try {
+    const rawBm = localStorage.getItem('storm_local_bookmarks');
+    if (rawBm) {
+      const parsed = JSON.parse(rawBm);
+      localBookmarks = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    }
+  } catch (_) {}
+  try {
+    const rawCw = localStorage.getItem('storm_continue_watching');
+    if (rawCw) {
+      const parsed = JSON.parse(rawCw);
+      localContinue = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    }
+  } catch (_) {}
+  try {
+    const rawLists = localStorage.getItem('storm_custom_lists');
+    if (rawLists) {
+      const parsed = JSON.parse(rawLists);
+      localLists = Array.isArray(parsed) ? parsed : [];
+    }
+  } catch (_) {}
+
+  const countStatus = (statuses) => localBookmarks.filter(b => statuses.includes(b.status)).length;
+  const localWatching = countStatus(['watching']);
+  const localPlanned = countStatus(['plan', 'planned']);
+  const localCompleted = countStatus(['completed']);
+  const localFavorites = localBookmarks.filter(b => b.status === 'favorite' || b.isFavorite).length;
+  const localHold = countStatus(['hold', 'on_hold']);
+  const localDropped = countStatus(['dropped']);
+  const localWont = countStatus(['wont_watch']);
+  const localTotalBm = localBookmarks.length;
+  const localTotalLists = localLists.length;
+
+  // Оценка часов просмотра по завершённым, просматриваемым и истории continue_watching
+  const estimatedMinutes = (localCompleted * 110) + (localWatching * 45) + (localContinue.length * 35);
+  const localHours = Math.round((estimatedMinutes / 60) * 10) / 10;
+
+  return {
+    totalWatchedHours: Math.max(Number(serverStats.totalWatchedHours || 0), localHours),
+    watchingCount: Math.max(Number(serverStats.watchingCount || 0), localWatching, localContinue.length),
+    plannedCount: Math.max(Number(serverStats.plannedCount || 0), localPlanned),
+    completedCount: Math.max(Number(serverStats.completedCount || 0), localCompleted),
+    favoritesCount: Math.max(Number(serverStats.favoritesCount || serverStats.favoriteCount || 0), localFavorites),
+    onHoldCount: Math.max(Number(serverStats.onHoldCount || 0), localHold),
+    droppedCount: Math.max(Number(serverStats.droppedCount || 0), localDropped),
+    wontWatchCount: Math.max(Number(serverStats.wontWatchCount || 0), localWont),
+    bookmarksCount: Math.max(Number(serverStats.bookmarksCount || 0), localTotalBm),
+    customListsCount: Math.max(Number(serverStats.customListsCount || 0), localTotalLists)
+  };
+}
+
+function updateProfileRankUI(st = {}) {
+  const xp = Math.round(
+    (Number(st.totalWatchedHours || 0) * 25) +
+    (Number(st.completedCount || 0) * 40) +
+    (Number(st.watchingCount || 0) * 20) +
+    (Number(st.bookmarksCount || 0) * 15) +
+    (Number(st.favoritesCount || 0) * 20) +
+    (Number(st.customListsCount || 0) * 50) +
+    50
+  );
+
+  const ranks = [
+    { minXp: 0,    level: 1, icon: '🎬', name: 'Зритель-исследователь', sub: 'Начало путешествия по кинозалу STORM' },
+    { minXp: 150,  level: 2, icon: '🍿', name: 'Ценитель премьер', sub: 'Активный поиск лучших фильмов и сериалов' },
+    { minXp: 350,  level: 3, icon: '⚡', name: 'Адепт 4K UHD', sub: 'Высокий вкус и коллекционирование шедевров' },
+    { minXp: 700,  level: 4, icon: '💎', name: 'Хранитель коллекций', sub: 'Эксперт по редким релизам и озвучкам' },
+    { minXp: 1300, level: 5, icon: '🌌', name: 'Архитектор кинозала', sub: 'Мастер персональных подборок и марафонов' },
+    { minXp: 2200, level: 6, icon: '👑', name: 'Магистр STORM MULTIMEDIA', sub: 'Легендарный статус в экосистеме STORM SOFT' }
+  ];
+
+  let currentRank = ranks[0];
+  let nextRank = ranks[1];
+  for (let i = 0; i < ranks.length; i++) {
+    if (xp >= ranks[i].minXp) {
+      currentRank = ranks[i];
+      nextRank = ranks[i + 1] || null;
+    }
+  }
+
+  const iconEl = document.getElementById('profile-rank-icon');
+  const nameEl = document.getElementById('profile-rank-name');
+  const subEl = document.getElementById('profile-rank-sub');
+  const levelEl = document.getElementById('profile-level-pill');
+  const xpEl = document.getElementById('profile-xp-pill');
+  const fillEl = document.getElementById('profile-xp-bar-fill');
+  const hintEl = document.getElementById('profile-xp-hint');
+
+  if (iconEl) iconEl.textContent = currentRank.icon;
+  if (nameEl) nameEl.textContent = currentRank.name;
+  if (subEl) subEl.textContent = currentRank.sub;
+  if (levelEl) levelEl.textContent = `Уровень ${currentRank.level}`;
+  if (xpEl) xpEl.textContent = `${xp} XP`;
+
+  if (nextRank) {
+    const span = nextRank.minXp - currentRank.minXp;
+    const progress = Math.min(100, Math.max(8, Math.round(((xp - currentRank.minXp) / span) * 100)));
+    if (fillEl) fillEl.style.width = `${progress}%`;
+    if (hintEl) hintEl.textContent = `До ранга «${nextRank.name}»: ещё ${Math.max(0, nextRank.minXp - xp)} XP`;
+  } else {
+    if (fillEl) fillEl.style.width = '100%';
+    if (hintEl) hintEl.textContent = 'Достигнут максимальный легендарный ранг экосистемы!';
+  }
+}
+
 export function openProfileModal() {
   const modal = document.getElementById('profile-modal');
   if (!modal) return;
@@ -514,38 +642,53 @@ export function openProfileModal() {
       }
     };
   }
+  const livePreviewEl = document.getElementById('edit-avatar-live-preview');
+  if (livePreviewEl) {
+    livePreviewEl.src = currentAvatar;
+    livePreviewEl.onerror = () => {
+      if (!livePreviewEl.src.endsWith('assets/avatar_default.svg')) {
+        livePreviewEl.src = 'assets/avatar_default.svg';
+      }
+    };
+  }
 
   const userEl = document.getElementById('profile-username');
-  if (userEl) userEl.textContent = currentUser ? currentUser.username : 'Гость (Без авторизации)';
+  if (userEl) userEl.textContent = currentUser ? currentUser.username : 'Гость (Локальный профиль)';
 
   const emailEl = document.getElementById('profile-email');
-  if (emailEl) emailEl.textContent = currentUser ? currentUser.email : 'Войдите для синхронизации и сохранения';
+  if (emailEl) emailEl.textContent = currentUser ? currentUser.email : 'Все закладки и история сохраняются на устройстве';
+
+  const savedBio = currentUser?.bio || localStorage.getItem('storm_profile_bio') || 'Ценитель качественного кино и 4K UHD релизов';
+  const bioDisplay = document.getElementById('profile-bio-display');
+  if (bioDisplay) bioDisplay.textContent = savedBio;
 
   const dateEl = document.getElementById('profile-date');
-  if (dateEl) dateEl.textContent = currentUser ? formatDate(currentUser.created_at) : '—';
+  if (dateEl) dateEl.textContent = currentUser ? formatDate(currentUser.created_at) : formatDate(Date.now());
 
   const setStat = (id, val) => {
     const el = document.getElementById(id);
     if (el) el.textContent = val !== undefined && val !== null ? val : 0;
   };
 
-  const updateStatsUI = (st = {}) => {
+  const updateStatsUI = (rawServerStats = {}) => {
+    const st = computeLocalAndMergedProfileStats(rawServerStats);
     setStat('profile-stat-hours', st.totalWatchedHours);
     setStat('profile-stat-watching', st.watchingCount);
     setStat('profile-stat-planned', st.plannedCount);
     setStat('profile-stat-completed', st.completedCount);
-    setStat('profile-stat-favorites', st.favoritesCount || st.favoriteCount);
+    setStat('profile-stat-favorites', st.favoritesCount);
     setStat('profile-stat-onhold', st.onHoldCount);
     setStat('profile-stat-dropped', st.droppedCount);
     setStat('profile-stat-wontwatch', st.wontWatchCount);
     setStat('profile-stat-bookmarks', st.bookmarksCount);
     setStat('profile-stat-lists', st.customListsCount);
+    updateProfileRankUI(st);
   };
 
   updateStatsUI(currentUser?.stats || {});
 
   // Всегда синхронизируем свежую статистику с сервера при открытии профиля
-  if (currentToken) {
+  if (currentToken && !currentToken.startsWith('offline_') && !currentToken.startsWith('guest_')) {
     fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${currentToken}` } })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
@@ -565,17 +708,73 @@ export function openProfileModal() {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
       import('./i18n.js').then(m => m.setLanguage(e.target.value));
+      showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
-  // Тема оформления в настройках профиля
-  const profileThemeSelect = document.getElementById('profile-theme-select');
-  if (profileThemeSelect) {
-    profileThemeSelect.value = localStorage.getItem('storm_theme') || 'STORM DARK';
-    profileThemeSelect.onchange = (e) => {
-      import('./theme.js').then(m => m.setTheme(e.target.value));
-    };
-  }
+  // Тема оформления, акцент, шрифт и масштаб в настройках профиля
+  import('./theme.js').then(themeMod => {
+    const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
+    const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
+    const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
+    const currentScale = themeMod.getUiScale ? themeMod.getUiScale() : (localStorage.getItem('storm_ui_scale') || '1');
+
+    const profileThemeSelect = document.getElementById('profile-theme-select');
+    if (profileThemeSelect) {
+      profileThemeSelect.value = currentTheme;
+      profileThemeSelect.onchange = (e) => {
+        themeMod.setTheme(e.target.value);
+        showToast(`🎨 Тема оформления: ${e.target.value}`, 'info');
+      };
+    }
+
+    document.querySelectorAll('.profile-theme-swatch-card').forEach(btn => {
+      const tName = btn.getAttribute('data-theme-swatch');
+      btn.classList.toggle('is-active', tName === currentTheme);
+      btn.onclick = () => {
+        themeMod.setTheme(tName);
+        if (profileThemeSelect) profileThemeSelect.value = tName;
+        showToast(`🎨 Тема оформления: ${tName}`, 'info');
+      };
+    });
+
+    const profileAccentSelect = document.getElementById('profile-accent-select');
+    if (profileAccentSelect) {
+      profileAccentSelect.value = currentAccent;
+      profileAccentSelect.onchange = (e) => {
+        themeMod.setAccent(e.target.value);
+        showToast('✨ Акцентный цвет обновлён', 'info');
+      };
+    }
+
+    document.querySelectorAll('.profile-accent-dot').forEach(dot => {
+      const aName = dot.getAttribute('data-accent-dot');
+      dot.classList.toggle('is-active', aName === currentAccent);
+      dot.onclick = () => {
+        themeMod.setAccent(aName);
+        if (profileAccentSelect) profileAccentSelect.value = aName;
+        showToast('✨ Акцентный цвет обновлён', 'info');
+      };
+    });
+
+    const profileFontSelect = document.getElementById('profile-font-select');
+    if (profileFontSelect) {
+      profileFontSelect.value = currentFont;
+      profileFontSelect.onchange = (e) => {
+        themeMod.setFont(e.target.value);
+        showToast(`🔤 Шрифт интерфейса: ${e.target.value}`, 'info');
+      };
+    }
+
+    const profileScaleSelect = document.getElementById('profile-scale-select');
+    if (profileScaleSelect) {
+      profileScaleSelect.value = String(currentScale);
+      profileScaleSelect.onchange = (e) => {
+        themeMod.setUiScale(e.target.value);
+        showToast(`🔍 Масштаб интерфейса: ${Math.round(Number(e.target.value) * 100)}%`, 'info');
+      };
+    }
+  }).catch(() => {});
 
   // Настройки плеера по умолчанию, AdShield, CleanView, Smart Skip и Ambilight
   try {
@@ -670,6 +869,34 @@ export function openProfileModal() {
     };
   }
 
+  // Настройки безопасности: Детский безопасный режим и история
+  const kidModeToggle = document.getElementById('profile-security-kid-toggle');
+  if (kidModeToggle) {
+    const activeFam = getActiveProfile();
+    kidModeToggle.checked = Boolean(activeFam?.isKid || localStorage.getItem('storm_kid_safe_mode') === 'true');
+    kidModeToggle.onchange = (e) => {
+      const isKid = e.target.checked;
+      localStorage.setItem('storm_kid_safe_mode', isKid ? 'true' : 'false');
+      const prof = getActiveProfile();
+      if (prof) {
+        prof.isKid = isKid;
+        saveFamilyProfiles([...familyProfiles]);
+      }
+      updateFamilyHeaderUI();
+      if (typeof window.stormRefreshCatalog === 'function') window.stormRefreshCatalog();
+      showToast(isKid ? '🛡️ Детский безопасный режим (Фильтр 18+) включён' : '⚪ Детский режим отключён', 'info');
+    };
+  }
+
+  const historyToggle = document.getElementById('profile-security-history-toggle');
+  if (historyToggle) {
+    historyToggle.checked = localStorage.getItem('storm_save_history') !== 'false';
+    historyToggle.onchange = (e) => {
+      localStorage.setItem('storm_save_history', e.target.checked ? 'true' : 'false');
+      showToast(e.target.checked ? '⏱️ Сохранение истории просмотров включено' : '⚪ История просмотров приостановлена', 'info');
+    };
+  }
+
   // Заполняем форму редактирования профиля
   const inputUser = document.getElementById('edit-profile-username');
   if (inputUser) inputUser.value = currentUser ? currentUser.username : '';
@@ -679,6 +906,9 @@ export function openProfileModal() {
 
   const inputAvatar = document.getElementById('edit-avatar-url');
   if (inputAvatar) inputAvatar.value = currentUser?.avatar || '';
+
+  const inputBio = document.getElementById('edit-profile-bio');
+  if (inputBio) inputBio.value = savedBio;
 
   // Рендерим пресеты аватарок
   renderAvatarPresets(currentUser?.avatar || '');
@@ -729,6 +959,8 @@ function renderAvatarPresets(selectedUrl) {
       if (input) input.value = url;
       const profileAvatar = document.getElementById('profile-avatar');
       if (profileAvatar) profileAvatar.src = url;
+      const livePreview = document.getElementById('edit-avatar-live-preview');
+      if (livePreview) livePreview.src = url;
     });
   });
 }
@@ -764,6 +996,127 @@ export function initProfileHandlers() {
     });
   });
 
+  // Быстрые переходы внутри карточки героя профиля
+  const avatarQuickEdit = document.getElementById('profile-avatar-quick-edit');
+  if (avatarQuickEdit) avatarQuickEdit.addEventListener('click', () => switchProfileTab('edit'));
+
+  const jumpEditBtn = document.getElementById('profile-jump-edit-btn');
+  if (jumpEditBtn) jumpEditBtn.addEventListener('click', () => switchProfileTab('edit'));
+
+  const jumpAchBtn = document.getElementById('profile-jump-achievements-btn');
+  if (jumpAchBtn) jumpAchBtn.addEventListener('click', () => switchProfileTab('achievements'));
+
+  // Интерактивные 3D-карточки статистики -> переход сразу к списку
+  document.querySelectorAll('.profile-interactive-stat-card[data-stat-target]').forEach(card => {
+    card.addEventListener('click', () => {
+      const target = card.getAttribute('data-stat-target');
+      const modal = document.getElementById('profile-modal');
+      if (modal) modal.classList.remove('is-open');
+
+      if (target === 'continue') {
+        if (typeof window.switchTab === 'function') window.switchTab('continue');
+      } else if (target === 'lists') {
+        if (typeof window.switchTab === 'function') window.switchTab('bookmarks', { subTab: 'lists' });
+        showToast('📁 Открыты ваши коллекции', 'info');
+      } else if (target) {
+        if (typeof window.switchTab === 'function') window.switchTab('bookmarks', { subTab: target });
+      }
+    });
+  });
+
+  // Быстрый центр сервисов в профиле
+  const bindProfileHub = (btnId, headerBtnId) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const modal = document.getElementById('profile-modal');
+      if (modal) modal.classList.remove('is-open');
+      const targetBtn = document.getElementById(headerBtnId);
+      if (targetBtn) targetBtn.click();
+    });
+  };
+  bindProfileHub('profile-hub-recommender', 'header-recommender-btn');
+  bindProfileHub('profile-hub-calendar', 'header-calendar-btn');
+  bindProfileHub('profile-hub-rooms', 'header-rooms-btn');
+  bindProfileHub('profile-hub-sync', 'header-sync-btn');
+
+  // Экспорт и импорт базы JSON во вкладке Безопасность
+  const exportJsonBtn = document.getElementById('profile-export-json-btn');
+  if (exportJsonBtn) {
+    exportJsonBtn.addEventListener('click', () => {
+      try {
+        const payload = {
+          app: 'STORM MULTIMEDIA',
+          version: '1.0.44',
+          exportedAt: new Date().toISOString(),
+          bookmarks: JSON.parse(localStorage.getItem('storm_local_bookmarks') || '{}'),
+          customLists: JSON.parse(localStorage.getItem('storm_custom_lists') || '[]'),
+          continueWatching: JSON.parse(localStorage.getItem('storm_continue_watching') || '[]'),
+          theme: localStorage.getItem('storm_theme') || 'STORM MIDNIGHT',
+          accent: localStorage.getItem('storm_accent') || 'default',
+          defaultPlayer: localStorage.getItem('storm_default_player') || 'lift_adfree',
+          bio: localStorage.getItem('storm_profile_bio') || ''
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dateStr = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `STORM_MULTIMEDIA_Backup_${dateStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        showToast('📥 Резервная копия базы успешно сохранена!', 'success');
+      } catch (err) {
+        showToast('Ошибка экспорта базы: ' + err.message, 'error');
+      }
+    });
+  }
+
+  const importJsonInput = document.getElementById('profile-import-json-input');
+  if (importJsonInput) {
+    importJsonInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = JSON.parse(String(evt.target?.result || '{}'));
+          if (data.bookmarks && typeof data.bookmarks === 'object') {
+            localStorage.setItem('storm_local_bookmarks', JSON.stringify(data.bookmarks));
+          }
+          if (Array.isArray(data.customLists)) {
+            localStorage.setItem('storm_custom_lists', JSON.stringify(data.customLists));
+          }
+          if (Array.isArray(data.continueWatching)) {
+            localStorage.setItem('storm_continue_watching', JSON.stringify(data.continueWatching));
+          }
+          if (data.bio) localStorage.setItem('storm_profile_bio', data.bio);
+          showToast('✅ Резервная копия успешно импортирована!', 'success');
+          openProfileModal();
+          if (typeof window.stormRefreshCatalog === 'function') window.stormRefreshCatalog();
+        } catch (err) {
+          showToast('Некорректный файл резервной копии JSON', 'error');
+        }
+      };
+      reader.readAsText(file);
+      importJsonInput.value = '';
+    });
+  }
+
+  const clearCacheBtn = document.getElementById('profile-clear-cache-btn');
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', () => {
+      const drawerClearBtn = document.getElementById('mobile-drawer-clear-cache-btn');
+      if (drawerClearBtn) {
+        drawerClearBtn.click();
+      } else {
+        showToast('🧹 Кэш метаданных и постеров очищен!', 'success');
+      }
+    });
+  }
+
   // Генерация случайного аватара
   const randomBtn = document.getElementById('random-avatar-btn');
   if (randomBtn) {
@@ -774,8 +1127,10 @@ export function initProfileHandlers() {
       if (input) input.value = url;
       const profileAvatar = document.getElementById('profile-avatar');
       if (profileAvatar) profileAvatar.src = url;
+      const livePreview = document.getElementById('edit-avatar-live-preview');
+      if (livePreview) livePreview.src = url;
       document.querySelectorAll('.avatar-preset-item').forEach(el => el.classList.remove('selected'));
-      showToast('Сгенерирован новый уникальный аватар!', 'info');
+      showToast('🎲 Сгенерирован новый уникальный аватар!', 'info');
     });
   }
 
@@ -803,8 +1158,10 @@ export function initProfileHandlers() {
         if (input) input.value = dataUrl;
         const profileAvatar = document.getElementById('profile-avatar');
         if (profileAvatar) profileAvatar.src = dataUrl;
+        const livePreview = document.getElementById('edit-avatar-live-preview');
+        if (livePreview) livePreview.src = dataUrl;
         document.querySelectorAll('.avatar-preset-item').forEach(el => el.classList.remove('selected'));
-        showToast('Изображение загружено!', 'success');
+        showToast('📁 Изображение загружено!', 'success');
       };
       reader.readAsDataURL(file);
     });
@@ -818,6 +1175,8 @@ export function initProfileHandlers() {
       if (val) {
         const profileAvatar = document.getElementById('profile-avatar');
         if (profileAvatar) profileAvatar.src = val;
+        const livePreview = document.getElementById('edit-avatar-live-preview');
+        if (livePreview) livePreview.src = val;
       }
     });
   }
@@ -830,6 +1189,7 @@ export function initProfileHandlers() {
       const username = document.getElementById('edit-profile-username').value.trim();
       const email = document.getElementById('edit-profile-email').value.trim();
       const avatar = document.getElementById('edit-avatar-url').value.trim();
+      const bio = document.getElementById('edit-profile-bio')?.value.trim() || '';
 
       if (!username || !email) {
         showToast('Имя пользователя и email обязательны', 'error');
@@ -837,7 +1197,13 @@ export function initProfileHandlers() {
       }
 
       try {
-        await updateProfile(username, email, avatar);
+        await updateProfile(username, email, avatar, bio);
+        const bioDisplay = document.getElementById('profile-bio-display');
+        if (bioDisplay && bio) bioDisplay.textContent = bio;
+        const userEl = document.getElementById('profile-username');
+        if (userEl) userEl.textContent = username;
+        const emailEl = document.getElementById('profile-email');
+        if (emailEl) emailEl.textContent = email;
         switchProfileTab('overview');
       } catch (err) {
         showToast(err.message, 'error');

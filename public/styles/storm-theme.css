@@ -581,8 +581,11 @@
 [data-font="JetBrainsMono"]  { --storm-font-family: 'JetBrains Mono', 'Consolas', monospace; }
 [data-font="FiraCode"]       { --storm-font-family: 'Fira Code', 'Cascadia Code', monospace; }
 
-html, body {
+html, body, button, input, select, textarea {
   font-family: var(--storm-font-family) !important;
+}
+
+body {
   zoom: var(--storm-ui-scale, 1);
 }
 

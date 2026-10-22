@@ -204,8 +204,13 @@ export function initFormFactorEngine() {
   const drawerFactorBtn = document.getElementById('drawer-form-factor-btn');
   if (drawerFactorBtn) {
     drawerFactorBtn.onclick = () => {
-      const drawer = document.getElementById('storm-mobile-drawer');
-      if (drawer) drawer.classList.remove('is-open');
+      if (typeof window.closeMobileDrawer === 'function') {
+        window.closeMobileDrawer();
+      } else {
+        const backdrop = document.getElementById('mobile-drawer-backdrop');
+        if (backdrop) backdrop.classList.remove('is-open');
+        document.body.classList.remove('drawer-open');
+      }
       openFormFactorModal();
     };
   }
