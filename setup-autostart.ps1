@@ -15,24 +15,20 @@ if (Test-Path $vbsPath) {
     $shortcut.WindowStyle = 7
     $shortcut.Save()
 
-    # 2. Register in Windows Task Scheduler
-    $taskRegistered = $false
+    # 2. Register in Windows CurrentUser Run Registry (no Admin required)
     try {
-        $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsPath`"" -WorkingDirectory $scriptPath
-        $trigger = New-ScheduledTaskTrigger -AtLogOn
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        Register-ScheduledTask -TaskName "StormMultimediaServer" -Action $action -Trigger $trigger -Settings $settings -Description "STORM MULTIMEDIA Background Server with Watchdog" -Force -ErrorAction SilentlyContinue | Out-Null
-        $taskRegistered = $true
-    } catch {
-        $taskRegistered = $false
-    }
+        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "StormMultimediaServer" -Value "wscript.exe `"$vbsPath`"" -Force -ErrorAction SilentlyContinue
+    } catch {}
+
+    # 3. Launch detached background process via WMI if not already running
+    try {
+        Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = "wscript.exe `"$vbsPath`""; CurrentDirectory = $scriptPath } | Out-Null
+    } catch {}
 
     Write-Host "==========================================================" -ForegroundColor Cyan
     Write-Host "[OK] STORM MULTIMEDIA autostart configured successfully!" -ForegroundColor Green
     Write-Host "Startup shortcut: $shortcutPath" -ForegroundColor White
-    if ($taskRegistered) {
-        Write-Host "Task Scheduler: StormMultimediaServer registered." -ForegroundColor Green
-    }
+    Write-Host "Registry HKCU Run: StormMultimediaServer registered." -ForegroundColor Green
     Write-Host "Server will automatically start in background with watchdog." -ForegroundColor White
     Write-Host "==========================================================" -ForegroundColor Cyan
 } else {

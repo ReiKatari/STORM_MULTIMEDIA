@@ -9,10 +9,10 @@
   <meta name="theme-color" content="#8b5cf6">
   
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.44">
-  <link rel="stylesheet" href="/styles/components.css?v=1.0.44">
-  <link rel="stylesheet" href="/styles/main.css?v=1.0.44">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.44">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.45">
+  <link rel="stylesheet" href="/styles/components.css?v=1.0.45">
+  <link rel="stylesheet" href="/styles/main.css?v=1.0.45">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.45">
 </head>
 <body data-active-tab="home">
 
@@ -331,12 +331,24 @@
           </button>
         </div>
         <div class="cinema-header-actions">
-          <button type="button" class="storm-modal-tool-btn" id="player-aspect-btn" title="Масштаб видео (16:9 / 21:9 Cover / Fit)">📐</button>
-          <button type="button" class="storm-modal-tool-btn" id="player-pip-btn" title="Картинка в картинке (PiP)">🪟</button>
-          <button type="button" class="storm-modal-tool-btn" id="player-sleep-btn" title="Таймер сна">⏱️</button>
-          <button type="button" class="storm-modal-tool-btn" id="player-screen-lock-btn" title="Блокировка экрана от случайных нажатий">🔓</button>
-          <button type="button" class="storm-modal-fullscreen-btn" id="cinema-header-fullscreen-btn" title="Развернуть на весь экран (F)">⛶</button>
-          <button type="button" class="storm-modal-close" title="Закрыть плеер">✕</button>
+          <button type="button" class="storm-modal-tool-btn" id="player-aspect-btn" title="Масштаб видео (16:9 / 21:9 Cover / Fit)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h3"/><path d="M6 9v3"/><path d="M18 15h-3"/><path d="M18 15v-3"/></svg>
+          </button>
+          <button type="button" class="storm-modal-tool-btn" id="player-pip-btn" title="Картинка в картинке (PiP)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/></svg>
+          </button>
+          <button type="button" class="storm-modal-tool-btn" id="player-sleep-btn" title="Таймер сна">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/><path d="M10 2h4"/></svg>
+          </button>
+          <button type="button" class="storm-modal-tool-btn" id="player-screen-lock-btn" title="Блокировка экрана от случайных нажатий">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+          </button>
+          <button type="button" class="storm-modal-fullscreen-btn" id="cinema-header-fullscreen-btn" title="Развернуть на весь экран (F)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          </button>
+          <button type="button" class="storm-modal-close" title="Закрыть плеер">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       </div>
 
@@ -384,7 +396,7 @@
               </div>
 
               <!-- 4. 3D-барабан выбора сезона и серии (Lift Wheel Picker) -->
-              <button type="button" class="quick-dropdown-trigger" id="quick-wheel-picker-btn" title="Открыть 3D-барабан быстрого выбора сезона и серии" style="flex: 0 0 auto; padding: 8px 14px; gap: 6px; border-color: rgba(0, 210, 255, 0.35);">
+              <button type="button" class="quick-dropdown-trigger" id="quick-wheel-picker-btn" title="Открыть 3D-барабан быстрого выбора сезона и серии" style="width: auto; flex: 0 0 auto; padding: 8px 14px; gap: 6px; border-color: var(--accent-glow);">
                 <span class="quick-dropdown-icon">🎡</span>
                 <span class="quick-dropdown-val" style="font-weight: 700;">Барабан серий</span>
               </button>
@@ -614,16 +626,16 @@
       </div>
       <div class="storm-modal-body">
         <!-- Форма входа -->
-        <form id="login-form">
+        <form id="login-form" novalidate>
           <div class="filter-group" style="margin-bottom: 14px;">
             <label data-i18n="auth_username">Имя пользователя или Email</label>
-            <input type="text" class="storm-input" id="login-username" required placeholder="Введите логин" autocomplete="username">
+            <input type="text" class="storm-input" id="login-username" placeholder="Введите логин (например, ReiKatari)" autocomplete="username">
           </div>
           <div class="filter-group" style="margin-bottom: 18px;">
             <label data-i18n="auth_password">Пароль</label>
-            <input type="password" class="storm-input" id="login-password" required placeholder="Введите пароль" autocomplete="current-password">
+            <input type="password" class="storm-input" id="login-password" placeholder="Введите пароль (необязательно для быстрого входа)" autocomplete="current-password">
           </div>
-          <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%; margin-bottom: 10px;" data-i18n="auth_login_submit">Войти в аккаунт</button>
+          <button type="submit" class="storm-btn storm-btn-primary" id="login-submit-btn" style="width: 100%; margin-bottom: 10px;" data-i18n="auth_login_submit">Войти в аккаунт</button>
           <button type="button" class="storm-btn storm-btn-secondary" id="open-tv-code-btn" style="width: 100%; margin-bottom: 10px;">📺 Войти по коду с ТВ</button>
           <button type="button" class="storm-btn storm-btn-outline" id="guest-login-btn" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_guest_login">Войти как гость</button>
           <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
@@ -652,20 +664,20 @@
         </div>
 
         <!-- Форма регистрации -->
-        <form id="register-form" style="display: none;">
+        <form id="register-form" novalidate style="display: none;">
           <div class="filter-group" style="margin-bottom: 12px;">
             <label data-i18n="auth_username">Имя пользователя</label>
-            <input type="text" class="storm-input" id="reg-username" required placeholder="Ваш никнейм" autocomplete="username">
+            <input type="text" class="storm-input" id="reg-username" placeholder="Ваш никнейм" autocomplete="username">
           </div>
           <div class="filter-group" style="margin-bottom: 12px;">
             <label data-i18n="auth_email">Электронная почта</label>
-            <input type="email" class="storm-input" id="reg-email" required placeholder="user@example.com" autocomplete="email">
+            <input type="email" class="storm-input" id="reg-email" placeholder="user@example.com" autocomplete="email">
           </div>
           <div class="filter-group" style="margin-bottom: 18px;">
             <label data-i18n="auth_password">Пароль</label>
-            <input type="password" class="storm-input" id="reg-password" required placeholder="Не менее 6 символов" autocomplete="new-password">
+            <input type="password" class="storm-input" id="reg-password" placeholder="Не менее 6 символов" autocomplete="new-password">
           </div>
-          <button type="submit" class="storm-btn storm-btn-primary" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_register_submit">Создать аккаунт</button>
+          <button type="submit" class="storm-btn storm-btn-primary" id="register-submit-btn" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_register_submit">Создать аккаунт</button>
           <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
             <span data-i18n="auth_have_account">Уже есть аккаунт?</span> <a href="#" id="switch-to-login" style="color: var(--accent); font-weight: 600; text-decoration: none;" data-i18n="auth_login">Войти</a>
           </div>
@@ -1146,7 +1158,7 @@
           <div class="profile-settings-card" style="margin-top: 12px; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.44 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.45 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -1809,7 +1821,7 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.44"></script>
+  <script type="module" src="/js/app.js?v=1.0.45"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
   <script>

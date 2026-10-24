@@ -68,7 +68,11 @@ export async function checkAuth() {
       headers['Authorization'] = `Bearer ${currentToken}`;
     }
 
-    const res = await fetch('/api/auth/me', { headers });
+    const res = await fetch('/api/auth/me', {
+      headers,
+      signal: AbortSignal.timeout(2500)
+    });
+    if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
 
     if (res.ok) {
       const data = await res.json();
@@ -98,6 +102,7 @@ export async function checkAuth() {
       }
     }
   } catch (err) {
+    if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = false;
     console.warn('Автономный режим или сервер недоступен:', err.message);
     if (!currentUser) {
       try {
@@ -113,30 +118,36 @@ export async function checkAuth() {
 }
 
 export async function register(username, email, password) {
-  const uStr = String(username || '').trim();
-  const eStr = String(email || '').trim();
-  const pStr = String(password || '').trim();
+  const uStr = String(username || '').trim() || 'Пользователь';
+  const eStr = String(email || '').trim() || `${uStr.toLowerCase()}@storm.local`;
+  const pStr = String(password || '').trim() || 'Storm2026!';
 
-  const res = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: uStr, email: eStr, password: pStr })
-  });
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: uStr, email: eStr, password: pStr }),
+      signal: AbortSignal.timeout(2500)
+    });
+    if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Ошибка при регистрации');
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data && data.user) {
+      currentToken = data.token;
+      currentUser = data.user;
+      localStorage.setItem('storm_token', currentToken);
+      localStorage.setItem('storm_user', JSON.stringify(currentUser));
+
+      updateAuthUI();
+      notifyAuthChanged();
+      showToast(t('msg_login_success'), 'success');
+      return currentUser;
+    }
+  } catch (_) {
+    if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = false;
   }
 
-  currentToken = data.token;
-  currentUser = data.user;
-  localStorage.setItem('storm_token', currentToken);
-  localStorage.setItem('storm_user', JSON.stringify(currentUser));
-  
-  updateAuthUI();
-  notifyAuthChanged();
-  showToast(t('msg_login_success'), 'success');
-  return currentUser;
+  return loginOfflineUser(uStr, eStr);
 }
 
 export async function login(loginStr, password) {
@@ -157,8 +168,10 @@ export async function login(loginStr, password) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login: lStr, password: pStr || 'Storm2026!' })
+      body: JSON.stringify({ login: lStr, password: pStr || 'Storm2026!' }),
+      signal: AbortSignal.timeout(2500)
     });
+    if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
 
     if (res.ok) {
       const data = await res.json();
@@ -178,7 +191,8 @@ export async function login(loginStr, password) {
         const regRes = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: lStr, email, password: pStr || 'Storm2026!' })
+          body: JSON.stringify({ username: lStr, email, password: pStr || 'Storm2026!' }),
+          signal: AbortSignal.timeout(2500)
         });
         if (regRes.ok) {
           const regData = await regRes.json();
@@ -201,6 +215,7 @@ export async function login(loginStr, password) {
       return loginOfflineUser(lStr);
     }
   } catch (err) {
+    if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = false;
     // Автономный режим (Android WebView, офлайн или сбой сети)
     if (isReiKatari) {
       return loginOfflineAdmin('ReiKatari');
@@ -226,13 +241,13 @@ export async function login(loginStr, password) {
   }
 }
 
-export function loginOfflineUser(username = 'Пользователь') {
+export function loginOfflineUser(username = 'Пользователь', customEmail = '') {
   currentUser = {
     id: Math.floor(Math.random() * 10000) + 100,
     username: username,
-    email: username.includes('@') ? username : `${username.toLowerCase()}@storm.local`,
+    email: customEmail || (username.includes('@') ? username : `${username.toLowerCase()}@storm.local`),
     role: 'user',
-    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`,
+    avatar: 'assets/avatar_default.svg',
     created_at: new Date().toISOString(),
     stats: { bookmarks_count: 0, history_count: 0 }
   };
@@ -1047,7 +1062,7 @@ export function initProfileHandlers() {
       try {
         const payload = {
           app: 'STORM MULTIMEDIA',
-          version: '1.0.44',
+          version: '1.0.45',
           exportedAt: new Date().toISOString(),
           bookmarks: JSON.parse(localStorage.getItem('storm_local_bookmarks') || '{}'),
           customLists: JSON.parse(localStorage.getItem('storm_custom_lists') || '[]'),

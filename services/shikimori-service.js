@@ -1,13 +1,27 @@
 import { getCache, setCache } from '../db.js';
 import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
 
-const SHIKIMORI_BASE = 'https://shikimori.one';
+const SHIKIMORI_BASE = 'https://shikimori.io';
+const SHIKIMORI_MIRRORS = ['https://shikimori.io', 'https://shikimori.one'];
 const USER_AGENT = 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)';
+
+async function shikiFetch(pathAndQuery, timeoutMs = 4500) {
+  for (const base of SHIKIMORI_MIRRORS) {
+    try {
+      const res = await fetch(`${base}${pathAndQuery}`, {
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { 'User-Agent': USER_AGENT }
+      });
+      if (res.ok) return res;
+    } catch (_) {}
+  }
+  throw new Error(`Shikimori mirror fetch failed for ${pathAndQuery}`);
+}
 
 export async function getShikimoriCatalog(category = 'popular', page = 1) {
   const cacheKey = `shikimori_${category}_page_${page}`;
   const cached = getCache('shikimori', cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
   let order = 'popularity';
   let kind = '';
@@ -16,14 +30,11 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
   if (category === 'anime-movies') kind = 'movie';
   if (category === 'anime-series') kind = 'tv';
 
-  let url = `${SHIKIMORI_BASE}/api/animes?limit=50&page=${page}&order=${order}`;
-  if (kind) url += `&kind=${kind}`;
+  let pathAndQuery = `/api/animes?limit=50&page=${page}&order=${order}`;
+  if (kind) pathAndQuery += `&kind=${kind}`;
 
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
-      headers: { 'User-Agent': USER_AGENT }
-    });
+    const res = await shikiFetch(pathAndQuery, 5000);
     if (!res.ok) throw new Error(`Shikimori error ${res.status}`);
 
     const data = await res.json();
@@ -64,18 +75,16 @@ export async function searchShikimori(query) {
   if (!query || !query.trim()) return [];
   const cacheKey = `shikimori_search_${query.toLowerCase().trim()}`;
   const cached = getCache('shikimori', cacheKey);
-  if (cached) return cached;
+  if (Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const res = await fetch(`${SHIKIMORI_BASE}/api/animes?limit=25&search=${encodeURIComponent(query.trim())}`, {
-      signal: AbortSignal.timeout(8000),
-      headers: { 'User-Agent': USER_AGENT }
-    });
+    const res = await shikiFetch(`/api/animes?limit=25&search=${encodeURIComponent(query.trim())}`, 4500);
     if (!res.ok) return [];
 
     const data = await res.json();
     const items = data.map(item => ({
       id: String(item.id),
+      shikimori_id: String(item.id),
       source: 'shikimori',
       title: item.russian || item.name,
       original_title: item.name,
@@ -86,7 +95,9 @@ export async function searchShikimori(query) {
       quality: 'HD 1080p'
     }));
 
-    setCache('shikimori', cacheKey, items, 900);
+    if (items.length > 0) {
+      setCache('shikimori', cacheKey, items, 900);
+    }
     return items;
   } catch (err) {
     return [];
@@ -100,13 +111,10 @@ export async function getShikimoriRelated(animeId) {
   if (!animeId) return [];
   const cacheKey = `shikimori_related_${animeId}`;
   const cached = getCache('shikimori', cacheKey);
-  if (cached) return cached;
+  if (Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const res = await fetch(`${SHIKIMORI_BASE}/api/animes/${animeId}/related`, {
-      signal: AbortSignal.timeout(8000),
-      headers: { 'User-Agent': USER_AGENT }
-    });
+    const res = await shikiFetch(`/api/animes/${animeId}/related`, 5000);
     if (!res.ok) return [];
 
     const data = await res.json();
@@ -142,10 +150,7 @@ export async function getShikimoriCalendar() {
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const res = await fetch(`${SHIKIMORI_BASE}/api/calendar`, {
-      signal: AbortSignal.timeout(3500),
-      headers: { 'User-Agent': USER_AGENT }
-    });
+    const res = await shikiFetch('/api/calendar', 3500);
     if (!res.ok) return [];
 
     const data = await res.json();

@@ -4,6 +4,9 @@ let pool = null;
 let activeHost = null;
 let isConnected = false;
 let syncInProgress = false;
+let initInFlightPromise = null;
+let lastFailedInitAt = 0;
+const INIT_RETRY_COOLDOWN_MS = 60 * 1000;
 
 const DB_CONFIG = {
   port: parseInt(process.env.DB_PORT || '3306', 10),
@@ -12,49 +15,71 @@ const DB_CONFIG = {
   database: process.env.DB_NAME || 'stormmultimedia',
   waitForConnections: true,
   connectionLimit: 15,
-  connectTimeout: 3000,
+  connectTimeout: 2500,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000
 };
 
 /**
- * Инициализация пула соединений MariaDB 10 с автоматическим переключением хостов
+ * Инициализация пула соединений MariaDB 10 с автоматическим переключением хостов,
+ * защитой от параллельного шторма подключений (single-flight) и кулдауном 60 сек.
  */
-export async function initMariaDb() {
+export async function initMariaDb(force = false) {
   if (pool && isConnected) return pool;
-
-  const candidateHosts = [
-    process.env.DB_HOST || '127.0.0.1',
-    process.env.DB_HOST_FALLBACK || '192.168.1.154'
-  ];
-
-  // Убираем дубликаты
-  const uniqueHosts = Array.from(new Set(candidateHosts.filter(Boolean)));
-
-  for (const host of uniqueHosts) {
-    try {
-      const candidatePool = mysql.createPool({
-        ...DB_CONFIG,
-        host
-      });
-
-      // Проверка пинга
-      const [rows] = await candidatePool.query('SELECT 1 AS ok');
-      if (rows && rows.length > 0) {
-        pool = candidatePool;
-        activeHost = host;
-        isConnected = true;
-        console.log(`[MariaDB 10] Успешное подключение к базе данных '${DB_CONFIG.database}' на ${host}:${DB_CONFIG.port}`);
-        return pool;
-      }
-    } catch (err) {
-      console.warn(`[MariaDB 10] Хост ${host}:${DB_CONFIG.port} недоступен (${err.code || err.message}). Пробуем следующий...`);
-    }
+  if (initInFlightPromise) return initInFlightPromise;
+  if (!force && lastFailedInitAt > 0 && (Date.now() - lastFailedInitAt) < INIT_RETRY_COOLDOWN_MS) {
+    return null;
   }
 
-  console.warn('[MariaDB 10] Внимание: ни один из хостов MariaDB не ответил. Будет задействован автономный SQLite режим.');
-  isConnected = false;
-  return null;
+  initInFlightPromise = (async () => {
+    const candidateHosts = [
+      process.env.DB_HOST || '127.0.0.1',
+      process.env.DB_HOST_FALLBACK || '192.168.1.154'
+    ];
+
+    const uniqueHosts = Array.from(new Set(candidateHosts.filter(Boolean)));
+
+    for (const host of uniqueHosts) {
+      let candidatePool = null;
+      try {
+        candidatePool = mysql.createPool({
+          ...DB_CONFIG,
+          host
+        });
+
+        const [rows] = await candidatePool.query('SELECT 1 AS ok');
+        if (rows && rows.length > 0) {
+          pool = candidatePool;
+          activeHost = host;
+          isConnected = true;
+          lastFailedInitAt = 0;
+          console.log(`[MariaDB 10] Успешное подключение к базе данных '${DB_CONFIG.database}' на ${host}:${DB_CONFIG.port}`);
+          return pool;
+        }
+        await candidatePool.end().catch(() => {});
+      } catch (err) {
+        if (candidatePool) {
+          await candidatePool.end().catch(() => {});
+        }
+        if (lastFailedInitAt === 0) {
+          console.warn(`[MariaDB 10] Хост ${host}:${DB_CONFIG.port} недоступен (${err.code || err.message}). Пробуем следующий...`);
+        }
+      }
+    }
+
+    if (lastFailedInitAt === 0) {
+      console.warn('[MariaDB 10] Внимание: ни один из хостов MariaDB не ответил. Задействован автономный SQLite режим.');
+    }
+    lastFailedInitAt = Date.now();
+    isConnected = false;
+    return null;
+  })();
+
+  try {
+    return await initInFlightPromise;
+  } finally {
+    initInFlightPromise = null;
+  }
 }
 
 export function getMariaDbPool() {
@@ -74,10 +99,11 @@ export function getMariaDbHost() {
  */
 export async function queryMariaDb(sql, params = []) {
   if (!pool || !isConnected) {
-    // Попытка ленивого подключения
-    try {
-      await initMariaDb();
-    } catch (_) {}
+    if (lastFailedInitAt === 0 || (Date.now() - lastFailedInitAt) >= INIT_RETRY_COOLDOWN_MS) {
+      try {
+        await initMariaDb();
+      } catch (_) {}
+    }
   }
   if (!pool || !isConnected) return null;
 

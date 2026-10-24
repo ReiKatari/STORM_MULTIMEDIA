@@ -49,10 +49,9 @@ function liftCustomLookup(hostname, options, callback) {
 }
 
 const liftHttpsAgent = new https.Agent({
-  keepAlive: true,
-  maxSockets: 32,
-  timeout: 10000,
-  lookup: liftCustomLookup
+  keepAlive: false,
+  maxSockets: 64,
+  rejectUnauthorized: false
 });
 
 /**
@@ -83,7 +82,7 @@ export async function refreshLiftDnsIfNeeded(force = false) {
 }
 
 /**
- * Низкоуровневый HTTP/HTTPS запрос с поддержкой закрепленного IP для *.liftw.ws
+ * Низкоуровневый HTTP/HTTPS запрос с поддержкой закрепленного IP для *.liftw.ws и защитой от DPI/SNI фильтрации
  */
 export function liftRequestRaw(urlStr, options = {}) {
   return new Promise((resolve, reject) => {
@@ -103,11 +102,13 @@ export function liftRequestRaw(urlStr, options = {}) {
       : null;
 
     const headers = {
+      'Host': parsedUrl.host,
       'User-Agent': LIFT_USER_AGENT,
       'Accept': options.accept || 'application/json, text/html, */*',
       'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
       'Origin': options.origin || 'https://liftw.ws',
       'Referer': options.referer || 'https://liftw.ws/',
+      'Connection': 'close',
       ...(options.headers || {})
     };
 
@@ -118,29 +119,36 @@ export function liftRequestRaw(urlStr, options = {}) {
       }
     }
 
+    const targetHost = isLiftHost ? (cachedLiftIp || LIFT_PRIMARY_IP) : parsedUrl.hostname;
     const reqOptions = {
       protocol: parsedUrl.protocol,
-      hostname: parsedUrl.hostname,
+      hostname: targetHost,
       port: parsedUrl.port || (isHttps ? 443 : 80),
       path: parsedUrl.pathname + parsedUrl.search,
       method,
       headers,
       agent: (isHttps && isLiftHost) ? liftHttpsAgent : undefined,
+      servername: isLiftHost ? '' : parsedUrl.hostname,
+      rejectUnauthorized: isLiftHost ? false : true,
       timeout: timeoutMs
     };
 
     const transport = isHttps ? https : http;
+    let settled = false;
     const req = transport.request(reqOptions, (res) => {
       // Обработка редиректов (301, 302, 307, 308)
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && (options._redirects || 0) < 4) {
         res.resume();
         const nextUrl = new URL(res.headers.location, urlStr).toString();
+        settled = true;
         return resolve(liftRequestRaw(nextUrl, { ...options, _redirects: (options._redirects || 0) + 1 }));
       }
 
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
+        if (settled) return;
+        settled = true;
         const buffer = Buffer.concat(chunks);
         resolve({
           ok: res.statusCode >= 200 && res.statusCode < 300,
@@ -153,10 +161,19 @@ export function liftRequestRaw(urlStr, options = {}) {
       });
     });
 
-    req.on('timeout', () => {
+    const handleFailure = (err) => {
+      if (settled) return;
+      settled = true;
+      if (!options._retried && isLiftHost) {
+        return resolve(liftRequestRaw(urlStr, { ...options, _retried: true, timeout: Math.max(timeoutMs, 5500) }));
+      }
+      reject(err);
+    };
+
+    req.setTimeout(timeoutMs, () => {
       req.destroy(new Error(`LIFT_TIMEOUT (${timeoutMs}ms): ${urlStr}`));
     });
-    req.on('error', err => reject(err));
+    req.on('error', handleFailure);
 
     if (bodyBuffer) {
       req.write(bodyBuffer);
@@ -201,12 +218,19 @@ function setCached(key, value, ttlMs = 10 * 60 * 1000) {
  * Преобразование URL постера/аватара Lift в наш прокси, чтобы изображения
  * гарантированно открывались даже если у клиента не резолвится img.liftw.ws
  */
-export function normalizeLiftImageUrl(url) {
-  if (!url || typeof url !== 'string') return '';
+export function normalizeLiftImageUrl(url, title = '', orig = '') {
+  if (!url || typeof url !== 'string') {
+    if (title) {
+      return `/api/media/image-proxy?title=${encodeURIComponent(title)}${orig ? `&orig=${encodeURIComponent(orig)}` : ''}`;
+    }
+    return '';
+  }
   const trimmed = url.trim();
   if (!trimmed) return '';
   if (trimmed.includes('img.liftw.ws')) {
-    return `/api/media/image-proxy?url=${encodeURIComponent(trimmed)}`;
+    const titleParam = title ? `&title=${encodeURIComponent(title)}` : '';
+    const origParam = orig ? `&orig=${encodeURIComponent(orig)}` : '';
+    return `/api/media/image-proxy?url=${encodeURIComponent(trimmed)}${titleParam}${origParam}`;
   }
   return trimmed;
 }
@@ -247,7 +271,7 @@ export function normalizeLiftMediaItem(raw = {}) {
   const isSeries = ['series', 'cartoon-series', 'anime-series'].includes(mediaType);
 
   const rawPoster = info.poster_big || info.poster || raw.poster || '';
-  const poster = normalizeLiftImageUrl(rawPoster);
+  const poster = normalizeLiftImageUrl(rawPoster, title, originalTitle);
 
   const genres = Array.isArray(info.genre)
     ? info.genre
@@ -363,7 +387,8 @@ export async function getLiftHomeRails(limit = 14) {
  */
 export async function getLiftCatalog(options = {}) {
   const {
-    tab = 'all',
+    tab: rawTab,
+    category: rawCategory,
     page = 1,
     limit = 24,
     sort = 'popular',
@@ -378,18 +403,20 @@ export async function getLiftCatalog(options = {}) {
     yearTo = new Date().getFullYear() + 1,
     popular = false
   } = options;
+  const tab = rawTab || rawCategory || 'all';
 
   const tabToCategoryMap = {
     'home': 'all',
+    'popular': 'all',
     'new': 'all',
     'all': 'all',
-    'movies': '1',
-    'cartoons': '2',
-    'series': '3',
-    'tvshows': '4',
-    'cartoon-series': '5',
-    'anime-movies': '6',
-    'anime-series': '7'
+    'movies': 'films',
+    'cartoons': 'cartoons',
+    'series': 'series',
+    'tvshows': 'tvshows',
+    'cartoon-series': 'cartoon_series',
+    'anime-movies': 'anime_films',
+    'anime-series': 'anime_series'
   };
 
   const categoryParam = tabToCategoryMap[tab] || 'all';
@@ -593,11 +620,23 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
   const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
   const targetTitle = norm(rawTitle);
   const targetOrig = norm(rawOrig);
+  const basePart = rawTitle ? rawTitle.split(/[.:—–-]/)[0].trim() : '';
+  const targetBase = (basePart && basePart.length >= 4 && basePart.toLowerCase() !== rawTitle.toLowerCase()) ? norm(basePart) : '';
   const targetYear = parseInt(year, 10) || 0;
 
   let candidates = await searchLift(rawTitle || rawOrig, 15);
   if (!candidates.length && rawOrig && rawOrig !== rawTitle) {
     candidates = await searchLift(rawOrig, 15);
+  }
+  if (basePart && basePart.length >= 3 && basePart.toLowerCase() !== rawTitle.toLowerCase()) {
+    const baseCandidates = await searchLift(basePart, 10);
+    const seenIds = new Set(candidates.map(c => c.lift_id));
+    for (const bc of baseCandidates) {
+      if (bc && !seenIds.has(bc.lift_id)) {
+        seenIds.add(bc.lift_id);
+        candidates.push(bc);
+      }
+    }
   }
   if (!candidates.length) return null;
 
@@ -608,10 +647,12 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
     let score = 0;
     const cTitle = norm(item.title);
     const cOrig = norm(item.original_title);
+    const cBase = norm(String(item.title || '').split(/[.:—–-]/)[0]);
     const cYear = parseInt(item.year, 10) || 0;
 
     if (targetTitle && cTitle === targetTitle) score += 120;
     else if (targetTitle && (cTitle.startsWith(targetTitle) || targetTitle.startsWith(cTitle))) score += 65;
+    else if (targetBase && cBase && targetBase === cBase) score += 75;
 
     if (targetOrig && cOrig && cOrig === targetOrig) score += 130;
     else if (targetOrig && cOrig && (cOrig.includes(targetOrig) || targetOrig.includes(cOrig))) score += 70;
@@ -666,7 +707,7 @@ export function buildLiftCdnCipherUrl(rawStreamUrl, unixTime) {
  * Извлечение полной конфигурации потоков (HLS, DASH VP9, DASHA AV1, озвучки, субтитры,
  * таймкоды пропуска интро/титров и превью) со страницы embed.liftw.ws/embed/movie/<id>
  */
-export async function extractLiftStreamData(liftId, { season = '', episode = '' } = {}) {
+export async function extractLiftStreamData(liftId, { season = '', episode = '', userAgent = '' } = {}) {
   const cleanId = String(liftId || '').replace(/^lift_/, '').trim();
   if (!/^\d+$/.test(cleanId)) return null;
 
@@ -676,13 +717,17 @@ export async function extractLiftStreamData(liftId, { season = '', episode = '' 
   const embedUrl = `https://embed.liftw.ws/embed/movie/${cleanId}?host=liftw.ws${epParams}`;
 
   try {
+    const reqHeaders = {
+      'Sec-Fetch-Dest': 'iframe',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'same-site'
+    };
+    if (userAgent) {
+      reqHeaders['User-Agent'] = userAgent;
+    }
     const res = await liftRequestRaw(embedUrl, {
       referer: 'https://liftw.ws/',
-      headers: {
-        'Sec-Fetch-Dest': 'iframe',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-site'
-      },
+      headers: reqHeaders,
       timeout: 8000
     });
 
@@ -872,8 +917,8 @@ export async function extractLiftStreamData(liftId, { season = '', episode = '' 
  * Парсинг реальных видео-качеств (360p..4K) и аудиодорожек из HLS (master.m3u8) и DASH (.mpd)
  * для модального окна выбора качества и озвучки перед скачиванием или просмотром
  */
-export async function getLiftDownloadAndStreamOptions(liftId, { season = '', episode = '' } = {}) {
-  const data = await extractLiftStreamData(liftId, { season, episode });
+export async function getLiftDownloadAndStreamOptions(liftId, { season = '', episode = '', userAgent = '' } = {}) {
+  const data = await extractLiftStreamData(liftId, { season, episode, userAgent });
   if (!data || !data.source) return null;
 
   const src = data.source;
@@ -893,6 +938,7 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
   const cipheredHls = src.hls ? buildLiftCdnCipherUrl(src.hls, data.unixTime) : '';
   const cipheredDash = (src.dash || src.dasha) ? buildLiftCdnCipherUrl(src.dash || src.dasha, data.unixTime) : '';
   const cipheredDasha = src.dasha ? buildLiftCdnCipherUrl(src.dasha, data.unixTime) : '';
+  const cdnHeaders = userAgent ? { 'User-Agent': userAgent } : {};
 
   // Парсим HLS master.m3u8 и DASH .mpd параллельно через шифрованный /x-en-x/ шлюз CDN
   await Promise.all([
@@ -902,6 +948,7 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
         const hlsRes = await liftRequestRaw(cipheredHls, {
           origin: 'https://embed.liftw.ws',
           referer: 'https://embed.liftw.ws/',
+          headers: cdnHeaders,
           timeout: 4500
         });
         if (hlsRes.ok) {
@@ -975,6 +1022,7 @@ export async function getLiftDownloadAndStreamOptions(liftId, { season = '', epi
         const mpdRes = await liftRequestRaw(cipheredDash, {
           origin: 'https://embed.liftw.ws',
           referer: 'https://embed.liftw.ws/',
+          headers: cdnHeaders,
           timeout: 4500
         });
         if (mpdRes.ok) {

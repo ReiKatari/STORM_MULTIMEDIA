@@ -267,23 +267,34 @@ export async function searchTmdb(query, page = 1) {
 /**
  * Получение подробной информации о релизе (актеры, режиссеры, жанры, рейтинги, сезоны)
  */
-export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '', yearHint = '') {
-  let cleanId = id ? String(id).replace('tmdb_', '').trim() : '';
+export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '', yearHint = '', _retriedBySearch = false) {
+  let cleanId = id ? String(id).replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '').trim() : '';
   if (!/^\d+$/.test(cleanId)) {
     cleanId = '';
   }
 
-  // Если числовой ID не передан, но указано название — находим точный релиз в TMDB
-  if (!cleanId && titleHint) {
+  const resolveIdByTitleSearch = async () => {
+    if (!titleHint) return '';
     try {
       const cleanTitle = String(titleHint).replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
       const searchRes = await searchTmdb(cleanTitle, 1);
       const isWantTv = mediaTypeHint === 'series' || mediaTypeHint === 'tv' || mediaTypeHint === 'cartoon-series' || mediaTypeHint === 'anime-series';
-      
-      let match = (searchRes?.items || []).find(it => {
-        const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
-        return isWantTv ? itIsTv : !itIsTv;
-      });
+      const items = searchRes?.items || [];
+
+      let match = null;
+      if (yearHint) {
+        match = items.find(it => {
+          const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
+          const typeOk = isWantTv ? itIsTv : !itIsTv;
+          return typeOk && it.year && Math.abs(parseInt(it.year, 10) - parseInt(yearHint, 10)) <= 1;
+        });
+      }
+      if (!match) {
+        match = items.find(it => {
+          const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
+          return isWantTv ? itIsTv : !itIsTv;
+        });
+      }
 
       // Специальные псевдонимы: "Джек Ричер" (сериал) -> в TMDB называется "Ричер"
       if (!match && isWantTv && cleanTitle.toLowerCase().includes('ричер')) {
@@ -291,20 +302,45 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
         match = (reacherRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv');
       }
 
-      if (!match) match = searchRes?.items?.[0];
+      if (!match) match = items[0];
       if (match && match.id) {
-        cleanId = String(match.id).replace('tmdb_', '').trim();
+        return String(match.id).replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '').trim();
       }
     } catch (_) {}
+    return '';
+  };
+
+  // Если числовой ID не передан, но указано название — находим точный релиз в TMDB
+  if (!cleanId && titleHint) {
+    cleanId = await resolveIdByTitleSearch();
   }
 
   if (!cleanId) return null;
-  const cacheKey = `details_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
+  const cacheKey = `details_v2_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached) return cached;
 
   const isExplicitTv = mediaTypeHint === 'series' || mediaTypeHint === 'tv' || mediaTypeHint === 'cartoon-series' || mediaTypeHint === 'anime-series';
   let tryEndpoints = isExplicitTv ? ['tv', 'movie'] : ['movie', 'tv'];
+
+  const matchesTitleHint = (candidateTitle, candidateOrig) => {
+    if (!titleHint) return true;
+    const normHint = String(titleHint)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/\s*[\(\[]?\s*(?:постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|19\d\d|20\d\d).*?[\)\]]?/gi, '')
+      .replace(/[^\p{L}\p{N}]+/gu, '');
+    if (normHint.length < 3) return true;
+    // Специальные псевдонимы
+    if (normHint.includes('ричер') && (String(candidateTitle).toLowerCase().includes('ричер') || String(candidateOrig).toLowerCase().includes('reacher'))) return true;
+    const normT = String(candidateTitle || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '');
+    const normO = String(candidateOrig || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '');
+    if (normT && (normT.includes(normHint) || normHint.includes(normT))) return true;
+    if (normO && (normO.includes(normHint) || normHint.includes(normO))) return true;
+    const baseHint = String(titleHint).split(/[.:—–-]/)[0].toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '');
+    if (baseHint.length >= 4 && ((normT && normT.includes(baseHint)) || (normO && normO.includes(baseHint)))) return true;
+    return false;
+  };
 
   for (let i = 0; i < tryEndpoints.length; i++) {
     const type = tryEndpoints[i];
@@ -317,31 +353,12 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
       const isTv = type === 'tv';
 
       const title = (isTv ? data.name : data.title) || 'Кинофильм';
-
-      // Если мы начали с movie, но передан titleHint (например, "Менталист"),
-      // и название из movie ("Ле-Ман") совершенно не совпадает, переключаемся на tv!
-      if (!isExplicitTv && type === 'movie' && titleHint) {
-        const normTitle = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-        const normHint = titleHint.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-        if (normTitle && normHint && !normTitle.includes(normHint) && !normHint.includes(normTitle)) {
-          // Проверим, не является ли этот ID сериалом
-          try {
-            const tvUrl = `${TMDB_BASE}/tv/${cleanId}?api_key=${TMDB_API_KEY}&language=ru-RU&append_to_response=credits,videos,external_ids,keywords`;
-            const tvRes = await tmdbFetch(tvUrl);
-            if (tvRes.ok) {
-              const tvData = await tvRes.json();
-              const tvTitle = (tvData.name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-              if (tvTitle.includes(normHint) || normHint.includes(tvTitle)) {
-                // TV совпал с запрошенным сериалом! Перенаправляем на ветку tv
-                tryEndpoints[i] = 'tv';
-                i--;
-                continue;
-              }
-            }
-          } catch {}
-        }
-      }
       const originalTitle = (isTv ? data.original_name : data.original_title) || '';
+
+      if (titleHint && !matchesTitleHint(title, originalTitle)) {
+        // Если этот тип (movie/tv) не совпал с названием, пробуем следующий тип или ищем по названию в TMDB
+        continue;
+      }
       const dateStr = (isTv ? data.first_air_date : data.release_date) || '';
       
       let formattedDate = '';
@@ -585,6 +602,13 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
       return details;
     } catch {
       continue;
+    }
+  }
+
+  if (!_retriedBySearch && titleHint) {
+    const searchedId = await resolveIdByTitleSearch();
+    if (searchedId && searchedId !== cleanId) {
+      return getTmdbItemDetails(searchedId, mediaTypeHint, titleHint, yearHint, true);
     }
   }
 

@@ -9117,8 +9117,8 @@ body.cinema-focus-active::-webkit-scrollbar,
 }
 
 .jog-dial-header-title svg {
-  color: #00f0ff;
-  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.5));
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
 }
 
 .jog-dial-close {
@@ -9237,8 +9237,8 @@ body.cinema-focus-active::-webkit-scrollbar,
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00f0ff;
-  box-shadow: 0 0 8px #00f0ff, 0 0 16px rgba(0, 240, 255, 0.85);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent), 0 0 16px var(--accent-glow);
 }
 
 /* Центральный медальон / хаб ротора */
@@ -9300,9 +9300,9 @@ body.cinema-focus-active::-webkit-scrollbar,
   font-family: ui-monospace, 'Consolas', 'JetBrains Mono', monospace;
   font-size: 13.5px;
   font-weight: 800;
-  color: #00f0ff;
+  color: var(--accent);
   letter-spacing: 0.4px;
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+  text-shadow: 0 0 8px var(--accent-glow);
   font-variant-numeric: tabular-nums;
 }
 
@@ -11933,4 +11933,134 @@ body[data-card-density="compact"] .media-container.view-grid:not(.home-rails-act
 .storm-floating-tooltip.is-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+
+/* ==========================================================================
+   ИСПРАВЛЕНИЕ И ПРОКАЧКА ВНУТРИПЛЕЕРНЫХ ШТОРОК, РЕЖИМА ФОКУСА И КНОПОК (1.0.45)
+   ========================================================================== */
+
+/* 1. Исключение растягивания кнопки «Барабан серий» и скрытие дубля «Скачать 4K / FHD» в верхней панели */
+#quick-wheel-picker-btn {
+  width: auto !important;
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+#quick-wheel-picker-btn .quick-dropdown-val {
+  flex: 0 0 auto !important;
+}
+
+#quick-lift-download-btn {
+  display: none !important;
+}
+
+/* 2. Плавный сдвиг нижних капсул серий и верхней полосы при открытии боковых шторок (Озвучка / Серии) или Джог-дайла */
+.storm-inplayer-overlay .inplayer-bottom-bar,
+.storm-inplayer-overlay .inplayer-top-bar {
+  transition: right 0.24s cubic-bezier(0.16, 1, 0.3, 1), padding-right 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, transform 0.25s ease;
+}
+
+@media (min-width: 641px) {
+  .storm-inplayer-overlay.has-open-drawer .inplayer-bottom-bar,
+  .storm-inplayer-overlay:has(.player-inplayer-voice-sheet.is-open) .inplayer-bottom-bar,
+  .storm-inplayer-overlay:has(.player-inplayer-episodes-sheet.is-open) .inplayer-bottom-bar {
+    right: 304px !important;
+  }
+
+  .storm-inplayer-overlay.has-open-drawer .inplayer-top-bar,
+  .storm-inplayer-overlay:has(.player-inplayer-voice-sheet.is-open) .inplayer-top-bar,
+  .storm-inplayer-overlay:has(.player-inplayer-episodes-sheet.is-open) .inplayer-top-bar {
+    padding-right: 304px !important;
+  }
+
+  .storm-inplayer-overlay.has-open-jog .inplayer-bottom-bar {
+    right: 248px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .storm-inplayer-overlay.has-open-drawer .inplayer-bottom-bar,
+  .storm-inplayer-overlay.has-open-jog .inplayer-bottom-bar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+/* 3. Полноэкранный кинотеатральный масштаб видео в режиме фокуса (Clean Theater Canvas) */
+#cinema-modal.is-focus-mode .cinema-player-wrapper {
+  width: min(96vw, calc((100dvh - 52px) * 16 / 9)) !important;
+  height: min(calc(100dvh - 52px), calc(96vw * 9 / 16)) !important;
+  max-width: 96vw !important;
+  max-height: calc(100dvh - 52px) !important;
+  aspect-ratio: 16 / 9 !important;
+  margin: auto !important;
+}
+
+#cinema-modal.is-focus-mode .player-video-box {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* 4. Векторные SVG-иконки кнопок шапки кинозала и HUD плеера + 3D стилизация под активную тему */
+.storm-modal-tool-btn,
+.storm-modal-fullscreen-btn,
+.storm-modal-close {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.storm-modal-tool-btn svg,
+.storm-modal-fullscreen-btn svg,
+.storm-modal-close svg {
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.storm-modal-tool-btn:hover svg,
+.storm-modal-fullscreen-btn:hover svg {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.inplayer-ctrl-btn svg {
+  flex-shrink: 0;
+  color: var(--accent);
+  transition: transform 0.16s ease, color 0.16s ease;
+}
+
+.inplayer-ctrl-btn:hover svg,
+.inplayer-ctrl-btn.active svg {
+  color: #ffffff;
+  transform: scale(1.08);
+}
+
+.inplayer-telemetry-pill {
+  border-color: var(--accent-glow) !important;
+  color: var(--accent) !important;
+}
+
+.inplayer-jog-dial-widget {
+  border-color: var(--accent-glow) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.jog-dial-wheel {
+  border-color: var(--accent) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.22), 0 0 14px var(--accent-glow) !important;
+}
+
+.jog-btn:hover,
+.jog-btn:active {
+  border-color: var(--accent) !important;
+}
+
+.player-inplayer-voice-sheet,
+.player-inplayer-episodes-sheet {
+  border-left-color: var(--accent-glow) !important;
 }

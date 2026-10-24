@@ -1,551 +1,518 @@
-/* ==========================================================================
-   STORM MULTIMEDIA - МЕНЕДЖЕР ПОЛЬЗОВАТЕЛЬСКИХ СУБТИТРОВ И АУДИОДОРОЖЕК
-   Поддержка .srt, .vtt, .ass субтитров со сдвигом тайминга и внешних аудио (.mp3/.aac)
-   ========================================================================== */
+/**
+ * Модуль продвинутого управления субтитрами, двойными субтитрами (RU + EN)
+ * и интерактивным живым словарем (STORM Subtitles Studio 2.0)
+ */
 
-import { showToast } from './auth.js';
-import { trackClientAction } from './achievements.js';
+import { showToast } from './ui.js';
 
-let currentCues = [];
-let timingOffset = 0; // Сдвиг в секундах
-let attachedVideo = null;
-let subtitleOverlay = null;
-let syncInterval = null;
-let externalAudio = null;
+let currentVideo = null;
+let parsedCues = [];
+let secondaryCues = [];
+let subtitleOffsetSec = 0; // Сдвиг тайминга в секундах (например, +0.5 или -1.0)
+let overlayElement = null;
+let dictPopupElement = null;
+let animationFrameId = null;
+let dualSubtitlesEnabled = localStorage.getItem('storm_dual_subtitles') === 'true';
+let liveDictEnabled = localStorage.getItem('storm_live_dict') !== 'false';
+let autoPauseOnHover = localStorage.getItem('storm_sub_autopause') !== 'false';
+let wasPlayingBeforeHover = false;
 
-// Настройки внешнего вида субтитров
-let subSettings = {
-  fontSize: 22,
-  color: '#ffffff',
-  bgColor: 'rgba(0, 0, 0, 0.7)',
-  bottom: 40,
-  shadow: true
+let subtitleStyle = {
+  fontSize: parseInt(localStorage.getItem('storm_sub_size') || '22', 10),
+  color: localStorage.getItem('storm_sub_color') || '#ffffff',
+  bgOpacity: parseFloat(localStorage.getItem('storm_sub_bg') || '0.65'),
+  bottomOffset: parseInt(localStorage.getItem('storm_sub_bottom') || '45', 10)
 };
 
-try {
-  const savedSubs = localStorage.getItem('storm_sub_settings');
-  if (savedSubs) {
-    subSettings = { ...subSettings, ...JSON.parse(savedSubs) };
-  }
-} catch {}
+export function initSubtitlesManager(videoElement, playerContainer) {
+  currentVideo = videoElement;
+  parsedCues = [];
+  secondaryCues = [];
+  subtitleOffsetSec = 0;
 
-function saveSubSettings() {
+  if (overlayElement) {
+    overlayElement.remove();
+  }
+  if (dictPopupElement) {
+    dictPopupElement.remove();
+  }
+
+  overlayElement = document.createElement('div');
+  overlayElement.className = 'storm-custom-subtitles-overlay';
+  applyOverlayStyles();
+  playerContainer.appendChild(overlayElement);
+
+  dictPopupElement = document.createElement('div');
+  dictPopupElement.className = 'storm-sub-dict-popup';
+  dictPopupElement.style.cssText = `
+    position: absolute;
+    bottom: ${subtitleStyle.bottomOffset + 64}px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 14, 24, 0.96);
+    border: 1px solid var(--accent, #00d2ff);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #fff;
+    z-index: 60;
+    min-width: 260px;
+    max-width: 420px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(12px);
+    display: none;
+    pointer-events: auto;
+    font-size: 13px;
+    line-height: 1.45;
+  `;
+  playerContainer.appendChild(dictPopupElement);
+
+  startSubtitleRenderLoop();
+}
+
+function applyOverlayStyles() {
+  if (!overlayElement) return;
+  overlayElement.style.cssText = `
+    position: absolute;
+    bottom: ${subtitleStyle.bottomOffset}px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 86%;
+    text-align: center;
+    font-size: ${subtitleStyle.fontSize}px;
+    font-weight: 700;
+    color: ${subtitleStyle.color};
+    background: rgba(0, 0, 0, ${subtitleStyle.bgOpacity});
+    padding: 6px 16px;
+    border-radius: 8px;
+    pointer-events: ${liveDictEnabled ? 'auto' : 'none'};
+    z-index: 35;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+    display: none;
+    line-height: 1.4;
+    transition: bottom 0.2s ease;
+  `;
+}
+
+function tokenizeCueHtml(text, isSecondary = false) {
+  if (!liveDictEnabled) return text;
+  const clean = String(text || '').replace(/<[^>]+>/g, '');
+  return clean.split(/(\s+)/).map(part => {
+    if (/^\s+$/.test(part)) return part;
+    const rawW = part.replace(/[^\p{L}\p{N}\-']/gu, '');
+    if (rawW.length < 2) return part;
+    return `<span class="storm-sub-word" data-word="${rawW.replace(/"/g, '&quot;')}" style="cursor:pointer;border-bottom:1px dotted ${isSecondary ? 'rgba(56,189,248,0.6)' : 'rgba(255,255,255,0.4)'};padding:0 1px;border-radius:3px;transition:background 0.15s;">${part}</span>`;
+  }).join('');
+}
+
+async function showWordTranslationPopup(word, contextSentence) {
+  if (!dictPopupElement) return;
+  dictPopupElement.style.display = 'block';
+  dictPopupElement.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+      <strong style="color:var(--accent,#00d2ff);font-size:15px;">📖 ${word}</strong>
+      <button type="button" id="storm-dict-close-btn" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;">✕</button>
+    </div>
+    <div style="color:#94a3b8;font-size:12px;">⏳ Перевод слова в контексте сцены...</div>
+  `;
+  const closeBtn = dictPopupElement.querySelector('#storm-dict-close-btn');
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      dictPopupElement.style.display = 'none';
+    };
+  }
+
   try {
-    localStorage.setItem('storm_sub_settings', JSON.stringify(subSettings));
-  } catch {}
-}
+    const res = await fetch(`/api/subtitles/translate-word?word=${encodeURIComponent(word)}&context=${encodeURIComponent(contextSentence || '')}`);
+    const data = await res.json();
+    if (!data || !data.success) throw new Error('Не удалось перевести');
 
-export function initSubtitlesManager(videoElement, containerElement) {
-  attachedVideo = videoElement;
-  timingOffset = 0;
-  currentCues = [];
+    dictPopupElement.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+        <div>
+          <strong style="color:var(--accent,#00d2ff);font-size:15px;">📖 ${data.word}</strong>
+          <span style="font-size:11px;color:#94a3b8;margin-left:6px;">${data.partOfSpeech || ''}</span>
+        </div>
+        <button type="button" id="storm-dict-close-btn" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;">✕</button>
+      </div>
+      <div style="font-size:14px;font-weight:700;color:#10b981;margin-bottom:6px;">${data.translation}</div>
+      ${data.contextTranslation ? `<div style="font-size:11.5px;color:#cbd5e1;background:rgba(255,255,255,0.05);padding:6px 8px;border-radius:6px;margin-bottom:6px;">💬 <i>${data.contextTranslation}</i></div>` : ''}
+      ${data.example ? `<div style="font-size:11px;color:#94a3b8;">💡 ${data.example}</div>` : ''}
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:8px;">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="storm-dict-speak-btn" style="padding:3px 8px;font-size:11px;">🔊 Произношение</button>
+        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="storm-dict-save-btn" style="padding:3px 8px;font-size:11px;">⭐ В словарь</button>
+      </div>
+    `;
+    const cBtn = dictPopupElement.querySelector('#storm-dict-close-btn');
+    if (cBtn) cBtn.onclick = () => { dictPopupElement.style.display = 'none'; };
 
-  // Создаем оверлей субтитров, если ещё не создан
-  let overlay = containerElement.querySelector('.storm-subtitles-overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.className = 'storm-subtitles-overlay';
-    containerElement.appendChild(overlay);
+    const speakBtn = dictPopupElement.querySelector('#storm-dict-speak-btn');
+    if (speakBtn && 'speechSynthesis' in window) {
+      speakBtn.onclick = () => {
+        const u = new SpeechSynthesisUtterance(data.cleanWord || word);
+        u.lang = /[а-яё]/i.test(word) ? 'ru-RU' : 'en-US';
+        window.speechSynthesis.speak(u);
+      };
+    }
+
+    const saveBtn = dictPopupElement.querySelector('#storm-dict-save-btn');
+    if (saveBtn) {
+      saveBtn.onclick = () => {
+        try {
+          const saved = JSON.parse(localStorage.getItem('storm_saved_vocab') || '[]');
+          saved.unshift({ word: data.word, translation: data.translation, date: new Date().toLocaleDateString('ru-RU') });
+          localStorage.setItem('storm_saved_vocab', JSON.stringify(saved.slice(0, 200)));
+          showToast(`Слово «${data.word}» сохранено в личный словарь`, 'success');
+        } catch (_) {}
+      };
+    }
+  } catch (err) {
+    dictPopupElement.innerHTML = `<div style="color:#f87171;font-size:12px;">Ошибка перевода: ${err.message}</div>`;
   }
-  subtitleOverlay = overlay;
-  applySubtitleStyles();
-
-  // Навешиваем Drag и Drop
-  setupDropZone(containerElement);
-
-  // Запускаем цикл отображения субтитров
-  if (syncInterval) clearInterval(syncInterval);
-  syncInterval = setInterval(updateSubtitlesFrame, 100);
 }
 
-function applySubtitleStyles() {
-  if (!subtitleOverlay) return;
-  subtitleOverlay.style.fontSize = `${subSettings.fontSize}px`;
-  subtitleOverlay.style.color = subSettings.color;
-  subtitleOverlay.style.background = subSettings.bgColor;
-  subtitleOverlay.style.bottom = `${subSettings.bottom}px`;
-  subtitleOverlay.style.textShadow = subSettings.shadow ? '0 2px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)' : 'none';
-  subtitleOverlay.style.fontWeight = '600';
-  subtitleOverlay.style.lineHeight = '1.35';
-  subtitleOverlay.style.borderRadius = '6px';
-  subtitleOverlay.style.padding = '4px 12px';
-  subtitleOverlay.style.maxWidth = '85%';
-  subtitleOverlay.style.textAlign = 'center';
-  subtitleOverlay.style.pointerEvents = 'none';
-  subtitleOverlay.style.transition = 'bottom 0.2s ease, font-size 0.2s ease';
+let lastRenderedPrimaryText = '';
+let lastRenderedSecondaryText = '';
+
+function startSubtitleRenderLoop() {
+  if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+  function render() {
+    if (currentVideo && overlayElement && (parsedCues.length > 0 || secondaryCues.length > 0)) {
+      const adjustedTime = currentVideo.currentTime - subtitleOffsetSec;
+      const activePrimary = parsedCues.find(c => adjustedTime >= c.start && adjustedTime <= c.end);
+      const activeSecondary = dualSubtitlesEnabled
+        ? secondaryCues.find(c => adjustedTime >= c.start && adjustedTime <= c.end)
+        : null;
+
+      const pText = activePrimary ? activePrimary.text : '';
+      const sText = activeSecondary ? activeSecondary.text : '';
+
+      if (pText || sText) {
+        overlayElement.style.display = 'block';
+        if (pText !== lastRenderedPrimaryText || sText !== lastRenderedSecondaryText) {
+          lastRenderedPrimaryText = pText;
+          lastRenderedSecondaryText = sText;
+          let html = '';
+          if (pText) {
+            html += `<div class="storm-sub-line-primary">${tokenizeCueHtml(pText, false)}</div>`;
+          }
+          if (sText) {
+            html += `<div class="storm-sub-line-secondary" style="font-size:${Math.max(13, Math.round(subtitleStyle.fontSize * 0.78))}px;color:#38bdf8;margin-top:4px;font-weight:600;">${tokenizeCueHtml(sText, true)}</div>`;
+          }
+          overlayElement.innerHTML = html;
+
+          if (liveDictEnabled) {
+            overlayElement.querySelectorAll('.storm-sub-word').forEach(span => {
+              span.onmouseenter = () => {
+                span.style.background = 'rgba(0, 210, 255, 0.28)';
+                if (autoPauseOnHover && currentVideo && !currentVideo.paused) {
+                  wasPlayingBeforeHover = true;
+                  currentVideo.pause();
+                }
+              };
+              span.onmouseleave = () => {
+                span.style.background = 'transparent';
+              };
+              span.onclick = (e) => {
+                e.stopPropagation();
+                const w = span.dataset.word;
+                const ctx = (sText || pText || '').replace(/<[^>]+>/g, '');
+                showWordTranslationPopup(w, ctx);
+              };
+            });
+
+            overlayElement.onmouseleave = () => {
+              if (autoPauseOnHover && wasPlayingBeforeHover && currentVideo && currentVideo.paused && (!dictPopupElement || dictPopupElement.style.display === 'none')) {
+                wasPlayingBeforeHover = false;
+                currentVideo.play().catch(() => {});
+              }
+            };
+          }
+        }
+      } else {
+        overlayElement.style.display = 'none';
+        lastRenderedPrimaryText = '';
+        lastRenderedSecondaryText = '';
+      }
+    }
+    animationFrameId = requestAnimationFrame(render);
+  }
+
+  animationFrameId = requestAnimationFrame(render);
 }
 
-function setupDropZone(dropTarget) {
-  dropTarget.ondragover = (e) => {
-    e.preventDefault();
-    dropTarget.classList.add('sub-drag-active');
-  };
+/**
+ * Парсинг локальных и внешних файлов .srt, .vtt и .ass
+ */
+export function loadExternalSubtitleFile(file, isSecondary = false) {
+  if (!file) return;
+  const reader = new FileReader();
+  const ext = file.name.split('.').pop().toLowerCase();
 
-  dropTarget.ondragleave = (e) => {
-    e.preventDefault();
-    dropTarget.classList.remove('sub-drag-active');
-  };
-
-  dropTarget.ondrop = (e) => {
-    e.preventDefault();
-    dropTarget.classList.remove('sub-drag-active');
-    const files = e.dataTransfer?.files;
-    if (files && files.length > 0) {
-      handleUploadedFile(files[0]);
+  reader.onload = (e) => {
+    const content = e.target.result;
+    let cues = [];
+    if (ext === 'ass' || ext === 'ssa') {
+      cues = parseAssContent(content);
+    } else {
+      cues = parseSrtOrVtt(content);
+    }
+    if (isSecondary) {
+      secondaryCues = cues;
+      dualSubtitlesEnabled = true;
+      localStorage.setItem('storm_dual_subtitles', 'true');
+      showToast(`Вторая дорожка субтитров загружена (${cues.length} фраз)`, 'success');
+    } else {
+      parsedCues = cues;
+      showToast(`Субтитры «${file.name}» загружены (${cues.length} фраз)`, 'success');
     }
   };
+
+  reader.readAsText(file, 'utf-8');
 }
 
-export function handleUploadedFile(file) {
-  const name = file.name.toLowerCase();
-
-  // Субтитры: .srt, .vtt, .ass
-  if (name.endsWith('.srt') || name.endsWith('.vtt') || name.endsWith('.ass')) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target.result;
-      if (name.endsWith('.srt')) {
-        currentCues = parseSrt(text);
-      } else if (name.endsWith('.vtt')) {
-        currentCues = parseVtt(text);
-      } else if (name.endsWith('.ass')) {
-        currentCues = parseAss(text);
-      }
-      showToast(`Субтитры загружены: ${file.name} (${currentCues.length} реплик)`, 'success');
-      trackClientAction('use_subtitles');
-      updateSubtitlesControlsUi();
-    };
-    reader.readAsText(file);
-    return;
+export async function loadSubtitleFromUrl(url, label = 'Субтитры', isSecondary = false) {
+  if (!url) return;
+  try {
+    const proxyUrl = url.startsWith('/api/') ? url : `/api/player/lift-subtitle.vtt?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const cues = parseSrtOrVtt(text);
+    if (isSecondary) {
+      secondaryCues = cues;
+      dualSubtitlesEnabled = true;
+      localStorage.setItem('storm_dual_subtitles', 'true');
+      showToast(`Вторая дорожка «${label}» подключена (${cues.length} фраз)`, 'success');
+    } else {
+      parsedCues = cues;
+      showToast(`Субтитры «${label}» подключены (${cues.length} фраз)`, 'success');
+    }
+  } catch (err) {
+    showToast(`Не удалось загрузить субтитры: ${err.message}`, 'warning');
   }
-
-  // Аудиодорожка: .mp3, .m4a, .aac, .wav
-  if (name.endsWith('.mp3') || name.endsWith('.m4a') || name.endsWith('.aac') || name.endsWith('.wav')) {
-    const audioUrl = URL.createObjectURL(file);
-    loadExternalAudio(audioUrl, file.name);
-    return;
-  }
-
-  showToast('Неподдерживаемый формат. Используйте файлы субтитров (.srt, .vtt, .ass) или аудио (.mp3, .aac)', 'warning');
 }
 
-function parseSrt(text) {
+function parseSrtOrVtt(text) {
   const cues = [];
-  const blocks = text.trim().replace(/\r\n/g, '\n').split(/\n\s*\n/);
+  const blocks = text.replace(/\r\n/g, '\n').split('\n\n');
 
-  blocks.forEach(block => {
-    const lines = block.split('\n');
-    if (lines.length >= 2) {
-      const timeLine = lines.find(l => l.includes('-->'));
-      if (timeLine) {
-        const timeIndex = lines.indexOf(timeLine);
-        const [startStr, endStr] = timeLine.split('-->').map(s => s.trim());
-        const startTime = parseTimeToSeconds(startStr);
-        const endTime = parseTimeToSeconds(endStr);
-        const textContent = lines.slice(timeIndex + 1).join('<br>');
-        if (!isNaN(startTime) && !isNaN(endTime)) {
-          cues.push({ start: startTime, end: endTime, text: textContent });
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length < 2) continue;
+
+    let timeLineIdx = lines.findIndex(l => l.includes('-->'));
+    if (timeLineIdx === -1) continue;
+
+    const timeParts = lines[timeLineIdx].split('-->');
+    const start = parseTimecode(timeParts[0].trim());
+    const end = parseTimecode(timeParts[1].trim().split(' ')[0]);
+    const cueText = lines.slice(timeLineIdx + 1).join('<br>').replace(/\{.*?\}/g, '');
+
+    if (!isNaN(start) && !isNaN(end)) {
+      cues.push({ start, end, text: cueText });
+    }
+  }
+  return cues;
+}
+
+function parseAssContent(text) {
+  const cues = [];
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+
+  for (const line of lines) {
+    if (line.startsWith('Dialogue:')) {
+      const parts = line.substring(9).split(',');
+      if (parts.length >= 10) {
+        const start = parseTimecode(parts[1].trim());
+        const end = parseTimecode(parts[2].trim());
+        const rawText = parts.slice(9).join(',')
+          .replace(/\{.*?\}/g, '')
+          .replace(/\\N/gi, '<br>')
+          .trim();
+
+        if (!isNaN(start) && !isNaN(end) && rawText) {
+          cues.push({ start, end, text: rawText });
         }
       }
     }
-  });
-
+  }
   return cues;
 }
 
-function parseVtt(text) {
-  return parseSrt(text.replace(/^WEBVTT[^\n]*\n/, ''));
-}
-
-function parseAss(text) {
-  const cues = [];
-  const lines = text.split(/\r?\n/);
-  const eventLines = lines.filter(l => l.startsWith('Dialogue:'));
-
-  eventLines.forEach(line => {
-    const parts = line.substring(9).split(',');
-    if (parts.length >= 9) {
-      const startStr = parts[1].trim();
-      const endStr = parts[2].trim();
-      const textRaw = parts.slice(9).join(',');
-      // Удаляем ASS теги вида {\k50}, {\b1} и т.д.
-      const cleanText = textRaw.replace(/\{[^}]+\}/g, '').replace(/\\N/g, '<br>').trim();
-
-      const startTime = parseAssTimeToSeconds(startStr);
-      const endTime = parseAssTimeToSeconds(endStr);
-      if (!isNaN(startTime) && !isNaN(endTime) && cleanText) {
-        cues.push({ start: startTime, end: endTime, text: cleanText });
-      }
-    }
-  });
-
-  return cues;
-}
-
-function parseTimeToSeconds(timeStr) {
-  const parts = timeStr.replace(',', '.').split(':');
+function parseTimecode(str) {
+  const clean = str.replace(',', '.');
+  const parts = clean.split(':').map(Number);
   if (parts.length === 3) {
-    return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
   }
   return 0;
 }
 
-function parseAssTimeToSeconds(timeStr) {
-  const parts = timeStr.split(':');
-  if (parts.length === 3) {
-    return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-  }
-  return 0;
-}
-
-let subCanvas = null;
-let subCtx = null;
-
-function checkAdaptiveContrast(video) {
-  if (!video || video.readyState < 2 || !video.videoWidth) return false;
-  try {
-    if (!subCanvas) {
-      subCanvas = document.createElement('canvas');
-      subCanvas.width = 16;
-      subCanvas.height = 9;
-      subCtx = subCanvas.getContext('2d', { willReadFrequently: true });
-    }
-    subCtx.drawImage(video, 0, Math.floor(video.videoHeight * 0.7), video.videoWidth, Math.floor(video.videoHeight * 0.3), 0, 0, 16, 9);
-    const data = subCtx.getImageData(0, 0, 16, 9).data;
-    let totalLum = 0;
-    const count = data.length / 4;
-    for (let i = 0; i < data.length; i += 4) {
-      totalLum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    }
-    return (totalLum / count) > 130;
-  } catch {
-    return false;
-  }
-}
-
-function updateSubtitlesFrame() {
-  if (!attachedVideo || !subtitleOverlay || currentCues.length === 0) {
-    if (subtitleOverlay) subtitleOverlay.style.display = 'none';
-    return;
-  }
-
-  const currentTime = attachedVideo.currentTime + timingOffset;
-  const activeCue = currentCues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
-
-  if (activeCue) {
-    subtitleOverlay.innerHTML = activeCue.text;
-    subtitleOverlay.style.display = 'inline-block';
-
-    // Smart Adaptive Subtitles: динамическая подстройка контраста под яркость сцены
-    const isBrightScene = checkAdaptiveContrast(attachedVideo);
-    if (isBrightScene) {
-      subtitleOverlay.style.background = 'rgba(8, 10, 15, 0.92)';
-      subtitleOverlay.style.color = '#ffffff';
-      subtitleOverlay.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.18)';
-      subtitleOverlay.style.textShadow = '0 1px 3px rgba(0,0,0,1)';
-    } else {
-      subtitleOverlay.style.background = subSettings.bgColor || 'rgba(0, 0, 0, 0.65)';
-      subtitleOverlay.style.color = subSettings.color || '#ffffff';
-      subtitleOverlay.style.boxShadow = '0 2px 10px rgba(0,0,0,0.5)';
-      subtitleOverlay.style.textShadow = subSettings.shadow ? '0 2px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)' : 'none';
-    }
-  } else {
-    subtitleOverlay.style.display = 'none';
-  }
-}
-
-export function getActiveSubtitleText(time) {
-  if (!currentCues || currentCues.length === 0) return null;
-  const t = (time !== undefined ? time : (attachedVideo ? attachedVideo.currentTime : 0)) + timingOffset;
-  const activeCue = currentCues.find(cue => t >= cue.start && t <= cue.end);
-  return activeCue ? activeCue.text : null;
-}
-
-export function getSubtitleOffset() {
-  return timingOffset;
-}
-
-export function setSubtitleOffset(seconds) {
-  timingOffset = Math.round(parseFloat(seconds) * 10) / 10;
-  updateSubtitlesControlsUi();
-}
-
+/**
+ * Сдвиг синхронизации субтитров (+0.5с / -0.5с)
+ */
 export function adjustSubtitleOffset(deltaSeconds) {
-  timingOffset = Math.round((timingOffset + deltaSeconds) * 10) / 10;
-  if (timingOffset > 15) timingOffset = 15;
-  if (timingOffset < -15) timingOffset = -15;
-  showToast(`Сдвиг субтитров: ${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)} сек`, 'info');
-  updateSubtitlesControlsUi();
+  subtitleOffsetSec = Math.round((subtitleOffsetSec + deltaSeconds) * 10) / 10;
+  const sign = subtitleOffsetSec > 0 ? '+' : '';
+  showToast(`Сдвиг субтитров: ${sign}${subtitleOffsetSec} сек.`, 'info');
+  return subtitleOffsetSec;
 }
 
-export function resetSubtitleOffset() {
-  timingOffset = 0;
-  showToast('Сдвиг субтитров сброшен на 0', 'info');
-  updateSubtitlesControlsUi();
+export function updateSubtitleStyle(newStyle) {
+  subtitleStyle = { ...subtitleStyle, ...newStyle };
+  if (newStyle.fontSize) localStorage.setItem('storm_sub_size', String(subtitleStyle.fontSize));
+  if (newStyle.color) localStorage.setItem('storm_sub_color', subtitleStyle.color);
+  if (newStyle.bgOpacity !== undefined) localStorage.setItem('storm_sub_bg', String(subtitleStyle.bgOpacity));
+  applyOverlayStyles();
 }
 
-export function setSubtitleFontSize(size) {
-  subSettings.fontSize = parseInt(size, 10) || 22;
-  saveSubSettings();
-  applySubtitleStyles();
-}
+export function renderSubtitlesControls(container) {
+  if (!container) return;
 
-export function setSubtitleColor(color) {
-  subSettings.color = color;
-  saveSubSettings();
-  applySubtitleStyles();
-}
+  const savedVocab = (() => {
+    try { return JSON.parse(localStorage.getItem('storm_saved_vocab') || '[]'); } catch { return []; }
+  })();
 
-export function setSubtitleBgColor(bgColor) {
-  subSettings.bgColor = bgColor;
-  saveSubSettings();
-  applySubtitleStyles();
-}
-
-export function setSubtitleBottom(bottom) {
-  subSettings.bottom = parseInt(bottom, 10) || 40;
-  saveSubSettings();
-  applySubtitleStyles();
-}
-
-export function setSubtitleShadow(enabled) {
-  subSettings.shadow = Boolean(enabled);
-  saveSubSettings();
-  applySubtitleStyles();
-}
-
-function loadExternalAudio(audioUrl, fileName) {
-  if (externalAudio) {
-    externalAudio.pause();
-    externalAudio = null;
-  }
-
-  externalAudio = new Audio(audioUrl);
-  if (attachedVideo) {
-    // Приглушаем нативный плеер и связываем с внешним звуком
-    attachedVideo.muted = true;
-    externalAudio.currentTime = attachedVideo.currentTime;
-    if (!attachedVideo.paused) {
-      externalAudio.play().catch(() => {});
-    }
-
-    attachedVideo.onplay = () => externalAudio?.play().catch(() => {});
-    attachedVideo.onpause = () => externalAudio?.pause();
-    attachedVideo.onseeking = () => {
-      if (externalAudio) externalAudio.currentTime = attachedVideo.currentTime;
-    };
-  }
-
-  showToast(`Внешняя аудиодорожка подключена: ${fileName}`, 'success');
-  trackClientAction('use_subtitles');
-}
-
-export function renderSubtitlesControls(containerElement) {
-  if (!containerElement) return;
-
-  containerElement.innerHTML = `
-    <div class="subtitles-studio-container">
-      <!-- Верхняя панель: Загрузка файлов -->
-      <div class="subtitles-upload-row" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
-        <label class="storm-btn storm-btn-secondary storm-btn-sm" style="margin: 0; cursor: pointer;">
-          <span>💬</span>
-          <span>Загрузить субтитры (.srt/.vtt/.ass)</span>
-          <input type="file" id="sub-file-input" accept=".srt,.vtt,.ass" style="display: none;">
-        </label>
-        <label class="storm-btn storm-btn-secondary storm-btn-sm" style="margin: 0; cursor: pointer;">
-          <span>🎵</span>
-          <span>Внешняя дорожка (.mp3/.aac)</span>
-          <input type="file" id="audio-file-input" accept=".mp3,.m4a,.aac,.wav" style="display: none;">
-        </label>
-      </div>
-
-      <!-- Секция 1: Синхронизация и сдвиг тайминга (Feature 3) -->
-      <div class="subtitles-studio-card" style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-            <span>⏱️</span>
-            <span>Синхронизация и задержка субтитров</span>
-          </span>
-          <span id="sub-offset-label" style="font-weight: 800; font-size: 14px; color: var(--color-cyan); min-width: 55px; text-align: right;">${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)}s</span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
-          <span style="font-size: 11px; color: var(--text-muted);">-10с</span>
-          <input type="range" id="sub-offset-slider" min="-10" max="10" step="0.1" value="${timingOffset}" style="flex: 1; accent-color: var(--color-cyan); cursor: pointer;">
-          <span style="font-size: 11px; color: var(--text-muted);">+10с</span>
-        </div>
-
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-m10">-1.0с</button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-m01">-0.1с</button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-zero" style="font-weight: 700;">Сброс (0с)</button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-p01">+0.1с</button>
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-step-p10">+1.0с</button>
-        </div>
-      </div>
-
-      <!-- Секция 2: Стилизация и оформление субтитров (Feature 4) -->
-      <div class="subtitles-studio-card" style="background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px;">
-        <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-          <span>🎨</span>
-          <span>Внешний вид и читаемость субтитров</span>
-        </div>
-
-        <!-- Размер шрифта -->
-        <div style="margin-bottom: 12px;">
-          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-            <span style="color: var(--text-secondary);">Размер шрифта</span>
-            <span id="sub-font-size-label" style="font-weight: 700; color: var(--color-cyan);">${subSettings.fontSize}px</span>
-          </div>
-          <input type="range" id="sub-font-size-slider" min="14" max="36" step="1" value="${subSettings.fontSize}" style="width: 100%; accent-color: var(--color-cyan); cursor: pointer;">
-        </div>
-
-        <!-- Высота от нижнего края -->
-        <div style="margin-bottom: 14px;">
-          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-            <span style="color: var(--text-secondary);">Положение по вертикали</span>
-            <span id="sub-bottom-label" style="font-weight: 700; color: var(--color-cyan);">${subSettings.bottom}px</span>
-          </div>
-          <input type="range" id="sub-bottom-slider" min="15" max="100" step="5" value="${subSettings.bottom}" style="width: 100%; accent-color: var(--color-cyan); cursor: pointer;">
-        </div>
-
-        <!-- Цвет текста -->
-        <div style="margin-bottom: 14px;">
-          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Цвет текста</div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" class="sub-color-pill ${subSettings.color === '#ffffff' ? 'active' : ''}" data-color="#ffffff" style="background:#ffffff; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Белый</button>
-            <button type="button" class="sub-color-pill ${subSettings.color === '#ffd700' ? 'active' : ''}" data-color="#ffd700" style="background:#ffd700; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Янтарный</button>
-            <button type="button" class="sub-color-pill ${subSettings.color === '#00f0ff' ? 'active' : ''}" data-color="#00f0ff" style="background:#00f0ff; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Неон Циан</button>
-            <button type="button" class="sub-color-pill ${subSettings.color === '#00ff66' ? 'active' : ''}" data-color="#00ff66" style="background:#00ff66; color:#000; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; border:none; cursor:pointer;">Изумруд</button>
-          </div>
-        </div>
-
-        <!-- Подложка -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-          <div style="display: flex; gap: 6px;">
-            <button type="button" class="storm-btn storm-btn-sm ${subSettings.bgColor === 'transparent' ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="sub-bg-none">Без фона</button>
-            <button type="button" class="storm-btn storm-btn-sm ${subSettings.bgColor.includes('0.5') ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="sub-bg-soft">Мягкий фон</button>
-            <button type="button" class="storm-btn storm-btn-sm ${subSettings.bgColor.includes('0.85') ? 'storm-btn-primary' : 'storm-btn-secondary'}" id="sub-bg-dark">Контрастный</button>
-          </div>
-
-          <label class="studio-autoskip-toggle" style="margin: 0; cursor: pointer;">
-            <input type="checkbox" id="sub-shadow-toggle" ${subSettings.shadow ? 'checked' : ''}>
-            <span class="studio-autoskip-box"></span>
-            <span class="studio-autoskip-label" style="font-size: 12px;">Тень и контур</span>
+  container.innerHTML = `
+    <div class="subtitles-studio-panel" style="background: var(--bg-tertiary); padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); margin-top: 8px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <span style="font-weight: 800; font-size: 13.5px;">💬 Студия субтитров 2.0 (Двойные субтитры RU + EN и Живой словарь)</span>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <label class="storm-btn storm-btn-primary storm-btn-sm" style="cursor: pointer; margin: 0;">
+            📁 Основная дорожка (.srt / .vtt / .ass)
+            <input type="file" id="ext-sub-file-input" accept=".srt,.vtt,.ass,.ssa" style="display: none;">
+          </label>
+          <label class="storm-btn storm-btn-secondary storm-btn-sm" style="cursor: pointer; margin: 0; border-color: rgba(56,189,248,0.45);">
+            🌐 Вторая дорожка (Dual EN / Оригинал)
+            <input type="file" id="ext-sub-secondary-input" accept=".srt,.vtt,.ass,.ssa" style="display: none;">
           </label>
         </div>
       </div>
+
+      <!-- Тумблеры Dual Subtitles и Live Dictionary -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; background: rgba(15,23,42,0.55); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:700;">
+          <input type="checkbox" id="toggle-dual-subs" ${dualSubtitlesEnabled ? 'checked' : ''}>
+          <span>🌐 Двойные субтитры (RU + EN)</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:700;">
+          <input type="checkbox" id="toggle-live-dict" ${liveDictEnabled ? 'checked' : ''}>
+          <span>📖 Живой перевод слов по клику</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:700;">
+          <input type="checkbox" id="toggle-sub-autopause" ${autoPauseOnHover ? 'checked' : ''}>
+          <span>⏸️ Авто-пауза при наведении</span>
+        </label>
+      </div>
+
+      <!-- Сдвиг тайминга и стиль -->
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between;">
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <span style="font-size: 12px; color: var(--text-secondary);">Синхронизация:</span>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-delay-minus">-0.5с</button>
+          <span id="sub-offset-val" style="font-size: 12px; font-weight: 800; min-width: 48px; text-align: center;">0.0с</span>
+          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="sub-delay-plus">+0.5с</button>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <span style="font-size: 12px; color: var(--text-secondary);">Размер:</span>
+          <input type="range" id="sub-size-slider" min="16" max="38" value="${subtitleStyle.fontSize}" style="width: 90px;">
+          <span style="font-size: 12px; color: var(--text-secondary);">Цвет:</span>
+          <input type="color" id="sub-color-picker" value="${subtitleStyle.color}" style="width: 28px; height: 26px; border: none; background: none; cursor: pointer;">
+        </div>
+      </div>
+
+      ${savedVocab.length > 0 ? `
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 10px;">
+          <div style="font-size: 11.5px; font-weight: 800; color: var(--accent); margin-bottom: 6px;">⭐ Сохраненные слова из фильмов (${savedVocab.length}):</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow-y: auto;">
+            ${savedVocab.slice(0, 20).map(v => `
+              <span style="font-size: 11px; background: rgba(0,210,255,0.1); border: 1px solid rgba(0,210,255,0.25); padding: 3px 8px; border-radius: 6px;">
+                <b>${v.word}</b> — ${v.translation}
+              </span>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
     </div>
   `;
 
-  // Обработчики загрузки файлов
-  const subInput = containerElement.querySelector('#sub-file-input');
-  if (subInput) {
-    subInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) handleUploadedFile(e.target.files[0]);
+  const fileInput = container.querySelector('#ext-sub-file-input');
+  if (fileInput) {
+    fileInput.onchange = (e) => {
+      if (e.target.files[0]) loadExternalSubtitleFile(e.target.files[0], false);
     };
   }
 
-  const audioInput = containerElement.querySelector('#audio-file-input');
-  if (audioInput) {
-    audioInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) handleUploadedFile(e.target.files[0]);
+  const secInput = container.querySelector('#ext-sub-secondary-input');
+  if (secInput) {
+    secInput.onchange = (e) => {
+      if (e.target.files[0]) loadExternalSubtitleFile(e.target.files[0], true);
     };
   }
 
-  // Слайдер сдвига
-  const offsetSlider = containerElement.querySelector('#sub-offset-slider');
-  if (offsetSlider) {
-    offsetSlider.oninput = (e) => setSubtitleOffset(e.target.value);
-  }
-
-  // Кнопки шагов
-  const btnM10 = containerElement.querySelector('#sub-step-m10');
-  const btnM01 = containerElement.querySelector('#sub-step-m01');
-  const btnZero = containerElement.querySelector('#sub-step-zero');
-  const btnP01 = containerElement.querySelector('#sub-step-p01');
-  const btnP10 = containerElement.querySelector('#sub-step-p10');
-
-  if (btnM10) btnM10.onclick = () => adjustSubtitleOffset(-1.0);
-  if (btnM01) btnM01.onclick = () => adjustSubtitleOffset(-0.1);
-  if (btnZero) btnZero.onclick = () => resetSubtitleOffset();
-  if (btnP01) btnP01.onclick = () => adjustSubtitleOffset(0.1);
-  if (btnP10) btnP10.onclick = () => adjustSubtitleOffset(1.0);
-
-  // Стилизация шрифта и отступа
-  const fontSlider = containerElement.querySelector('#sub-font-size-slider');
-  const fontLabel = containerElement.querySelector('#sub-font-size-label');
-  if (fontSlider) {
-    fontSlider.oninput = (e) => {
-      setSubtitleFontSize(e.target.value);
-      if (fontLabel) fontLabel.textContent = `${e.target.value}px`;
+  const dualToggle = container.querySelector('#toggle-dual-subs');
+  if (dualToggle) {
+    dualToggle.onchange = (e) => {
+      dualSubtitlesEnabled = e.target.checked;
+      localStorage.setItem('storm_dual_subtitles', dualSubtitlesEnabled ? 'true' : 'false');
+      lastRenderedPrimaryText = '';
+      lastRenderedSecondaryText = '';
+      showToast(`Двойные субтитры: ${dualSubtitlesEnabled ? 'Включены' : 'Выключены'}`, 'info');
     };
   }
 
-  const bottomSlider = containerElement.querySelector('#sub-bottom-slider');
-  const bottomLabel = containerElement.querySelector('#sub-bottom-label');
-  if (bottomSlider) {
-    bottomSlider.oninput = (e) => {
-      setSubtitleBottom(e.target.value);
-      if (bottomLabel) bottomLabel.textContent = `${e.target.value}px`;
+  const dictToggle = container.querySelector('#toggle-live-dict');
+  if (dictToggle) {
+    dictToggle.onchange = (e) => {
+      liveDictEnabled = e.target.checked;
+      localStorage.setItem('storm_live_dict', liveDictEnabled ? 'true' : 'false');
+      applyOverlayStyles();
+      lastRenderedPrimaryText = '';
+      showToast(`Живой словарь по клику: ${liveDictEnabled ? 'Включен' : 'Выключен'}`, 'info');
     };
   }
 
-  // Цвет
-  containerElement.querySelectorAll('.sub-color-pill').forEach(pill => {
-    pill.onclick = () => {
-      containerElement.querySelectorAll('.sub-color-pill').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      setSubtitleColor(pill.dataset.color);
-    };
-  });
-
-  // Фон
-  const bgNone = containerElement.querySelector('#sub-bg-none');
-  const bgSoft = containerElement.querySelector('#sub-bg-soft');
-  const bgDark = containerElement.querySelector('#sub-bg-dark');
-
-  if (bgNone) {
-    bgNone.onclick = () => {
-      setSubtitleBgColor('transparent');
-      bgNone.className = 'storm-btn storm-btn-sm storm-btn-primary';
-      if (bgSoft) bgSoft.className = 'storm-btn storm-btn-sm storm-btn-secondary';
-      if (bgDark) bgDark.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+  const pauseToggle = container.querySelector('#toggle-sub-autopause');
+  if (pauseToggle) {
+    pauseToggle.onchange = (e) => {
+      autoPauseOnHover = e.target.checked;
+      localStorage.setItem('storm_sub_autopause', autoPauseOnHover ? 'true' : 'false');
     };
   }
 
-  if (bgSoft) {
-    bgSoft.onclick = () => {
-      setSubtitleBgColor('rgba(0, 0, 0, 0.5)');
-      bgSoft.className = 'storm-btn storm-btn-sm storm-btn-primary';
-      if (bgNone) bgNone.className = 'storm-btn storm-btn-sm storm-btn-secondary';
-      if (bgDark) bgDark.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+  const minusBtn = container.querySelector('#sub-delay-minus');
+  const plusBtn = container.querySelector('#sub-delay-plus');
+  const offsetVal = container.querySelector('#sub-offset-val');
+
+  if (minusBtn && offsetVal) {
+    minusBtn.onclick = () => {
+      const val = adjustSubtitleOffset(-0.5);
+      offsetVal.textContent = `${val > 0 ? '+' : ''}${val}с`;
     };
   }
 
-  if (bgDark) {
-    bgDark.onclick = () => {
-      setSubtitleBgColor('rgba(0, 0, 0, 0.85)');
-      bgDark.className = 'storm-btn storm-btn-sm storm-btn-primary';
-      if (bgNone) bgNone.className = 'storm-btn storm-btn-sm storm-btn-secondary';
-      if (bgSoft) bgSoft.className = 'storm-btn storm-btn-sm storm-btn-secondary';
+  if (plusBtn && offsetVal) {
+    plusBtn.onclick = () => {
+      const val = adjustSubtitleOffset(0.5);
+      offsetVal.textContent = `${val > 0 ? '+' : ''}${val}с`;
     };
   }
 
-  // Тень
-  const shadowToggle = containerElement.querySelector('#sub-shadow-toggle');
-  if (shadowToggle) {
-    shadowToggle.onchange = (e) => setSubtitleShadow(e.target.checked);
+  const sizeSlider = container.querySelector('#sub-size-slider');
+  if (sizeSlider) {
+    sizeSlider.oninput = (e) => {
+      updateSubtitleStyle({ fontSize: parseInt(e.target.value, 10) });
+    };
   }
-}
 
-function updateSubtitlesControlsUi() {
-  const label = document.getElementById('sub-offset-label');
-  const slider = document.getElementById('sub-offset-slider');
-  if (label) {
-    label.textContent = `${timingOffset > 0 ? '+' : ''}${timingOffset.toFixed(1)}s`;
-  }
-  if (slider) {
-    slider.value = timingOffset;
+  const colorPicker = container.querySelector('#sub-color-picker');
+  if (colorPicker) {
+    colorPicker.oninput = (e) => {
+      updateSubtitleStyle({ color: e.target.value });
+    };
   }
 }

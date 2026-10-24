@@ -50,7 +50,9 @@ export const EQ_PRESETS = {
   bass: [7, 6, 4, 2, 0, 0, 0, 0, 0, 0],
   voice: [-2, -1, 0, 2, 4, 5, 4, 2, 0, -1],
   night: [2, 1, 0, 1, 3, 2, 1, -1, -2, -3],
-  live: [3, 2, 1, 1, 2, 3, 4, 4, 3, 2]
+  live: [3, 2, 1, 1, 2, 3, 4, 4, 3, 2],
+  anime_ost: [3, 2, 0, 1, 3, 4, 5, 4, 3, 2],
+  headphones_hifi: [4, 3, 2, 0, -1, 1, 2, 3, 4, 4]
 };
 
 const DEFAULT_AUDIO_SETTINGS = {
@@ -1324,6 +1326,8 @@ export function renderProAudioPanel(hostElement) {
             <button type="button" class="pro-pill-btn ${s.eqPreset === 'voice' ? 'active' : ''}" data-eq-preset="voice">Вокал</button>
             <button type="button" class="pro-pill-btn ${s.eqPreset === 'night' ? 'active' : ''}" data-eq-preset="night">Ночь</button>
             <button type="button" class="pro-pill-btn ${s.eqPreset === 'live' ? 'active' : ''}" data-eq-preset="live">Концерт</button>
+            <button type="button" class="pro-pill-btn ${s.eqPreset === 'anime_ost' ? 'active' : ''}" data-eq-preset="anime_ost">⛩️ Аниме</button>
+            <button type="button" class="pro-pill-btn ${s.eqPreset === 'headphones_hifi' ? 'active' : ''}" data-eq-preset="headphones_hifi">🎧 Hi-Fi</button>
             <button type="button" class="pro-pill-btn ${s.eqPreset === 'flat' ? 'active' : ''}" data-eq-preset="flat">Плоский</button>
           </div>
         </div>
@@ -1802,3 +1806,23 @@ export function getProAudioAnalyser() {
   return proAnalyser;
 }
 
+
+// Автоматическое приглушение фильма при разговоре в голосовом чате (Audio Ducking)
+let isAudioDucked = false;
+export function setAudioDucking(ducked) {
+  isAudioDucked = Boolean(ducked);
+  if (proAudioCtx && proMasterGain) {
+    const baseGain = (proAudioSettings.preampGain || 1.0) * (proAudioSettings.spatialMode !== 'stereo' ? 1.12 : 1.0);
+    const targetGain = isAudioDucked ? baseGain * 0.32 : baseGain;
+    proMasterGain.gain.setTargetAtTime(targetGain, proAudioCtx.currentTime, 0.08);
+  }
+  const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
+  if (video && !proAudioCtx) {
+    if (isAudioDucked) {
+      video._preDuckVol = video.volume;
+      video.volume = Math.max(0.15, (video.volume || 1) * 0.35);
+    } else if (video._preDuckVol !== undefined) {
+      video.volume = video._preDuckVol;
+    }
+  }
+}

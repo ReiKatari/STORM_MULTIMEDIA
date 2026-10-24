@@ -757,7 +757,7 @@ export async function getFanFilmDetails(idOrUrl) {
     }
   }
 
-  const cacheKey = `details_${idOrUrl}`;
+  const cacheKey = `details_v4_${idOrUrl}`;
   const cached = getCache('fanfilm4k', cacheKey);
   if (cached) return cached;
 
@@ -1056,7 +1056,7 @@ export async function getFanFilmDetails(idOrUrl) {
       status_label: '🟢 Онлайн',
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
-      url: cleanTargetUrl,
+      url: `/api/player/fanfilm-embed?url=${encodeURIComponent(cleanTargetUrl)}`,
       is_recommended: true,
       recommended_badge: '🔥 4K Рекомендуемый'
     }];

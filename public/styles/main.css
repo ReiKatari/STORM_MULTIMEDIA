@@ -7317,4 +7317,48 @@ body.tv-mode .custom-list-card:focus {
   min-height: max-content !important;
 }
 
+/* =============================================================
+   ОБЪЁМНЫЙ SHIMMER-ЭФФЕКТ ОБЛОЖЕК И МОБИЛЬНАЯ ОПТИМИЗАЦИЯ 1.0.45
+   ============================================================= */
+@keyframes stormPosterPulse {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.media-card-poster-wrap {
+  background: linear-gradient(135deg, #0b101d 0%, #152238 50%, #0b101d 100%);
+  background-size: 200% 200%;
+  animation: stormPosterPulse 4s ease infinite;
+}
+
+.media-card-poster {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+  background-color: #0b101d;
+}
+
+/* Улучшенная адаптация модального окна входа/регистрации на смартфонах */
+@media (max-width: 640px) {
+  #auth-modal .storm-modal-window {
+    width: calc(100vw - 24px) !important;
+    max-width: 420px !important;
+    margin: 12px auto !important;
+    max-height: calc(100dvh - 24px) !important;
+    overflow-y: auto !important;
+    border-radius: 18px !important;
+  }
+
+  #auth-modal .storm-btn {
+    min-height: 46px !important;
+    font-size: 14.5px !important;
+    touch-action: manipulation;
+  }
+
+  #auth-modal .storm-input {
+    min-height: 44px !important;
+    font-size: 16px !important; /* Предотвращает авто-зум iOS/Android при фокусе */
+  }
+}
+
+
 

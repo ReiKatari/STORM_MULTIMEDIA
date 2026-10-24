@@ -52,24 +52,24 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.0.44';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.44';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.44';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.44';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.44';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.44';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.44';
-import { renderSyncModalContent } from './sync-service.js?v=1.0.44';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.44';
-import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.44';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.44';
-import { openRemoteQrModal } from './storm-remote.js?v=1.0.44';
-import { initAdminDashboard } from './admin-dashboard.js?v=1.0.44';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.44';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.44';
-import { getStatusIconSvg } from './status-icons.js?v=1.0.44';
-import { checkForUpdates } from './updater.js?v=1.0.44';
-import { initFormFactorEngine } from './form-factor.js?v=1.0.44';
+import { initTheme, setTheme } from './theme.js?v=1.0.45';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.45';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.45';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.45';
+import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.45';
+import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.45';
+import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.45';
+import { renderSyncModalContent } from './sync-service.js?v=1.0.45';
+import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.45';
+import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.45';
+import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.45';
+import { openRemoteQrModal } from './storm-remote.js?v=1.0.45';
+import { initAdminDashboard } from './admin-dashboard.js?v=1.0.45';
+import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.45';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.45';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.45';
+import { checkForUpdates } from './updater.js?v=1.0.45';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.45';
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -101,7 +101,7 @@ export const clientTabCache = new Map();
 
 export function getPersistentTabCache(key) {
   try {
-    const raw = localStorage.getItem(`storm_cat_cache_v2_${key}`);
+    const raw = localStorage.getItem(`storm_cat_cache_v3_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
@@ -120,7 +120,7 @@ export function setPersistentTabCache(key, data) {
       totalPages: data.totalPages || 1,
       timestamp: Date.now()
     };
-    localStorage.setItem(`storm_cat_cache_v2_${key}`, JSON.stringify(toSave));
+    localStorage.setItem(`storm_cat_cache_v3_${key}`, JSON.stringify(toSave));
   } catch {}
 }
 
@@ -1619,15 +1619,111 @@ export function isPlaceholderImage(url) {
   return lower.includes('missing') || lower.includes('404') || lower.includes('placeholder') || lower.includes('default') || lower.includes('favicon.svg');
 }
 
+export function unwrapRawImageUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  let clean = url.trim();
+  while (clean.includes('/api/media/image-proxy')) {
+    const m = clean.match(/[?&]url=([^&]+)/);
+    if (m) {
+      try { clean = decodeURIComponent(m[1]); } catch { clean = m[1]; }
+    } else {
+      return '';
+    }
+  }
+  while (clean.includes('wsrv.nl/?url=') || clean.includes('images.weserv.nl/?url=')) {
+    const m = clean.match(/[?&]url=([^&]+)/);
+    if (m) {
+      try { clean = decodeURIComponent(m[1]); } catch { clean = m[1]; }
+    } else {
+      break;
+    }
+  }
+  if (clean.startsWith('//')) clean = `https:${clean}`;
+  const anixMatch = clean.match(/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
+  if (anixMatch) {
+    const code = anixMatch[1].replace(/\.jpg$/i, '');
+    return `https://static.anixart.tv/posters/${code}.jpg`;
+  }
+  return clean;
+}
+
+export function generateSvgPosterDataUri(title = '') {
+  const safeTitle = String(title || 'STORM MULTIMEDIA')
+    .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    .slice(0, 60);
+  const words = safeTitle.split(/\s+/);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > 18 && lines.length < 3) {
+      if (cur) lines.push(cur);
+      cur = w;
+    } else {
+      cur = (cur + ' ' + w).trim();
+    }
+  }
+  if (cur) lines.push(cur);
+  const textNodes = lines.map((ln, idx) =>
+    `<text x="300" y="${500 + idx * 44}" text-anchor="middle" fill="#f8fafc" font-family="system-ui,sans-serif" font-size="32" font-weight="800">${ln}</text>`
+  ).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900"><defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#0b1120"/><stop offset="50%" stop-color="#131c33"/><stop offset="100%" stop-color="#070a12"/></linearGradient></defs><rect width="600" height="900" fill="url(#bg)"/><circle cx="300" cy="280" r="170" fill="#00d2ff" opacity="0.07"/><rect x="28" y="28" width="544" height="844" rx="24" fill="none" stroke="#00d2ff" stroke-opacity="0.28" stroke-width="2"/><text x="300" y="115" text-anchor="middle" fill="#00d2ff" font-family="system-ui,sans-serif" font-size="16" font-weight="800" letter-spacing="2">4K ULTRA HD</text><circle cx="300" cy="300" r="60" fill="#00d2ff" opacity="0.14" stroke="#00d2ff" stroke-opacity="0.45" stroke-width="2"/><polygon points="284,272 284,328 332,300" fill="#00d2ff"/>${textNodes}<text x="300" y="815" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="15" font-weight="700" letter-spacing="3">STORM MULTIMEDIA</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+export function handleGlobalImageError(imgEl) {
+  if (!imgEl || imgEl.dataset.stormFallbackDone === '1') return;
+  const rawUrl = imgEl.dataset.rawUrl || unwrapRawImageUrl(imgEl.getAttribute('src') || '');
+  const title = imgEl.dataset.title || imgEl.getAttribute('alt') || '';
+  const isLiftImg = rawUrl && rawUrl.includes('img.liftw.ws');
+
+  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !imgEl.dataset.triedWsrv) {
+    imgEl.dataset.triedWsrv = '1';
+    imgEl.src = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
+    return;
+  }
+  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !imgEl.dataset.triedWeserv) {
+    imgEl.dataset.triedWeserv = '1';
+    imgEl.src = `https://images.weserv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
+    return;
+  }
+  if (title && !imgEl.dataset.triedTitleProxy && window.__STORM_BACKEND_ONLINE__ !== false) {
+    imgEl.dataset.triedTitleProxy = '1';
+    imgEl.src = `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}`;
+    return;
+  }
+  imgEl.dataset.stormFallbackDone = '1';
+  imgEl.onerror = null;
+  if (imgEl.classList.contains('user-avatar') || imgEl.id === 'user-avatar-img') {
+    imgEl.src = 'assets/avatar_default.svg';
+  } else {
+    imgEl.src = generateSvgPosterDataUri(title);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__stormHandleImgError = handleGlobalImageError;
+  window.__stormGetSafePosterUrl = getSafePosterUrl;
+  window.addEventListener('error', (e) => {
+    const target = e?.target;
+    if (target && target.tagName === 'IMG') {
+      handleGlobalImageError(target);
+    }
+  }, true);
+}
+
 /**
  * Получение безопасного и гарантированно доступного URL обложки/постера.
- * Все внешние изображения (TMDB, FanFilm4K, AniXart, VK, RuTube) маршрутизируются через
- * локальный высокоскоростной серверный прокси /api/media/image-proxy.
+ * Поддерживает как локальный прокси /api/media/image-proxy, так и прямую
+ * глобальную CDN-доставку через wsrv.nl для автономной работы на Android и без бэкенда.
  */
 export function getSafePosterUrl(url, title = '') {
+  const cleanTitle = typeof title === 'string' ? title.trim() : '';
   if (!url || typeof url !== 'string' || isPlaceholderImage(url)) {
-    if (title && typeof title === 'string' && title.trim().length >= 2) {
-      return `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}`;
+    if (cleanTitle.length >= 2) {
+      if (window.__STORM_BACKEND_ONLINE__ === false) {
+        return generateSvgPosterDataUri(cleanTitle);
+      }
+      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}`;
     }
     return 'assets/favicon.svg';
   }
@@ -1635,12 +1731,29 @@ export function getSafePosterUrl(url, title = '') {
   if (clean.startsWith('data:') || clean.startsWith('blob:') || clean.startsWith('assets/') || clean.startsWith('/assets/')) {
     return clean;
   }
-  if (clean.startsWith('/api/media/image-proxy') || clean.startsWith('api/media/image-proxy')) {
-    return clean.startsWith('/') ? clean : `/${clean}`;
+
+  const unwrapped = unwrapRawImageUrl(clean);
+  if (unwrapped) {
+    clean = unwrapped;
+  } else if (clean.startsWith('/api/media/image-proxy') || clean.startsWith('api/media/image-proxy')) {
+    let proxyUrl = clean.startsWith('/') ? clean : `/${clean}`;
+    if (cleanTitle && !proxyUrl.includes('title=')) {
+      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + `title=${encodeURIComponent(cleanTitle)}`;
+    }
+    return proxyUrl;
   }
+
   if (clean.startsWith('//')) clean = `https:${clean}`;
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
-    const titleParam = title ? `&title=${encodeURIComponent(title)}` : '';
+    const isLiftHost = clean.includes('img.liftw.ws') || clean.includes('lateremb.ws');
+    const useDirectCdn = (isStormNativeApp() || window.__STORM_BACKEND_ONLINE__ === false) && !isLiftHost;
+    if (useDirectCdn) {
+      if (clean.includes('static.anixart.tv') || clean.includes('rutube.ru') || clean.includes('userapi.com') || clean.includes('mycdn.me')) {
+        return clean;
+      }
+      return `https://wsrv.nl/?url=${encodeURIComponent(clean)}&w=500&q=85&output=webp`;
+    }
+    const titleParam = cleanTitle ? `&title=${encodeURIComponent(cleanTitle)}` : '';
     return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}`;
   }
   return clean;
@@ -1651,11 +1764,12 @@ export function getPosterSrcset(posterUrl) {
 }
 
 export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
+  const rawClean = unwrapRawImageUrl(posterUrl || '');
   const safePoster = getSafePosterUrl(posterUrl, title);
   const cleanTitle = escapeHtml(title || '');
-  const encodedTitle = encodeURIComponent(title || '').replace(/'/g, '%27');
+  const safeRawAttr = escapeHtml(rawClean || '');
   const classAttr = extraClass ? ` class="${extraClass}"` : '';
-  return `<img${classAttr} src="${safePoster}" alt="${cleanTitle}" loading="lazy" onerror="if(!this.dataset.triedTitle && '${encodedTitle}'){ this.dataset.triedTitle='1'; this.src='/api/media/image-proxy?title=${encodedTitle}'; } else if(!this.dataset.retried){ this.dataset.retried='1'; setTimeout(()=>{ this.src = this.src + (this.src.includes('?') ? '&' : '?') + '_r=' + Date.now(); }, 1200); } else { this.onerror=null; this.src='assets/favicon.svg'; }">`;
+  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}" loading="lazy" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
 }
 
 /**
@@ -2512,7 +2626,7 @@ function renderHeroShowcase(items) {
 
     const formattedTitle = formatMediaTitle(item);
     const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
-    const backdrop = item.backdrop || item.backdrop_path || item.poster || 'assets/favicon.svg';
+    const backdrop = getSafePosterUrl(item.backdrop || item.backdrop_path || item.poster || 'assets/favicon.svg', item.title);
 
     let genres = [];
     if (Array.isArray(item.genres)) genres = item.genres;
@@ -6774,13 +6888,26 @@ function initModals() {
   if (loginForm) {
     loginForm.onsubmit = async (e) => {
       e.preventDefault();
-      const loginVal = (document.getElementById('login-username')?.value || '').trim();
-      const passVal = (document.getElementById('login-password')?.value || '').trim();
+      const loginInput = document.getElementById('login-username');
+      const passInput = document.getElementById('login-password');
+      const loginVal = (loginInput?.value || '').trim() || 'ReiKatari';
+      const passVal = (passInput?.value || '').trim();
+      const submitBtn = loginForm.querySelector('button[type="submit"]');
+      const origText = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Вход...';
+      }
       try {
         await login(loginVal, passVal);
         authModal.classList.remove('is-open');
       } catch (err) {
         showToast(err.message, 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = origText;
+        }
       }
     };
   }
@@ -6798,9 +6925,9 @@ function initModals() {
   if (registerForm) {
     registerForm.onsubmit = async (e) => {
       e.preventDefault();
-      const userVal = document.getElementById('reg-username').value;
-      const emailVal = document.getElementById('reg-email').value;
-      const passVal = document.getElementById('reg-password').value;
+      const userVal = (document.getElementById('reg-username')?.value || '').trim() || 'Пользователь';
+      const emailVal = (document.getElementById('reg-email')?.value || '').trim();
+      const passVal = (document.getElementById('reg-password')?.value || '').trim();
       try {
         await register(userVal, emailVal, passVal);
         authModal.classList.remove('is-open');

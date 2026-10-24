@@ -6,6 +6,7 @@
 import { getUser, showToast } from './auth.js';
 import { trackClientAction } from './achievements.js';
 import { openPlayerModal } from './player.js';
+import { setAudioDucking } from './pro-media-engine.js';
 
 let ws = null;
 let currentRoom = null;
@@ -169,6 +170,17 @@ function handleSocketMessage(data) {
 
     case 'live_reaction':
       renderFloatingReaction(data.emoji, data.user);
+      break;
+
+    case 'voice_speaking':
+      handleRemoteVoiceSpeaking(data.senderName || 'Зритель', Boolean(data.speaking));
+      break;
+
+    case 'episode_synced':
+      if (!isHost && data.episode) {
+        showToast(`🎬 Хост переключил на Сезон ${data.season}, Серию ${data.episode}${data.voiceoverName ? ` (${data.voiceoverName})` : ''}`, 'info');
+        window.dispatchEvent(new CustomEvent('storm:watch-room-episode-sync', { detail: data }));
+      }
       break;
 
     case 'storm_remote_action':
@@ -455,6 +467,16 @@ export function renderRoomUi(room) {
       <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="room-sync-timecode-btn" style="flex: 1; font-size: 11px;" title="Синхронизировать таймкод видео">
         ⏱️ Синхронизация
       </button>
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="room-voice-toggle-btn" style="flex: 1; font-size: 11px;" title="Включить или выключить голосовой чат с авто-приглушением фильма (Audio Ducking)">
+        🎙️ Голосовой чат
+      </button>
+    </div>
+    <div id="room-voice-bar" style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(16,185,129,0.08); border-bottom:1px solid rgba(255,255,255,0.06); font-size:11px;">
+      <span>🎙️ Голос: <span id="room-voice-status" style="color:var(--text-muted);">Отключен</span></span>
+      <label style="display:flex; align-items:center; gap:5px; cursor:pointer;" title="Автоматически приглушать звук фильма во время разговора участников">
+        <input type="checkbox" id="room-audio-ducking-toggle" checked style="accent-color:#10b981;">
+        <span>Авто-приглушение</span>
+      </label>
     </div>
 
     <!-- Участники просмотра -->
@@ -593,7 +615,11 @@ export function renderRoomUi(room) {
   // Микрофон для голосового чата
   const micBtn = container.querySelector('#toggle-voice-mic-btn');
   if (micBtn) {
-    micBtn.onclick = () => toggleVoiceChatMic(micBtn);
+    micBtn.onclick = () => toggleRoomVoiceChat(micBtn);
+  }
+  const voiceBarBtn = container.querySelector('#room-voice-toggle-btn');
+  if (voiceBarBtn) {
+    voiceBarBtn.onclick = () => toggleRoomVoiceChat(voiceBarBtn);
   }
 
   // Кнопки форматирования текста
@@ -890,3 +916,127 @@ export async function toggleVoiceChatMic(btn = null) {
   }
 }
 
+
+// ============================================================================
+// WEBRTC ГОЛОСОВОЙ ЧАТ С АВТО-ПРИГЛУШЕНИЕМ ФИЛЬМА (AUDIO DUCKING) И СИНХРОНИЗАЦИЕЙ СЕРИЙ
+// ============================================================================
+let localVoiceStream = null;
+let voiceVadInterval = null;
+let isVoiceChatActive = false;
+let isLocalSpeaking = false;
+let remoteSpeakingTimer = null;
+
+function handleRemoteVoiceSpeaking(senderName, speaking) {
+  const statusEl = document.getElementById('room-voice-status');
+  const duckToggle = document.getElementById('room-audio-ducking-toggle');
+  const allowDuck = !duckToggle || duckToggle.checked;
+
+  if (speaking) {
+    if (statusEl) {
+      statusEl.innerHTML = `<b style="color:#10b981;">🗣️ Говорит: ${senderName}</b>`;
+    }
+    if (allowDuck) setAudioDucking(true);
+    clearTimeout(remoteSpeakingTimer);
+    remoteSpeakingTimer = setTimeout(() => {
+      setAudioDucking(false);
+      if (statusEl && isVoiceChatActive) statusEl.textContent = '🟢 Микрофон активен';
+    }, 1800);
+  } else {
+    setAudioDucking(false);
+    if (statusEl && isVoiceChatActive) statusEl.textContent = '🟢 Микрофон активен';
+  }
+}
+
+export async function toggleRoomVoiceChat(btnEl) {
+  if (isVoiceChatActive) {
+    stopVoiceChat();
+    if (btnEl) {
+      btnEl.className = 'storm-btn storm-btn-secondary storm-btn-sm';
+      btnEl.innerHTML = '🎙️ Голосовой чат';
+    }
+    const statusEl = document.getElementById('room-voice-status');
+    if (statusEl) statusEl.textContent = 'Отключен';
+    showToast('🎙️ Голосовой чат отключен', 'info');
+    return;
+  }
+
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Микрофон недоступен в текущем окружении');
+    }
+    localVoiceStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+    isVoiceChatActive = true;
+    if (btnEl) {
+      btnEl.className = 'storm-btn storm-btn-primary storm-btn-sm';
+      btnEl.innerHTML = '🟢 Выключить микрофон';
+    }
+    const statusEl = document.getElementById('room-voice-status');
+    if (statusEl) statusEl.textContent = '🟢 Микрофон активен';
+    showToast('🎙️ Голосовой чат Кинокомнаты включен (с поддержкой Audio Ducking)', 'success');
+
+    // Детектор голосовой активности (VAD) для автоматического приглушения фильма
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      const vadCtx = new AudioContextClass();
+      const source = vadCtx.createMediaStreamSource(localVoiceStream);
+      const analyser = vadCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+
+      clearInterval(voiceVadInterval);
+      voiceVadInterval = setInterval(() => {
+        if (!isVoiceChatActive) return;
+        analyser.getByteFrequencyData(dataArr);
+        let sum = 0;
+        for (let i = 0; i < dataArr.length; i++) sum += dataArr[i];
+        const avg = sum / dataArr.length;
+        const nowSpeaking = avg > 24;
+
+        if (nowSpeaking !== isLocalSpeaking) {
+          isLocalSpeaking = nowSpeaking;
+          const duckToggle = document.getElementById('room-audio-ducking-toggle');
+          if (!duckToggle || duckToggle.checked) {
+            setAudioDucking(nowSpeaking);
+          }
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'voice_speaking',
+              speaking: nowSpeaking
+            }));
+          }
+        }
+      }, 220);
+    }
+  } catch (err) {
+    showToast(`Не удалось включить микрофон: ${err.message}`, 'warning');
+  }
+}
+
+export function stopVoiceChat() {
+  isVoiceChatActive = false;
+  isLocalSpeaking = false;
+  setAudioDucking(false);
+  if (voiceVadInterval) {
+    clearInterval(voiceVadInterval);
+    voiceVadInterval = null;
+  }
+  if (localVoiceStream) {
+    localVoiceStream.getTracks().forEach(t => t.stop());
+    localVoiceStream = null;
+  }
+}
+
+export function broadcastEpisodeSync(season, episode, voiceoverId = '', voiceoverName = '') {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !currentRoom) return;
+  ws.send(JSON.stringify({
+    type: 'sync_episode',
+    season,
+    episode,
+    voiceoverId,
+    voiceoverName
+  }));
+}

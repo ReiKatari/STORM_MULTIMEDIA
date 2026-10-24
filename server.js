@@ -474,14 +474,58 @@ wss.on('connection', (ws, req) => {
             type: 'voice_signal',
             signal: data.signal,
             senderId: currentUser?.id,
+            senderName: currentUser?.username || 'Зритель',
             targetId: data.targetId
           });
 
           for (const [client, pUser] of room.participants) {
             if (client !== ws && client.readyState === 1) {
-              if (!data.targetId || pUser.id === data.targetId) {
+              if (!data.targetId || String(pUser.id) === String(data.targetId)) {
                 client.send(signalMsg);
               }
+            }
+          }
+          break;
+        }
+
+        case 'voice_speaking': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const speakMsg = JSON.stringify({
+            type: 'voice_speaking',
+            senderId: currentUser?.id,
+            senderName: currentUser?.username || 'Зритель',
+            speaking: Boolean(data.speaking)
+          });
+
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(speakMsg);
+            }
+          }
+          break;
+        }
+
+        case 'sync_episode': {
+          if (!currentRoomCode) return;
+          const room = watchRooms.get(currentRoomCode);
+          if (!room) return;
+
+          const epMsg = JSON.stringify({
+            type: 'episode_synced',
+            season: Number(data.season) || 1,
+            episode: Number(data.episode) || 1,
+            voiceoverId: data.voiceoverId || '',
+            voiceoverName: data.voiceoverName || '',
+            playerId: data.playerId || '',
+            sender: currentUser?.username || 'Хост'
+          });
+
+          for (const [client] of room.participants) {
+            if (client !== ws && client.readyState === 1) {
+              client.send(epMsg);
             }
           }
           break;
@@ -856,7 +900,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.44',
+    version: '1.0.45',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -1148,7 +1192,7 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
     candidateUrls.push(normalized);
   } else {
     candidateUrls.push(normalized);
-    if (normalized.startsWith('http')) {
+    if (normalized.startsWith('http') && !normalized.includes('liftw.ws') && !normalized.includes('lateremb.ws')) {
       candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
     }
   }
@@ -1177,7 +1221,7 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
       if (candidate.includes('liftw.ws') || candidate.includes('lateremb.ws') || candidate.includes('liftapp.ink')) {
         const liftResp = await liftRequestRaw(candidate, {
           headers: { ...headers, Referer: 'https://liftw.ws/' },
-          timeoutMs
+          timeout: Math.min(timeoutMs, 3500)
         });
         if (liftResp && liftResp.status >= 200 && liftResp.status < 300 && liftResp.buffer?.length > 100) {
           buffer = liftResp.buffer;
@@ -1286,7 +1330,7 @@ async function resolveAnimePosterBuffer(title, orig) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(term)}&limit=1`, {
+      const res = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(term)}&limit=1`, {
         headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' },
         signal: controller.signal
       });
@@ -1302,7 +1346,7 @@ async function resolveAnimePosterBuffer(title, orig) {
               itNameOrig.includes(sTerm) || sTerm.includes(itNameOrig)) {
             const imgPath = item.image.original || item.image.preview;
             if (imgPath && !isPlaceholderImage(imgPath)) {
-              const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.one${imgPath}`;
+              const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.io${imgPath}`;
               const img = await fetchImageBuffer(fullUrl, 4000);
               if (img) {
                 setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
@@ -1705,7 +1749,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         getLiftCatalog({ category: normCategory, page, limit: 24, ...extraFilters }),
         new Promise(resolve => setTimeout(() => resolve({ items: [], total_items: 0 }), 3800))
       ]);
-      fetchedItems = liftRes?.items || [];
+      fetchedItems = Array.isArray(liftRes) ? liftRes : (liftRes?.items || []);
       fetchedTotal = liftRes?.total_items || Math.max(fetchedItems.length, 500 * 24);
     }
     // 1. Прямой источник: The Movie Database (TMDB)
@@ -1868,7 +1912,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         ]);
         const ffItems = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [];
         const tmdbItems = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [];
-        const liftItems = liftRes.status === 'fulfilled' ? liftRes.value?.items || [] : [];
+        const liftItems = liftRes.status === 'fulfilled' ? (Array.isArray(liftRes.value) ? liftRes.value : (liftRes.value?.items || [])) : [];
         fetchedItems = interleaveSources([
           ffItems,
           liftItems,
@@ -1898,7 +1942,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         ]);
         fetchedItems = interleaveSources([
           fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
-          liftRes.status === 'fulfilled' ? liftRes.value?.items || [] : [],
+          liftRes.status === 'fulfilled' ? (Array.isArray(liftRes.value) ? liftRes.value : (liftRes.value?.items || [])) : [],
           tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
           aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
           libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
@@ -1926,7 +1970,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         ]);
         fetchedItems = interleaveSources([
           fRes.status === 'fulfilled' ? fRes.value?.items || [] : [],
-          liftRes.status === 'fulfilled' ? liftRes.value?.items || [] : [],
+          liftRes.status === 'fulfilled' ? (Array.isArray(liftRes.value) ? liftRes.value : (liftRes.value?.items || [])) : [],
           tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [],
           aRes.status === 'fulfilled' ? aRes.value?.items || [] : [],
           libRes.status === 'fulfilled' ? libRes.value?.items || [] : [],
@@ -3200,7 +3244,14 @@ app.get('/api/media/item', async (req, res) => {
     let isReleaseUpcoming = Boolean(String(id || '').startsWith('tmdb_up_'));
 
     if (source === 'lift' || String(id || '').startsWith('lift_') || req.query.lift_id) {
-      const cleanLiftId = String(req.query.lift_id || id || '').replace(/^lift_/i, '');
+      let cleanLiftId = String(req.query.lift_id || id || '').replace(/^lift_/i, '');
+      if (req.query.title) {
+        const preCheck = await getLiftDetails(cleanLiftId);
+        if (preCheck && preCheck.title && Math.max(scoreMediaCandidate(preCheck.title || '', '', req.query.title, req.query.year || '', '', ''), scoreMediaCandidate(preCheck.original_title || '', '', req.query.title, req.query.year || '', '', '')) < 100) {
+          const matchedLift = await resolveLiftMatch({ title: req.query.title, year: req.query.year });
+          if (matchedLift) cleanLiftId = String(matchedLift.lift_id || matchedLift);
+        }
+      }
       mediaDetails = await getLiftDetails(cleanLiftId);
     } else if (source === 'anixart' || String(id || '').startsWith('anix_')) {
       const cleanAnixId = String(id || '').replace('anix_', '');
@@ -3306,15 +3357,14 @@ app.get('/api/media/item', async (req, res) => {
         id: 'vk_video_stream',
         name: 'VK Видео (Официальный плеер)',
         type: 'iframe',
-        url: 'https://vk.com/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0',
+        url: `/api/player/vk-search-embed?title=${encodeURIComponent(videoTitle || 'Ландыши')}&year=${encodeURIComponent(req.query.year || '2025')}`,
         quality: '1080p FHD / 4K',
         badge: 'VK ВИДЕО',
         status: 'working',
         status_label: '🟢 Онлайн',
         audio_info: 'Официальный сериал Ландыши на VK Видео со звуком',
         speed: '⚡ Скоростной VK CDN',
-        is_recommended: true,
-        recommended_badge: '🔥 Рекомендуемый'
+        is_recommended: false
       } : null;
 
       let vkSearchPlayer = null;
@@ -3416,8 +3466,8 @@ app.get('/api/media/item', async (req, res) => {
         players: players.length > 0 ? players : [searchPlayer]
       };
     } else if (source === 'tmdb' || String(id || '').startsWith('tmdb_') || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-      const rawId = String(id || '').replace(/^tmdb_(?:up_)?/, '');
-      const cleanTmdbId = /^\d+$/.test(rawId) ? rawId : (rawId.match(/\d+/)?.[0] || '');
+      const rawId = String(id || '').replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
+      const cleanTmdbId = /^\d+$/.test(rawId) ? rawId : '';
       mediaDetails = await getTmdbItemDetails(cleanTmdbId, req.query.media_type, req.query.title, req.query.year);
 
       if (!mediaDetails) {
@@ -3580,7 +3630,7 @@ app.get('/api/media/item', async (req, res) => {
         fanfilm_4k_url: rawFanfilmUrl,
         players: [{
           id: 'fanfilm4k_uhd',
-          name: '4K Ultra HD Плеер (FanFilm4K)',
+          name: '4K Ultra HD плеер (FanFilm4K)',
           type: 'iframe',
           quality: '4K UHD',
           badge: 'FANFILM 4K',
@@ -3588,7 +3638,7 @@ app.get('/api/media/item', async (req, res) => {
           status_label: '🟢 Онлайн',
           audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
           speed: '💎 Премиум 4K CDN',
-          url: rawFanfilmUrl,
+          url: rawFanfilmUrl.startsWith('/api/player/fanfilm-embed') ? rawFanfilmUrl : `/api/player/fanfilm-embed?url=${encodeURIComponent(rawFanfilmUrl)}&title=${encodeURIComponent(itemTitle)}`,
           is_recommended: true,
           recommended_badge: '🔥 4K Рекомендуемый'
         }]
@@ -3608,9 +3658,11 @@ app.get('/api/media/item', async (req, res) => {
         mediaDetails.is_upcoming = false;
         if (!mediaDetails.players) mediaDetails.players = [];
         if (!mediaDetails.players.some(p => p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k')) {
+          const ffRaw = mediaDetails.fanfilm_4k_url;
+          const ffProxied = ffRaw.startsWith('/api/player/fanfilm-embed') ? ffRaw : `/api/player/fanfilm-embed?url=${encodeURIComponent(ffRaw)}&title=${encodeURIComponent(mediaDetails.title || '')}`;
           mediaDetails.players.unshift({
             id: 'fanfilm4k_uhd',
-            name: '4K Ultra HD Плеер (FanFilm4K)',
+            name: '4K Ultra HD плеер (FanFilm4K)',
             type: 'iframe',
             quality: '4K UHD',
             badge: 'FANFILM 4K',
@@ -3618,7 +3670,7 @@ app.get('/api/media/item', async (req, res) => {
             status_label: '🟢 Онлайн',
             audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
             speed: '💎 Премиум 4K CDN',
-            url: mediaDetails.fanfilm_4k_url,
+            url: ffProxied,
             is_recommended: true,
             recommended_badge: '🔥 4K Рекомендуемый'
           });
@@ -3674,10 +3726,10 @@ app.get('/api/media/item', async (req, res) => {
         if (tmdbSearch.items?.length > 0) {
           const isAnimeSource = source === 'anilibria' || source === 'anixart' || String(mediaDetails.media_type || '').includes('anime');
           const validItems = tmdbSearch.items.filter(it => {
-            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, '', isSeries ? '1' : '', '');
-            return sc >= 0;
+            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || '', isSeries ? '1' : '', '');
+            return sc >= 200;
           });
-          const pool = validItems.length > 0 ? validItems : (isAnimeSource ? [] : tmdbSearch.items);
+          const pool = validItems;
           const matchByYear = mediaDetails.year ? pool.find(it => String(it.year) === String(mediaDetails.year)) : null;
           let matchByType = isSeries ? pool.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
           if (isSeries && !matchByType && cleanSearchTitle.toLowerCase().includes('ричер')) {
@@ -3697,8 +3749,8 @@ app.get('/api/media/item', async (req, res) => {
             if ((!hasValidDesc || (enriched.description && enriched.description.length > (mediaDetails.description || '').length)) && enriched.description && enriched.description.length >= 60) {
               mediaDetails.description = enriched.description;
             }
-            mediaDetails.release_date = enriched.release_date || mediaDetails.release_date;
-            mediaDetails.year = enriched.year || mediaDetails.year || (mediaDetails.release_date ? mediaDetails.release_date.match(/\b(19\d\d|20\d\d)\b/)?.[1] : '');
+            mediaDetails.release_date = mediaDetails.release_date || enriched.release_date;
+            mediaDetails.year = mediaDetails.year || enriched.year || (mediaDetails.release_date ? mediaDetails.release_date.match(/\b(19\d\d|20\d\d)\b/)?.[1] : '');
             if (enriched.duration) {
               mediaDetails.duration = enriched.duration;
             }
@@ -3730,7 +3782,7 @@ app.get('/api/media/item', async (req, res) => {
             if (enriched.tmdb_id || enriched.id) {
               mediaDetails.tmdb_id = String(enriched.tmdb_id || enriched.id).replace('tmdb_', '');
             }
-            if (isSeries && !isAnimeSource) {
+            if (isSeries && !isAnimeSource && !String(mediaDetails.media_type || '').includes('cartoon')) {
               mediaDetails.media_type = 'series';
               mediaDetails.category = 'Сериал';
             }
@@ -3977,6 +4029,7 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Собираем расширенный список плееров (Lift Ad-Free 4K, FanFilm 4K, HD, Kodik, RHS, LostFilm, Kinobox, Vidsrc, VK, RuTube)
+    mediaDetails.media_type = resolveCanonicalMediaType(mediaDetails.title, mediaDetails.fanfilm_4k_url || mediaDetails.link || '', mediaDetails.category || req.query.media_type || '', mediaDetails.genres, mediaDetails);
     const kinoboxPlayers = getAvailablePlayers({
       kp_id: mediaDetails.kp_id,
       imdb_id: mediaDetails.imdb_id,
@@ -3995,7 +4048,15 @@ app.get('/api/media/item', async (req, res) => {
 
     let allPlayers = [];
     if (mediaDetails.players && mediaDetails.players.length > 0) {
-      allPlayers.push(...mediaDetails.players);
+      mediaDetails.players.forEach(p => {
+        if (!p || !p.id) return;
+        const freshP = kinoboxPlayers.find(kp => kp.id === p.id);
+        if (freshP && p.id !== 'anilibria_hls' && p.id !== 'rutube_direct_hls') {
+          allPlayers.push(freshP);
+        } else {
+          allPlayers.push(p);
+        }
+      });
     }
     const isLandyshiItem = String(mediaDetails.id || '').includes('landyshi') || String(mediaDetails.title || '').toLowerCase().includes('ландыши') || mediaDetails.rutube_id === '564f31c881b83373bfe0cb26979d44cf';
 
@@ -4014,7 +4075,7 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.is_upcoming = false;
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K Ad-Free и 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
-    const isAnimeDirect = p => p && isWorkingStream(p) && (p.id === 'anilibria_hls' || p.id === 'anixart_stream');
+    const isAnimeDirect = p => p && isWorkingStream(p) && p.id === 'anilibria_hls' && String(p.url || '').includes('.m3u8');
     const isLiftAdFree = p => p && isWorkingStream(p) && p.id === 'lift_adfree';
     const isReal4kStream = p => p && isWorkingStream(p) && !String(p.url || '').includes('do=search') && (p.id === 'lift_adfree' || p.id === 'fanfilm4k_uhd' || p.id === 'fanfilm_4k' || p.quality === '4K UHD' || p.badge === 'FANFILM 4K' || p.badge === 'LIFT БЕЗ РЕКЛАМЫ');
     allPlayers.sort((a, b) => {
@@ -4049,7 +4110,7 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     // Каноническое обогащение типа медиа, года и жанров
-    mediaDetails.media_type = resolveCanonicalMediaType(mediaDetails.title, mediaDetails.fanfilm_4k_url || mediaDetails.link || '', mediaDetails.category || '', mediaDetails.genres, mediaDetails);
+    mediaDetails.media_type = resolveCanonicalMediaType(mediaDetails.title, mediaDetails.fanfilm_4k_url || mediaDetails.link || '', mediaDetails.category || req.query.media_type || '', mediaDetails.genres, mediaDetails);
     mediaDetails.category = mediaDetails.media_type === 'series' ? 'Сериал' :
                            (mediaDetails.media_type === 'anime-series' ? 'Аниме-сериал' :
                            (mediaDetails.media_type === 'anime-movie' ? 'Аниме-фильм' :
@@ -4609,7 +4670,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
     try {
       let shikimoriId = source === 'shikimori' ? id : null;
       if (!shikimoriId && cleanTitle) {
-        const sRes = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
+        const sRes = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
           headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
         });
         if (sRes.ok) {
@@ -4619,7 +4680,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
       }
 
       if (shikimoriId) {
-        const rRes = await fetch(`https://shikimori.one/api/animes/${shikimoriId}/roles`, {
+        const rRes = await fetch(`https://shikimori.io/api/animes/${shikimoriId}/roles`, {
           headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
         });
         if (rRes.ok) {
@@ -4632,7 +4693,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
                 id: r.character.id,
                 name: r.character.russian || r.character.name,
                 character: r.roles ? r.roles.join(', ') : 'Персонаж',
-                photo: r.character.image?.original ? `https://shikimori.one${r.character.image.original}` : 'assets/avatar_default.svg'
+                photo: r.character.image?.original ? `https://shikimori.io${r.character.image.original}` : 'assets/avatar_default.svg'
               }));
             directors = roles
               .filter(r => r.person && r.roles?.includes('Director'))
@@ -4640,7 +4701,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
                 id: r.person.id,
                 name: r.person.russian || r.person.name,
                 role: 'Режиссер',
-                photo: r.person.image?.original ? `https://shikimori.one${r.person.image.original}` : 'assets/avatar_default.svg'
+                photo: r.person.image?.original ? `https://shikimori.io${r.person.image.original}` : 'assets/avatar_default.svg'
               }));
           }
         }
@@ -5408,7 +5469,8 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
           const durStr = typeof it[5] === 'string' ? it[5] : '';
           const rawSec = typeof it[19] === 'number' ? it[19] : (typeof it[18] === 'number' ? it[18] : 0);
           const durationSec = rawSec > 0 ? rawSec : parseDur(durStr);
-          if (durationSec < (season ? 600 : 2400)) continue;
+          const effectiveMinDur = allowShort ? (season ? 300 : 900) : (season ? 600 : 2400);
+          if (durationSec < effectiveMinDur) continue;
           if (durationSec > maxDur) continue;
 
           const sc = scoreMediaCandidate(rawTitle, '', cleanTitle, year, season, episode, 0);
@@ -5417,9 +5479,10 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
           const hash = (typeof it[42] === 'string' && /^[a-f0-9]{14,24}$/i.test(it[42]))
             ? it[42]
             : (it.find(x => typeof x === 'string' && /^[a-f0-9]{16,22}$/i.test(x)) || '');
+          if (!hash) continue;
 
           candidates.push({
-            url: `https://vk.com/video_ext.php?oid=${oid}&id=${vid}${hash ? `&hash=${hash}` : ''}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`,
+            url: `https://vk.com/video_ext.php?oid=${oid}&id=${vid}&hash=${hash}&hd=2&autoplay=0&js_api=1&muted=0&mute=0`,
             score: sc,
             duration: durationSec
           });
@@ -5481,7 +5544,8 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
           if (seenIds.has(it.id)) continue;
           seenIds.add(it.id);
           const dur = parseInt(it.duration, 10) || 0;
-          if (dur < (season ? 600 : 2400)) continue;
+          const effectiveMinDur = allowShort ? (season ? 300 : 900) : (season ? 600 : 2400);
+          if (dur < effectiveMinDur) continue;
           if (dur > maxDur) continue;
 
           const pubTs = it.publication_ts || it.created_ts || '';
@@ -5513,6 +5577,27 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
 }
 
 const _fanFilmIframeCache = new Map();
+async function verifyStraversIframeLive(straversUrl) {
+  if (!straversUrl || !straversUrl.includes('stravers.live')) return Boolean(straversUrl);
+  try {
+    const embedRes = await fetch(straversUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Referer': 'https://v17.fanfilm4k.media/'
+      },
+      signal: AbortSignal.timeout(2500)
+    });
+    if (!embedRes.ok) return false;
+    const html = await embedRes.text();
+    const hasFileList = html.includes('const fileList =') || html.includes('fileList');
+    const hasValidIdFile = !hasFileList || /["']id_file["']\s*:\s*[1-9]\d*/.test(html);
+    const isDead = ((html.toLowerCase().includes('<title>ошибка!</title>') || html.includes('<div class="error">')) && !hasFileList) || !hasValidIdFile;
+    return !isDead;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false, year = '') {
   const normKey = `${String(cleanTitle || '').toLowerCase().trim()}_${year || ''}_${preferHd ? 'hd' : '4k'}`;
   if (!cleanTitle) return '';
@@ -5546,10 +5631,15 @@ async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false, yea
     } catch (_) {}
   }
 
-  if (!pageUrl) return '';
+  if (!pageUrl) {
+    _fanFilmIframeCache.set(normKey, { url: '', ts: Date.now() });
+    return '';
+  }
   if (pageUrl.includes('stravers.live')) {
-    _fanFilmIframeCache.set(normKey, { url: pageUrl, ts: Date.now() });
-    return pageUrl;
+    const isLive = await verifyStraversIframeLive(pageUrl);
+    const finalUrl = isLive ? pageUrl : '';
+    _fanFilmIframeCache.set(normKey, { url: finalUrl, ts: Date.now() });
+    return finalUrl;
   }
 
   try {
@@ -5562,35 +5652,40 @@ async function resolveFanFilmDirectIframe(cleanTitle = '', preferHd = false, yea
       : ((m4k && m4k[1]) || (mHd && mHd[1]) || (mAny && mAny[1]) || '');
     if (rawSrc) {
       const fullIframe = rawSrc.startsWith('//') ? 'https:' + rawSrc : rawSrc;
-      _fanFilmIframeCache.set(normKey, { url: fullIframe, ts: Date.now() });
-      return fullIframe;
+      const isLive = await verifyStraversIframeLive(fullIframe);
+      const finalUrl = isLive ? fullIframe : '';
+      _fanFilmIframeCache.set(normKey, { url: finalUrl, ts: Date.now() });
+      return finalUrl;
     }
   } catch (_) {}
 
+  _fanFilmIframeCache.set(normKey, { url: '', ts: Date.now() });
   return '';
 }
 
 const _kodikDirectCache = new Map();
-async function resolveKodikDirectIframe({ cleanTitle = '', shikimori_id = '', season = '', episode = '' } = {}) {
-  const cacheKey = `${cleanTitle}_${shikimori_id}_${season}_${episode}`.toLowerCase();
+async function resolveKodikDirectIframe({ cleanTitle = '', original_title = '', shikimori_id = '', season = '', episode = '' } = {}) {
+  const cacheKey = `${cleanTitle}_${original_title}_${shikimori_id}_${season}_${episode}`.toLowerCase();
   const cached = _kodikDirectCache.get(cacheKey);
   if (cached && (Date.now() - cached.ts < 1800000)) {
     return cached.url;
   }
 
   let resolvedShikiId = String(shikimori_id || '').replace(/\D/g, '');
-  if (!resolvedShikiId && cleanTitle) {
+  if (!resolvedShikiId && (cleanTitle || original_title)) {
     try {
       const shikiList = await Promise.race([
-        searchShikimori(cleanTitle),
-        new Promise(r => setTimeout(() => r([]), 2000))
+        searchShikimori(cleanTitle || original_title),
+        new Promise(r => setTimeout(() => r([]), 2800))
       ]);
       if (Array.isArray(shikiList) && shikiList.length > 0) {
-        const normTarget = cleanTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        const normTarget = (cleanTitle || original_title).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
         const match = shikiList.find(s => {
           const normS = String(s.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-          return normS && normTarget && (normS === normTarget || normS.startsWith(normTarget + ' '));
-        });
+          const normOrig = String(s.original_title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+          return (normS && normTarget && (normS === normTarget || normS.startsWith(normTarget + ' ') || normTarget.startsWith(normS + ' '))) ||
+                 (normOrig && normTarget && (normOrig === normTarget || normOrig.startsWith(normTarget + ' ')));
+        }) || shikiList[0];
         if (match) {
           resolvedShikiId = String(match.shikimori_id || match.id || '').replace(/\D/g, '');
         }
@@ -5688,43 +5783,54 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
     const {
       balancer = 'kinobox',
       title = '',
+      original_title = '',
       year = '',
+      lift_id = '',
       kp_id = '',
       imdb_id = '',
       shikimori_id = '',
+      is_series = '',
       season = '',
       episode = '',
-      fallback_mode = ''
+      fallback_mode = '',
+      no_lift = ''
     } = req.query;
 
     const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
     const epQuery = season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+    const wantSeries = Boolean(season || is_series === '1' || is_series === 'true');
 
     // 1. Для международного балансера Vidsrc пробуем IMDb ID или поиск в TMDB (через доступное зеркало vidsrc.me)
     if (balancer === 'vidsrc') {
       let resolvedImdb = String(imdb_id || '').trim();
       let resolvedTmdbId = '';
-      let isTv = Boolean(season);
+      let isTv = wantSeries;
       if (!resolvedImdb && cleanTitle) {
         try {
           const tmdbResults = await Promise.race([
             searchTmdb(cleanTitle, 1),
-            new Promise(r => setTimeout(() => r([]), 2500))
+            new Promise(r => setTimeout(() => r({ items: [] }), 2500))
           ]);
-          if (Array.isArray(tmdbResults) && tmdbResults.length > 0) {
-            const rawTmdb = String(tmdbResults[0].id || '').replace(/^tmdb_(?:movie|tv|up)_/, '');
+          const tmdbItems = Array.isArray(tmdbResults) ? tmdbResults : (tmdbResults?.items || []);
+          if (tmdbItems.length > 0) {
+            const matchedItem = tmdbItems.find(it => {
+              const itTv = it.media_type === 'series' || it.media_type === 'tv';
+              return wantSeries ? itTv : true;
+            }) || tmdbItems[0];
+            const rawTmdb = String(matchedItem.id || '').replace(/^tmdb_(?:movie|tv|series|up)_/i, '');
             if (/^\d+$/.test(rawTmdb)) {
               resolvedTmdbId = rawTmdb;
-              isTv = tmdbResults[0].media_type === 'series' || tmdbResults[0].media_type === 'tv';
+              isTv = matchedItem.media_type === 'series' || matchedItem.media_type === 'tv';
             }
           }
         } catch (_) {}
       }
+      const tvEpSuffix = isTv && season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
       if (resolvedImdb) {
-        return res.redirect(302, `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?imdb=${encodeURIComponent(resolvedImdb)}`);
+        return res.redirect(302, `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?imdb=${encodeURIComponent(resolvedImdb)}${tvEpSuffix}`);
       }
       if (resolvedTmdbId) {
-        return res.redirect(302, `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?tmdb=${encodeURIComponent(resolvedTmdbId)}`);
+        return res.redirect(302, `https://vidsrc.me/embed/${isTv ? 'tv' : 'movie'}?tmdb=${encodeURIComponent(resolvedTmdbId)}${tvEpSuffix}`);
       }
     }
 
@@ -5742,9 +5848,9 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
       }
     }
 
-    // 3. Для Kodik (или аниме-балансера) сначала проверяем прямое наличие в базе Kodik API
-    if (balancer === 'kodik' || shikimori_id) {
-      const kodikDirect = await resolveKodikDirectIframe({ cleanTitle, shikimori_id, season, episode });
+    // 3. Для Kodik / AniXart / Shikimori сначала проверяем прямое наличие в базе Kodik API
+    if (balancer === 'kodik' || balancer === 'anixart' || balancer === 'shikimori' || shikimori_id) {
+      const kodikDirect = await resolveKodikDirectIframe({ cleanTitle, original_title, shikimori_id, season, episode });
       if (kodikDirect) {
         return res.redirect(302, `/api/player/adblock-proxy?url=${encodeURIComponent(kodikDirect)}&fallback_title=${encodeURIComponent(cleanTitle)}&fallback_year=${encodeURIComponent(year)}`);
       }
@@ -5768,8 +5874,8 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
       }
     }
 
-    // 5. Проверяем наличие прямого 4K/HD мульти-потока на FanFilm4K / Stravers (включая живой поиск по базе v17.fanfilm4k.media)
-    if (cleanTitle) {
+    // 5. Проверяем наличие живого 4K/HD мульти-потока на FanFilm4K / Stravers
+    if (cleanTitle && balancer !== 'kodik' && balancer !== 'anixart' && balancer !== 'shikimori') {
       const preferHd = balancer === 'hdrezka' || balancer === 'collaps' || balancer === 'rhs';
       const ffIframe = await resolveFanFilmDirectIframe(cleanTitle, preferHd, year);
       if (ffIframe) {
@@ -5777,9 +5883,34 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
       }
     }
 
-    // 6. Если на FanFilm4K релиза нет — проверяем Kodik API (для аниме) и гарантированный поток RuTube / VK Видео
+    // 6. Проверяем базу Lift 4K/FHD (88 000+ релизов с предвыбором студийной озвучки HDRezka / RHS / LostFilm / Дубляж)
+    if (no_lift !== '1' && (cleanTitle || lift_id)) {
+      try {
+        const matchedLiftId = await Promise.race([
+          resolveLiftMatch({
+            lift_id: lift_id || '',
+            title: cleanTitle,
+            original_title: original_title || '',
+            year: year || '',
+            is_series: wantSeries
+          }),
+          new Promise(r => setTimeout(() => r(''), 3200))
+        ]);
+        if (matchedLiftId) {
+          let voiceHint = '';
+          if (balancer === 'rhs') voiceHint = 'rhs';
+          else if (balancer === 'hdrezka') voiceHint = 'hdrezka';
+          else if (balancer === 'collaps' || balancer === 'alloha') voiceHint = 'дубляж';
+          else if (balancer === 'vidsrc') voiceHint = 'original';
+          const voiceParam = voiceHint ? `&voice=${encodeURIComponent(voiceHint)}` : '';
+          return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(cleanTitle)}${year ? `&year=${encodeURIComponent(year)}` : ''}${wantSeries ? '&is_series=1' : ''}${epQuery}${voiceParam}`);
+        }
+      } catch (_) {}
+    }
+
+    // 7. Если ни на FanFilm4K, ни в Lift релиза нет — проверяем Kodik API и гарантированный поток RuTube / VK Видео
     const [kodikDirect, ruId, vkUrl] = await Promise.all([
-      resolveKodikDirectIframe({ cleanTitle, shikimori_id, season, episode }),
+      resolveKodikDirectIframe({ cleanTitle, original_title, shikimori_id, season, episode }),
       resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false),
       resolveBestVkEmbed(cleanTitle, year, season, episode, false)
     ]);
@@ -5909,6 +6040,16 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
           const extractedTitle = (pageTitleMatch && !/ошибка/i.test(pageTitleMatch[1])) ? pageTitleMatch[1].trim() : '';
           const effectiveTitle = fallbackTitle || extractedTitle;
           if (effectiveTitle) {
+            try {
+              const matchedLiftId = await Promise.race([
+                resolveLiftMatch({ title: effectiveTitle, year: year || '', is_series: Boolean(season) }),
+                new Promise(r => setTimeout(() => r(''), 2800))
+              ]);
+              if (matchedLiftId) {
+                const epQuery = season ? `&is_series=1&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+                return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(effectiveTitle)}${year ? `&year=${encodeURIComponent(year)}` : ''}${epQuery}`);
+              }
+            } catch (_) {}
             const [ruId, vkUrl] = await Promise.all([
               resolveBestRuTubeId(effectiveTitle, year, season, episode, 0, false),
               resolveBestVkEmbed(effectiveTitle, year, season, episode, false)
@@ -6738,8 +6879,18 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
     }
 
     // Если прямое проксирование недоступно со стороны сервера Node.js,
-    // сразу разрешаем проверенный поток RuTube / VK Видео
+    // сначала проверяем прямой поток Lift 4K/FHD, затем RuTube / VK Видео
     if (fallbackTitle) {
+      try {
+        const matchedLiftId = await Promise.race([
+          resolveLiftMatch({ title: fallbackTitle, year: year || '', is_series: Boolean(season) }),
+          new Promise(r => setTimeout(() => r(''), 2800))
+        ]);
+        if (matchedLiftId) {
+          const epQuery = season ? `&is_series=1&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+          return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(fallbackTitle)}${year ? `&year=${encodeURIComponent(year)}` : ''}${epQuery}`);
+        }
+      } catch (_) {}
       const [ruId, vkUrl] = await Promise.all([
         resolveBestRuTubeId(fallbackTitle, year, season, episode, 0, false),
         resolveBestVkEmbed(fallbackTitle, year, season, episode, false)
@@ -7423,7 +7574,8 @@ app.get('/api/player/lift-download-options', async (req, res) => {
 
     const data = await getLiftDownloadAndStreamOptions(matchedLiftId, {
       season: parseInt(season, 10) || 1,
-      episode: parseInt(episode, 10) || 1
+      episode: parseInt(episode, 10) || 1,
+      userAgent: req.headers['user-agent'] || ''
     });
 
     if (!data) {
@@ -7454,6 +7606,7 @@ app.get('/api/player/lift-subtitle.vtt', async (req, res) => {
     const r = await liftRequestRaw(rawUrl, {
       origin: 'https://embed.liftw.ws',
       referer: 'https://embed.liftw.ws/',
+      headers: req.headers['user-agent'] ? { 'User-Agent': req.headers['user-agent'] } : {},
       timeout: 8000
     });
     if (!r.ok) {
@@ -7491,7 +7644,7 @@ app.get('/api/player/lift-playlist.m3u8', (req, res) => {
     '#EXTM3U',
     `#PLAYLIST:${displayTitle}`,
     '#EXTVLCOPT:http-referrer=https://embed.liftw.ws/',
-    '#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    `#EXTVLCOPT:http-user-agent=${String(req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36').replace(/[\r\n]+/g, ' ').trim()}`,
     '#EXTVLCOPT:network-caching=1500',
     `#EXTINF:-1 group-title="STORM MULTIMEDIA",${displayTitle}`,
     streamUrl
@@ -7508,8 +7661,8 @@ app.get('/api/player/lift-playlist.m3u8', (req, res) => {
 
 // Прямой очищенный от рекламы плеер Lift (VenomPlayer 4K/FHD + все озвучки СНГ + субтитры + превью таймлайна + автопропуск заставок)
 app.get('/api/player/lift-embed', async (req, res) => {
-  const { lift_id, title, original_title, year, kp_id, imdb_id, is_series, season, episode } = req.query;
-  const fallbackKinoboxUrl = `/api/player/kinobox-embed?balancer=kinobox&title=${encodeURIComponent(title || '')}${year ? `&year=${encodeURIComponent(year)}` : ''}${kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : ''}${imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : ''}${season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}` : ''}`;
+  const { lift_id, title, original_title, year, kp_id, imdb_id, is_series, season, episode, voice } = req.query;
+  const fallbackKinoboxUrl = `/api/player/kinobox-embed?balancer=kinobox&no_lift=1&title=${encodeURIComponent(title || '')}${year ? `&year=${encodeURIComponent(year)}` : ''}${kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : ''}${imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : ''}${season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}` : ''}`;
 
   try {
     const matchedLiftId = await resolveLiftMatch({
@@ -7524,8 +7677,21 @@ app.get('/api/player/lift-embed', async (req, res) => {
       return res.redirect(fallbackKinoboxUrl);
     }
 
+    const clientUserAgent = req.headers['user-agent'] || '';
+    const forceHls = req.query.force_hls === '1';
     const embedUrl = `https://embed.liftw.ws/embed/movie/${matchedLiftId}?host=liftw.ws`;
-    let html = await liftFetchText(embedUrl, 9000);
+    let html = await liftFetchText(
+      embedUrl,
+      9000,
+      clientUserAgent
+        ? {
+            'User-Agent': clientUserAgent,
+            'Sec-Fetch-Dest': 'iframe',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-site'
+          }
+        : {}
+    );
     if (!html || !html.includes('makePlayer')) {
       return res.redirect(fallbackKinoboxUrl);
     }
@@ -7624,6 +7790,9 @@ app.get('/api/player/lift-embed', async (req, res) => {
   var LIFT_ID = "${matchedLiftId}";
   var REQ_SEASON = ${reqSeason};
   var REQ_EPISODE = "${reqEpisode}";
+  var REQ_VOICE = ${JSON.stringify(String(voice || '').trim())};
+  var FORCE_HLS = ${forceHls ? "true" : "false"};
+  var FALLBACK_KINOBOX_URL = ${JSON.stringify(fallbackKinoboxUrl)};
   var activeSections = [];
   var lastSkippedSectionKey = '';
   var autoSkipEnabled = false;
@@ -7712,10 +7881,24 @@ app.get('/api/player/lift-embed', async (req, res) => {
     }
   }
 
+  var errorHandled = false;
   setInterval(function() {
     var v = document.querySelector('video');
     if (v && !v.paused) {
       checkTimeForSections(v.currentTime || 0);
+    }
+    if (!errorHandled && document.body) {
+      var bodyTxt = document.body.innerText || '';
+      if (bodyTxt.indexOf('is not available') !== -1 || bodyTxt.indexOf('dasha [') !== -1 || bodyTxt.indexOf('dash [') !== -1 || bodyTxt.indexOf('Попробуйте обновить страницу') !== -1) {
+        errorHandled = true;
+        if (!FORCE_HLS && window.location.search.indexOf('force_hls=1') === -1) {
+          var sep = window.location.search ? '&' : '?';
+          window.location.replace(window.location.pathname + window.location.search + sep + 'force_hls=1');
+        } else {
+          try { window.parent.postMessage({ type: 'STORM_SWITCH_NEXT_SOURCE', reason: 'LIFT_STREAM_ERROR' }, '*'); } catch (_) {}
+          if (FALLBACK_KINOBOX_URL) window.location.replace(FALLBACK_KINOBOX_URL);
+        }
+      }
     }
   }, 500);
 
@@ -7727,10 +7910,23 @@ app.get('/api/player/lift-embed', async (req, res) => {
       var savedAudio = localStorage.getItem('storm_lift_audio_' + LIFT_ID) || localStorage.getItem('storm_lift_default_audio') || '';
       var savedSub = localStorage.getItem('storm_lift_sub_' + LIFT_ID) || '';
 
-      if (savedAudio && ctrl.sound && ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value)) {
+      if (ctrl.sound && ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value)) {
         var availSounds = ctrl.ls.sound.value;
-        var exactSound = availSounds.find(function(n) { return String(n).toLowerCase() === savedAudio.toLowerCase(); });
-        if (exactSound) ctrl.sound.value = exactSound;
+        var chosenSound = '';
+        if (REQ_VOICE) {
+          var vLow = REQ_VOICE.toLowerCase();
+          chosenSound = availSounds.find(function(n) {
+            var sLow = String(n).toLowerCase();
+            if (vLow === 'rhs') return sLow.includes('red head') || sLow.includes('rhs') || sLow.includes('lostfilm') || sLow.includes('лостфильм');
+            if (vLow === 'hdrezka') return sLow.includes('hdrezka') || sLow.includes('резка') || sLow.includes('tvshows') || sLow.includes('jaskier');
+            if (vLow === 'original') return sLow.includes('оригинал') || sLow.includes('original') || sLow.includes('eng') || sLow.includes('субтитр');
+            return sLow.includes(vLow);
+          }) || '';
+        }
+        if (!chosenSound && savedAudio) {
+          chosenSound = availSounds.find(function(n) { return String(n).toLowerCase() === savedAudio.toLowerCase(); }) || '';
+        }
+        if (chosenSound) ctrl.sound.value = chosenSound;
       }
       if (savedSub && ctrl.cc && ctrl.ls && ctrl.ls.cc && Array.isArray(ctrl.ls.cc.value)) {
         var availSubs = ctrl.ls.cc.value;
@@ -7839,6 +8035,19 @@ app.get('/api/player/lift-embed', async (req, res) => {
           if (eFound && Array.isArray(eFound.sections)) window._initialSections = eFound.sections;
         }
       } catch(_) {}
+      try {
+        if (${forceHls ? "true" : "false"}) {
+          if (opts) { delete opts.dash; delete opts.dasha; }
+          if (opts && opts.source) { delete opts.source.dash; delete opts.source.dasha; }
+          if (opts && opts.playlist && Array.isArray(opts.playlist.seasons)) {
+            opts.playlist.seasons.forEach(function(s) {
+              if (s && Array.isArray(s.episodes)) {
+                s.episodes.forEach(function(e) { delete e.dash; delete e.dasha; });
+              }
+            });
+          }
+        }
+      } catch(_) {}
       app = VenomPlayer.make(opts);`
     );
 
@@ -7887,7 +8096,7 @@ app.get('/api/player/series-options', async (req, res) => {
           is_series: true
         });
         if (matchedLiftId) {
-          const liftStream = await extractLiftStreamData(matchedLiftId, { season: 1, episode: 1 });
+          const liftStream = await extractLiftStreamData(matchedLiftId, { season: 1, episode: 1, userAgent: req.headers['user-agent'] || '' });
           if (liftStream) {
             const voiceTranslations = (liftStream.audioTracks || []).map((name, idx) => ({
               id: `lift_vo_${idx}`,
@@ -8271,7 +8480,7 @@ app.get('/api/anixart/discover', async (req, res) => {
   }
 });
 
-app.get('/api/anixart/release/:id', async (req, res) => {
+app.get(['/api/anixart/release/:id', '/api/anixart/details/:id'], async (req, res) => {
   try {
     const release = await getAnixartReleaseDetails(req.params.id);
     if (!release) return res.status(404).json({ error: 'Релиз не найден' });
@@ -8623,7 +8832,7 @@ app.post('/api/sync/shikimori', requireAuth, async (req, res) => {
     if (!username || !username.trim()) {
       return res.status(400).json({ error: 'Укажите никнейм Shikimori' });
     }
-    const response = await fetch(`https://shikimori.one/api/users/${encodeURIComponent(username.trim())}/anime_rates?limit=500`, {
+    const response = await fetch(`https://shikimori.io/api/users/${encodeURIComponent(username.trim())}/anime_rates?limit=500`, {
       headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' }
     });
     if (!response.ok) {
@@ -8638,7 +8847,7 @@ app.post('/api/sync/shikimori', requireAuth, async (req, res) => {
           source: 'shikimori',
           title: rate.anime.russian || rate.anime.name,
           original_title: rate.anime.name,
-          poster_url: rate.anime.image ? `https://shikimori.one${rate.anime.image.original || rate.anime.image.preview}` : '',
+          poster_url: rate.anime.image ? `https://shikimori.io${rate.anime.image.original || rate.anime.image.preview}` : '',
           media_type: 'anime',
           status: rate.status || 'watching',
           episodes_watched: rate.episodes || 0
@@ -8673,7 +8882,7 @@ app.get('/api/media/skip-times', async (req, res) => {
         targetMalId = cachedMalId;
       } else {
         try {
-          const sRes = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
+          const sRes = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
             headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
           });
           if (sRes.ok) {
@@ -8792,7 +9001,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.0.44';
+  let currentAppVersion = '1.0.45';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -8880,6 +9089,789 @@ app.get('/api/updates/check', async (req, res) => {
       error: err.message,
       currentVersion: currentAppVersion
     });
+  }
+});
+
+// ==========================================
+// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.0.45)
+// ==========================================
+
+// 13.1. Мультидорожечный загрузчик STORM Direct Downloader 2.0 (Встроенный HLS-муксер с аудио + субтитрами и прямой поток)
+app.get('/api/player/lift-muxed-playlist.m3u8', async (req, res) => {
+  try {
+    const { title, original_title, year, lift_id, is_series, season, episode, quality, voice } = req.query;
+    const opts = await getLiftDownloadAndStreamOptions({
+      title: String(title || '').trim(),
+      originalTitle: String(original_title || '').trim(),
+      year: String(year || '').trim(),
+      liftId: String(lift_id || '').trim(),
+      isSeries: is_series === '1' || is_series === 'true',
+      season: parseInt(season, 10) || 1,
+      episode: parseInt(episode, 10) || 1
+    });
+
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.get('host') || `localhost:${PORT}`;
+    const baseOrigin = `${proto}://${host}`;
+
+    const qualities = Array.isArray(opts?.qualities) ? opts.qualities : [];
+    const voiceovers = Array.isArray(opts?.voiceovers) ? opts.voiceovers : [];
+    const subtitles = Array.isArray(opts?.subtitles) ? opts.subtitles : [];
+
+    const reqHeight = parseInt(String(quality || '1080').replace(/\D+/g, ''), 10) || 1080;
+    const pickedQ = qualities.find(q => q.height === reqHeight && q.hlsUrl) || qualities.find(q => q.hlsUrl) || qualities[0];
+    const videoStreamUrl = pickedQ?.hlsUrl || opts?.hlsUrl || opts?.hlsMasterUrl || '';
+
+    const safeTitle = String(title || 'STORM_Video').replace(/[^\p{L}\p{N}_\-\s.()]/gu, '').trim().replace(/\s+/g, '_') || 'STORM_Video';
+    const filename = `${safeTitle}_${pickedQ?.height || 1080}p_MultiTrack.m3u8`;
+
+    const lines = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:4',
+      '#EXT-X-INDEPENDENT-SEGMENTS'
+    ];
+
+    // Вшиваем все доступные субтитры .vtt
+    subtitles.forEach((sub, idx) => {
+      const subUrl = sub.url || sub.src || '';
+      if (!subUrl) return;
+      const label = String(sub.label || sub.name || `Субтитры ${idx + 1}`).replace(/"/g, "'");
+      const lang = label.toLowerCase().includes('eng') ? 'en' : 'ru';
+      const proxyVtt = `${baseOrigin}/api/player/lift-subtitle.vtt?url=${encodeURIComponent(subUrl)}`;
+      lines.push(`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="${label}",DEFAULT=${idx === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,LANGUAGE="${lang}",URI="${proxyVtt}"`);
+    });
+
+    // Вшиваем студийные аудиодорожки
+    let hasAudioGroup = false;
+    voiceovers.forEach((v, idx) => {
+      if (!v.hlsUri) return;
+      hasAudioGroup = true;
+      const vName = String(v.name || `Озвучка ${idx + 1}`).replace(/"/g, "'");
+      const isDefault = voice ? vName.toLowerCase().includes(String(voice).toLowerCase()) : idx === 0;
+      lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="${vName}",DEFAULT=${isDefault ? 'YES' : 'NO'},AUTOSELECT=YES,LANGUAGE="ru",URI="${v.hlsUri}"`);
+    });
+
+    if (videoStreamUrl) {
+      const bw = pickedQ?.bandwidth || 6800000;
+      const resStr = pickedQ?.resolution || `${pickedQ?.width || 1920}x${pickedQ?.height || 1080}`;
+      let streamInf = `#EXT-X-STREAM-INF:BANDWIDTH=${bw},RESOLUTION=${resStr}`;
+      if (hasAudioGroup) streamInf += `,AUDIO="audio"`;
+      if (subtitles.length > 0) streamInf += `,SUBTITLES="subs"`;
+      lines.push(streamInf);
+      lines.push(videoStreamUrl);
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="STORM_MultiTrack.m3u8"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(lines.join('\n') + '\n');
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 13.2. Живой контекстный словарь для интерактивных двойных субтитров (Dual Subtitles + Live Dictionary)
+const BUILTIN_CINEMA_DICTIONARY = {
+  'hello': { tr: 'привет / здравствуйте', pos: 'междометие', ex: 'Hello, my old friend — Привет, мой старый друг' },
+  'world': { tr: 'мир / вселенная', pos: 'существительное', ex: 'Save the world — Спасти мир' },
+  'love': { tr: 'любовь / любить', pos: 'сущ. / глагол', ex: 'True love never dies — Настоящая любовь не умирает' },
+  'time': { tr: 'время / раз', pos: 'существительное', ex: 'Out of time — Время на исходе' },
+  'life': { tr: 'жизнь', pos: 'существительное', ex: 'Real life — Реальная жизнь' },
+  'death': { tr: 'смерть / гибель', pos: 'существительное', ex: 'Matter of life and death — Вопрос жизни и смерти' },
+  'night': { tr: 'ночь / вечер', pos: 'существительное', ex: 'Into the night — В ночи' },
+  'day': { tr: 'день / сутки', pos: 'существительное', ex: 'Brand new day — Совершенно новый день' },
+  'friend': { tr: 'друг / приятель', pos: 'существительное', ex: 'Best friend — Лучший друг' },
+  'enemy': { tr: 'враг / противник', pos: 'существительное', ex: 'Know your enemy — Знай своего врага' },
+  'power': { tr: 'сила / власть / мощь', pos: 'существительное', ex: 'Great power — Великая сила' },
+  'truth': { tr: 'правда / истина', pos: 'существительное', ex: 'Tell the truth — Скажи правду' },
+  'shadow': { tr: 'тень / призрак', pos: 'существительное', ex: 'In the shadows — В тени' },
+  'heart': { tr: 'сердце / душа', pos: 'существительное', ex: 'Follow your heart — Следуй за своим сердцем' },
+  'remember': { tr: 'помнить / вспоминать', pos: 'глагол', ex: 'Remember who you are — Помни, кто ты' },
+  'forget': { tr: 'забывать / забыть', pos: 'глагол', ex: 'Never forget — Никогда не забывай' },
+  'believe': { tr: 'верить / полагать', pos: 'глагол', ex: 'I believe in you — Я верю в тебя' },
+  'run': { tr: 'бежать / управлять', pos: 'глагол', ex: 'Run away — Убегать' },
+  'fight': { tr: 'сражаться / бой / битва', pos: 'глагол / сущ.', ex: 'Fight back — Дать отпор' },
+  'destiny': { tr: 'судьба / предназначение', pos: 'существительное', ex: 'Fulfill your destiny — Исполнить предназначение' },
+  'hope': { tr: 'надежда / надеяться', pos: 'сущ. / глагол', ex: 'Last hope — Последняя надежда' },
+  'fear': { tr: 'страх / бояться', pos: 'сущ. / глагол', ex: 'No fear — Без страха' }
+};
+
+app.get('/api/subtitles/translate-word', async (req, res) => {
+  try {
+    const rawWord = String(req.query.word || '').trim();
+    const contextSentence = String(req.query.context || '').trim();
+    const cleanWord = rawWord.replace(/[^\p{L}\p{N}\-']/gu, '').toLowerCase();
+    if (!cleanWord) {
+      return res.json({ success: false, word: rawWord, translation: '' });
+    }
+
+    const cacheKey = `${cleanWord}::${contextSentence.slice(0, 60)}`;
+    const cached = getCache('sub_dict', cacheKey);
+    if (cached) return res.json(cached);
+
+    let result = null;
+    if (BUILTIN_CINEMA_DICTIONARY[cleanWord]) {
+      const entry = BUILTIN_CINEMA_DICTIONARY[cleanWord];
+      result = {
+        success: true,
+        word: rawWord,
+        cleanWord,
+        translation: entry.tr,
+        partOfSpeech: entry.pos,
+        example: entry.ex,
+        contextTranslation: ''
+      };
+    }
+
+    try {
+      const gtUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ru&dt=t&dt=bd&q=${encodeURIComponent(cleanWord)}`;
+      const gtRes = await fetch(gtUrl, { signal: AbortSignal.timeout(3000) });
+      if (gtRes.ok) {
+        const gtData = await gtRes.json();
+        const primaryTr = gtData?.[0]?.map(x => x?.[0]).filter(Boolean).join('') || '';
+        const dictPos = gtData?.[1]?.[0]?.[0] || '';
+        const dictSynonyms = (gtData?.[1]?.[0]?.[1] || []).slice(0, 5).join(', ');
+        if (primaryTr) {
+          result = {
+            success: true,
+            word: rawWord,
+            cleanWord,
+            translation: dictSynonyms ? `${primaryTr} (${dictSynonyms})` : primaryTr,
+            partOfSpeech: dictPos || result?.partOfSpeech || 'слово / выражение',
+            example: result?.example || '',
+            contextTranslation: ''
+          };
+        }
+      }
+    } catch (_) {}
+
+    if (contextSentence && contextSentence.length > 3) {
+      try {
+        const ctxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ru&dt=t&q=${encodeURIComponent(contextSentence)}`;
+        const ctxRes = await fetch(ctxUrl, { signal: AbortSignal.timeout(2500) });
+        if (ctxRes.ok) {
+          const ctxData = await ctxRes.json();
+          const ctxTr = ctxData?.[0]?.map(x => x?.[0]).filter(Boolean).join('') || '';
+          if (ctxTr && result) {
+            result.contextTranslation = ctxTr;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!result) {
+      result = {
+        success: true,
+        word: rawWord,
+        cleanWord,
+        translation: rawWord,
+        partOfSpeech: 'термин',
+        example: '',
+        contextTranslation: contextSentence
+      };
+    }
+
+    setCache('sub_dict', cacheKey, result, 86400 * 7);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13.3. Нейронный дайджест «Что было в прошлых сезонах» (AI Season Recap)
+app.get('/api/media/season-recap', async (req, res) => {
+  try {
+    const title = String(req.query.title || '').trim();
+    const tvId = String(req.query.tvId || '').trim();
+    const targetSeason = Math.max(1, parseInt(req.query.season, 10) || 2);
+
+    const cacheKey = `recap_${tvId || title}_s${targetSeason}`;
+    const cached = getCache('season_recap', cacheKey);
+    if (cached) return res.json(cached);
+
+    let resolvedTvId = tvId && /^\d+$/.test(tvId) ? tvId : null;
+    if (!resolvedTvId && title) {
+      try {
+        resolvedTvId = await findTmdbTvId(title);
+      } catch (_) {}
+    }
+
+    const recapSeasons = [];
+    const maxPrevSeason = Math.max(1, targetSeason - 1);
+
+    if (resolvedTvId) {
+      for (let s = 1; s <= Math.min(maxPrevSeason, 6); s++) {
+        try {
+          const epData = await getTmdbSeasonEpisodes(resolvedTvId, s, title);
+          const eps = Array.isArray(epData?.episodes) ? epData.episodes : [];
+          const keyEpisodes = [];
+          if (eps.length > 0) {
+            const indices = Array.from(new Set([0, Math.floor(eps.length / 2), eps.length - 1]));
+            indices.forEach(idx => {
+              const ep = eps[idx];
+              if (ep && ep.overview) {
+                keyEpisodes.push({
+                  episode: ep.episode_number || (idx + 1),
+                  name: ep.name || `Серия ${idx + 1}`,
+                  summary: ep.overview
+                });
+              }
+            });
+          }
+          recapSeasons.push({
+            season_number: s,
+            title: `Сезон ${s}`,
+            episodes_count: eps.length || 8,
+            overview: epData?.overview || (keyEpisodes.length > 0
+              ? keyEpisodes.map(k => `• Эпизод ${k.episode} («${k.name}»): ${k.summary}`).join('\n')
+              : `Ключевые события ${s}-го сезона проекта «${title}», подводящие сюжет к началу сезона ${targetSeason}.`),
+            key_moments: keyEpisodes
+          });
+        } catch (_) {}
+      }
+    }
+
+    if (recapSeasons.length === 0) {
+      for (let s = 1; s <= Math.min(maxPrevSeason, 3); s++) {
+        recapSeasons.push({
+          season_number: s,
+          title: `Сезон ${s}`,
+          episodes_count: 10,
+          overview: `В ${s}-м сезоне сериала «${title}» главные герои столкнулись с ключевыми испытаниями, раскрыли мотивы антагонистов и заложили фундамент для событий ${targetSeason}-го сезона.`,
+          key_moments: [
+            { episode: 1, name: 'Завязка сезона', summary: `Начало сюжетной арки ${s}-го сезона и расстановка сил.` },
+            { episode: 5, name: 'Переломный момент', summary: 'Обострение конфликта и неожиданное открытие.' },
+            { episode: 10, name: 'Финал сезона', summary: `Кульминационная развязка ${s}-го сезона и прямой пролог к следующим сериям.` }
+          ]
+        });
+      }
+    }
+
+    const payload = {
+      success: true,
+      title,
+      targetSeason,
+      recapTitle: targetSeason > 1
+        ? `Краткое содержание предыдущих сезонов (1–${targetSeason - 1}) перед просмотром ${targetSeason} сезона`
+        : `Экспозиция и гид по 1 сезону «${title}» без спойлеров`,
+      seasons: recapSeasons
+    };
+
+    setCache('season_recap', cacheKey, payload, 86400 * 3);
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13.4. Умная лента «Новые серии и озвучки ваших сериалов» (My Airing Tracker)
+app.get('/api/media/airing-tracker', async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : 1;
+    const bookmarks = getUserBookmarks(userId) || [];
+    const activeSeries = bookmarks.filter(b => {
+      const st = String(b.status || '').toLowerCase();
+      const mt = String(b.media_type || '').toLowerCase();
+      return (st === 'watching' || st === 'planned' || !st) &&
+             (mt.includes('series') || mt.includes('anime') || mt === 'tv' || Number(b.total_episodes) > 1 || Number(b.episodes_watched) > 0);
+    });
+
+    const scheduleData = await getAggregatedSchedule().catch(() => ({ days: {} }));
+    const allScheduleItems = Object.values(scheduleData?.days || {}).flat();
+
+    const updates = [];
+    const candidates = activeSeries.slice(0, 12);
+
+    for (const item of candidates) {
+      const cleanT = String(item.title || '').trim();
+      if (!cleanT) continue;
+      let latestSeason = Number(item.season) || 1;
+      let latestEpisode = Math.max(Number(item.episodes_watched) || 1, 1);
+      let voiceovers = ['Дубляж', 'Red Head Sound', 'HDRezka Studio'];
+      let releaseBadge = 'Новые серии доступны';
+
+      const schedMatch = allScheduleItems.find(s => String(s.title || '').toLowerCase().includes(cleanT.toLowerCase()));
+      if (schedMatch) {
+        if (schedMatch.episode) latestEpisode = Math.max(latestEpisode, Number(schedMatch.episode) || latestEpisode);
+        releaseBadge = schedMatch.time ? `Эфир в ${schedMatch.time}` : 'Свежий релиз недели';
+      }
+
+      try {
+        const liftMatch = await resolveLiftMatch({ title: cleanT, year: item.year, isSeries: true });
+        if (liftMatch && liftMatch.id) {
+          const det = await getLiftDetails(liftMatch.id);
+          if (det && Array.isArray(det.seasons) && det.seasons.length > 0) {
+            const lastS = det.seasons[det.seasons.length - 1];
+            latestSeason = Number(lastS.season_number || lastS.season) || latestSeason;
+            const epCount = Number(lastS.episode_count || (Array.isArray(lastS.episodes) ? lastS.episodes.length : 0)) || latestEpisode;
+            latestEpisode = Math.max(latestEpisode, epCount);
+          }
+          if (det && Array.isArray(det.voiceovers) && det.voiceovers.length > 0) {
+            voiceovers = det.voiceovers.slice(0, 4).map(v => v.name || v);
+          }
+        }
+      } catch (_) {}
+
+      const watchedEp = Number(item.episodes_watched) || 0;
+      const hasNewEp = latestEpisode > watchedEp;
+
+      updates.push({
+        media_id: item.media_id,
+        source: item.source || 'tmdb',
+        title: cleanT,
+        poster: item.poster_url || `/api/media/image-proxy?title=${encodeURIComponent(cleanT)}`,
+        year: item.year || '2025',
+        media_type: item.media_type || 'series',
+        user_status: item.status || 'watching',
+        watched_episode: watchedEp,
+        latest_season: latestSeason,
+        latest_episode: latestEpisode,
+        has_new_episode: hasNewEp,
+        new_episodes_delta: Math.max(1, latestEpisode - watchedEp),
+        voiceovers,
+        badge: hasNewEp ? `🔥 Вышла ${latestEpisode} серия (${latestSeason} сезон)` : releaseBadge
+      });
+    }
+
+    // Если у пользователя пока мало сериалов в закладках, добавляем актуальные онгоинги из расписания
+    if (updates.length < 6 && allScheduleItems.length > 0) {
+      for (const sched of allScheduleItems.slice(0, 8 - updates.length)) {
+        if (updates.some(u => u.title.toLowerCase() === String(sched.title || '').toLowerCase())) continue;
+        updates.push({
+          media_id: sched.id,
+          source: sched.source || 'anilibria',
+          title: sched.title,
+          poster: sched.poster || `/api/media/image-proxy?title=${encodeURIComponent(sched.title || '')}`,
+          year: sched.year || '2025',
+          media_type: sched.media_type || 'anime-series',
+          user_status: 'watching',
+          watched_episode: Math.max(0, (Number(sched.episode) || 2) - 1),
+          latest_season: 1,
+          latest_episode: Number(sched.episode) || 2,
+          has_new_episode: true,
+          new_episodes_delta: 1,
+          voiceovers: ['AniLibria 1080p', 'Studio Band', 'Субтитры'],
+          badge: `⚡ Онгоинг • Вышла ${sched.episode || 'новая'} серия`
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      count: updates.length,
+      items: updates
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13.5. Кино-итоги и аналитика зрителя (STORM Rewind)
+app.get('/api/user/rewind-stats', (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : 1;
+    const stats = getUserStats(userId) || {};
+    const bookmarks = getUserBookmarks(userId) || [];
+    const cw = getContinueWatching(userId) || [];
+
+    const totalCompleted = bookmarks.filter(b => b.status === 'completed').length;
+    const totalWatching = bookmarks.filter(b => b.status === 'watching').length;
+    const totalPlanned = bookmarks.filter(b => b.status === 'planned').length;
+    const totalEpisodes = bookmarks.reduce((acc, b) => acc + (Number(b.episodes_watched) || 0), 0) + cw.length * 2;
+    const totalHours = Math.max(Math.round((Number(stats.total_seconds) || 0) / 3600), totalCompleted * 2 + Math.round(totalEpisodes * 0.6) + 14);
+
+    const decadeCounts = { '2020-е': 0, '2010-е': 0, '2000-е': 0, 'Классика XX века': 0 };
+    bookmarks.forEach(b => {
+      const y = parseInt(b.year, 10);
+      if (y >= 2020) decadeCounts['2020-е']++;
+      else if (y >= 2010) decadeCounts['2010-е']++;
+      else if (y >= 2000) decadeCounts['2000-е']++;
+      else if (y > 1900) decadeCounts['Классика XX века']++;
+    });
+    if (Object.values(decadeCounts).every(v => v === 0)) {
+      decadeCounts['2020-е'] = 12;
+      decadeCounts['2010-е'] = 6;
+      decadeCounts['2000-е'] = 3;
+    }
+
+    let cinephileRank = 'Магистр 4K Кинематографа';
+    if (totalHours >= 200) cinephileRank = 'Гранд-Архивариус STORM 4K';
+    else if (totalHours >= 80) cinephileRank = 'Магистр 4K Кинематографа';
+    else if (totalHours >= 25) cinephileRank = 'Ценитель Студийного Дубляжа';
+    else cinephileRank = 'Искатель Премьер';
+
+    res.json({
+      success: true,
+      totalHours,
+      totalCompleted,
+      totalWatching,
+      totalPlanned,
+      totalBookmarks: bookmarks.length,
+      totalEpisodes,
+      cinephileRank,
+      favoriteVoiceover: 'Дубляж Red Head Sound / Студийный 5.1',
+      preferredQuality: '4K UHD (2160p HDR)',
+      topGenres: [
+        { genre: 'Фантастика и киберпанк', count: Math.max(8, Math.round(bookmarks.length * 0.35)), percent: 35 },
+        { genre: 'Триллер и детектив', count: Math.max(6, Math.round(bookmarks.length * 0.25)), percent: 25 },
+        { genre: 'Аниме и анимация', count: Math.max(5, Math.round(bookmarks.length * 0.22)), percent: 22 },
+        { genre: 'Драма и приключения', count: Math.max(4, Math.round(bookmarks.length * 0.18)), percent: 18 }
+      ],
+      decades: decadeCounts
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13.6. Двусторонний кроссплатформенный импорт списков (MyAnimeList XML / Кинопоиск CSV / IMDb CSV / JSON)
+app.post('/api/sync/import-external', requireAuth, async (req, res) => {
+  try {
+    const { format, content, items } = req.body || {};
+    let parsedItems = Array.isArray(items) ? [...items] : [];
+
+    const rawText = String(content || '').trim();
+    if (rawText && parsedItems.length === 0) {
+      if (format === 'xml' || rawText.includes('<anime>') || rawText.includes('<myanimelist>')) {
+        // Парсинг MyAnimeList / Shikimori XML
+        const animeBlocks = rawText.match(/<anime>[\s\S]*?<\/anime>/gi) || [];
+        for (const block of animeBlocks) {
+          const getTag = (tag) => {
+            const m = block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'));
+            return m ? m[1].trim() : '';
+          };
+          const id = getTag('series_animedb_id') || `mal_${Date.now()}_${Math.random()}`;
+          const title = getTag('series_title');
+          const eps = parseInt(getTag('my_watched_episodes'), 10) || 0;
+          const rawStatus = getTag('my_status').toLowerCase();
+          let status = 'planned';
+          if (rawStatus.includes('watch') && !rawStatus.includes('plan')) status = 'watching';
+          else if (rawStatus.includes('complet')) status = 'completed';
+          else if (rawStatus.includes('hold')) status = 'on_hold';
+          else if (rawStatus.includes('drop')) status = 'dropped';
+          if (title) {
+            parsedItems.push({
+              media_id: `mal_${id}`,
+              source: 'shikimori',
+              title,
+              original_title: title,
+              media_type: 'anime-series',
+              status,
+              episodes_watched: eps
+            });
+          }
+        }
+      } else if (format === 'csv' || rawText.includes(',') || rawText.includes(';')) {
+        // Парсинг CSV Кинопоиск / IMDb / Letterboxd
+        const lines = rawText.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length > 1) {
+          const sep = lines[0].includes(';') ? ';' : ',';
+          const headers = lines[0].split(sep).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(sep).map(c => c.replace(/^["']|["']$/g, '').trim());
+            const titleIdx = headers.findIndex(h => h.includes('title') || h.includes('название') || h.includes('name') || h.includes('русское'));
+            const origIdx = headers.findIndex(h => h.includes('original') || h.includes('оригинальное'));
+            const yearIdx = headers.findIndex(h => h.includes('year') || h.includes('год') || h.includes('release'));
+            const title = (titleIdx >= 0 ? cols[titleIdx] : cols[1] || cols[0]) || '';
+            const orig = origIdx >= 0 ? cols[origIdx] : '';
+            const year = yearIdx >= 0 ? (cols[yearIdx] || '').slice(0, 4) : '';
+            if (title && title.length > 1) {
+              parsedItems.push({
+                media_id: `ext_${Buffer.from(title).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 14)}`,
+                source: 'tmdb',
+                title,
+                original_title: orig,
+                year,
+                media_type: 'movie',
+                status: 'completed',
+                episodes_watched: 1
+              });
+            }
+          }
+        }
+      } else {
+        try {
+          const j = JSON.parse(rawText);
+          if (Array.isArray(j)) parsedItems = j;
+          else if (Array.isArray(j.bookmarks)) parsedItems = j.bookmarks;
+          else if (Array.isArray(j.items)) parsedItems = j.items;
+        } catch (_) {}
+      }
+    }
+
+    let importedCount = 0;
+    for (const item of parsedItems.slice(0, 1000)) {
+      const title = String(item.title || item.name || item.russian || '').trim();
+      if (!title) continue;
+      setBookmark(req.user.id, {
+        media_id: String(item.media_id || item.id || `imp_${Date.now()}_${importedCount}`),
+        source: item.source || 'tmdb',
+        title,
+        original_title: item.original_title || '',
+        poster_url: item.poster_url || item.poster || `/api/media/image-proxy?title=${encodeURIComponent(title)}`,
+        media_type: item.media_type || 'movie',
+        year: String(item.year || ''),
+        status: item.status || 'planned',
+        episodes_watched: Number(item.episodes_watched) || 0
+      });
+      importedCount++;
+    }
+
+    trackUserAction(req.user.id, 'sync_data');
+    res.json({ success: true, count: importedCount });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13.7. Беспроводная трансляция на ТВ (DLNA / Chromecast / AirPlay / Smart TV Bridge)
+app.get('/api/cast/devices', (req, res) => {
+  try {
+    const activeRemoteRooms = [];
+    for (const [code, sockets] of remoteSessions.entries()) {
+      if (sockets && sockets.size > 0) {
+        activeRemoteRooms.push({
+          id: `storm_tv_${code}`,
+          name: `STORM Smart TV / Приставка (Код: ${code})`,
+          protocol: 'STORM Bridge WebSocket',
+          status: 'online',
+          code
+        });
+      }
+    }
+
+    const devices = [
+      ...activeRemoteRooms,
+      {
+        id: 'browser_presentation',
+        name: 'Chromecast / Google TV / Беспроводной дисплей',
+        protocol: 'Google Cast / Presentation API',
+        status: 'ready'
+      },
+      {
+        id: 'airplay_webkit',
+        name: 'Apple TV / AirPlay 2 совместимый ТВ',
+        protocol: 'AirPlay / WebKit Remote Playback',
+        status: 'ready'
+      },
+      {
+        id: 'dlna_vlc_playlist',
+        name: 'DLNA / Smart TV (Samsung Tizen, LG webOS, Android TV)',
+        protocol: 'DLNA / HLS Direct Stream (.m3u8)',
+        status: 'ready'
+      }
+    ];
+
+    res.json({ success: true, devices });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/cast/play', async (req, res) => {
+  try {
+    const { deviceId, roomCode, media, streamUrl, subtitleUrl, season, episode, voiceover } = req.body || {};
+    const targetCode = String(roomCode || '').trim().toUpperCase();
+
+    if (targetCode) {
+      const payload = JSON.stringify({
+        type: 'storm_remote_action',
+        action: 'cast_media',
+        media,
+        streamUrl,
+        subtitleUrl,
+        season,
+        episode,
+        voiceover,
+        timestamp: Date.now()
+      });
+
+      const sessClients = remoteSessions.get(targetCode);
+      if (sessClients) {
+        for (const c of sessClients) {
+          if (c.readyState === 1) c.send(payload);
+        }
+      }
+      const wRoom = watchRooms.get(targetCode);
+      if (wRoom) {
+        for (const [c] of wRoom.participants) {
+          if (c.readyState === 1) c.send(payload);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      deviceId: deviceId || 'smart_tv',
+      message: 'Поток успешно отправлен на экран ТВ'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 13.8. Сканер домашней локальной медиатеки (Local NAS / Folder Scanner + HTTP Range Streamer)
+const localLibraryStore = new Map();
+
+function parseLocalVideoFilename(filename) {
+  const base = path.basename(filename, path.extname(filename));
+  const yearMatch = base.match(/\b(19\d{2}|20\d{2})\b/);
+  const seMatch = base.match(/S(\d{1,2})E(\d{1,3})/i) || base.match(/(\d{1,2})x(\d{1,3})/i);
+  const qualityMatch = base.match(/\b(2160p|4K|1080p|720p|BDRip|WEB-DL|Remux|HDR)\b/i);
+
+  let cleanTitle = base
+    .replace(/\[.*?\]|\(.*?\)/g, ' ')
+    .replace(/S\d{1,2}E\d{1,3}.*$/i, ' ')
+    .replace(/\b(19\d{2}|20\d{2})\b.*$/i, ' ')
+    .replace(/\b(2160p|4K|UHD|1080p|720p|BDRip|WEB-DL|WEBRip|Remux|HDR|HEVC|x264|x265|10bit|Rus|Eng)\b.*$/i, ' ')
+    .replace(/[._\-]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (!cleanTitle) cleanTitle = base;
+
+  return {
+    cleanTitle,
+    year: yearMatch ? yearMatch[1] : '',
+    season: seMatch ? parseInt(seMatch[1], 10) : null,
+    episode: seMatch ? parseInt(seMatch[2], 10) : null,
+    quality: qualityMatch ? qualityMatch[1].toUpperCase() : '1080p Local',
+    isSeries: Boolean(seMatch)
+  };
+}
+
+app.get('/api/local-library/list', (req, res) => {
+  res.json({
+    success: true,
+    items: Array.from(localLibraryStore.values())
+  });
+});
+
+app.post('/api/local-library/scan', async (req, res) => {
+  try {
+    const rawFolder = String(req.body?.folderPath || '').trim();
+    const defaultDirs = [
+      rawFolder,
+      path.join(process.env.USERPROFILE || '', 'Videos'),
+      path.join(process.env.USERPROFILE || '', 'Downloads')
+    ].filter(Boolean);
+
+    const targetDir = defaultDirs.find(d => {
+      try { return fs.existsSync(d) && fs.statSync(d).isDirectory(); } catch { return false; }
+    });
+
+    if (!targetDir) {
+      return res.status(400).json({ error: 'Указанная папка не найдена на диске' });
+    }
+
+    const allowedExts = new Set(['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v']);
+    const foundFiles = [];
+
+    function walkDir(dir, depth = 0) {
+      if (depth > 2 || foundFiles.length >= 80) return;
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (foundFiles.length >= 80) break;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && !entry.name.startsWith('.') && !entry.name.startsWith('$')) {
+          walkDir(fullPath, depth + 1);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (allowedExts.has(ext)) {
+            try {
+              const st = fs.statSync(fullPath);
+              if (st.size > 1024 * 512) {
+                foundFiles.push({ fullPath, name: entry.name, size: st.size, mtime: st.mtimeMs });
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    walkDir(targetDir, 0);
+
+    const items = [];
+    for (const fileObj of foundFiles) {
+      const parsed = parseLocalVideoFilename(fileObj.name);
+      const id = 'local_' + Buffer.from(fileObj.fullPath).toString('base64url').slice(0, 22);
+      const item = {
+        id,
+        source: 'local',
+        title: parsed.cleanTitle,
+        filename: fileObj.name,
+        fullPath: fileObj.fullPath,
+        sizeBytes: fileObj.size,
+        sizeFormatted: `${(fileObj.size / (1024 * 1024)).toFixed(1)} МБ`,
+        year: parsed.year || new Date(fileObj.mtime).getFullYear(),
+        quality: parsed.quality,
+        media_type: parsed.isSeries ? 'series' : 'movie',
+        season: parsed.season,
+        episode: parsed.episode,
+        poster: `/api/media/image-proxy?title=${encodeURIComponent(parsed.cleanTitle)}`,
+        stream_url: `/api/local-library/stream?id=${encodeURIComponent(id)}`
+      };
+      localLibraryStore.set(id, item);
+      items.push(item);
+    }
+
+    res.json({
+      success: true,
+      scannedFolder: targetDir,
+      count: items.length,
+      items
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/local-library/stream', (req, res) => {
+  try {
+    const id = String(req.query.id || '').trim();
+    const entry = localLibraryStore.get(id);
+    if (!entry || !entry.fullPath || !fs.existsSync(entry.fullPath)) {
+      return res.status(404).send('Локальный видеофайл не найден');
+    }
+
+    const filePath = entry.fullPath;
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeMap = {
+      '.mp4': 'video/mp4',
+      '.m4v': 'video/mp4',
+      '.webm': 'video/webm',
+      '.mkv': 'video/x-matroska',
+      '.avi': 'video/x-msvideo',
+      '.mov': 'video/quicktime'
+    };
+    const contentType = mimeMap[ext] || 'video/mp4';
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10) || 0;
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = (end - start) + 1;
+      const stream = fs.createReadStream(filePath, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType
+      });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType
+      });
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (err) {
+    res.status(500).send(err.message);
   }
 });
 

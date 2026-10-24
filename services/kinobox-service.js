@@ -9,12 +9,10 @@
  */
 export function getKinoboxPlayerConfig(params = {}) {
   const { kp_id, imdb_id, title, query } = params;
-  let url = '';
-  if (kp_id) {
-    url = `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}`;
-  } else if (title || query) {
-    url = `https://kodikplayer.com/find-player?title=${encodeURIComponent((title || query).trim())}`;
-  }
+  const cleanQ = (title || query || '').trim();
+  const kpParam = kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : '';
+  const imdbParam = imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : '';
+  const url = `/api/player/kinobox-embed?balancer=kinobox&title=${encodeURIComponent(cleanQ)}${kpParam}${imdbParam}`;
 
   return {
     id: 'kinobox_universal',
@@ -54,7 +52,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
   const isSourceFanfilm = source === 'fanfilm4k';
   const isSourceLift = source === 'lift' || Boolean(lift_id);
   const isUpcoming = false;
-  const isAnime = media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
+  const isAnime = media_type === 'anime-movie' || media_type === 'anime-movies' || media_type === 'anime-series' || media_type === 'anime' ||
     source === 'anilibria' || source === 'anixart' ||
     (genres && (Array.isArray(genres) ? genres.some(g => String(g).toLowerCase().includes('аним')) : String(genres).toLowerCase().includes('аним')));
   const isSeries = media_type === 'series' || media_type === 'cartoon-series' || media_type === 'anime-series';
@@ -78,13 +76,14 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
 
   // Проверка эксклюзивного отечественного сериала «Ландыши»
   const isLandyshi = (cleanTitle || '').toLowerCase().includes('ландыши') || (rawTitle || '').toLowerCase().includes('ландыши') || (cleanTitle || '').toLowerCase().includes('landyshi');
+  const effectiveLiftIdParam = liftIdParam || (isLandyshi ? '&lift_id=79849' : '');
 
   const kpParam = kp_id && !String(kp_id).startsWith('lift_') ? `&kp_id=${encodeURIComponent(kp_id)}` : '';
   const imdbParam = imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : '';
   const yearQuery = releaseYear ? `&year=${encodeURIComponent(releaseYear)}` : '';
 
   // Lift 4K / FHD Ad-Free Плеер (Прямой поток без рекламы, все озвучки СНГ, субтитры, превью таймлайна и умный пропуск заставок)
-  if (!isUpcoming && !isLandyshi) {
+  if (!isUpcoming) {
     players.push({
       id: 'lift_adfree',
       name: 'Lift 4K и FHD плеер (Без рекламы • Все озвучки)',
@@ -95,7 +94,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Без рекламы',
       audio_info: 'Дубляж, RHS, TVShows, LostFilm, HDRezka, Кубик в Кубе + субтитры',
       speed: '💎 Прямой поток 0% рекламы',
-      url: `/api/player/lift-embed?title=${safeTitle}${origTitleParam}${yearQuery}${liftIdParam}${kpParam}${imdbParam}${seriesFlagParam}${episodeParam}`,
+      url: `/api/player/lift-embed?title=${safeTitle}${origTitleParam}${yearQuery}${effectiveLiftIdParam}${kpParam}${imdbParam}${seriesFlagParam}${episodeParam}`,
       is_recommended: !isAnime || isSourceLift,
       recommended_badge: (!isAnime || isSourceLift) ? '🔥 Без рекламы 4K' : undefined
     });
@@ -103,6 +102,9 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
 
   if (resolvedFanfilmUrl && !resolvedFanfilmUrl.includes('do=search') && !isUpcoming && !isLandyshi && !isAnime) {
     const fanfilmRec = players.length === 0;
+    const proxiedFanfilmUrl = resolvedFanfilmUrl.startsWith('/api/player/fanfilm-embed')
+      ? resolvedFanfilmUrl
+      : `/api/player/fanfilm-embed?url=${encodeURIComponent(resolvedFanfilmUrl)}&title=${safeTitle}${yearQuery}${episodeParam}`;
     players.push({
       id: 'fanfilm4k_uhd',
       name: '4K Ultra HD плеер (FanFilm4K)',
@@ -113,7 +115,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
       speed: '💎 Премиум 4K CDN',
-      url: resolvedFanfilmUrl,
+      url: proxiedFanfilmUrl,
       is_recommended: fanfilmRec,
       recommended_badge: fanfilmRec ? '🔥 4K По умолчанию' : undefined
     });
@@ -132,9 +134,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Официальный сериал Ландыши на VK Видео со звуком',
         speed: '⚡ Скоростной VK CDN',
-        url: 'https://vkvideo.ru/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0',
-        is_recommended: true,
-        recommended_badge: '🔥 Рекомендуемый'
+        url: `/api/player/vk-search-embed?title=${safeTitle}${yearQuery}${episodeParam}`,
+        is_recommended: false
       });
 
       players.push({
@@ -153,6 +154,8 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
     }
 
     if (!isUpcoming) {
+      const commonBalancerParams = `&title=${safeTitle}${origTitleParam}${yearQuery}${effectiveLiftIdParam}${kpParam}${imdbParam}${seriesFlagParam}${episodeParam}`;
+
       // Источник #2: Kinobox Мультиплеер (Агрегатор всех балансеров)
       players.push({
         id: 'kinobox_universal',
@@ -164,7 +167,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Универсальный мультиплеер: автоподбор рабочего балансера',
         speed: '⚡ Мульти-CDN',
-        url: `/api/player/kinobox-embed?balancer=kinobox&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=kinobox${commonBalancerParams}`
       });
 
       // Источник #3: HDRezka Studio
@@ -178,7 +181,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Фирменный дубляж HDRezka Studio, RHS, TVShows, Jaskier',
         speed: '⚡ Скоростной CDN',
-        url: `/api/player/kinobox-embed?balancer=hdrezka&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=hdrezka${commonBalancerParams}`
       });
 
       // Источник #4: Collaps / AllPlay
@@ -192,7 +195,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Лицензионный дубляж СНГ и многоголосые переводы',
         speed: '⚡ Быстрый поток',
-        url: `/api/player/kinobox-embed?balancer=collaps&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=collaps${commonBalancerParams}`
       });
 
       // Источник #5: Alloha Плеер
@@ -206,13 +209,10 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Премьерные релизы 2025–2026 и студийный звук',
         speed: '⚡ Премиум поток',
-        url: `/api/player/kinobox-embed?balancer=alloha&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=alloha${commonBalancerParams}`
       });
 
-      // Источник #6: Kodik Плеер (прямой вызов без жесткой блокировки по году)
-      const baseKodikUrl = kp_id
-        ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${episodeParam}`
-        : `https://kodikplayer.com/find-player?title=${safeTitle}${episodeParam}`;
+      // Источник #6: Kodik Плеер (через серверный шлюз с автоподбором)
       players.push({
         id: 'kodik_direct',
         name: 'Kodik Плеер (Сериалы, кино и озвучки)',
@@ -223,7 +223,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Большой выбор студийных и авторских озвучек',
         speed: '⚡ Быстрый поток',
-        url: baseKodikUrl
+        url: `/api/player/kinobox-embed?balancer=kodik${commonBalancerParams}`
       });
 
       // Источник #7: VideoCDN и Lumex
@@ -237,7 +237,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'База кинопроката, сериалов и классики в Full HD',
         speed: '⚡ Мульти-поток',
-        url: `/api/player/kinobox-embed?balancer=videocdn&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=videocdn${commonBalancerParams}`
       });
 
       // Источник #8: Red Head Sound и LostFilm
@@ -251,7 +251,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Голоса официального дубляжа Red Head Sound и LostFilm',
         speed: '⚡ Студийный CDN',
-        url: `/api/player/kinobox-embed?balancer=rhs&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=rhs${commonBalancerParams}`
       });
 
       // Источник #9: Bazon и CDNMovies
@@ -265,7 +265,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Высокая отказоустойчивость для новинок и сериалов',
         speed: '⚡ Резервный CDN',
-        url: `/api/player/kinobox-embed?balancer=bazon&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+        url: `/api/player/kinobox-embed?balancer=bazon${commonBalancerParams}`
       });
 
       // Источник #10: VK Видео (Автопоиск реального видеопотока)
@@ -301,7 +301,6 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       }
 
       // Источник #12: Vidsrc Cinema (Original + Subtitles)
-      const isTv = isSeries || media_type === 'series' || media_type === 'tv';
       players.push({
         id: 'vidsrc_player',
         name: 'Vidsrc Cinema (Original и субтитры)',
@@ -312,9 +311,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
         status_label: '🟢 Онлайн',
         audio_info: 'Международный поток в оригинале и с субтитрами',
         speed: '⚡ Международный CDN',
-        url: imdb_id
-          ? `https://vidsrc.to/embed/${isTv ? 'tv' : 'movie'}/${imdb_id}`
-          : `/api/player/kinobox-embed?balancer=vidsrc&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}`
+        url: `/api/player/kinobox-embed?balancer=vidsrc${commonBalancerParams}`
       });
 
       // Источник #13: P2P WebTorrent / TorrServer
@@ -333,9 +330,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
     }
   } else if (!isUpcoming) {
     // 4. Плееры специально для Аниме (10+ источников)
-    const anixartUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&types=anime-serial,anime${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}&types=anime-serial,anime${episodeParam}`;
+    const commonAnimeParams = `&title=${safeTitle}${origTitleParam}${yearQuery}${effectiveLiftIdParam}${kpParam}${imdbParam}${seriesFlagParam}${episodeParam}`;
     players.push({
       id: 'anixart_stream',
       name: 'AniXart Stream (Аниме-релизы и фандаб)',
@@ -346,7 +341,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'AniLibria, StudioBand, AniDub, SHIZA, Jam, DreamCast',
       speed: '⚡ Скоростной поток',
-      url: anixartUrl,
+      url: `/api/player/kinobox-embed?balancer=kodik${commonAnimeParams}`,
       is_recommended: !isSourceLift,
       recommended_badge: !isSourceLift ? '🔥 Рекомендуемый' : undefined
     });
@@ -361,12 +356,9 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'Мульти-балансер аниме с выбором студии перевода',
       speed: '⚡ Мульти-CDN',
-      url: `/api/player/kinobox-embed?balancer=kinobox&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=kinobox${commonAnimeParams}`
     });
 
-    const shikimoriUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}&source=shikimori${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}&source=shikimori${episodeParam}`;
     players.push({
       id: 'shikimori_stream',
       name: 'Shikimori и AnimeGO Плеер',
@@ -377,12 +369,9 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'Оригинальные субтитры и студийный дубляж',
       speed: '⚡ Быстрый поток',
-      url: shikimoriUrl
+      url: `/api/player/kinobox-embed?balancer=kodik${commonAnimeParams}`
     });
 
-    const baseKodikUrl = kp_id
-      ? `https://kodikplayer.com/find-player?kinopoiskID=${kp_id}${episodeParam}`
-      : `https://kodikplayer.com/find-player?title=${safeTitle}${episodeParam}`;
     players.push({
       id: 'kodik_direct',
       name: 'Kodik Аниме Плеер (Все озвучки)',
@@ -393,7 +382,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'Студийный дубляж и фандаб озвучки',
       speed: '⚡ Быстрый поток',
-      url: baseKodikUrl
+      url: `/api/player/kinobox-embed?balancer=kodik${commonAnimeParams}`
     });
 
     players.push({
@@ -406,7 +395,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'Озвучка HDRezka Studio и лучшие аниме-команды',
       speed: '⚡ Скоростной CDN',
-      url: `/api/player/kinobox-embed?balancer=hdrezka&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=hdrezka${commonAnimeParams}`
     });
 
     players.push({
@@ -419,7 +408,7 @@ export function getAvailablePlayers({ kp_id, imdb_id, lift_id, title, original_t
       status_label: '🟢 Онлайн',
       audio_info: 'Быстрый CDN для аниме-фильмов и онгоингов',
       speed: '⚡ Премиум поток',
-      url: `/api/player/kinobox-embed?balancer=alloha&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=alloha${commonAnimeParams}`
     });
 
     players.push({

@@ -3,6 +3,7 @@ package com.reikatari.stormmultimedia
 import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
 import android.view.View
@@ -16,13 +17,25 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import java.io.ByteArrayInputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -32,16 +45,31 @@ class MainActivity : ComponentActivity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     private val primaryUrl = "https://stormmultimedia.ru/"
+    private val liftPrimaryIp = "89.42.231.205"
+
+    private val permissiveSslSocketFactory by lazy {
+        try {
+            val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+            })
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAllCerts, SecureRandom())
+            sslContext.socketFactory
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val permissiveHostnameVerifier = HostnameVerifier { _, _ -> true }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Поддержка темного системного бара под палитру STORM SOFT
         window.statusBarColor = Color.parseColor("#0a0d14")
         window.navigationBarColor = Color.parseColor("#0a0d14")
-
-        // Скрытие всех системных шторок (верхние, нижние, боковые) и использование 100% площади дисплея
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         rootLayout = FrameLayout(this).apply {
@@ -50,10 +78,8 @@ class MainActivity : ComponentActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setBackgroundColor(Color.parseColor("#0a0d14"))
+            setPadding(0, 0, 0, 0)
         }
-
-        // Полноэкранный режим от края до края без урезания контента
-        rootLayout.setPadding(0, 0, 0, 0)
         hideSystemUI()
 
         customViewContainer = FrameLayout(this).apply {
@@ -87,21 +113,10 @@ class MainActivity : ComponentActivity() {
 
     private fun ensureStormRootStorageAndPermissions() {
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                if (!android.os.Environment.isExternalStorageManager()) {
-                    val intent = android.content.Intent(
-                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        android.net.Uri.parse("package:$packageName")
-                    )
-                    if (runCatching { startActivity(intent) }.isFailure) {
-                        runCatching {
-                            startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                        }
-                    }
-                } else {
-                    initStormMultimediaRootDirectory()
-                }
-            } else {
+            // Инициализируем директории приложения без принудительного выброса пользователя в системные настройки при старте
+            initStormMultimediaRootDirectory()
+
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
                 val writeGranted = androidx.core.content.ContextCompat.checkSelfPermission(
                     this,
                     android.Manifest.permission.WRITE_EXTERNAL_STORAGE
@@ -115,8 +130,6 @@ class MainActivity : ComponentActivity() {
                         ),
                         1001
                     )
-                } else {
-                    initStormMultimediaRootDirectory()
                 }
             }
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -150,6 +163,11 @@ class MainActivity : ComponentActivity() {
 
     private fun initStormMultimediaRootDirectory() {
         try {
+            getExternalFilesDir(null)?.let { appExt ->
+                listOf("settings", "cache", "downloads", "offline", "subtitles", "logs", "updates").forEach { sub ->
+                    java.io.File(appExt, sub).mkdirs()
+                }
+            }
             val rootDir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "STORM MULTIMEDIA")
             if (!rootDir.exists()) rootDir.mkdirs()
             listOf("settings", "cache", "downloads", "offline", "subtitles", "logs", "updates").forEach { sub ->
@@ -183,11 +201,10 @@ class MainActivity : ComponentActivity() {
         settings.allowContentAccess = true
         settings.allowFileAccessFromFileURLs = true
         settings.allowUniversalAccessFromFileURLs = true
-        settings.mediaPlaybackRequiresUserGesture = true
+        settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // Корректный мобильный адаптивный viewport и запрет искажения текста системным зумом Android
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.textZoom = 100
@@ -195,9 +212,9 @@ class MainActivity : ComponentActivity() {
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.44"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.45"
         } catch (_: Throwable) {
-            "1.0.44"
+            "1.0.45"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -217,19 +234,599 @@ class MainActivity : ComponentActivity() {
         webView.addJavascriptInterface(bridge, "StormNativeApp")
     }
 
+    private fun corsHeaders(contentType: String = "application/json; charset=UTF-8", cacheControl: String = "no-cache"): Map<String, String> {
+        return mapOf(
+            "Access-Control-Allow-Origin" to "*",
+            "Access-Control-Allow-Methods" to "GET, POST, PUT, DELETE, OPTIONS, HEAD",
+            "Access-Control-Allow-Headers" to "*",
+            "Cache-Control" to cacheControl,
+            "Content-Type" to contentType
+        )
+    }
+
+    private fun createJsonResponse(jsonStr: String, statusCode: Int = 200): WebResourceResponse {
+        return WebResourceResponse(
+            "application/json",
+            "UTF-8",
+            statusCode,
+            "OK",
+            corsHeaders("application/json; charset=UTF-8"),
+            ByteArrayInputStream(jsonStr.toByteArray(Charsets.UTF_8))
+        )
+    }
+
+    private fun createHtmlResponse(htmlStr: String, statusCode: Int = 200): WebResourceResponse {
+        return WebResourceResponse(
+            "text/html",
+            "UTF-8",
+            statusCode,
+            "OK",
+            corsHeaders("text/html; charset=UTF-8"),
+            ByteArrayInputStream(htmlStr.toByteArray(Charsets.UTF_8))
+        )
+    }
+
     private fun createAssetResponse(mimeType: String, assetPath: String): WebResourceResponse? {
         return try {
             val stream = assets.open(assetPath)
-            val headers = mapOf(
-                "Access-Control-Allow-Origin" to "*",
-                "Access-Control-Allow-Methods" to "GET, POST, OPTIONS, HEAD",
-                "Access-Control-Allow-Headers" to "*",
-                "Cache-Control" to "no-cache, no-store, must-revalidate"
-            )
-            WebResourceResponse(mimeType, "UTF-8", 200, "OK", headers, stream)
+            WebResourceResponse(mimeType, "UTF-8", 200, "OK", corsHeaders(mimeType), stream)
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun fetchLiftRaw(urlStr: String, hostHeader: String, timeoutMs: Int = 5500): Pair<Int, ByteArray>? {
+        return try {
+            val parsed = URL(urlStr)
+            val targetUrl = if (parsed.host.endsWith("liftw.ws") || parsed.host.endsWith("lateremb.ws")) {
+                URL("${parsed.protocol}://$liftPrimaryIp${if (parsed.port != -1) ":${parsed.port}" else ""}${parsed.file}")
+            } else {
+                parsed
+            }
+            val conn = (targetUrl.openConnection() as HttpURLConnection).apply {
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                instanceFollowRedirects = true
+                requestMethod = "GET"
+                setRequestProperty("Host", hostHeader)
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("Accept", "*/*")
+                setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8")
+                setRequestProperty("Origin", "https://liftw.ws")
+                setRequestProperty("Referer", "https://liftw.ws/")
+                if (this is HttpsURLConnection) {
+                    permissiveSslSocketFactory?.let { sslSocketFactory = it }
+                    hostnameVerifier = permissiveHostnameVerifier
+                }
+            }
+            val code = conn.responseCode
+            val bytes = if (code in 200..299) {
+                conn.inputStream.use { it.readBytes() }
+            } else {
+                ByteArray(0)
+            }
+            conn.disconnect()
+            Pair(code, bytes)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun fetchHttpBytes(urlStr: String, timeoutMs: Int = 4500, referer: String? = null): Pair<String, ByteArray>? {
+        return try {
+            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                instanceFollowRedirects = true
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+                if (!referer.isNullOrBlank()) {
+                    setRequestProperty("Referer", referer)
+                }
+            }
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val ct = conn.contentType ?: "application/octet-stream"
+                val bytes = conn.inputStream.use { it.readBytes() }
+                conn.disconnect()
+                if (bytes.size > 64) Pair(ct, bytes) else null
+            } else {
+                conn.disconnect()
+                null
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun generateSvgPosterResponse(title: String): WebResourceResponse {
+        val cleanTitle = title.ifBlank { "STORM MULTIMEDIA" }
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .take(48)
+        val svg = """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900">
+              <defs>
+                <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#0b1120"/>
+                  <stop offset="50%" stop-color="#131c33"/>
+                  <stop offset="100%" stop-color="#070a12"/>
+                </linearGradient>
+              </defs>
+              <rect width="600" height="900" fill="url(#bg)"/>
+              <circle cx="300" cy="280" r="170" fill="#00d2ff" opacity="0.07"/>
+              <rect x="28" y="28" width="544" height="844" rx="24" fill="none" stroke="#00d2ff" stroke-opacity="0.28" stroke-width="2"/>
+              <text x="300" y="115" text-anchor="middle" fill="#00d2ff" font-family="sans-serif" font-size="16" font-weight="800" letter-spacing="2">4K ULTRA HD</text>
+              <circle cx="300" cy="300" r="60" fill="#00d2ff" opacity="0.14" stroke="#00d2ff" stroke-opacity="0.45" stroke-width="2"/>
+              <polygon points="284,272 284,328 332,300" fill="#00d2ff"/>
+              <text x="300" y="520" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="30" font-weight="800">$cleanTitle</text>
+              <text x="300" y="815" text-anchor="middle" fill="#64748b" font-family="sans-serif" font-size="15" font-weight="700" letter-spacing="3">STORM MULTIMEDIA</text>
+            </svg>
+        """.trimIndent()
+        return WebResourceResponse(
+            "image/svg+xml",
+            "UTF-8",
+            200,
+            "OK",
+            corsHeaders("image/svg+xml; charset=UTF-8", "public, max-age=3600"),
+            ByteArrayInputStream(svg.toByteArray(Charsets.UTF_8))
+        )
+    }
+
+    private fun handleNativeImageProxy(uri: Uri): WebResourceResponse {
+        var rawUrl = uri.getQueryParameter("url") ?: ""
+        val title = uri.getQueryParameter("title") ?: ""
+
+        while (rawUrl.contains("/api/media/image-proxy")) {
+            val nested = try {
+                Uri.parse(rawUrl).getQueryParameter("url")
+            } catch (_: Throwable) {
+                null
+            }
+            if (!nested.isNullOrBlank()) {
+                rawUrl = try { URLDecoder.decode(nested, "UTF-8") } catch (_: Throwable) { nested }
+            } else {
+                break
+            }
+        }
+
+        if (rawUrl.startsWith("//")) rawUrl = "https:$rawUrl"
+
+        if (rawUrl.isNotBlank()) {
+            if (rawUrl.contains("img.liftw.ws") || rawUrl.contains("lateremb.ws")) {
+                val liftImg = fetchLiftRaw(rawUrl, "img.liftw.ws", 3500)
+                if (liftImg != null && liftImg.first in 200..299 && liftImg.second.size > 100) {
+                    return WebResourceResponse(
+                        "image/jpeg",
+                        null,
+                        200,
+                        "OK",
+                        corsHeaders("image/jpeg", "public, max-age=86400"),
+                        ByteArrayInputStream(liftImg.second)
+                    )
+                }
+            } else if (rawUrl.startsWith("http")) {
+                val wsrvUrl = "https://wsrv.nl/?url=${URLEncoder.encode(rawUrl, "UTF-8")}&w=500&q=85&output=webp"
+                val wsrvRes = fetchHttpBytes(wsrvUrl, 3800)
+                if (wsrvRes != null) {
+                    val mime = wsrvRes.first.substringBefore(";").ifBlank { "image/webp" }
+                    return WebResourceResponse(
+                        mime,
+                        null,
+                        200,
+                        "OK",
+                        corsHeaders(mime, "public, max-age=86400"),
+                        ByteArrayInputStream(wsrvRes.second)
+                    )
+                }
+                val directRes = fetchHttpBytes(rawUrl, 3500)
+                if (directRes != null) {
+                    val mime = directRes.first.substringBefore(";").ifBlank { "image/jpeg" }
+                    return WebResourceResponse(
+                        mime,
+                        null,
+                        200,
+                        "OK",
+                        corsHeaders(mime, "public, max-age=86400"),
+                        ByteArrayInputStream(directRes.second)
+                    )
+                }
+            }
+        }
+
+        // Если прямой URL устарел (404 на img.liftw.ws) или не передан — ищем свежий постер в базе Lift по названию
+        if (title.isNotBlank()) {
+            try {
+                val cleanQuery = title.replace(Regex("\\(\\d{4}\\)"), "").trim()
+                val searchResp = fetchLiftRaw(
+                    "https://api.liftw.ws/search?q=${URLEncoder.encode(cleanQuery, "UTF-8")}",
+                    "api.liftw.ws",
+                    3500
+                )
+                if (searchResp != null && searchResp.first in 200..299 && searchResp.second.isNotEmpty()) {
+                    val arr = JSONArray(String(searchResp.second, Charsets.UTF_8))
+                    if (arr.length() > 0) {
+                        val first = arr.getJSONObject(0)
+                        val freshPoster = first.optString("poster").ifBlank {
+                            first.optJSONObject("info")?.optString("poster") ?: ""
+                        }
+                        if (freshPoster.isNotBlank()) {
+                            val freshImg = fetchLiftRaw(freshPoster, "img.liftw.ws", 3500)
+                            if (freshImg != null && freshImg.first in 200..299 && freshImg.second.size > 100) {
+                                return WebResourceResponse(
+                                    "image/jpeg",
+                                    null,
+                                    200,
+                                    "OK",
+                                    corsHeaders("image/jpeg", "public, max-age=86400"),
+                                    ByteArrayInputStream(freshImg.second)
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+
+        return generateSvgPosterResponse(title)
+    }
+
+    private fun resolveLiftIdByTitle(rawLiftId: String, title: String, origTitle: String, year: String): String {
+        val cleanId = rawLiftId.replace(Regex("^lift_"), "").trim()
+        if (cleanId.matches(Regex("^\\d+$"))) return cleanId
+
+        val queries = listOf(title, origTitle).map { it.replace(Regex("\\(\\d{4}\\)"), "").trim() }.filter { it.length >= 2 }.distinct()
+        for (q in queries) {
+            try {
+                val resp = fetchLiftRaw(
+                    "https://api.liftw.ws/search?q=${URLEncoder.encode(q, "UTF-8")}",
+                    "api.liftw.ws",
+                    4500
+                )
+                if (resp != null && resp.first in 200..299 && resp.second.isNotEmpty()) {
+                    val arr = JSONArray(String(resp.second, Charsets.UTF_8))
+                    if (arr.length() > 0) {
+                        val qNorm = q.lowercase().replace("ё", "е")
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val name = obj.optString("name", "").lowercase().replace("ё", "е")
+                            val orig = obj.optString("origin_name", "").lowercase()
+                            val itemYear = obj.optString("year", "")
+                            if ((name == qNorm || orig == qNorm) && (year.isBlank() || itemYear == year)) {
+                                return obj.optInt("id", 0).takeIf { it > 0 }?.toString() ?: ""
+                            }
+                        }
+                        return arr.getJSONObject(0).optInt("id", 0).takeIf { it > 0 }?.toString() ?: ""
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+        return ""
+    }
+
+    private fun resolveRuTubeIdByTitle(title: String, year: String, season: String, episode: String): String {
+        val cleanTitle = title.replace(Regex("\\(\\d{4}\\)"), "").trim()
+        if (cleanTitle.isBlank()) return ""
+        val suffix = if (season.isNotBlank() && episode.isNotBlank()) " $season сезон $episode серия" else if (year.isNotBlank()) " $year" else " фильм"
+        val query = "$cleanTitle$suffix"
+        return try {
+            val apiUrl = "https://rutube.ru/api/search/video/?query=${URLEncoder.encode(query, "UTF-8")}&format=json"
+            val resp = fetchHttpBytes(apiUrl, 4500, "https://rutube.ru/")
+            if (resp != null) {
+                val json = JSONObject(String(resp.second, Charsets.UTF_8))
+                val results = json.optJSONArray("results")
+                if (results != null && results.length() > 0) {
+                    for (i in 0 until results.length()) {
+                        val it = results.getJSONObject(i)
+                        val id = it.optString("id", "")
+                        val dur = it.optInt("duration", 0)
+                        if (id.length == 32 && dur >= 300) {
+                            return id
+                        }
+                    }
+                    return results.getJSONObject(0).optString("id", "")
+                }
+            }
+            ""
+        } catch (_: Throwable) {
+            ""
+        }
+    }
+
+    private fun buildRuTubeEmbedHtml(ruId: String): WebResourceResponse {
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+              <style>html,body,iframe{margin:0;padding:0;width:100%;height:100%;background:#000;border:0;overflow:hidden;}</style>
+            </head>
+            <body>
+              <iframe src="https://rutube.ru/play/embed/$ruId?skinColor=00d2ff" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe>
+            </body>
+            </html>
+        """.trimIndent()
+        return createHtmlResponse(html)
+    }
+
+    private fun handleNativePlayerEmbed(uri: Uri): WebResourceResponse {
+        val path = uri.path ?: ""
+        if (path == "/api/player/lift-cdn.js") {
+            val cdn = fetchLiftRaw("https://embed.liftw.ws/cdn.js", "embed.liftw.ws", 5500)
+            if (cdn != null && cdn.first in 200..299 && cdn.second.isNotEmpty()) {
+                return WebResourceResponse(
+                    "application/javascript",
+                    "UTF-8",
+                    200,
+                    "OK",
+                    corsHeaders("application/javascript; charset=UTF-8", "public, max-age=86400"),
+                    ByteArrayInputStream(cdn.second)
+                )
+            }
+        }
+        if (path == "/api/player/lift-listen.js") {
+            val listen = fetchLiftRaw("https://embed.liftw.ws/js/listen-player.js", "embed.liftw.ws", 5500)
+            if (listen != null && listen.first in 200..299 && listen.second.isNotEmpty()) {
+                return WebResourceResponse(
+                    "application/javascript",
+                    "UTF-8",
+                    200,
+                    "OK",
+                    corsHeaders("application/javascript; charset=UTF-8", "public, max-age=86400"),
+                    ByteArrayInputStream(listen.second)
+                )
+            }
+        }
+
+        if (path.startsWith("/api/player/rutube-embed/")) {
+            val ruId = path.substringAfterLast("/").trim()
+            if (ruId.isNotBlank()) {
+                return buildRuTubeEmbedHtml(ruId)
+            }
+        }
+
+        val title = uri.getQueryParameter("title") ?: uri.getQueryParameter("fallback_title") ?: ""
+        val origTitle = uri.getQueryParameter("original_title") ?: ""
+        val year = uri.getQueryParameter("year") ?: uri.getQueryParameter("fallback_year") ?: ""
+        val liftIdParam = uri.getQueryParameter("lift_id") ?: ""
+        val season = uri.getQueryParameter("season") ?: "1"
+        val episode = uri.getQueryParameter("episode") ?: "1"
+        val balancer = (uri.getQueryParameter("balancer") ?: "").lowercase()
+        val directUrl = uri.getQueryParameter("url") ?: ""
+
+        // Если это прямой запрос RuTube поиска
+        if (path == "/api/player/rutube-search-embed" || balancer == "rutube" || balancer == "bazon") {
+            val ruId = resolveRuTubeIdByTitle(title, year, if (season != "1" || episode != "1") season else "", episode)
+            if (ruId.isNotBlank()) {
+                return buildRuTubeEmbedHtml(ruId)
+            }
+        }
+
+        // Если передан внешний iframe URL (например, vk.com, vidsrc, kodik) в adblock-proxy / kodik-embed
+        if (directUrl.startsWith("http") && !directUrl.contains("fanfilm4k")) {
+            val html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+                  <style>html,body,iframe{margin:0;padding:0;width:100%;height:100%;background:#000;border:0;overflow:hidden;}</style>
+                </head>
+                <body>
+                  <iframe src="$directUrl" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe>
+                </body>
+                </html>
+            """.trimIndent()
+            return createHtmlResponse(html)
+        }
+
+        // Основной 4K/FHD плеер Lift без рекламы (для lift-embed, kinobox-embed, fanfilm-embed и всех балансеров)
+        val matchedLiftId = resolveLiftIdByTitle(liftIdParam, title, origTitle, year)
+        if (matchedLiftId.isNotBlank()) {
+            val embedResp = fetchLiftRaw(
+                "https://embed.liftw.ws/embed/movie/$matchedLiftId?host=liftw.ws",
+                "embed.liftw.ws",
+                6500
+            )
+            if (embedResp != null && embedResp.first in 200..299 && embedResp.second.isNotEmpty()) {
+                var html = String(embedResp.second, Charsets.UTF_8)
+                if (html.contains("makePlayer")) {
+                    html = html.replace(
+                        Regex("<script\\s+data-name=[\"']ad[\"']>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE),
+                        "<script data-name=\"ad\">var middleCount = 0, adTimeouts = {}, adsConfig = undefined;</script>"
+                    )
+                    html = html.replace(Regex("ads:\\s*adsConfig\\s*,"), "ads: undefined,")
+                    html = html.replace(Regex("<script\\s+data-name=[\"']ss[\"']>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+                    html = html.replace(Regex("<script\\s+data-name=[\"']ping[\"']>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+                    html = html.replace(Regex("stats:\\s*\\[[^\\]]*\\]\\s*,"), "stats: [],")
+                    html = html.replace(Regex("src=[\"']//embed\\.liftw\\.ws/cdn\\.js[\"']", RegexOption.IGNORE_CASE), "src=\"/api/player/lift-cdn.js\"")
+                    html = html.replace(Regex("src=[\"']//embed\\.liftw\\.ws/js/listen-player\\.js[\"']", RegexOption.IGNORE_CASE), "src=\"/api/player/lift-listen.js\"")
+                    val sNum = season.toIntOrNull() ?: 1
+                    val eStr = (episode.toIntOrNull() ?: 1).toString()
+                    if (sNum > 1 || eStr != "1") {
+                        html = html.replace(
+                            Regex("current:\\s*\\{\\s*season:\\s*\\d+\\s*,\\s*episode:\\s*[\"'][^\"']+[\"']\\s*\\}"),
+                            "current: { season: $sNum, episode: \"$eStr\" }"
+                        )
+                    }
+                    return createHtmlResponse(html)
+                }
+            }
+        }
+
+        // Гарантированный резерв через RuTube
+        val fallbackRuId = resolveRuTubeIdByTitle(title, year, "", "")
+        if (fallbackRuId.isNotBlank()) {
+            return buildRuTubeEmbedHtml(fallbackRuId)
+        }
+
+        return createHtmlResponse(
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>body{margin:0;background:#0a0d14;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center;padding:20px;}</style></head><body><div>🎬 Выберите другой плеер в списке источников ниже</div></body></html>"
+        )
+    }
+
+    private fun normalizeLiftJsonArrayToStormItems(arr: JSONArray): JSONArray {
+        val out = JSONArray()
+        for (i in 0 until arr.length()) {
+            val raw = arr.optJSONObject(i) ?: continue
+            val info = raw.optJSONObject("info") ?: JSONObject()
+            val liftId = raw.optString("id").ifBlank { info.optString("id") }
+            if (liftId.isBlank()) continue
+            val title = raw.optString("name").ifBlank { info.optString("name", "Без названия") }
+            val origTitle = raw.optString("origin_name").ifBlank { info.optString("name_eng", "") }
+            val year = raw.optString("year").ifBlank { info.optString("year", "2026") }
+            val kp = raw.optDouble("kp_rating", info.optDouble("kp_rating", 0.0))
+            val imdb = raw.optDouble("imdb_rating", info.optDouble("imdb_rating", 0.0))
+            val rating = if (kp > 0) kp else imdb
+            val rawQual = raw.optString("quality", "FHD").uppercase()
+            val is4k = rawQual.contains("4K") || rawQual.contains("UHD")
+            val rawPoster = info.optString("poster_big").ifBlank { info.optString("poster").ifBlank { raw.optString("poster") } }
+            val poster = if (rawPoster.isNotBlank()) {
+                "/api/media/image-proxy?url=${URLEncoder.encode(rawPoster, "UTF-8")}&title=${URLEncoder.encode(title, "UTF-8")}"
+            } else {
+                "/api/media/image-proxy?title=${URLEncoder.encode(title, "UTF-8")}"
+            }
+            val tNum = raw.optInt("type", 1)
+            val mediaType = when (tNum) {
+                2 -> "cartoons"
+                3, 4 -> "series"
+                5 -> "cartoon-series"
+                6 -> "anime-movies"
+                7 -> "anime-series"
+                else -> "movies"
+            }
+            val itemObj = JSONObject().apply {
+                put("id", "lift_$liftId")
+                put("lift_id", liftId)
+                put("source", "lift")
+                put("title", title)
+                put("original_title", origTitle)
+                put("year", year)
+                put("poster", poster)
+                put("backdrop", poster)
+                put("rating", if (rating > 0) Math.round(rating * 10.0) / 10.0 else 7.8)
+                put("quality", if (is4k) "4K UHD" else "1080p FHD")
+                put("is_4k", is4k)
+                put("is4K", is4k)
+                put("media_type", mediaType)
+                put("is_series", mediaType.contains("series"))
+                put("description", info.optString("description", raw.optString("description", "")))
+            }
+            out.put(itemObj)
+        }
+        return out
+    }
+
+    private fun handleStormApiIntercept(uri: Uri): WebResourceResponse {
+        val path = uri.path ?: "/api/"
+
+        if (path == "/api/health" || path == "/api/player/health") {
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.0.45"}""")
+        }
+
+        if (path == "/api/media/image-proxy") {
+            return handleNativeImageProxy(uri)
+        }
+
+        if (path.startsWith("/api/player/")) {
+            if (path == "/api/player/series-options") {
+                return createJsonResponse("""{"seasons":[]}""")
+            }
+            if (path == "/api/player/check-stream") {
+                return createJsonResponse("""{"alive":true}""")
+            }
+            return handleNativePlayerEmbed(uri)
+        }
+
+        if (path.startsWith("/api/auth/")) {
+            val prefs = getSharedPreferences("storm_auth_prefs", MODE_PRIVATE)
+            if (path == "/api/auth/logout") {
+                return createJsonResponse("""{"success":true}""")
+            }
+            val savedUser = prefs.getString("username", "ReiKatari") ?: "ReiKatari"
+            val savedEmail = prefs.getString("email", "ReiKatari@storm.local") ?: "ReiKatari@storm.local"
+            val userJson = JSONObject().apply {
+                put("id", 1)
+                put("username", savedUser)
+                put("email", savedEmail)
+                put("role", "admin")
+                put("avatar", "assets/avatar_default.svg")
+            }
+            val respJson = JSONObject().apply {
+                put("success", true)
+                put("token", "native_android_token_1")
+                put("user", userJson)
+                put("stats", JSONObject().put("bookmarks_count", 0).put("history_count", 0))
+            }
+            return createJsonResponse(respJson.toString())
+        }
+
+        if (path == "/api/media/search") {
+            val q = uri.getQueryParameter("q") ?: uri.getQueryParameter("query") ?: ""
+            if (q.isNotBlank()) {
+                val liftResp = fetchLiftRaw(
+                    "https://api.liftw.ws/search?q=${URLEncoder.encode(q, "UTF-8")}",
+                    "api.liftw.ws",
+                    4500
+                )
+                if (liftResp != null && liftResp.first in 200..299 && liftResp.second.isNotEmpty()) {
+                    return try {
+                        val arr = JSONArray(String(liftResp.second, Charsets.UTF_8))
+                        val items = normalizeLiftJsonArrayToStormItems(arr)
+                        createJsonResponse(JSONObject().put("items", items).put("total_items", items.length()).toString())
+                    } catch (_: Throwable) {
+                        createJsonResponse("""{"items":[]}""")
+                    }
+                }
+            }
+            return createJsonResponse("""{"items":[]}""")
+        }
+
+        if (path == "/api/media/catalog") {
+            val cat = (uri.getQueryParameter("category") ?: "popular").lowercase()
+            val page = (uri.getQueryParameter("page") ?: "1").toIntOrNull() ?: 1
+            val offset = (page - 1) * 24
+            val liftCat = when (cat) {
+                "movies" -> "films"
+                "series" -> "series"
+                "cartoons" -> "cartoons"
+                "cartoon-series" -> "cartoon_series"
+                "anime", "anime-series" -> "anime_series"
+                "anime-movies" -> "anime_films"
+                else -> "all"
+            }
+            val apiUrl = if (liftCat == "all") {
+                "https://api.liftw.ws/list?type=film&last=true&limit=24&offset=$offset"
+            } else {
+                "https://api.liftw.ws/list/categories?category=$liftCat&sort=views&limit=24&offset=$offset"
+            }
+            val liftResp = fetchLiftRaw(apiUrl, "api.liftw.ws", 4500)
+            if (liftResp != null && liftResp.first in 200..299 && liftResp.second.isNotEmpty()) {
+                return try {
+                    val rawStr = String(liftResp.second, Charsets.UTF_8).trim()
+                    val arr = if (rawStr.startsWith("[")) JSONArray(rawStr) else JSONObject(rawStr).optJSONArray("items") ?: JSONArray()
+                    val items = normalizeLiftJsonArrayToStormItems(arr)
+                    val out = JSONObject().apply {
+                        put("items", items)
+                        put("total_pages", 100)
+                        put("total_items", 2400)
+                    }
+                    createJsonResponse(out.toString())
+                } catch (_: Throwable) {
+                    createJsonResponse("""{"items":[],"total_pages":1,"total_items":0}""")
+                }
+            }
+            return createJsonResponse("""{"items":[],"total_pages":1,"total_items":0}""")
+        }
+
+        if (path == "/api/bookmarks" || path == "/api/media/continue-watching" || path == "/api/lists" || path == "/api/achievements") {
+            return createJsonResponse("[]")
+        }
+
+        return createJsonResponse("""{"success":true,"offline_bridge":true}""")
     }
 
     private fun setupClients() {
@@ -247,7 +844,6 @@ class MainActivity : ComponentActivity() {
                         return true
                     } catch (_: Exception) {}
                 }
-                // Блокируем внешние редиректы на сайт RuTube и рекламу казино
                 if (urlLower.contains("rutube.ru/video/") ||
                     urlLower.contains("rutube.ru/channel/") ||
                     urlLower.contains("rutube.ru/?") ||
@@ -281,7 +877,6 @@ class MainActivity : ComponentActivity() {
                 val url = request?.url ?: return super.shouldInterceptRequest(view, request)
                 val host = url.host?.lowercase()
 
-                // Мгновенный запуск: отдаем локальные HTML, CSS, JS и медиа-ассеты без сетевых задержек и таймаутов под VPN
                 if (host == "stormmultimedia.ru" || host == "www.stormmultimedia.ru") {
                     val path = url.path ?: "/"
                     if (path == "/" || path == "/index.html") {
@@ -289,6 +884,10 @@ class MainActivity : ComponentActivity() {
                     }
                     if (path == "/remote.html") {
                         return createAssetResponse("text/html", "remote.html") ?: super.shouldInterceptRequest(view, request)
+                    }
+
+                    if (path.startsWith("/api/")) {
+                        return handleStormApiIntercept(url)
                     }
 
                     if (path.startsWith("/styles/") || path.startsWith("/js/") || path.startsWith("/assets/") || path.startsWith("/vendor/") || path == "/manifest.json") {
@@ -312,11 +911,30 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // STORM AD BLOCKER: аппаратная фильтрация и блокировка рекламы, VAST-роликов и трекеров казино
+                // Прозрачный DNS-обход для прямых запросов к *.liftw.ws внутри плеерных iframe на Android
+                if (host != null && (host.endsWith("liftw.ws") || host.endsWith("lateremb.ws"))) {
+                    val liftResp = fetchLiftRaw(url.toString(), host, 5500)
+                    if (liftResp != null && liftResp.first in 200..299 && liftResp.second.isNotEmpty()) {
+                        val path = url.path ?: ""
+                        val mime = when {
+                            path.endsWith(".js") -> "application/javascript"
+                            path.endsWith(".css") -> "text/css"
+                            host.startsWith("img.") || path.endsWith(".jpg") || path.endsWith(".webp") -> "image/jpeg"
+                            else -> "application/json"
+                        }
+                        return WebResourceResponse(
+                            mime,
+                            "UTF-8",
+                            200,
+                            "OK",
+                            corsHeaders(mime),
+                            ByteArrayInputStream(liftResp.second)
+                        )
+                    }
+                }
+
                 if (host != null) {
                     val urlStr = url.toString().lowercase()
-
-                    // Перехват рекламных запросов RuTube и подмена на пустой VAST документ для мгновенного старта
                     val isRutubeAd = host.startsWith("a.rutube.ru") ||
                                      host.startsWith("yast.rutube.ru") ||
                                      host.startsWith("ssp.rutube.ru") ||
@@ -331,18 +949,12 @@ class MainActivity : ComponentActivity() {
 
                     if (isRutubeAd) {
                         val emptyVast = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><VAST version=\"2.0\"></VAST>"
-                        val headers = mapOf(
-                            "Access-Control-Allow-Origin" to "*",
-                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS, HEAD",
-                            "Access-Control-Allow-Headers" to "*",
-                            "Content-Type" to "application/xml; charset=UTF-8"
-                        )
                         return WebResourceResponse(
                             "application/xml",
                             "UTF-8",
                             200,
                             "OK",
-                            headers,
+                            corsHeaders("application/xml; charset=UTF-8"),
                             ByteArrayInputStream(emptyVast.toByteArray())
                         )
                     }
@@ -365,6 +977,9 @@ class MainActivity : ComponentActivity() {
                     val isWhitelisted = host.contains("stormmultimedia.ru") ||
                                        host.contains("tmdb.org") ||
                                        host.contains("themoviedb.org") ||
+                                       host.contains("wsrv.nl") ||
+                                       host.contains("weserv.nl") ||
+                                       host.contains("liftw.ws") ||
                                        host.contains("anilibria") ||
                                        (host == "rutube.ru" || host == "www.rutube.ru" || host == "bl.rutube.ru") ||
                                        host.contains("vkvideo.ru") ||
@@ -409,12 +1024,10 @@ class MainActivity : ComponentActivity() {
                 customViewContainer.visibility = View.VISIBLE
                 customViewContainer.addView(view)
 
-                // Полноэкранный режим: разворачиваем на весь дисплей без системных рамок
                 WindowCompat.setDecorFitsSystemWindows(window, false)
                 rootLayout.setPadding(0, 0, 0, 0)
                 hideSystemUI()
 
-                // Используем сенсорную ориентацию без принудительного жесткого переворота экрана
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
             }
 
@@ -429,7 +1042,6 @@ class MainActivity : ComponentActivity() {
                 customViewContainer.visibility = View.GONE
                 webView.visibility = View.VISIBLE
 
-                // Возврат в полноэкранный иммерсивный режим без системных шторок
                 WindowCompat.setDecorFitsSystemWindows(window, false)
                 rootLayout.setPadding(0, 0, 0, 0)
                 hideSystemUI()
@@ -447,7 +1059,6 @@ class MainActivity : ComponentActivity() {
                     return
                 }
 
-                // Передаем нажатие системной кнопки "Назад" в JavaScript SPA
                 webView.evaluateJavascript("(function(){ return window.handleStormBackNavigation ? window.handleStormBackNavigation() : false; })();") { result ->
                     val handled = result?.equals("true", ignoreCase = true) == true
                     if (!handled) {
@@ -466,9 +1077,9 @@ class MainActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.44"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.45"
             } catch (_: Throwable) {
-                "1.0.44"
+                "1.0.45"
             }
         }
 
