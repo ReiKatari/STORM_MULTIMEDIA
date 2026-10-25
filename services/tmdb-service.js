@@ -186,7 +186,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
  */
 export async function getTmdbCatalog(category = 'popular', page = 1) {
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `catalog_v5_${category}_page_${pageNum}`;
+  const cacheKey = `catalog_v6_${category}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
@@ -251,7 +251,7 @@ export async function searchTmdb(query, page = 1) {
   if (!query || !query.trim()) return { items: [] };
 
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `search_v3_${query.trim().toLowerCase()}_page_${pageNum}`;
+  const cacheKey = `search_v4_${query.trim().toLowerCase()}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
@@ -332,7 +332,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
   }
 
   if (!cleanId) return null;
-  const cacheKey = `details_v3_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
+  const cacheKey = `details_v4_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached) return cached;
 

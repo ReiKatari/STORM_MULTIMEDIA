@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.1.2-s2';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.2-s2';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.2-s2';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.2-s2';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.2-s2';
-import { getStatusIconSvg } from './status-icons.js?v=1.1.2-s2';
-import { initFormFactorEngine } from './form-factor.js?v=1.1.2-s2';
+import { initTheme, setTheme } from './theme.js?v=1.1.2-s3';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.2-s3';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.2-s3';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.2-s3';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.2-s3';
+import { getStatusIconSvg } from './status-icons.js?v=1.1.2-s3';
+import { initFormFactorEngine } from './form-factor.js?v=1.1.2-s3';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.1.2';
@@ -216,9 +216,21 @@ let isBottomNavInitialized = false;
 
 export const clientTabCache = new Map();
 
+try {
+  if (localStorage.getItem('storm_cat_cache_rev') !== 'v6') {
+    localStorage.setItem('storm_cat_cache_rev', 'v6');
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('storm_cat_cache_v5_')) {
+        localStorage.removeItem(k);
+      }
+    }
+  }
+} catch (_) {}
+
 export function getPersistentTabCache(key) {
   try {
-    const raw = localStorage.getItem(`storm_cat_cache_v5_${key}`);
+    const raw = localStorage.getItem(`storm_cat_cache_v6_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
@@ -237,7 +249,7 @@ export function setPersistentTabCache(key, data) {
       totalPages: data.totalPages || 1,
       timestamp: Date.now()
     };
-    localStorage.setItem(`storm_cat_cache_v5_${key}`, JSON.stringify(toSave));
+    localStorage.setItem(`storm_cat_cache_v6_${key}`, JSON.stringify(toSave));
   } catch {}
 }
 
@@ -2080,24 +2092,93 @@ export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
  * Комплексная проверка медиа-элемента на стороне клиента на принадлежность к трейлерам/тизерам.
  * Полностью исключает появление любых карточек с трейлерами в каталогах, каруселях и закладках.
  */
-// 100% динамический трекер ожидаемых премьер (без жёстко заданных списков ID или названий)
-const _stormUpcomingIds = new Set();
+// 100% динамический трекер ожидаемых премьер с 2-часовым TTL (автоматически разблокируется при выходе цифрового потока)
+const _stormUpcomingTtlMap = new Map();
+const UPCOMING_CLIENT_TTL_MS = 2 * 60 * 60 * 1000;
+
 try {
-  if (localStorage.getItem('storm_upcoming_ids_rev') !== 'dynamic-v3') {
-    localStorage.setItem('storm_upcoming_ids_rev', 'dynamic-v3');
-    localStorage.removeItem('storm_upcoming_ids');
+  localStorage.removeItem('storm_upcoming_ids');
+  const rawTtl = localStorage.getItem('storm_upcoming_ttl_v1');
+  if (rawTtl) {
+    const parsedTtl = JSON.parse(rawTtl);
+    const nowTs = Date.now();
+    if (parsedTtl && typeof parsedTtl === 'object') {
+      for (const [k, exp] of Object.entries(parsedTtl)) {
+        if (Number(exp) > nowTs) {
+          _stormUpcomingTtlMap.set(k, Number(exp));
+        }
+      }
+    }
   }
 } catch (_) {}
+
+function persistUpcomingTtlMap() {
+  try {
+    const nowTs = Date.now();
+    const obj = {};
+    const entries = Array.from(_stormUpcomingTtlMap.entries()).filter(([, exp]) => exp > nowTs).slice(-300);
+    for (const [k, exp] of entries) obj[k] = exp;
+    localStorage.setItem('storm_upcoming_ttl_v1', JSON.stringify(obj));
+  } catch (_) {}
+}
+
+function isIdMarkedUpcomingInTtlMap(rawId) {
+  if (!rawId) return false;
+  const fullId = String(rawId).trim();
+  const cleanId = fullId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
+  const nowTs = Date.now();
+  const expFull = _stormUpcomingTtlMap.get(fullId) || 0;
+  if (expFull > nowTs) return true;
+  if (cleanId) {
+    const expClean = _stormUpcomingTtlMap.get(cleanId) || 0;
+    if (expClean > nowTs) return true;
+  }
+  return false;
+}
+
+export function unmarkMediaIdAsUpcoming(rawId) {
+  if (!rawId) return;
+  const fullId = String(rawId).trim();
+  const cleanId = fullId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
+  _stormUpcomingTtlMap.delete(fullId);
+  if (cleanId) {
+    _stormUpcomingTtlMap.delete(cleanId);
+    _stormUpcomingTtlMap.delete(`tmdb_${cleanId}`);
+  }
+  persistUpcomingTtlMap();
+}
+window.unmarkMediaIdAsUpcoming = unmarkMediaIdAsUpcoming;
 
 export function markMediaIdAsUpcoming(rawId) {
   if (!rawId) return;
   const fullId = String(rawId).trim();
   const cleanId = fullId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
-  _stormUpcomingIds.add(fullId);
-  if (cleanId) _stormUpcomingIds.add(cleanId);
-  try {
-    localStorage.setItem('storm_upcoming_ids', JSON.stringify(Array.from(_stormUpcomingIds).slice(-300)));
-  } catch (_) {}
+  const expiresAt = Date.now() + UPCOMING_CLIENT_TTL_MS;
+  _stormUpcomingTtlMap.set(fullId, expiresAt);
+  if (cleanId) _stormUpcomingTtlMap.set(cleanId, expiresAt);
+  persistUpcomingTtlMap();
+
+  const patchArr = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const it of arr) {
+      if (!it) continue;
+      const itId = String(it.id || it.tmdb_id || '').trim();
+      const itClean = itId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
+      if (itId === fullId || (cleanId && (itId === cleanId || itClean === cleanId))) {
+        it.stream_verified = false;
+        it.is_upcoming = true;
+        it.is4K = false;
+        it.quality = 'Ожидается';
+      }
+    }
+  };
+  patchArr(rawCatalogItems);
+  patchArr(currentItems);
+  for (const cached of clientTabCache.values()) {
+    if (Array.isArray(cached)) patchArr(cached);
+    else if (cached && Array.isArray(cached.items)) patchArr(cached.items);
+  }
+
   try {
     const selectors = [
       `.media-card[data-id="${CSS.escape(fullId)}"]`,
@@ -2115,6 +2196,8 @@ export function markMediaIdAsUpcoming(rawId) {
           } else if (!badgeWrap.querySelector('.storm-badge-upcoming')) {
             badgeWrap.insertAdjacentHTML('afterbegin', upHtml);
           }
+          const dubBadge = badgeWrap.querySelector('.storm-badge-dub');
+          if (dubBadge) dubBadge.remove();
         }
       });
     }
@@ -2133,6 +2216,11 @@ export function isUpcomingMediaItem(item) {
     return false;
   }
 
+  // 2. Серверный верификатор потоков явно подтвердил отсутствие цифрового релиза в балансерах
+  if (item.stream_verified === false) {
+    return true;
+  }
+
   const yr = parseInt(item.year || getMediaYear(item), 10) || 0;
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -2140,7 +2228,7 @@ export function isUpcomingMediaItem(item) {
     return true;
   }
 
-  // 2. Динамическая проверка даты премьеры по календарю реального времени
+  // 3. Динамическая проверка будущей даты премьеры
   const dateStr = String(item.release_date || item.first_air_date || item.premiere || '').trim();
   let parsedDate = null;
   if (dateStr && dateStr !== `${yr}-01-01`) {
@@ -2155,8 +2243,9 @@ export function isUpcomingMediaItem(item) {
     }
   }
 
-  // 3. Наличие прямого рабочего потока или вышедших серий
+  // 4. Наличие подтверждённого рабочего потока (Lift, FanFilm4K, AniLibria, VK, RuTube)
   const hasDirectStream = Boolean(
+    item.stream_verified === true ||
     (item.fanfilm_4k_url && !String(item.fanfilm_4k_url).includes('do=search')) ||
     item.fanfilm_hd_url ||
     item.lift_id ||
@@ -2172,45 +2261,48 @@ export function isUpcomingMediaItem(item) {
     return false;
   }
 
-  const statusLow = String(item.status || '').toLowerCase().trim();
-  const votes = parseInt(item.vote_count, 10) || 0;
-  const ratingVal = parseFloat(item.rating || item.rating_tmdb || item.rating_kp || 0) || 0;
-
-  if (statusLow && ['planned', 'in production', 'post production', 'rumored', 'upcoming', 'anons', 'анонс', 'not yet aired', 'unreleased'].includes(statusLow)) {
-    if (votes < 5) return true;
+  const rawId = String(item.id || item.tmdb_id || '').trim();
+  if (isIdMarkedUpcomingInTtlMap(rawId)) {
+    return true;
   }
 
-  // 4. Если дата релиза уже наступила (<= сегодня) и есть голоса/рейтинг — фильм УЖЕ ВЫШЕЛ (игнорируем устаревшие флаги кэша)
-  if (parsedDate && !isNaN(parsedDate.getTime()) && parsedDate <= now) {
-    if (votes > 0 || ratingVal > 0 || ['released', 'вышел', 'returning series', 'ended'].includes(statusLow)) {
-      return false;
-    }
+  // 5. Явный флаг ожидаемого релиза с сервера (НИКОГДА не затираем датой кинопроката TMDB!)
+  if (item.is_upcoming === true || item.isUpcoming === true) {
+    return true;
+  }
+  if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) {
+    return true;
+  }
+  if (item.premiere && /ожидается|скоро|анонс/i.test(String(item.premiere))) {
+    return true;
+  }
+
+  const statusLow = String(item.status || '').toLowerCase().trim();
+  if (statusLow && ['planned', 'in production', 'post production', 'rumored', 'upcoming', 'anons', 'анонс', 'not yet aired', 'unreleased'].includes(statusLow)) {
+    return true;
   }
 
   if ((item.source === 'anixart' || item.source === 'shikimori') && Number(item.episodes_released || 0) === 0 && statusLow !== 'вышел' && statusLow !== 'released' && (yr >= currentYear || /анонс|anons/i.test(statusLow))) {
     return true;
   }
 
-  const rawId = String(item.id || item.tmdb_id || '').trim();
-  const cleanId = rawId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
-  if ((rawId && _stormUpcomingIds.has(rawId)) || (cleanId && _stormUpcomingIds.has(cleanId))) {
+  if (rawId.startsWith('tmdb_up_')) {
     return true;
   }
 
-  if (!parsedDate && votes === 0) {
-    if (item.premiere && /ожидается|скоро|анонс/i.test(String(item.premiere))) return true;
-    if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) return true;
+  // 6. Защита от кинотеатральных премьер TMDB (последние 120 дней проката без подтверждённого потока)
+  if (item.source === 'tmdb' || rawId.startsWith('tmdb_') || item.provider_name) {
+    if (parsedDate && !isNaN(parsedDate.getTime())) {
+      const ageDays = (now.getTime() - parsedDate.getTime()) / (86400 * 1000);
+      if (ageDays <= 120) {
+        return true;
+      }
+    } else if (yr >= currentYear) {
+      return true;
+    }
   }
 
-  if ((item.source === 'tmdb' || rawId.startsWith('tmdb_')) && yr >= currentYear && !parsedDate && votes === 0 && ratingVal === 0) {
-    return true;
-  }
-
-  if (rawId.startsWith('tmdb_up_') && (!parsedDate || votes === 0)) {
-    return true;
-  }
-
-  return Boolean((item.is_upcoming === true || item.isUpcoming === true) && !parsedDate && votes === 0 && ratingVal === 0);
+  return false;
 }
 window.isUpcomingMediaItem = isUpcomingMediaItem;
 
@@ -2895,9 +2987,19 @@ function deduplicateMediaList(items) {
       });
     } else {
       const existing = itemMap.get(key);
-      const fanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
+      const rawFanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
         (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
-      const mergedUpcoming = !fanfilmUrl && Boolean(item.is_upcoming || existing.is_upcoming || isUpcomingMediaItem(item) || isUpcomingMediaItem(existing));
+      const fanfilmUrl = (rawFanfilmUrl && !String(rawFanfilmUrl).includes('do=search')) ? rawFanfilmUrl : null;
+      const mergedLiftId = item.lift_id || existing.lift_id || null;
+      const hasAnyVerifiedStream = Boolean(
+        fanfilmUrl ||
+        mergedLiftId ||
+        item.stream_verified === true ||
+        existing.stream_verified === true ||
+        ['lift', 'fanfilm4k', 'anilibria'].includes(item.source) ||
+        ['lift', 'fanfilm4k', 'anilibria'].includes(existing.source)
+      );
+      const mergedUpcoming = !hasAnyVerifiedStream && Boolean(item.is_upcoming || existing.is_upcoming || isUpcomingMediaItem(item) || isUpcomingMediaItem(existing));
       const has4K = !mergedUpcoming && Boolean(item.is4K || existing.is4K || Boolean(fanfilmUrl));
 
       const isNewBetter =
@@ -2915,6 +3017,8 @@ function deduplicateMediaList(items) {
         genres: item.genres || existing.genres || '',
         release_date: item.release_date || existing.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
+        lift_id: mergedLiftId,
+        stream_verified: hasAnyVerifiedStream ? true : (mergedUpcoming ? false : undefined),
         is_upcoming: mergedUpcoming,
         is4K: has4K,
         quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (item.quality || existing.quality)),
@@ -2930,6 +3034,8 @@ function deduplicateMediaList(items) {
         genres: existing.genres || item.genres || '',
         release_date: existing.release_date || item.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
+        lift_id: mergedLiftId,
+        stream_verified: hasAnyVerifiedStream ? true : (mergedUpcoming ? false : undefined),
         is_upcoming: mergedUpcoming,
         is4K: has4K,
         quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (existing.quality || item.quality)),
@@ -3081,7 +3187,8 @@ function renderHeroShowcase(items) {
     if (!item) return;
 
     const formattedTitle = formatMediaTitle(item);
-    const isReal4K = item.is4K === true || (item.quality && item.quality.includes('4K'));
+    const isUpcomingHero = isUpcomingMediaItem(item);
+    const isReal4K = !isUpcomingHero && (item.is4K === true || (item.quality && item.quality.includes('4K')));
     const backdrop = getSafePosterUrl(item.backdrop || item.backdrop_path || item.poster || 'assets/favicon.svg', item.title);
 
     let genres = [];
@@ -3110,7 +3217,7 @@ function renderHeroShowcase(items) {
         ${dotsHtml}
         <div class="hero-showcase-content">
           <div class="hero-badges-row">
-            ${isReal4K ? '<span class="hero-badge-tag hero-badge-4k">4K UHD</span>' : ''}
+            ${isUpcomingHero ? '<span class="hero-badge-tag storm-badge-upcoming" style="background:rgba(245,158,11,0.22);border:1px solid #f59e0b;color:#fbbf24;font-weight:800;">ОЖИДАЕТСЯ</span>' : (isReal4K ? '<span class="hero-badge-tag hero-badge-4k">4K UHD</span>' : '')}
             ${item.rating ? `<span class="hero-badge-tag hero-badge-rating">★ ${item.rating}</span>` : ''}
             <span class="hero-badge-tag" style="background:var(--bg-tertiary);color:var(--text-secondary);">${getSourceName(item)}</span>
           </div>

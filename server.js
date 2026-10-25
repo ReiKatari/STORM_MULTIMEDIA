@@ -2060,6 +2060,228 @@ const memoryCatalogCache = new Map();
 const MEMORY_CATALOG_FRESH_TTL = 15 * 60 * 1000; // 15 минут - свежий кэш
 const MEMORY_CATALOG_MAX_STALE_TTL = 24 * 60 * 60 * 1000; // 24 часа - допустимый stale кэш
 
+// ============================================================================
+// ДИНАМИЧЕСКИЙ ВЕРИФИКАТОР РЕАЛЬНОЙ ДОСТУПНОСТИ ЦИФРОВОГО ПОТОКА (LIFT / FF4K / KODIK)
+// Гарантирует 0% ложных плашек «4K UHD» у кинотеатральных премьер, ещё не вышедших в сети
+// ============================================================================
+function normalizeStreamProbeKey(title = '', originalTitle = '', year = '', isSeries = false) {
+  const norm = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+  const base = norm(originalTitle) || norm(title) || 'unknown';
+  return `probe_v2_${isSeries ? 'tv' : 'mv'}_${base}_${year || '0'}`;
+}
+
+function recordNegativeStreamAvailability({ title = '', original_title = '', year = '', is_series = false } = {}) {
+  try {
+    if (!title && !original_title) return;
+    const key = normalizeStreamProbeKey(title, original_title, year, is_series);
+    setCache('stream_probe', key, { hasStream: false, checkedAt: Date.now() }, 7200); // 2 часа TTL
+
+    const normMatch = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+    const tTarget = normMatch(title);
+    const oTarget = normMatch(original_title);
+
+    const patchItemList = (list) => {
+      if (!Array.isArray(list)) return;
+      for (const it of list) {
+        if (!it) continue;
+        const itT = normMatch(it.title);
+        const itO = normMatch(it.original_title);
+        const sameTitle = (tTarget && itT && itT === tTarget) || (oTarget && itO && itO === oTarget);
+        const sameYear = !year || !it.year || String(it.year) === String(year);
+        if (sameTitle && sameYear && !it.lift_id && !it.fanfilm_4k_url) {
+          it.stream_verified = false;
+          it.is_upcoming = true;
+          it.is4K = false;
+          it.quality = 'Ожидается';
+        }
+      }
+    };
+
+    for (const entry of memoryCatalogCache.values()) {
+      if (entry && Array.isArray(entry.items)) patchItemList(entry.items);
+    }
+    if (typeof memorySearchCache !== 'undefined') {
+      for (const entry of memorySearchCache.values()) {
+        if (entry && Array.isArray(entry.items)) patchItemList(entry.items);
+      }
+    }
+  } catch (_) {}
+}
+
+async function probeSingleItemDigitalStream(item) {
+  if (!item || typeof item !== 'object') return { hasStream: false };
+
+  // 1. Быстрый путь (0 мс): уже привязан проверенный прямой онлайн-поток
+  const rawFf = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '');
+  const validFf = (rawFf && !String(rawFf).includes('do=search')) ? rawFf : '';
+  if (item.source === 'lift' || item.lift_id) {
+    return { hasStream: true, lift_id: String(item.lift_id || item.id || '').replace(/^lift_/, '') };
+  }
+  if (item.source === 'fanfilm4k' || validFf || item.fanfilm_hd_url) {
+    return { hasStream: true, fanfilm_4k_url: validFf || null };
+  }
+  if (item.vk_embed_url || (item.rutube_id && String(item.rutube_id).length > 15) || item.source === 'anilibria') {
+    return { hasStream: true };
+  }
+  if ((item.source === 'anixart' || item.source === 'shikimori') && Number(item.episodes_released || 0) > 0) {
+    return { hasStream: true };
+  }
+  if (item.stream_verified === true) {
+    return { hasStream: true };
+  }
+
+  // 2. Будущая календарная дата или будущий год (0 мс)
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const yr = parseInt(item.year, 10) || 0;
+  if (yr > currentYear) {
+    return { hasStream: false, reason: 'future_year' };
+  }
+
+  const rawDate = String(item.release_date || item.first_air_date || item.premiere || '').trim();
+  let parsedDate = null;
+  if (rawDate && rawDate !== `${yr}-01-01`) {
+    if (/^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
+      parsedDate = new Date(`${rawDate.substring(0, 10)}T23:59:59`);
+    } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(rawDate)) {
+      const [dd, mm, yyyy] = rawDate.split('.');
+      parsedDate = new Date(`${yyyy}-${mm}-${dd}T23:59:59`);
+    }
+    if (parsedDate && !isNaN(parsedDate.getTime()) && parsedDate > now) {
+      return { hasStream: false, reason: 'future_date' };
+    }
+  }
+
+  const statusLow = String(item.status || '').toLowerCase().trim();
+  if (statusLow && ['planned', 'in production', 'post production', 'rumored', 'upcoming', 'anons', 'анонс', 'not yet aired', 'unreleased'].includes(statusLow)) {
+    return { hasStream: false, reason: 'status_unreleased' };
+  }
+
+  // 3. Каталог прошлых лет (> 240 дней с момента релиза) — давно в цифре (0 мс)
+  const isZeroEpAnime = (item.source === 'anixart' || item.source === 'shikimori') && Number(item.episodes_released || 0) === 0;
+  if (!isZeroEpAnime) {
+    if (yr > 0 && yr <= currentYear - 2) {
+      return { hasStream: true };
+    }
+    if (yr === currentYear - 1 && parsedDate && !isNaN(parsedDate.getTime())) {
+      const ageDays = (now.getTime() - parsedDate.getTime()) / (86400 * 1000);
+      if (ageDays > 240) {
+        return { hasStream: true };
+      }
+    }
+  }
+
+  // 4. Активная проверка наличия реального потока в базах балансеров (с персистентным кэшем SQLite/MariaDB)
+  const cleanTitle = String(item.title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  const isSeries = ['series', 'tv', 'anime-series', 'cartoon-series'].includes(String(item.media_type || '').toLowerCase()) || Boolean(item.is_series);
+  const probeKey = normalizeStreamProbeKey(cleanTitle, item.original_title || '', yr, isSeries);
+
+  const cachedProbe = getCache('stream_probe', probeKey);
+  if (cachedProbe && typeof cachedProbe.hasStream === 'boolean') {
+    return cachedProbe;
+  }
+
+  // 4a. Мгновенный словарь FanFilm4K
+  const syncFf = resolveFanFilmUrl(cleanTitle, yr);
+  if (syncFf && !String(syncFf).includes('do=search')) {
+    const pos = { hasStream: true, fanfilm_4k_url: syncFf, checkedAt: Date.now() };
+    setCache('stream_probe', probeKey, pos, 7 * 86400);
+    return pos;
+  }
+
+  // 4b. Проверка в базе Lift (88 000+ фильмов и сериалов с точной сверкой года и original_title)
+  const PROBE_TIMEOUT = '__PROBE_TIMEOUT__';
+  let liftTimedOut = false;
+  try {
+    const matchedLiftId = await Promise.race([
+      resolveLiftMatch({
+        title: cleanTitle,
+        original_title: item.original_title || '',
+        year: yr ? String(yr) : '',
+        is_series: isSeries
+      }),
+      new Promise(r => setTimeout(() => r(PROBE_TIMEOUT), 4500))
+    ]);
+    if (matchedLiftId === PROBE_TIMEOUT) {
+      liftTimedOut = true;
+    } else if (matchedLiftId) {
+      const pos = { hasStream: true, lift_id: String(matchedLiftId), checkedAt: Date.now() };
+      setCache('stream_probe', probeKey, pos, 7 * 86400);
+      return pos;
+    }
+  } catch (_) {
+    liftTimedOut = true;
+  }
+
+  // 4c. Для аниме дополнительно проверяем прямое наличие плеера в Kodik API
+  if (isAnimeMediaItem(item) || item.source === 'anixart' || item.source === 'shikimori') {
+    try {
+      const kodikUrl = await Promise.race([
+        resolveKodikDirectIframe({
+          cleanTitle,
+          original_title: item.original_title || '',
+          shikimori_id: item.shikimori_id || ''
+        }),
+        new Promise(r => setTimeout(() => r(''), 2500))
+      ]);
+      if (kodikUrl) {
+        const pos = { hasStream: true, kodik_url: kodikUrl, checkedAt: Date.now() };
+        setCache('stream_probe', probeKey, pos, 3 * 86400);
+        return pos;
+      }
+    } catch (_) {}
+  }
+
+  // Потока нет ни в одном балансере -> кинотеатральная премьера / ожидается цифровой релиз (TTL 2 часа)
+  // Не кэшируем отрицательный результат, если запрос завершился по сетевому таймауту!
+  const neg = { hasStream: false, checkedAt: Date.now() };
+  if (!liftTimedOut) {
+    setCache('stream_probe', probeKey, neg, 7200);
+  }
+  return neg;
+}
+
+async function verifyItemsDigitalStreamAvailability(items, { concurrency = 6 } = {}) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  let cursor = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      const it = items[idx];
+      if (!it || typeof it !== 'object') continue;
+      try {
+        const probe = await probeSingleItemDigitalStream(it);
+        if (probe && probe.hasStream) {
+          if (probe.lift_id && !it.lift_id) it.lift_id = probe.lift_id;
+          if (probe.fanfilm_4k_url && !it.fanfilm_4k_url) it.fanfilm_4k_url = probe.fanfilm_4k_url;
+          it.stream_verified = true;
+          it.is_upcoming = false;
+          if (!it.quality || /ожидается|скоро|анонс/i.test(String(it.quality))) {
+            const should4k = Boolean(it.source === 'tmdb' || it.source === 'fanfilm4k' || it.fanfilm_4k_url || it.is4K);
+            it.is4K = should4k;
+            it.quality = should4k ? '4K Ultra HD' : '1080p FHD';
+          }
+        } else {
+          it.stream_verified = false;
+          it.is_upcoming = true;
+          it.is4K = false;
+          it.quality = 'Ожидается';
+        }
+      } catch (_) {}
+    }
+  });
+
+  await Promise.all(workers);
+  return items;
+}
+
 async function executeCatalogFetch(category, page = 1, source = 'all', extraFilters = {}) {
   const normCategory = category === 'home' ? 'popular' : category;
   const CATALOG_GATHER_TIMEOUT_MS = 4500;
@@ -2398,11 +2620,13 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       const k = (!isAnimeOrSer && item.year) ? `${baseKey}_movie_${item.year}` : baseKey;
       const raw4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title, item.year) || '';
       const resolved4k = (raw4k && !String(raw4k).includes('do=search')) ? raw4k : '';
-      const isItemUpcoming = Boolean(item.is_upcoming || isMediaUpcomingOrUnreleased(item));
+      const itemHasStream = Boolean(resolved4k || item.lift_id || ['lift', 'fanfilm4k', 'anilibria'].includes(item.source) || item.stream_verified === true);
+      const isItemUpcoming = !itemHasStream && Boolean(item.is_upcoming || isMediaUpcomingOrUnreleased(item));
       if (!catalogDedupMap.has(k)) {
         catalogDedupMap.set(k, {
           ...item,
           fanfilm_4k_url: resolved4k || item.fanfilm_4k_url || null,
+          stream_verified: itemHasStream ? true : item.stream_verified,
           is_upcoming: isItemUpcoming,
           is4K: isItemUpcoming ? false : Boolean(item.is4K || resolved4k),
           quality: isItemUpcoming ? 'Ожидается' : ((item.is4K || resolved4k) ? '4K Ultra HD' : (item.quality || '1080p FHD'))
@@ -2420,7 +2644,16 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         merged.rating_kp = prev.rating_kp || item.rating_kp;
         merged.rating_imdb = prev.rating_imdb || item.rating_imdb;
         merged.countries = (prev.countries && prev.countries.length > 0) ? prev.countries : item.countries;
-        const isMergedUpcoming = Boolean(prev.is_upcoming || item.is_upcoming || isMediaUpcomingOrUnreleased(merged));
+        const mergedHasStream = Boolean(
+          combined4k || combinedLift ||
+          ['lift', 'fanfilm4k', 'anilibria'].includes(prev.source) ||
+          ['lift', 'fanfilm4k', 'anilibria'].includes(item.source) ||
+          prev.stream_verified === true || item.stream_verified === true
+        );
+        if (mergedHasStream) {
+          merged.stream_verified = true;
+        }
+        const isMergedUpcoming = !mergedHasStream && Boolean(prev.is_upcoming || item.is_upcoming || isMediaUpcomingOrUnreleased(merged));
         const has4K = !isMergedUpcoming && Boolean(prev.is4K || item.is4K || combined4k);
         merged.is_upcoming = isMergedUpcoming;
         merged.is4K = has4K;
@@ -2433,6 +2666,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       }
     }
     items = Array.from(catalogDedupMap.values());
+    await verifyItemsDigitalStreamAvailability(items);
 
     // Дополнительная фильтрация по странам и двойным рейтингам КП / IMDb / году
     if (extraFilters.country) {
@@ -2640,10 +2874,16 @@ app.get('/api/media/catalog', async (req, res) => {
         const activeUserId = req.user?.id || null;
         finalItems = finalItems.map(item => {
           const bookmark = activeUserId ? getBookmark(activeUserId, item.id, item.source, item.title, item.original_title) : null;
+          const bStatus = bookmark?.status || item.user_status || null;
+          const bPct = bookmark?.progress_percent || item.progress_percent || 0.0;
+          const userWatched = Boolean(['completed', 'watching', 'on_hold', 'dropped'].includes(String(bStatus || '').toLowerCase()) || Number(bPct) > 0);
           return {
             ...item,
-            user_status: bookmark?.status || item.user_status || null,
-            progress_percent: bookmark?.progress_percent || item.progress_percent || 0.0,
+            is_upcoming: userWatched ? false : item.is_upcoming,
+            is4K: userWatched && item.is_upcoming ? true : item.is4K,
+            quality: userWatched && item.quality === 'Ожидается' ? '4K Ultra HD' : item.quality,
+            user_status: bStatus,
+            progress_percent: bPct,
             episodes_watched: bookmark?.episodes_watched || item.episodes_watched || 0,
             total_episodes: bookmark?.total_episodes || item.total_episodes || 0
           };
@@ -2682,10 +2922,16 @@ app.get('/api/media/catalog', async (req, res) => {
     const activeUserId = req.user?.id || null;
     items = items.map(item => {
       const bookmark = activeUserId ? getBookmark(activeUserId, item.id, item.source, item.title, item.original_title) : null;
+      const bStatus = bookmark?.status || item.user_status || null;
+      const bPct = bookmark?.progress_percent || item.progress_percent || 0.0;
+      const userWatched = Boolean(['completed', 'watching', 'on_hold', 'dropped'].includes(String(bStatus || '').toLowerCase()) || Number(bPct) > 0);
       return {
         ...item,
-        user_status: bookmark?.status || item.user_status || null,
-        progress_percent: bookmark?.progress_percent || item.progress_percent || 0.0,
+        is_upcoming: userWatched ? false : item.is_upcoming,
+        is4K: userWatched && item.is_upcoming ? true : item.is4K,
+        quality: userWatched && item.quality === 'Ожидается' ? '4K Ultra HD' : item.quality,
+        user_status: bStatus,
+        progress_percent: bPct,
         episodes_watched: bookmark?.episodes_watched || item.episodes_watched || 0,
         total_episodes: bookmark?.total_episodes || item.total_episodes || 0
       };
@@ -2894,8 +3140,8 @@ async function executeUnifiedSearch(query, source = 'all') {
           (ex.kp_id && item.kp_id && String(ex.kp_id) === String(item.kp_id)) ||
           (ex.tmdb_id && item.tmdb_id && String(ex.tmdb_id) === String(item.tmdb_id)) ||
           (ex.lift_id && item.lift_id && String(ex.lift_id) === String(item.lift_id)) ||
-          item.source === 'rutube' || item.source === 'vkvideo' ||
-          ex.source === 'rutube' || ex.source === 'vkvideo' ||
+          (((item.source === 'rutube' || item.source === 'vkvideo') && Number(item.duration_seconds || item.duration || 0) >= 3300 && ex.year && item.year && String(ex.year) === String(item.year) && (!ex.original_title || String(item.title || '').toLowerCase().includes(String(ex.original_title).toLowerCase())))) ||
+          (((ex.source === 'rutube' || ex.source === 'vkvideo') && Number(ex.duration_seconds || ex.duration || 0) >= 3300 && ex.year && item.year && String(ex.year) === String(item.year) && (!item.original_title || String(ex.title || '').toLowerCase().includes(String(item.original_title).toLowerCase())))) ||
           (ex.original_title && item.original_title &&
            String(ex.original_title).toLowerCase().trim() === String(item.original_title).toLowerCase().trim() &&
            Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1)
@@ -2994,13 +3240,14 @@ async function executeUnifiedSearch(query, source = 'all') {
   }
 
   let items = Array.from(mergedMap.values());
+  await verifyItemsDigitalStreamAvailability(items);
 
   // Синтезируем полный объединенный список плееров для каждой карточки, гарантируя FanFilm4K на первом месте
   for (const it of items) {
     const title = it.title || '';
     const cleanId = String(it.id || '').replace(/[^\d]/g, '');
     const resolvedFf = resolveFanFilmUrl(title, it.year);
-    const fanfilmUrl = it.fanfilm_4k_url || resolvedFf || (it.source === 'fanfilm4k' && cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(title)}`);
+    const fanfilmUrl = it.fanfilm_4k_url || resolvedFf || (it.source === 'fanfilm4k' && cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : (it.is_upcoming ? '' : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(title)}`));
 
     const unifiedPlayers = getAvailablePlayers({
       kp_id: it.kp_id,
@@ -3040,11 +3287,11 @@ async function executeUnifiedSearch(query, source = 'all') {
     }
 
     it.players = unifiedPlayers;
-    const isUpSearch = Boolean(it.is_upcoming || isMediaUpcomingOrUnreleased(it));
+    const isUpSearch = Boolean(it.stream_verified === false || (!it.stream_verified && (it.is_upcoming || isMediaUpcomingOrUnreleased(it))));
     it.is_upcoming = isUpSearch;
-    it.is4K = !isUpSearch;
-    it.quality = isUpSearch ? 'Ожидается' : '4K Ultra HD';
-    it.fanfilm_4k_url = isUpSearch ? null : fanfilmUrl;
+    it.is4K = isUpSearch ? false : (it.source === 'anilibria' ? false : true);
+    it.quality = isUpSearch ? 'Ожидается' : (it.source === 'anilibria' ? '1080p FHD' : '4K Ultra HD');
+    it.fanfilm_4k_url = isUpSearch ? null : (fanfilmUrl && !String(fanfilmUrl).includes('do=search') ? fanfilmUrl : null);
 
     const rawTitle = it.title || '';
     const cleanedTitle = String(rawTitle)
@@ -4660,22 +4907,39 @@ app.get('/api/media/item', async (req, res) => {
     // 100% исключение любых промо-трейлеров и тизеров из списка плееров
     allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
     const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
-    const hasVerifiedOnlineStream = Boolean(
+    let hasVerifiedOnlineStream = Boolean(
       (mediaDetails.fanfilm_4k_url && !String(mediaDetails.fanfilm_4k_url).includes('do=search')) ||
       mediaDetails.fanfilm_hd_url ||
       mediaDetails.lift_id ||
       mediaDetails.vk_embed_url ||
       (mediaDetails.rutube_id && String(mediaDetails.rutube_id).length > 15) ||
-      (Array.isArray(mediaDetails.seasons) && mediaDetails.seasons.length > 0)
+      ['lift', 'fanfilm4k', 'anilibria'].includes(mediaDetails.source) ||
+      (Array.isArray(mediaDetails.episodes) && mediaDetails.episodes.some(ep => ep && (ep.hls_1080 || ep.hls_720 || ep.embed_url)))
     );
+    if (!hasVerifiedOnlineStream && !isKnownUnreleased) {
+      const detailProbe = await probeSingleItemDigitalStream(mediaDetails);
+      if (detailProbe && detailProbe.hasStream) {
+        hasVerifiedOnlineStream = true;
+        if (detailProbe.lift_id && !mediaDetails.lift_id) mediaDetails.lift_id = detailProbe.lift_id;
+        if (detailProbe.fanfilm_4k_url && !mediaDetails.fanfilm_4k_url) mediaDetails.fanfilm_4k_url = detailProbe.fanfilm_4k_url;
+        mediaDetails.stream_verified = true;
+      } else {
+        mediaDetails.stream_verified = false;
+      }
+    } else if (hasVerifiedOnlineStream) {
+      mediaDetails.stream_verified = true;
+    }
     const finalUpcomingState = Boolean(
       isKnownUnreleased ||
-      (!hasVerifiedOnlineStream && (isFutureRelease || isMediaUpcomingOrUnreleased(mediaDetails)))
+      (!hasVerifiedOnlineStream && (mediaDetails.stream_verified === false || isFutureRelease || isMediaUpcomingOrUnreleased(mediaDetails)))
     );
     mediaDetails.is_upcoming = finalUpcomingState;
     if (finalUpcomingState) {
       mediaDetails.is4K = false;
       mediaDetails.quality = 'Ожидается';
+    } else if (hasVerifiedOnlineStream && mediaDetails.quality === 'Ожидается') {
+      mediaDetails.is4K = mediaDetails.source !== 'anilibria';
+      mediaDetails.quality = mediaDetails.is4K ? '4K Ultra HD' : '1080p FHD';
     }
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K Ad-Free и 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
@@ -5102,6 +5366,7 @@ app.get('/api/media/franchise', async (req, res) => {
     // 2. Кинематографические франшизы через TMDB Collection
     const franchise = await getTmdbFranchise(id, cleanTitle);
     if (franchise && franchise.items && franchise.items.length > 0) {
+      await verifyItemsDigitalStreamAvailability(franchise.items);
       return res.json({
         franchise_name: franchise.franchise_name || `Хронология «${cleanTitle}»`,
         overview: franchise.overview || '',
@@ -6324,6 +6589,7 @@ function escapeServerHtml(s = '') {
 }
 
 function renderPremiereOrTrailerFallbackHtml({ title = '', original_title = '', year = '', trailer = null } = {}) {
+  recordNegativeStreamAvailability({ title, original_title, year });
   const displayTitle = escapeServerHtml(title || original_title || 'Премьера');
   const subParts = [];
   if (original_title && original_title.trim().toLowerCase() !== String(title || '').trim().toLowerCase()) {
@@ -9561,12 +9827,17 @@ app.get('/api/media/person', async (req, res) => {
         const tmdbItems = Array.isArray(tmdbRes) ? tmdbRes : (tmdbRes?.items || []);
         const merged = [...ffItems, ...tmdbItems];
         if (merged.length > 0) {
+          const sliced = merged.slice(0, 40);
+          await verifyItemsDigitalStreamAvailability(sliced);
           return res.json({
             person: data?.person || { id: id || name, name, biography: '', birthday: '', place_of_birth: '', profile_path: '' },
-            items: merged.slice(0, 40)
+            items: sliced
           });
         }
       } catch (_) {}
+    }
+    if (data && Array.isArray(data.items) && data.items.length > 0) {
+      await verifyItemsDigitalStreamAvailability(data.items);
     }
     res.json(data);
   } catch (err) {

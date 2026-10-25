@@ -161,6 +161,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
   try {
     // 1. Синхронизация пользователей
     const [mUsers] = await pool.query('SELECT * FROM users');
+    const validUserIds = new Set((mUsers || []).map(u => Number(u.id)));
     if (mUsers && mUsers.length > 0) {
       const upsertUser = sqliteDb.prepare(`
         INSERT INTO users (id, username, email, password_hash, avatar, role, created_at, settings_json)
@@ -205,6 +206,20 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]
         );
         console.log('[Security MariaDB] Все старые сессии отозваны, чужие записи из watch_history удалены.');
+      }
+      if (validUserIds.size > 0) {
+        const idList = Array.from(validUserIds).join(',');
+        sqliteDb.prepare(`DELETE FROM bookmarks WHERE user_id NOT IN (${idList})`).run();
+        sqliteDb.prepare(`DELETE FROM watch_history WHERE user_id NOT IN (${idList})`).run();
+      }
+      const [upCacheCheck] = await pool.query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'upcoming_stream_probe_v7'");
+      if (!upCacheCheck || upCacheCheck.length === 0) {
+        await pool.query("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'");
+        sqliteDb.prepare("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'").run();
+        await pool.query(
+          "INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'upcoming_stream_probe_v7', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)",
+          [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]
+        );
       }
     } catch (_) {}
     const [mSessions] = await pool.query('SELECT * FROM sessions WHERE expires_at > ?', [now]);
@@ -277,6 +292,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       // Передаем локальные закладки в MariaDB, если их там ещё нет или они свежее
       const localBookmarks = sqliteDb.prepare('SELECT * FROM bookmarks').all();
       for (const lb of localBookmarks) {
+        if (validUserIds.size > 0 && !validUserIds.has(Number(lb.user_id))) continue;
         const key = `${lb.user_id}_${String(lb.media_id)}_${lb.source}`;
         const mUpdated = mBookmarkMap.get(key);
         if (mUpdated === undefined || (Number(lb.updated_at) || 0) > mUpdated) {
@@ -363,6 +379,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       // Передаем локальную историю в MariaDB, если её там ещё нет или она свежее
       const localHist = sqliteDb.prepare('SELECT * FROM watch_history').all();
       for (const lh of localHist) {
+        if (validUserIds.size > 0 && !validUserIds.has(Number(lh.user_id))) continue;
         const key = `${lh.user_id}_${String(lh.media_id)}_${lh.source}_${lh.season || 1}_${lh.episode || 1}`;
         const mUpdated = mHistMap.get(key);
         if (mUpdated === undefined || (Number(lh.updated_at) || 0) > mUpdated) {

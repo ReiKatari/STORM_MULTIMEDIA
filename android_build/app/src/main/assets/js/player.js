@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.1.2-s2';
-import { getUser, showToast } from './auth.js?v=1.1.2-s2';
-import { t } from './i18n.js?v=1.1.2-s2';
-import { trackClientAction } from './achievements.js?v=1.1.2-s2';
-import { renderReviewsSection } from './reviews.js?v=1.1.2-s2';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.1.2-s2';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.1.2-s2';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.1.2-s2';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.1.2-s2';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.1.2-s2';
-import { saveMediaForOffline } from './offline-storage.js?v=1.1.2-s2';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.1.2-s2';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.1.2-s2';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.1.2-s2';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.1.2-s2';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.1.2-s2';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.1.2-s3';
+import { getUser, showToast } from './auth.js?v=1.1.2-s3';
+import { t } from './i18n.js?v=1.1.2-s3';
+import { trackClientAction } from './achievements.js?v=1.1.2-s3';
+import { renderReviewsSection } from './reviews.js?v=1.1.2-s3';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.1.2-s3';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.1.2-s3';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.1.2-s3';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.1.2-s3';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.1.2-s3';
+import { saveMediaForOffline } from './offline-storage.js?v=1.1.2-s3';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.1.2-s3';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.1.2-s3';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.1.2-s3';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.1.2-s3';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.1.2-s3';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -1196,18 +1196,28 @@ function initFullscreenControls() {
         if (data.type === 'STORM_LIFT_AUDIO_TRACKS' && Array.isArray(data.tracks) && data.tracks.length > 0) {
           if (currentMedia) {
             currentMedia.realAudioTracks = data.tracks.map((name, idx) => ({ id: String(idx), name: String(name) }));
+            currentMedia.stream_verified = true;
+            currentMedia.is_upcoming = false;
+            if (typeof window.unmarkMediaIdAsUpcoming === 'function') {
+              window.unmarkMediaIdAsUpcoming(currentMedia.id || currentMedia.tmdb_id);
+            }
           }
         }
         if (data.type === 'STORM_PREMIERE_PLACEHOLDER_LOADED') {
           const fbBanner = document.getElementById('player-fallback-banner');
           if (fbBanner) fbBanner.style.display = 'none';
-          const genuinelyUpcoming = currentMedia && typeof window.isUpcomingMediaItem === 'function'
-            ? window.isUpcomingMediaItem(currentMedia)
-            : Boolean(currentMedia?.is_upcoming);
-          if (currentMedia && genuinelyUpcoming) {
-            currentMedia.is_upcoming = true;
-            currentMedia.is4K = false;
-            currentMedia.quality = 'ОЖИДАЕТСЯ';
+          if (currentMedia) {
+            const userSt = String(currentMedia.user_status || '').toLowerCase().trim();
+            const alreadyWatched = ['completed', 'watching', 'on_hold', 'dropped'].includes(userSt) || Number(currentMedia.progress_percent || 0) > 0;
+            if (!alreadyWatched) {
+              currentMedia.stream_verified = false;
+              currentMedia.is_upcoming = true;
+              currentMedia.is4K = false;
+              currentMedia.quality = 'Ожидается';
+              if (typeof window.markMediaIdAsUpcoming === 'function') {
+                window.markMediaIdAsUpcoming(currentMedia.id || currentMedia.tmdb_id);
+              }
+            }
           }
           const sideBadge = document.getElementById('cinema-side-quality-badge');
           if (sideBadge) {

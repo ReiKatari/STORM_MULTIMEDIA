@@ -1172,22 +1172,27 @@ function parseDynamicReleaseDate(rawD, yr = 0) {
 export function isMediaUpcomingOrUnreleased(item) {
   if (!item || typeof item !== 'object') return false;
 
-  // 1. Пользовательская активность: если пользователь уже смотрел или отметил просмотр — релиз точно вышел
+  // 1. Пользовательская активность: если пользователь уже смотрел или отметил просмотр — релиз точно доступен
   const userSt = String(item.user_status || item.bookmark_status || '').toLowerCase().trim();
   if (['completed', 'watching', 'on_hold', 'dropped'].includes(userSt) || Number(item.progress_percent || 0) > 0) {
     return false;
+  }
+
+  // 2. Явный вердикт серверного верификатора онлайн-потоков (Lift / FanFilm4K / Kodik): потока ещё нет
+  if (item.stream_verified === false) {
+    return true;
   }
 
   const yr = parseInt(item.year, 10) || parseInt(resolveCanonicalYear(item.title || '', '', '', '', item.year), 10) || 0;
   const now = new Date();
   const currentYear = now.getFullYear();
 
-  // 2. Будущий календарный год
+  // 3. Будущий календарный год
   if (yr > currentYear) {
     return true;
   }
 
-  // 3. Проверка точной даты премьеры относительно текущего момента времени
+  // 4. Проверка точной даты премьеры относительно текущего момента времени
   const dateCandidates = [item.release_date, item.first_air_date, item.premiere, item.digital_release, item.world_premier].filter(Boolean);
   let earliestParsedDate = null;
   for (const rawD of dateCandidates) {
@@ -1202,8 +1207,9 @@ export function isMediaUpcomingOrUnreleased(item) {
     }
   }
 
-  // 4. Наличие реального онлайн-потока (Lift, FanFilm4K, AniLibria, VK, RuTube или вышедших серий)
+  // 5. Наличие подтверждённого реального онлайн-потока (Lift, FanFilm4K, AniLibria, VK, RuTube или вышедших серий)
   const hasVerifiedDirectStream = Boolean(
+    item.stream_verified === true ||
     (item.fanfilm_4k_url && !String(item.fanfilm_4k_url).includes('do=search')) ||
     item.fanfilm_hd_url ||
     item.lift_id ||
@@ -1219,20 +1225,20 @@ export function isMediaUpcomingOrUnreleased(item) {
     return false;
   }
 
-  const statusLow = String(item.status || '').toLowerCase().trim();
-  const votes = parseInt(item.vote_count, 10) || 0;
-  const ratingVal = parseFloat(item.rating || item.rating_tmdb || item.rating_kp || 0) || 0;
-
-  // 5. Явный статус производства/анонса в API источника (при отсутствии зрительских оценок)
-  if (statusLow && ['planned', 'in production', 'post production', 'rumored', 'upcoming', 'anons', 'анонс', 'not yet aired', 'unreleased'].includes(statusLow)) {
-    if (votes < 5) return true;
+  // 6. Если карточка уже явно помечена как ожидаемая (или качество «Ожидается») — НЕ затираем датой кинопроката TMDB!
+  if (item.is_upcoming === true || item.isUpcoming === true) {
+    return true;
+  }
+  if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) {
+    return true;
+  }
+  if (item.premiere && /ожидается|скоро|анонс/i.test(String(item.premiere))) {
+    return true;
   }
 
-  // 6. Если дата релиза уже наступила (<= сегодня) и есть оценки/голоса или статус Released — фильм УЖЕ ВЫШЕЛ!
-  if (earliestParsedDate && earliestParsedDate <= now) {
-    if (votes > 0 || ratingVal > 0 || ['released', 'вышел', 'returning series', 'ended'].includes(statusLow)) {
-      return false;
-    }
+  const statusLow = String(item.status || '').toLowerCase().trim();
+  if (statusLow && ['planned', 'in production', 'post production', 'rumored', 'upcoming', 'anons', 'анонс', 'not yet aired', 'unreleased'].includes(statusLow)) {
+    return true;
   }
 
   // 7. Аниме-релизы со статусом анонса и 0 вышедших эпизодов
@@ -1240,21 +1246,24 @@ export function isMediaUpcomingOrUnreleased(item) {
     return true;
   }
 
-  // 8. Текстовые маркеры анонса при отсутствии голосов и наступившей даты
-  if (!earliestParsedDate && votes === 0) {
-    if (item.premiere && /ожидается|скоро|анонс/i.test(String(item.premiere))) return true;
-    if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) return true;
-  }
-
-  // 9. Карточка текущего года вообще без даты и без единого голоса/рейтинга
   const rawId = String(item.id || item.tmdb_id || '').trim();
-  if ((item.source === 'tmdb' || rawId.startsWith('tmdb_')) && yr >= currentYear && !earliestParsedDate && votes === 0 && ratingVal === 0) {
+  if (rawId.startsWith('tmdb_up_')) {
     return true;
   }
 
-  if (rawId.startsWith('tmdb_up_') && (!earliestParsedDate || votes === 0)) {
-    return true;
+  // 8. ВАЖНО: TMDB release_date — это дата фестивальной/кинотеатральной премьеры, а НЕ цифрового VOD-релиза!
+  // Свежие релизы TMDB (последние 120 дней кинопроката или без даты в текущем году), для которых ещё не подтверждён поток
+  // в Lift / FanFilm4K / Kodik, считаются ожидающими цифрового релиза («ОЖИДАЕТСЯ»), пока бэкенд не подтвердит поток.
+  if (item.source === 'tmdb' || rawId.startsWith('tmdb_') || item.provider_name) {
+    if (earliestParsedDate) {
+      const ageDays = (now.getTime() - earliestParsedDate.getTime()) / (86400 * 1000);
+      if (ageDays <= 120) {
+        return true;
+      }
+    } else if (yr >= currentYear) {
+      return true;
+    }
   }
 
-  return Boolean(item.is_upcoming === true && !earliestParsedDate && votes === 0);
+  return false;
 }
