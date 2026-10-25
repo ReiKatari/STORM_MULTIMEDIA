@@ -29,6 +29,7 @@ import {
   setBookmark,
   removeBookmark,
   logWatchProgress,
+  getLatestWatchProgressForMedia,
   getContinueWatching,
   getCustomLists,
   getCustomListDetails,
@@ -1047,7 +1048,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.1.0',
+    version: '1.1.1',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -1429,7 +1430,7 @@ async function resolveAnimePosterBuffer(title, orig) {
   const cleanOrig = cleanStr(orig);
   if (!cleanTitle && !cleanOrig) return null;
 
-  const cacheKey = `anime_cover_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const cacheKey = `anime_cover_v2_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
 
   // 1. Проверка сохранённого в SQLite URL обложки
   const cachedUrl = getCache('anime_covers', cacheKey);
@@ -1438,8 +1439,8 @@ async function resolveAnimePosterBuffer(title, orig) {
     if (img) return img;
   }
 
-  const titleNoSeason = cleanTitle.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '').trim();
-  const origNoSeason = cleanOrig.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '').trim();
+  const titleNoSeason = normalizeAnimeFranchiseTitle(cleanTitle, true) || cleanTitle.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '').trim();
+  const origNoSeason = normalizeAnimeFranchiseTitle(cleanOrig, true) || cleanOrig.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '').trim();
 
   const searchTerms = [...new Set([
     cleanTitle,
@@ -1448,12 +1449,24 @@ async function resolveAnimePosterBuffer(title, orig) {
     origNoSeason
   ].filter(t => t && t.length >= 2))];
 
+  const matchesRequestedTitle = (candRu, candOrig) => {
+    const normCandRu = normPosterKey(normalizeAnimeFranchiseTitle(candRu || '', true) || candRu);
+    const normCandOrig = normPosterKey(normalizeAnimeFranchiseTitle(candOrig || '', true) || candOrig);
+    const targetKeys = searchTerms.map(t => normPosterKey(t)).filter(Boolean);
+    for (const tk of targetKeys) {
+      if (normCandRu && (normCandRu === tk || (tk.length >= 6 && normCandRu.startsWith(tk + ' ')) || (normCandRu.length >= 6 && tk.startsWith(normCandRu + ' ')))) return true;
+      if (normCandOrig && (normCandOrig === tk || (tk.length >= 6 && normCandOrig.startsWith(tk + ' ')) || (normCandOrig.length >= 6 && tk.startsWith(normCandOrig + ' ')))) return true;
+    }
+    return false;
+  };
+
   // Каскад 1: Поиск в AniXart (прямой официальный постер релиза на static.anixart.tv)
   for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
     try {
       const searchRes = await searchAnixart(term, 0);
       if (searchRes?.items?.length > 0) {
-        for (const it of searchRes.items.slice(0, 3)) {
+        for (const it of searchRes.items.slice(0, 5)) {
+          if (!matchesRequestedTitle(it.title, it.original_title)) continue;
           let pUrl = '';
           if (it.poster) {
             const m = it.poster.match(/url=([^&]+)/);
@@ -1477,27 +1490,25 @@ async function resolveAnimePosterBuffer(title, orig) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(term)}&limit=1`, {
+      const res = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(term)}&limit=3`, {
         headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' },
         signal: controller.signal
       });
       clearTimeout(timeout);
       if (res.ok) {
         const list = await res.json();
-        if (list && list[0]?.image) {
-          const item = list[0];
-          const itNameRu = (item.russian || '').toLowerCase().trim();
-          const itNameOrig = (item.name || '').toLowerCase().trim();
-          const sTerm = term.toLowerCase().trim();
-          if (itNameRu.includes(sTerm) || sTerm.includes(itNameRu) ||
-              itNameOrig.includes(sTerm) || sTerm.includes(itNameOrig)) {
-            const imgPath = item.image.original || item.image.preview;
-            if (imgPath && !isPlaceholderImage(imgPath)) {
-              const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.io${imgPath}`;
-              const img = await fetchImageBuffer(fullUrl, 4000);
-              if (img) {
-                setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
-                return img;
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (!item?.image) continue;
+            if (matchesRequestedTitle(item.russian || '', item.name || '')) {
+              const imgPath = item.image.original || item.image.preview;
+              if (imgPath && !isPlaceholderImage(imgPath)) {
+                const fullUrl = imgPath.startsWith('http') ? imgPath : `https://shikimori.io${imgPath}`;
+                const img = await fetchImageBuffer(fullUrl, 4000);
+                if (img) {
+                  setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
+                  return img;
+                }
               }
             }
           }
@@ -1511,20 +1522,25 @@ async function resolveAnimePosterBuffer(title, orig) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(`https://kitsu.io/api/edge/anime?filter[text]=${encodeURIComponent(term)}&page[limit]=1`, {
+      const res = await fetch(`https://kitsu.io/api/edge/anime?filter[text]=${encodeURIComponent(term)}&page[limit]=2`, {
         headers: { 'Accept': 'application/vnd.api+json' },
         signal: controller.signal
       });
       clearTimeout(timeout);
       if (res.ok) {
         const data = await res.json();
-        const posterImg = data?.data?.[0]?.attributes?.posterImage;
-        const imgUrl = posterImg?.medium || posterImg?.original;
-        if (imgUrl && !isPlaceholderImage(imgUrl)) {
-          const img = await fetchImageBuffer(imgUrl, 4000);
-          if (img) {
-            setCache('anime_covers', cacheKey, imgUrl, 86400 * 30);
-            return img;
+        for (const entry of (data?.data || [])) {
+          const attr = entry?.attributes;
+          if (!attr) continue;
+          if (!matchesRequestedTitle(attr.canonicalTitle || '', attr.titles?.en || attr.titles?.en_jp || '')) continue;
+          const posterImg = attr.posterImage;
+          const imgUrl = posterImg?.medium || posterImg?.original;
+          if (imgUrl && !isPlaceholderImage(imgUrl)) {
+            const img = await fetchImageBuffer(imgUrl, 4000);
+            if (img) {
+              setCache('anime_covers', cacheKey, imgUrl, 86400 * 30);
+              return img;
+            }
           }
         }
       }
@@ -1535,8 +1551,10 @@ async function resolveAnimePosterBuffer(title, orig) {
   for (const term of searchTerms) {
     try {
       const tmdbRes = await searchTmdb(term);
-      if (tmdbRes?.items?.[0]?.poster && !isPlaceholderImage(tmdbRes.items[0].poster)) {
-        const fullUrl = tmdbRes.items[0].poster;
+      for (const cand of (tmdbRes?.items || [])) {
+        if (!cand?.poster || isPlaceholderImage(cand.poster)) continue;
+        if (!matchesRequestedTitle(cand.title, cand.original_title)) continue;
+        const fullUrl = cand.poster;
         const img = await fetchImageBuffer(fullUrl, 4000);
         if (img) {
           setCache('anime_covers', cacheKey, fullUrl, 86400 * 30);
@@ -1634,7 +1652,8 @@ export const KNOWN_VERIFIED_POSTERS = {
   [normPosterKey('severance')]: 'https://image.tmdb.org/t/p/w500/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg',
   [normPosterKey('одних из нас')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
   [normPosterKey('одни из нас')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
-  [normPosterKey('the last of us')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg'
+  [normPosterKey('the last of us')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
+  [normPosterKey('видения 2015')]: 'https://v17.fanfilm4k.media/uploads/posts/2022-06/770693_1654138922.jpg'
 };
 
 // Фоновый предпрогрев популярных постеров
@@ -1667,37 +1686,50 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
     if (img) return img;
   }
 
-  const cacheKey = `universal_cover_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const cacheKey = `universal_cover_v2_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
   const cachedUrl = getCache('universal_covers', cacheKey);
   if (cachedUrl && !isPlaceholderImage(cachedUrl)) {
     const img = await fetchImageBuffer(cachedUrl, 4000);
     if (img) return img;
   }
 
+  const matchesUniversalTitle = (candRu, candOrig) => {
+    const c1 = normPosterKey(candRu || '');
+    const c2 = normPosterKey(candOrig || '');
+    for (const tk of [key1, key2].filter(Boolean)) {
+      if (c1 && (c1 === tk || (tk.length >= 6 && c1.startsWith(tk + ' ')) || (c1.length >= 6 && tk.startsWith(c1 + ' ')))) return true;
+      if (c2 && (c2 === tk || (tk.length >= 6 && c2.startsWith(tk + ' ')) || (c2.length >= 6 && tk.startsWith(c2 + ' ')))) return true;
+    }
+    return false;
+  };
+
   // 1. Поиск через TMDB (мировая база фильмов, сериалов и мультфильмов)
   for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
     try {
       const tmdbRes = await searchTmdb(term);
-      const poster = tmdbRes?.items?.[0]?.poster;
-      if (poster && !isPlaceholderImage(poster)) {
-        const img = await fetchImageBuffer(poster, 4000);
+      for (const cand of (tmdbRes?.items || [])) {
+        if (!cand?.poster || isPlaceholderImage(cand.poster)) continue;
+        if (!matchesUniversalTitle(cand.title, cand.original_title)) continue;
+        const img = await fetchImageBuffer(cand.poster, 4000);
         if (img) {
-          setCache('universal_covers', cacheKey, poster, 86400 * 30);
+          setCache('universal_covers', cacheKey, cand.poster, 86400 * 30);
           return img;
         }
       }
     } catch {}
   }
 
-  // 2. Поиск через FanFilm4K (4K кино и сериалы)
+  // 2. Поиск через FanFilm4K (4K кино и сериалы) — строго при совпадении названия!
   for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
     try {
       const ffRes = await searchFanFilm(term);
-      const poster = Array.isArray(ffRes) ? ffRes[0]?.poster : ffRes?.items?.[0]?.poster;
-      if (poster && !isPlaceholderImage(poster)) {
-        const img = await fetchImageBuffer(poster, 4000);
+      const ffList = Array.isArray(ffRes) ? ffRes : (ffRes?.items || []);
+      for (const cand of ffList) {
+        if (!cand?.poster || isPlaceholderImage(cand.poster)) continue;
+        if (!matchesUniversalTitle(cand.title, cand.original_title)) continue;
+        const img = await fetchImageBuffer(cand.poster, 4000);
         if (img) {
-          setCache('universal_covers', cacheKey, poster, 86400 * 30);
+          setCache('universal_covers', cacheKey, cand.poster, 86400 * 30);
           return img;
         }
       }
@@ -2161,10 +2193,13 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
     if (page > 1) {
       items = items.filter(i => !FANFILM_PINNED_CAROUSEL_IDS.has(String(i.id)));
     }
-    items = items.map(i => {
-      const yr = resolveCanonicalYear(i.title, i.link || i.url || '', i.poster || '', i.premiere || i.release_date, i.year);
-      const genres = resolveCanonicalGenres(i.title, normCategory, i.description || '', i.genres);
-      const mediaType = resolveCanonicalMediaType(i.title, i.link || i.url || '', normCategory, genres, i);
+    items = items.filter(i => i && !isTrailerMedia(i)).map(i => {
+      const preType = resolveCanonicalMediaType(i.title, i.link || i.url || '', normCategory, i.genres || '', i);
+      const isAnimeOrSer = preType === 'anime-series' || preType === 'series' || preType === 'cartoon-series';
+      const cleanItemTitle = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(i.title, true) || i.title) : i.title;
+      const yr = resolveCanonicalYear(cleanItemTitle, i.link || i.url || '', i.poster || '', i.premiere || i.release_date, i.year);
+      const genres = resolveCanonicalGenres(cleanItemTitle, normCategory, i.description || '', i.genres);
+      const mediaType = resolveCanonicalMediaType(cleanItemTitle, i.link || i.url || '', normCategory, genres, i);
       const categoryLabel = mediaType === 'series' ? 'Сериал' :
                            (mediaType === 'anime-series' ? 'Аниме-сериал' :
                            (mediaType === 'anime-movie' ? 'Аниме-фильм' :
@@ -2174,6 +2209,7 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
 
       return {
         ...i,
+        title: cleanItemTitle,
         year: String(yr),
         genres,
         media_type: mediaType,
@@ -2192,25 +2228,29 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
 
     // Серверная дедупликация карточек из разных источников (FanFilm4K + TMDB + Аниме-источники)
     const catalogDedupMap = new Map();
-    const normCatalogKey = (t) => String(t || '')
-      .toLowerCase()
-      .replace(/ё/g, 'е')
-      .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
-      .replace(/[«»“”"'`]/g, ' ')
-      .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
-      .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
-      .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
-      .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
-      .replace(/(?<!\p{L})(?:\d+\s*сезон[а-я]*|\d+\s*сери[а-я]*|сезон[а-я]*\s*\d+|сери[а-я]*\s*\d+|s\d+\s*e\d+|s\d+|e\d+)(?!\p{L})/giu, ' ')
-      .replace(/(?<!\p{L})(?:19\d\d|20\d\d)(?!\p{L})/gu, ' ')
-      .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
-      .replace(/[^\p{L}\p{N}]+/gu, '')
-      .trim();
+    const normCatalogKey = (t, isAnimeOrSer = false) => {
+      const base = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(t, true) || t) : t;
+      return String(base || '')
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
+        .replace(/[«»“”"'`]/g, ' ')
+        .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
+        .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
+        .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
+        .replace(/(?<!\p{L})(?:\d+\s*сезон[а-я]*|\d+\s*сери[а-я]*|сезон[а-я]*\s*\d+|сери[а-я]*\s*\d+|s\d+\s*e\d+|s\d+|e\d+)(?!\p{L})/giu, ' ')
+        .replace(/(?<!\p{L})(?:19\d\d|20\d\d)(?!\p{L})/gu, ' ')
+        .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
+        .replace(/[^\p{L}\p{N}]+/gu, '')
+        .trim();
+    };
 
     for (const item of items) {
       if (!item || !item.title) continue;
-      const k = normCatalogKey(item.title) || normCatalogKey(item.original_title) || `id_${item.id}`;
-      const resolved4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title) || '';
+      const isAnimeOrSer = item.media_type === 'anime-series' || item.media_type === 'series' || item.media_type === 'cartoon-series';
+      const baseKey = normCatalogKey(item.title, isAnimeOrSer) || normCatalogKey(item.original_title, isAnimeOrSer) || `id_${item.id}`;
+      const k = (!isAnimeOrSer && item.year) ? `${baseKey}_movie_${item.year}` : baseKey;
+      const resolved4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title, item.year) || '';
       const isItemUpcoming = !resolved4k && !item.lift_id && Boolean(item.is_upcoming || isMediaUpcomingOrUnreleased(item));
       if (!catalogDedupMap.has(k)) {
         catalogDedupMap.set(k, {
@@ -2591,16 +2631,19 @@ async function executeUnifiedSearch(query, source = 'all') {
   // 100% исключение трейлеров, промо и фанатских концептов
   rawItems = rawItems.filter(item => item && !isTrailerMedia(item));
 
-  const normalizeMediaKey = (t) => {
+  const normalizeMediaKey = (t, isAnimeOrSer = false) => {
     if (!t) return '';
-    return String(t)
+    if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(String(t).trim()) || /^star\s+wars\s*:\s*visions/i.test(String(t).trim())) {
+      return 'звездные войны видения';
+    }
+    const base = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(t, true) || t) : t;
+    return String(base)
       .replace(/&#\d+;/g, '')
       .replace(/&[a-z]+;/gi, '')
       .toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
       .replace(/[«»“”"'`]/g, ' ')
-      .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
       .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
       .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
       .replace(/(?<!\p{L})(?:часть\s+третья|part\s+three|part\s+iii)(?!\p{L})/giu, ' 3 ')
@@ -2611,6 +2654,7 @@ async function executeUnifiedSearch(query, source = 'all') {
       .replace(/\s*постер\s*(?:4[kк]|hd|uhd)?/gi, '')
       .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '')
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   };
 
@@ -2623,14 +2667,15 @@ async function executeUnifiedSearch(query, source = 'all') {
 
   if (queryWords.length > 0) {
     rawItems = rawItems.filter(item => {
-      const itemTitle = `${item.title || ''}`.toLowerCase().replace(/ё/g, 'е');
+      const itemTitle = `${item.title || ''} ${item.original_title || ''}`.toLowerCase().replace(/ё/g, 'е');
       const itemAll = `${item.title || ''} ${item.original_title || ''} ${item.description || ''}`.toLowerCase().replace(/ё/g, 'е');
 
       if (queryWords.length >= 2) {
         return queryWords.every(w => itemTitle.includes(w) || itemAll.includes(w));
       }
 
-      return queryWords.some(w => itemAll.includes(w));
+      // При однословном запросе требуем совпадения в названии (title / original_title), чтобы не тянуть случайные фильмы из-за слова в описании
+      return queryWords.some(w => itemTitle.includes(w));
     });
   }
 
@@ -2651,21 +2696,64 @@ async function executeUnifiedSearch(query, source = 'all') {
   const normQuery = normalizeMediaKey(query);
   const mergedMap = new Map();
   for (const item of rawItems) {
-    let normKey = normalizeMediaKey(item.title);
-    if (!normKey) continue;
+    const detectedType = resolveCanonicalMediaType(item.title, item.link || item.url || '', item.category || '', item.genres || '', item);
+    const isAnimeOrSeries = detectedType === 'anime-series' || detectedType === 'series' || detectedType === 'cartoon-series' ||
+                            item.media_type === 'anime-series' || item.media_type === 'series' || item.media_type === 'cartoon-series' ||
+                            ['anilibria', 'anixart', 'shikimori'].includes(item.source);
 
-    // Для любых найденных результатов (VK, RuTube, TMDB, FanFilm):
-    // если их ключ содержит поисковый запрос (или начинается с него),
-    // объединяем их в единую каноническую карточку основного релиза!
-    if (normKey === normQuery || normKey.startsWith(normQuery) || (item.source === 'vkvideo' || item.source === 'rutube')) {
-      normKey = normQuery;
+    if (isAnimeOrSeries && item.media_type !== 'anime-movie') {
+      item.title = normalizeAnimeFranchiseTitle(item.title, true) || item.title;
+      item.media_type = detectedType;
     }
 
-    if (!mergedMap.has(normKey)) {
+    const resolvedItemYear = resolveCanonicalYear(item.title, item.link || item.url || '', item.poster || '', item.release_date || item.premiere || '', item.year || '');
+    if (resolvedItemYear) {
+      item.year = resolvedItemYear;
+    }
+
+    let normKey = normalizeMediaKey(item.title, isAnimeOrSeries);
+    if (!normKey) continue;
+
+    if (String(item.id || '') === 'lift_31648' || String(item.lift_id || '') === '31648') {
+      item.year = '2015';
+    }
+
+    // Для фильмов с одинаковым названием, но разных лет выпуска (например «Видения» 2015 и «Видения» 2023)
+    // включаем год в ключ дедупликации, чтобы они не затирали друг друга;
+    // при этом склеиваем карточки одного и того же фильма, если совпадает original_title при разнице года <= 1 год или если это VK/RuTube поток
+    let dedupKey = isAnimeOrSeries ? normKey : `${normKey}_movie_${item.year || ''}`;
+    if (!isAnimeOrSeries) {
+      const prefix = `${normKey}_movie_`;
+      for (const [k, ex] of mergedMap.entries()) {
+        if (!k.startsWith(prefix)) continue;
+        if (
+          (ex.kp_id && item.kp_id && String(ex.kp_id) === String(item.kp_id)) ||
+          (ex.tmdb_id && item.tmdb_id && String(ex.tmdb_id) === String(item.tmdb_id)) ||
+          (ex.lift_id && item.lift_id && String(ex.lift_id) === String(item.lift_id)) ||
+          item.source === 'rutube' || item.source === 'vkvideo' ||
+          ex.source === 'rutube' || ex.source === 'vkvideo' ||
+          (ex.original_title && item.original_title &&
+           String(ex.original_title).toLowerCase().trim() === String(item.original_title).toLowerCase().trim() &&
+           Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1)
+        ) {
+          dedupKey = k;
+          break;
+        }
+      }
+    }
+
+    if (!mergedMap.has(dedupKey)) {
       const initial = {
         ...item,
         players: item.players ? [...item.players] : []
       };
+      if (normKey === 'звездные войны видения') {
+        initial.title = 'Звёздные Войны: Видения';
+        initial.original_title = 'Star Wars: Visions';
+        initial.year = '2021';
+        initial.media_type = 'anime-series';
+        initial.category = 'Аниме-сериал';
+      }
       if (item.source === 'lift' || item.lift_id) {
         initial.lift_id = item.lift_id || String(item.id || '').replace(/^lift_/, '');
       }
@@ -2678,13 +2766,13 @@ async function executeUnifiedSearch(query, source = 'all') {
       } else if (item.source === 'rutube') {
         initial.rutube_id = item.id;
       }
-      mergedMap.set(normKey, initial);
+      mergedMap.set(dedupKey, initial);
     } else {
-      const existing = mergedMap.get(normKey);
+      const existing = mergedMap.get(dedupKey);
 
       // Объединяем источники потоков в единую карточку
       if (item.source === 'lift' || item.lift_id) {
-        existing.lift_id = item.lift_id || existing.lift_id;
+        existing.lift_id = existing.lift_id || item.lift_id || String(item.id || '').replace(/^lift_/, '');
         existing.rating_kp = existing.rating_kp || item.rating_kp;
         existing.rating_imdb = existing.rating_imdb || item.rating_imdb;
         if (item.countries?.length && (!existing.countries || !existing.countries.length)) {
@@ -2692,9 +2780,10 @@ async function executeUnifiedSearch(query, source = 'all') {
         }
       }
       if (item.source === 'fanfilm4k' || item.fanfilm_4k_url) {
-        existing.fanfilm_4k_url = item.link || item.url || item.fanfilm_4k_url || existing.fanfilm_4k_url;
+        existing.fanfilm_4k_url = existing.fanfilm_4k_url || item.link || item.url || item.fanfilm_4k_url;
         existing.is4K = true;
         existing.quality = '4K Ultra HD';
+        if (item.kp_id && !existing.kp_id) existing.kp_id = item.kp_id;
       }
       if (item.source === 'vkvideo' || item.vk_embed_url) {
         existing.vk_embed_url = item.embed_url || item.url || item.vk_embed_url || existing.vk_embed_url;
@@ -2710,8 +2799,13 @@ async function executeUnifiedSearch(query, source = 'all') {
         existing.players = deduplicatePlayers([...(existing.players || []), ...item.players]);
       }
 
-      // Приоритет TMDB для визуальных метаданных (описание, постер, рейтинг)
-      if (item.source === 'tmdb' && existing.source !== 'tmdb') {
+      // Приоритет AniLibria для аниме-сериалов и TMDB для фильмов/сериалов
+      if (isAnimeOrSeries && item.source === 'anilibria' && existing.source !== 'anilibria') {
+        existing.id = item.id;
+        existing.source = 'anilibria';
+        existing.poster = item.poster || existing.poster;
+        existing.description = item.description || existing.description;
+      } else if (!isAnimeOrSeries && item.source === 'tmdb' && existing.source !== 'tmdb') {
         existing.title = item.title;
         existing.original_title = item.original_title || existing.original_title;
         existing.poster = item.poster || existing.poster;
@@ -2724,6 +2818,14 @@ async function executeUnifiedSearch(query, source = 'all') {
       } else if (item.poster && (!existing.poster || existing.poster.includes('avatar_default') || existing.poster.includes('favicon'))) {
         existing.poster = item.poster;
       }
+
+      if (normKey === 'звездные войны видения') {
+        existing.title = 'Звёздные Войны: Видения';
+        existing.original_title = 'Star Wars: Visions';
+        existing.year = '2021';
+        existing.media_type = 'anime-series';
+        existing.category = 'Аниме-сериал';
+      }
     }
   }
 
@@ -2733,8 +2835,8 @@ async function executeUnifiedSearch(query, source = 'all') {
   for (const it of items) {
     const title = it.title || '';
     const cleanId = String(it.id || '').replace(/[^\d]/g, '');
-    const resolvedFf = resolveFanFilmUrl(title);
-    const fanfilmUrl = resolvedFf || it.fanfilm_4k_url || (it.source === 'fanfilm4k' && cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(title)}`);
+    const resolvedFf = resolveFanFilmUrl(title, it.year);
+    const fanfilmUrl = it.fanfilm_4k_url || resolvedFf || (it.source === 'fanfilm4k' && cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(title)}`);
 
     const unifiedPlayers = getAvailablePlayers({
       kp_id: it.kp_id,
@@ -2793,16 +2895,26 @@ async function executeUnifiedSearch(query, source = 'all') {
     }
   }
 
+  const isCinemaSource = (s) => ['fanfilm4k', 'tmdb', 'anilibria', 'anixart', 'shikimori', 'lift'].includes(s);
   items.sort((a, b) => {
+    const aCin = isCinemaSource(a.source);
+    const bCin = isCinemaSource(b.source);
+    if (aCin !== bCin) return aCin ? -1 : 1;
+
     const aNorm = normalizeMediaKey(a.title);
     const bNorm = normalizeMediaKey(b.title);
     if (aNorm === normQuery && bNorm !== normQuery) return -1;
     if (bNorm === normQuery && aNorm !== normQuery) return 1;
 
-    const aStarts = aNorm.startsWith(normQuery);
-    const bStarts = bNorm.startsWith(normQuery);
+    const aStarts = aNorm.startsWith(normQuery + ' ') || aNorm === normQuery;
+    const bStarts = bNorm.startsWith(normQuery + ' ') || bNorm === normQuery;
     if (aStarts && !bStarts) return -1;
     if (bStarts && !aStarts) return 1;
+
+    const aWholeWord = aNorm.split(' ').includes(normQuery);
+    const bWholeWord = bNorm.split(' ').includes(normQuery);
+    if (aWholeWord && !bWholeWord) return -1;
+    if (bWholeWord && !aWholeWord) return 1;
 
     const aContains = aNorm.includes(normQuery);
     const bContains = bNorm.includes(normQuery);
@@ -3341,10 +3453,36 @@ app.get('/api/player/rutube-embed/:id', async (req, res) => {
         fallbackToNativeIframe();
       }
 
+      setInterval(function() {
+        try {
+          if (video && !isNaN(video.currentTime) && video.currentTime > 0) {
+            window.parent.postMessage({
+              type: 'STORM_IFRAME_TIME',
+              currentTime: video.currentTime,
+              duration: video.duration || 0,
+              paused: video.paused
+            }, '*');
+          }
+        } catch (_) {}
+      }, 500);
+
       window.addEventListener('message', function(e) {
-        var d = e.data || {};
-        if (d.type === 'STORM_SET_PLAYBACK_RATE' && video) {
+        var d = typeof e.data === 'string' ? (function(){ try { return JSON.parse(e.data); } catch(_) { return {}; } })() : (e.data || {});
+        if (!video) return;
+        if (d.type === 'STORM_SET_PLAYBACK_RATE' && d.rate) {
           video.playbackRate = Number(d.rate) || 1;
+        } else if (d.type === 'STORM_SET_SPEED' && d.speed) {
+          video.playbackRate = Number(d.speed) || 1;
+        } else if (d.type === 'STORM_SEEK_TO' && d.time !== undefined) {
+          video.currentTime = Math.max(0, Number(d.time) || 0);
+          video.play().catch(function(){});
+        } else if (d.type === 'STORM_SEEK_DELTA' || d.event === 'seek' || d.action === 'seek') {
+          var delta = Number(d.delta !== undefined ? d.delta : (d.val !== undefined ? d.val : d.time)) || 0;
+          if (d.event === 'seek' && d.time !== undefined && d.delta === undefined) {
+            video.currentTime = Math.max(0, Number(d.time) || 0);
+          } else if (delta) {
+            video.currentTime = Math.max(0, Math.min(video.duration || Infinity, (video.currentTime || 0) + delta));
+          }
         }
       });
     })();
@@ -3383,12 +3521,15 @@ app.get('/api/media/item', async (req, res) => {
     const cached = itemDetailsCache.get(cacheKey);
     if (cached && (Date.now() - cached.time < 30 * 60 * 1000)) {
       let userBookmark = null;
+      let userWatchProgress = null;
       if (req.user) {
         userBookmark = getBookmark(req.user.id, String(id || cached.data.id), source || 'fanfilm4k', cached.data.title, cached.data.original_title);
+        userWatchProgress = getLatestWatchProgressForMedia(req.user.id, String(id || cached.data.id), source || 'fanfilm4k', cached.data.title);
       }
       return res.json({
         ...cached.data,
-        user_bookmark: userBookmark
+        user_bookmark: userBookmark,
+        user_watch_progress: userWatchProgress
       });
     }
 
@@ -3427,6 +3568,46 @@ app.get('/api/media/item', async (req, res) => {
               recommended_badge: '🔥 Рекомендуемый'
             }
           ]
+        };
+      }
+    } else if (source === 'shikimori' || String(id || '').startsWith('shiki_')) {
+      const cleanShikiId = String(id || '').replace(/^shiki_/i, '').trim();
+      const shikiTitle = normalizeAnimeFranchiseTitle(req.query.title || '', true) || req.query.title || '';
+      const libriaDetails = shikiTitle ? await getAniLibriaDetails('', shikiTitle) : null;
+      if (libriaDetails) {
+        mediaDetails = {
+          ...libriaDetails,
+          id: cleanShikiId || libriaDetails.id,
+          source: 'shikimori',
+          shikimori_id: cleanShikiId,
+          players: [
+            {
+              id: 'anilibria_hls',
+              name: 'AniLibria HLS (Официальный поток)',
+              url: libriaDetails.episodes?.[0]?.hls_1080 || libriaDetails.episodes?.[0]?.hls_720 || '',
+              quality: '1080p FHD',
+              badge: 'ANILIBRIA',
+              status: 'working',
+              status_label: '🟢 Онлайн',
+              is_recommended: true,
+              recommended_badge: '🔥 Рекомендуемый'
+            }
+          ]
+        };
+      } else {
+        mediaDetails = {
+          id: cleanShikiId || String(id),
+          source: 'shikimori',
+          shikimori_id: cleanShikiId,
+          title: shikiTitle || 'Аниме',
+          original_title: req.query.original_title || '',
+          poster: req.query.poster || 'assets/favicon.svg',
+          year: resolveCanonicalYear(shikiTitle, '', '', '', req.query.year || '') || '2026',
+          rating: parseFloat(req.query.rating) || 8.0,
+          description: req.query.description || 'Аниме доступно для онлайн-просмотра в высоком качестве с русской озвучкой и субтитрами.',
+          media_type: req.query.media_type || 'anime-series',
+          category: (req.query.media_type === 'anime-movie') ? 'Аниме-фильм' : 'Аниме-сериал',
+          players: []
         };
       }
     } else if (source === 'rutube' || String(id || '').startsWith('rutube_')) {
@@ -3659,7 +3840,7 @@ app.get('/api/media/item', async (req, res) => {
         (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear())
       );
 
-      const knownFf = resolveFanFilmUrl(mediaDetails.title || req.query.title);
+      const knownFf = resolveFanFilmUrl(mediaDetails.title || req.query.title, mediaDetails.year || req.query.year);
       if (knownFf && !isCarrieUnreleased && !isReleaseUpcoming) {
         mediaDetails.fanfilm_4k_url = knownFf;
         mediaDetails.is4K = true;
@@ -3675,10 +3856,15 @@ app.get('/api/media/item', async (req, res) => {
         try {
           const ffResults = await searchFanFilm(mediaDetails.title);
           if (ffResults && ffResults.length > 0) {
-            const isWantSeries = mediaDetails.media_type === 'series' || mediaDetails.category === 'Сериал';
+            const isWantSeries = mediaDetails.media_type === 'series' || mediaDetails.media_type === 'anime-series' || mediaDetails.media_type === 'cartoon-series' || mediaDetails.category === 'Сериал' || mediaDetails.category === 'Аниме-сериал';
+            const wantYrNum = parseInt(mediaDetails.year || req.query.year || '', 10);
             const match = ffResults.find(f => {
               if (!isWantSeries && (f.media_type === 'series' || /сериал|сезон/i.test(f.title || '') || /\/serials?\//i.test(f.link || f.url || ''))) {
                 return false;
+              }
+              if (!isWantSeries && wantYrNum && f.year) {
+                const candYrNum = parseInt(f.year, 10);
+                if (candYrNum && Math.abs(candYrNum - wantYrNum) > 1) return false;
               }
               const sc = scoreMediaCandidate(f.title || '', '', mediaDetails.title, mediaDetails.year || '', isWantSeries ? '1' : '', '');
               return sc >= 200;
@@ -3724,17 +3910,34 @@ app.get('/api/media/item', async (req, res) => {
     } else {
       let targetLookup = String(url || id || '').replace(/^ff_/, '').trim();
       if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || targetLookup.includes('undefined')) {
-        targetLookup = resolveFanFilmUrl(req.query.title || '') || targetLookup || '';
+        targetLookup = resolveFanFilmUrl(req.query.title || '', req.query.year || '') || targetLookup || '';
       }
       if (targetLookup && targetLookup !== 'undefined' && targetLookup !== 'null') {
         try {
           mediaDetails = await getFanFilmDetails(targetLookup);
+          // Защита от открытия чужого фильма по числовому ID (например если передан ID из другой базы без слага)
+          if (mediaDetails && mediaDetails.title && req.query.title && /^\d+$/.test(targetLookup)) {
+            const scTitle = Math.max(
+              scoreMediaCandidate(mediaDetails.title || '', '', req.query.title, req.query.year || '', '', ''),
+              scoreMediaCandidate(mediaDetails.original_title || '', '', req.query.title, req.query.year || '', '', '')
+            );
+            if (scTitle < 120) {
+              mediaDetails = null;
+            }
+          }
           if ((!mediaDetails || !mediaDetails.title) && req.query.title) {
-            const knownDirect = resolveFanFilmUrl(req.query.title);
+            const knownDirect = resolveFanFilmUrl(req.query.title, req.query.year || '');
             if (knownDirect && knownDirect !== targetLookup) {
               const retryDetails = await getFanFilmDetails(knownDirect);
               if (retryDetails && retryDetails.title) {
                 mediaDetails = retryDetails;
+              }
+            }
+            if (!mediaDetails || !mediaDetails.title) {
+              const ffFound = await searchFanFilm(req.query.title);
+              const bestFf = (ffFound || []).find(f => scoreMediaCandidate(f.title || '', '', req.query.title, req.query.year || '', '', '') >= 200);
+              if (bestFf && (bestFf.link || bestFf.url)) {
+                mediaDetails = await getFanFilmDetails(bestFf.link || bestFf.url);
               }
             }
           }
@@ -4090,11 +4293,16 @@ app.get('/api/media/item', async (req, res) => {
           .replace(/\s*[\(\[]?\s*season\s*\d+\s*[\)\]]?/gi, '')
           .replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '')
           .trim();
+        const wantYrNum = parseInt(mediaDetails.year || req.query.year || '', 10);
         const ffResults = await searchFanFilm(cleanT);
         if (ffResults && ffResults.length > 0) {
           const ffItem = ffResults.find(r => {
             if (!isSeries && (r.media_type === 'series' || /сериал|сезон/i.test(r.title || '') || /\/serials?\//i.test(r.link || r.url || ''))) {
               return false;
+            }
+            if (!isSeries && wantYrNum && r.year) {
+              const candYrNum = parseInt(r.year, 10);
+              if (candYrNum && Math.abs(candYrNum - wantYrNum) > 1) return false;
             }
             const sc = scoreMediaCandidate(r.title || '', '', cleanT, mediaDetails.year || '', isSeries ? '1' : '', '');
             return sc >= 200;
@@ -4130,6 +4338,43 @@ app.get('/api/media/item', async (req, res) => {
     }
     if (fanfilmHdStreamUrl) {
       mediaDetails.fanfilm_hd_url = fanfilmHdStreamUrl;
+    }
+
+    // Каноническая финализация для аниме-франшизы «Звёздные Войны: Видения» (все 4 сезона внутри, 2021 год)
+    if (/^зв[её]здные\s+войны\s*:\s*видени[яе]|^star\s+wars\s*:\s*visions/i.test(String(mediaDetails.title || req.query.title || '').trim())) {
+      mediaDetails.title = 'Звёздные Войны: Видения';
+      mediaDetails.original_title = 'Star Wars: Visions';
+      mediaDetails.year = '2021';
+      mediaDetails.media_type = 'anime-series';
+      mediaDetails.category = 'Аниме-сериал';
+      mediaDetails.lift_id = mediaDetails.lift_id || '50763';
+      mediaDetails.kp_id = mediaDetails.kp_id || '4299270';
+      mediaDetails.fanfilm_4k_url = mediaDetails.fanfilm_4k_url || 'https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html';
+      mediaDetails.is4K = true;
+      mediaDetails.quality = '4K Ultra HD';
+      try {
+        const swLibria = await getAniLibriaDetails('9095', 'Звёздные Войны: Видения');
+        if (swLibria && Array.isArray(swLibria.seasons) && swLibria.seasons.length >= 4) {
+          mediaDetails.seasons = swLibria.seasons;
+          if (!mediaDetails.episodes || mediaDetails.episodes.length === 0) {
+            mediaDetails.episodes = swLibria.episodes;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Каноническая привязка фильма «Видения» (2015, https://v17.fanfilm4k.media/19137-videnija-2015.html)
+    if (String(mediaDetails.title || '').trim().toLowerCase() === 'видения' && (String(mediaDetails.year || req.query.year || '') === '2015' || String(id || '') === '19137' || String(id || '') === '353686')) {
+      mediaDetails.year = '2015';
+      mediaDetails.kp_id = mediaDetails.kp_id || '770693';
+      mediaDetails.tmdb_id = mediaDetails.tmdb_id || '353686';
+      mediaDetails.lift_id = mediaDetails.lift_id || '31648';
+      mediaDetails.fanfilm_4k_url = 'https://v17.fanfilm4k.media/19137-videnija-2015.html';
+      mediaDetails.is4K = true;
+      mediaDetails.quality = '4K Ultra HD';
+      if (!mediaDetails.poster || isPlaceholderImage(mediaDetails.poster)) {
+        mediaDetails.poster = 'https://v17.fanfilm4k.media/uploads/posts/2022-06/770693_1654138922.jpg';
+      }
     }
 
     const hasActualStream = Boolean(
@@ -4311,8 +4556,10 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.genres = resolveCanonicalGenres(mediaDetails.title, mediaDetails.category, mediaDetails.description || '', mediaDetails.genres);
 
     let userBookmark = null;
+    let userWatchProgress = null;
     if (req.user) {
       userBookmark = getBookmark(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title, mediaDetails.original_title);
+      userWatchProgress = getLatestWatchProgressForMedia(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title);
     }
 
     itemDetailsCache.set(cacheKey, {
@@ -4326,7 +4573,8 @@ app.get('/api/media/item', async (req, res) => {
     res.json({
       ...mediaDetails,
       players: allPlayers,
-      user_bookmark: userBookmark
+      user_bookmark: userBookmark,
+      user_watch_progress: userWatchProgress
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -7360,6 +7608,19 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }
               document.addEventListener('mousemove', sendAct, { passive: true });
               document.addEventListener('touchstart', sendAct, { passive: true });
+              setInterval(function() {
+                try {
+                  var v = document.querySelector('video');
+                  if (v && !isNaN(v.currentTime) && v.currentTime > 0) {
+                    window.parent.postMessage({
+                      type: 'STORM_IFRAME_TIME',
+                      currentTime: v.currentTime,
+                      duration: v.duration || 0,
+                      paused: v.paused
+                    }, '*');
+                  }
+                } catch (_) {}
+              }, 500);
               window.addEventListener('message', function(ev) {
                 try {
                   var d = typeof ev.data === 'string' ? JSON.parse(ev.data) : (ev.data || {});
@@ -9672,7 +9933,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.1.0';
+  let currentAppVersion = '1.1.1';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -9764,7 +10025,7 @@ app.get('/api/updates/check', async (req, res) => {
 });
 
 // ==========================================
-// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.1.0)
+// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.1.1)
 // ==========================================
 
 // 13.1. Мультидорожечный загрузчик STORM Direct Downloader 2.0 (Встроенный HLS-муксер с аудио + субтитрами и прямой поток)

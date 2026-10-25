@@ -214,7 +214,7 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
   }
   if (!cleanId) return null;
 
-  const cacheKey = `details_franchise_v4_${cleanId}`;
+  const cacheKey = `details_franchise_v5_${cleanId}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 
@@ -344,6 +344,89 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
         episodes: fallbackEps
       });
       allEpisodesFlat = fallbackEps;
+    }
+
+    // Если это франшиза «Звёздные Войны: Видения», где в AniLibria озвучены 1-й сезон (2021) и 4-й сезон «Девятый джедай» (2026),
+    // дополняем недостающие 2-й (2023) и 3-й (2025) сезоны и присваиваем спин-оффу «Девятый джедай» номер 4-го сезона
+    const isStarWarsVisions = /зв[её]здные\s+войны\s*:\s*видени[яе]|star\s+wars\s*:\s*visions/i.test(canonicalTitle + ' ' + canonicalOrigTitle);
+    if (isStarWarsVisions && seasons.length > 0) {
+      let s1 = seasons.find(s => String(s.release_id) === '9095' || String(s.year) === '2021');
+      let sNinthJedi = seasons.find(s => /девятый\s+джедай|ninth\s+jedi/i.test(s.subtitle || '') || String(s.year) === '2026' || String(s.release_id) === '10295');
+      if (!s1) {
+        const rel9095 = await fetchRawAniLibriaRelease('9095');
+        if (rel9095) {
+          const inf9095 = formatAniLibriaRelease(rel9095);
+          const eps9095 = mapReleaseEpisodes(rel9095, inf9095?.poster || baseInfo.poster, 1);
+          s1 = {
+            season_number: 1,
+            name: 'Сезон 1',
+            subtitle: rel9095.name?.main || 'Звёздные Войны: Видения',
+            release_id: '9095',
+            year: '2021',
+            episode_count: eps9095.length || 9,
+            overview: rel9095.description || baseInfo.description,
+            episodes: eps9095
+          };
+        }
+      }
+      if (!sNinthJedi) {
+        const rel10295 = await fetchRawAniLibriaRelease('10295');
+        if (rel10295) {
+          const inf10295 = formatAniLibriaRelease(rel10295);
+          const eps10295 = mapReleaseEpisodes(rel10295, inf10295?.poster || baseInfo.poster, 4);
+          sNinthJedi = {
+            season_number: 4,
+            name: 'Сезон 4: Девятый джедай',
+            subtitle: rel10295.name?.main || 'Звёздные Войны: Видения — Девятый джедай',
+            release_id: '10295',
+            year: '2026',
+            episode_count: eps10295.length || 8,
+            overview: rel10295.description || baseInfo.description,
+            episodes: eps10295
+          };
+        }
+      }
+      const fullSwSeasons = [
+        s1 ? { ...s1, season_number: 1, name: 'Сезон 1', year: '2021' } : {
+          season_number: 1,
+          name: 'Сезон 1',
+          subtitle: 'Звёздные Войны: Видения (1 сезон)',
+          year: '2021',
+          episode_count: 9,
+          episodes: Array.from({ length: 9 }, (_, i) => ({ season_number: 1, episode_number: i + 1, ordinal: i + 1, name: `Серия ${i + 1}`, duration: '18 мин.', still: baseInfo.poster, preview: baseInfo.poster }))
+        },
+        {
+          season_number: 2,
+          name: 'Сезон 2',
+          subtitle: 'Звёздные Войны: Видения (2 сезон)',
+          year: '2023',
+          episode_count: 9,
+          overview: 'Второй том анимационной антологии во вселенной «Звёздных войн» от ведущих мировых анимационных студий.',
+          episodes: Array.from({ length: 9 }, (_, i) => ({ season_number: 2, episode_number: i + 1, ordinal: i + 1, name: `Серия ${i + 1}`, duration: '18 мин.', still: baseInfo.poster, preview: baseInfo.poster }))
+        },
+        {
+          season_number: 3,
+          name: 'Сезон 3',
+          subtitle: 'Звёздные Войны: Видения (3 сезон)',
+          year: '2025',
+          episode_count: 9,
+          overview: 'Третий сезон аниме-антологии «Звёздные Войны: Видения» от знаменитых японских студий.',
+          episodes: Array.from({ length: 9 }, (_, i) => ({ season_number: 3, episode_number: i + 1, ordinal: i + 1, name: `Серия ${i + 1}`, duration: '20 мин.', still: baseInfo.poster, preview: baseInfo.poster }))
+        }
+      ];
+      if (sNinthJedi) {
+        const s4Eps = (sNinthJedi.episodes || []).map(ep => ({ ...ep, season_number: 4 }));
+        fullSwSeasons.push({
+          ...sNinthJedi,
+          season_number: 4,
+          name: 'Сезон 4: Девятый джедай',
+          subtitle: 'Звёздные Войны: Видения — Девятый джедай',
+          year: '2026',
+          episodes: s4Eps
+        });
+      }
+      seasons.length = 0;
+      seasons.push(...fullSwSeasons);
     }
 
     // Первый сезон дает базовый постер, год старта и основное описание франшизы

@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.1.0';
-import { getUser, showToast } from './auth.js?v=1.1.0';
-import { t } from './i18n.js?v=1.1.0';
-import { trackClientAction } from './achievements.js?v=1.1.0';
-import { renderReviewsSection } from './reviews.js?v=1.1.0';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.1.0';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.1.0';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.1.0';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.1.0';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.1.0';
-import { saveMediaForOffline } from './offline-storage.js?v=1.1.0';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.1.0';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.1.0';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.1.0';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.1.0';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.1.0';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.1.1';
+import { getUser, showToast } from './auth.js?v=1.1.1';
+import { t } from './i18n.js?v=1.1.1';
+import { trackClientAction } from './achievements.js?v=1.1.1';
+import { renderReviewsSection } from './reviews.js?v=1.1.1';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.1.1';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.1.1';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.1.1';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.1.1';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.1.1';
+import { saveMediaForOffline } from './offline-storage.js?v=1.1.1';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.1.1';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.1.1';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.1.1';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.1.1';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.1.1';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -42,6 +42,436 @@ let iframeWatchInterval = null;
 let currentWatchTimeSeconds = 0;
 let hasCinemaHistoryEntry = false;
 let isClosingCinemaViaHistoryBack = false;
+let activeResumePromptState = null;
+let isResumePromptPending = false;
+let pendingResumeSeekSeconds = 0;
+let pendingResumeSeekUntil = 0;
+let pendingResumeSeekTimer = null;
+let lastResumeSnapshotSyncAt = 0;
+
+function formatResumeTimecode(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function normalizeResumeTitleKey(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+}
+
+function saveMediaResumeSnapshot(override = {}) {
+  if (!currentMedia || !currentMedia.id) return;
+  const mediaId = String(override.media_id || currentMedia.id || activeTrackingMediaId || '').trim();
+  const cleanT = cleanVideoTitle(override.title || currentMedia.title || '');
+  if (!mediaId || !cleanT) return;
+
+  const isSeries = Boolean(
+    override.is_series !== undefined
+      ? override.is_series
+      : checkIfMediaIsSeries(currentMedia)
+  );
+  const season = Math.max(1, parseInt(override.season ?? quickBarActiveSeason ?? activeTrackingSeason ?? currentMedia.season ?? 1, 10) || 1);
+  const episode = Math.max(1, parseInt(override.episode ?? quickBarActiveEpisode ?? activeTrackingEpisode ?? currentEpisodeIndex ?? currentMedia.episode ?? 1, 10) || 1);
+
+  const videoEl = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+  const rawSec = override.time_seconds !== undefined
+    ? Number(override.time_seconds)
+    : (videoEl && !isNaN(videoEl.currentTime) && videoEl.currentTime > 0
+        ? videoEl.currentTime
+        : (currentWatchTimeSeconds > 0 ? currentWatchTimeSeconds : activeTrackingWatchedSeconds));
+  const timeSeconds = Math.max(0, Math.round(Number(rawSec) || 0));
+
+  const rawDur = override.duration_seconds !== undefined
+    ? Number(override.duration_seconds)
+    : (videoEl && !isNaN(videoEl.duration) && isFinite(videoEl.duration) && videoEl.duration > 30
+        ? videoEl.duration
+        : (activeTrackingDurationSeconds > 30 ? activeTrackingDurationSeconds : (isSeries ? 1440 : 5400)));
+  const durationSeconds = Math.max(60, Math.round(Number(rawDur) || (isSeries ? 1440 : 5400)));
+
+  // Не перезаписываем существующую точку остановки, пока плашка «Продолжить?» открыта и пользователь еще не начал активный просмотр
+  if (isResumePromptPending && !override.forceSave && timeSeconds < 20) {
+    return;
+  }
+
+  // Сохраняем только если есть реальный прогресс (>= 10 сек) или выбран сезон/серия > 1
+  if (!override.forceSave && timeSeconds < 10 && (!isSeries || (season <= 1 && episode <= 1))) {
+    return;
+  }
+
+  // Если старый снимок на той же серии имел большее время, а сейчас 0 сек без явного переключения серии — не затираем время
+  const titleKey = normalizeResumeTitleKey(cleanT);
+  try {
+    const prevRaw = localStorage.getItem(`storm_resume_state_${mediaId}`) || (titleKey ? localStorage.getItem(`storm_resume_state_title_${titleKey}`) : null);
+    if (prevRaw && timeSeconds < 10 && !override.resetTime) {
+      const prev = JSON.parse(prevRaw);
+      if (prev && Number(prev.season) === season && Number(prev.episode) === episode && Number(prev.time_seconds) >= 10) {
+        return;
+      }
+    }
+  } catch (_) {}
+
+  const now = Date.now();
+  const pct = durationSeconds > 0 ? Math.min(100, Math.round((timeSeconds / durationSeconds) * 100)) : 0;
+
+  const snapshot = {
+    media_id: mediaId,
+    source: currentMedia.source || 'tmdb',
+    title: cleanT,
+    poster_url: currentMedia.poster || currentMedia.poster_url || '',
+    media_type: currentMedia.media_type || (isSeries ? 'series' : 'movie'),
+    year: currentMedia.year || '',
+    is_series: isSeries,
+    season,
+    episode,
+    time_seconds: timeSeconds,
+    duration_seconds: durationSeconds,
+    progress_percent: pct,
+    timecode: formatResumeTimecode(timeSeconds),
+    updated_at: now
+  };
+
+  try {
+    localStorage.setItem(`storm_resume_state_${mediaId}`, JSON.stringify(snapshot));
+    if (titleKey) {
+      localStorage.setItem(`storm_resume_state_title_${titleKey}`, JSON.stringify(snapshot));
+    }
+    if (isSeries && timeSeconds >= 5) {
+      localStorage.setItem(`storm_ep_watchtime_${mediaId}_s${season}_e${episode}`, String(timeSeconds));
+    }
+  } catch (_) {}
+
+  if (override.forceSync || (now - lastResumeSnapshotSyncAt >= 10000 && (timeSeconds >= 10 || (isSeries && (season > 1 || episode > 1))))) {
+    lastResumeSnapshotSyncAt = now;
+    try {
+      syncWatchProgress({
+        media_id: mediaId,
+        source: snapshot.source,
+        title: cleanT,
+        poster_url: snapshot.poster_url,
+        media_type: snapshot.media_type,
+        year: snapshot.year,
+        season,
+        episode,
+        total_episodes: (Array.isArray(currentEpisodes) && currentEpisodes.length > 0) ? currentEpisodes.length : (currentMedia.total_episodes || 1),
+        duration_seconds: durationSeconds,
+        time_seconds: timeSeconds,
+        progress_percent: pct
+      });
+    } catch (_) {}
+  }
+}
+
+export function resolveMediaResumeState(mediaItem, details = null, options = {}) {
+  if (!mediaItem && !details) return null;
+  const merged = { ...(mediaItem || {}), ...(details || {}) };
+  const mediaId = String(merged.id || merged.media_id || '').trim();
+  const cleanT = cleanVideoTitle(merged.title || mediaItem?.title || '');
+  const titleKey = normalizeResumeTitleKey(cleanT);
+  const isSeries = checkIfMediaIsSeries(merged);
+
+  const candidates = [];
+
+  // 1. Локальный высокоточный снимок точки остановки
+  try {
+    const rawById = mediaId ? localStorage.getItem(`storm_resume_state_${mediaId}`) : null;
+    if (rawById) {
+      const parsed = JSON.parse(rawById);
+      if (parsed) candidates.push({ ...parsed, priority: 4 });
+    }
+    const rawByTitle = titleKey ? localStorage.getItem(`storm_resume_state_title_${titleKey}`) : null;
+    if (rawByTitle) {
+      const parsed = JSON.parse(rawByTitle);
+      if (parsed) candidates.push({ ...parsed, priority: 3 });
+    }
+  } catch (_) {}
+
+  // 2. Список «Продолжить просмотр» (storm_continue_watching)
+  try {
+    const rawCW = localStorage.getItem('storm_continue_watching');
+    if (rawCW) {
+      const list = JSON.parse(rawCW);
+      if (Array.isArray(list)) {
+        const match = list.find(it => {
+          if (!it) return false;
+          if (mediaId && String(it.media_id || it.id) === mediaId) return true;
+          const itKey = normalizeResumeTitleKey(it.title);
+          return Boolean(titleKey && itKey && itKey === titleKey);
+        });
+        if (match) {
+          candidates.push({
+            season: parseInt(match.season, 10) || 1,
+            episode: parseInt(match.episode, 10) || 1,
+            time_seconds: parseInt(match.time_seconds, 10) || 0,
+            duration_seconds: parseInt(match.duration_seconds, 10) || 0,
+            updated_at: Number(match.updated_at) || 0,
+            priority: 2
+          });
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 3. Серверная запись прогресса из watch_history (details.user_watch_progress)
+  if (details && details.user_watch_progress) {
+    const wp = details.user_watch_progress;
+    candidates.push({
+      season: parseInt(wp.season, 10) || 1,
+      episode: parseInt(wp.episode, 10) || 1,
+      time_seconds: parseInt(wp.time_seconds, 10) || 0,
+      duration_seconds: parseInt(wp.duration_seconds, 10) || 0,
+      updated_at: Number(wp.updated_at) || 0,
+      priority: 2
+    });
+  }
+
+  // 4. Посерийные ключи storm_ep_watchtime_${mediaId}_s${s}_e${ep}
+  if (isSeries && mediaId) {
+    try {
+      const unfinished = resolveLastUnfinishedEpisode(merged);
+      const uSeason = unfinished?.season || parseInt(merged.season, 10) || 1;
+      const uEp = unfinished?.episode || parseInt(merged.episode, 10) || 1;
+      const epSec = parseInt(localStorage.getItem(`storm_ep_watchtime_${mediaId}_s${uSeason}_e${uEp}`) || '0', 10) || 0;
+      if (uSeason > 1 || uEp > 1 || epSec >= 10) {
+        candidates.push({
+          season: uSeason,
+          episode: uEp,
+          time_seconds: epSec,
+          duration_seconds: 1440,
+          updated_at: 1,
+          priority: 1
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 5. Прямые поля карточки (например при клике из рейла «Продолжить просмотр»)
+  if (mediaItem && (mediaItem.time_seconds || mediaItem.season > 1 || mediaItem.episode > 1)) {
+    candidates.push({
+      season: parseInt(mediaItem.season, 10) || 1,
+      episode: parseInt(mediaItem.episode, 10) || 1,
+      time_seconds: parseInt(mediaItem.time_seconds, 10) || 0,
+      duration_seconds: parseInt(mediaItem.duration_seconds, 10) || 0,
+      updated_at: Number(mediaItem.updated_at) || 1,
+      priority: 1
+    });
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    const ua = Number(a.updated_at) || 0;
+    const ub = Number(b.updated_at) || 0;
+    if (Math.abs(ub - ua) > 1000) return ub - ua;
+    const sa = (Number(a.season) || 1) * 1000 + (Number(a.episode) || 1);
+    const sb = (Number(b.season) || 1) * 1000 + (Number(b.episode) || 1);
+    if (sb !== sa) return sb - sa;
+    return (Number(b.time_seconds) || 0) - (Number(a.time_seconds) || 0);
+  });
+
+  const best = candidates[0];
+  const season = Math.max(1, parseInt(best.season, 10) || 1);
+  const episode = Math.max(1, parseInt(best.episode, 10) || 1);
+  let timeSeconds = Math.max(0, Math.round(Number(best.time_seconds) || 0));
+  const durationSeconds = Math.max(0, Math.round(Number(best.duration_seconds) || 0));
+
+  // Если время в лучшем кандидате = 0, но в localStorage есть точное время для этой же серии — подтягиваем его
+  if (isSeries && timeSeconds === 0 && mediaId) {
+    try {
+      const savedEpTime = parseInt(localStorage.getItem(`storm_ep_watchtime_${mediaId}_s${season}_e${episode}`) || '0', 10);
+      if (savedEpTime > 0) timeSeconds = savedEpTime;
+    } catch (_) {}
+  }
+
+  if (isSeries) {
+    if (season <= 1 && episode <= 1 && timeSeconds < 10) return null;
+  } else {
+    if (timeSeconds < 15) return null;
+    if (durationSeconds > 60 && (timeSeconds / durationSeconds) >= 0.95) return null;
+  }
+
+  return {
+    isSeries,
+    season,
+    episode,
+    timeSeconds,
+    durationSeconds,
+    timecode: formatResumeTimecode(timeSeconds),
+    updatedAt: Number(best.updated_at) || Date.now()
+  };
+}
+
+export function seekPlayerToSeconds(totalSeconds, silent = false) {
+  const sec = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const tcStr = formatResumeTimecode(sec);
+
+  const video = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+  if (video) {
+    try {
+      video.currentTime = sec;
+      video.play().catch(() => {});
+      if (!silent) showToast(`⏱️ Перемотка на ${tcStr}`, 'info');
+      return true;
+    } catch (_) {}
+  }
+
+  const iframe = document.querySelector('#cinema-player-wrapper iframe, .cinema-player-iframe');
+  if (iframe && iframe.contentWindow) {
+    try {
+      iframe.contentWindow.postMessage({ type: 'STORM_SEEK_TO', time: sec }, '*');
+      iframe.contentWindow.postMessage({ event: 'seek', time: sec }, '*');
+      iframe.contentWindow.postMessage({ api: 'seek', time: sec }, '*');
+      iframe.contentWindow.postMessage({ type: 'seek', value: sec }, '*');
+      iframe.contentWindow.postMessage(JSON.stringify({ type: 'STORM_SEEK_TO', time: sec }), '*');
+      if (!silent) showToast(`⏱️ Перемотка на ${tcStr}`, 'info');
+      return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
+function startPendingResumeSeekLoop(targetSeconds) {
+  if (pendingResumeSeekTimer) {
+    clearInterval(pendingResumeSeekTimer);
+    pendingResumeSeekTimer = null;
+  }
+  const sec = Math.max(0, Math.round(Number(targetSeconds) || 0));
+  if (sec <= 0) {
+    pendingResumeSeekSeconds = 0;
+    return;
+  }
+  pendingResumeSeekSeconds = sec;
+  pendingResumeSeekUntil = Date.now() + 14000;
+
+  seekPlayerToSeconds(sec, true);
+
+  let attempts = 0;
+  pendingResumeSeekTimer = setInterval(() => {
+    attempts++;
+    if (!pendingResumeSeekSeconds || Date.now() > pendingResumeSeekUntil || attempts > 20) {
+      clearInterval(pendingResumeSeekTimer);
+      pendingResumeSeekTimer = null;
+      return;
+    }
+    const video = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
+    if (video && video.readyState >= 1) {
+      if (Math.abs((video.currentTime || 0) - pendingResumeSeekSeconds) > 4) {
+        try {
+          video.currentTime = pendingResumeSeekSeconds;
+          video.play().catch(() => {});
+        } catch (_) {}
+      } else {
+        pendingResumeSeekSeconds = 0;
+        clearInterval(pendingResumeSeekTimer);
+        pendingResumeSeekTimer = null;
+        return;
+      }
+    } else {
+      seekPlayerToSeconds(pendingResumeSeekSeconds, true);
+    }
+  }, 550);
+}
+
+function hideResumePromptBanner() {
+  const banner = document.getElementById('player-resume-prompt-banner');
+  if (banner) {
+    banner.style.display = 'none';
+  }
+}
+
+function renderResumePromptBanner(resumeState) {
+  const banner = document.getElementById('player-resume-prompt-banner');
+  const textEl = document.getElementById('player-resume-prompt-text');
+  const confirmBtn = document.getElementById('player-resume-confirm-btn');
+  const restartBtn = document.getElementById('player-resume-restart-btn');
+  const closeBtn = document.getElementById('player-resume-close-btn');
+
+  if (!banner || !textEl || !resumeState) return;
+
+  if (resumeState.isSeries) {
+    textEl.innerHTML = `Вы остановились на <strong>${resumeState.season} сезоне</strong>, <strong>${resumeState.episode} серии</strong>, на времени <strong>${resumeState.timecode}</strong>. Продолжить?`;
+  } else {
+    textEl.innerHTML = `Вы остановились на времени <strong>${resumeState.timecode}</strong>. Продолжить?`;
+  }
+
+  banner.style.display = 'flex';
+
+  if (confirmBtn) {
+    confirmBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isResumePromptPending = false;
+      hideResumePromptBanner();
+
+      if (resumeState.isSeries) {
+        const curS = Number(quickBarActiveSeason || 1);
+        const curE = Number(quickBarActiveEpisode || currentEpisodeIndex || 1);
+        if (curS !== resumeState.season || curE !== resumeState.episode) {
+          playEpisodeByNumber(resumeState.episode, resumeState.season);
+          renderSeriesSeasons(currentMedia, resumeState.season, resumeState.episode);
+        } else {
+          // Убеждаемся, что плеер переключен на нужную серию
+          playEpisodeByNumber(resumeState.episode, resumeState.season);
+        }
+        if (resumeState.timeSeconds > 0) {
+          startPendingResumeSeekLoop(resumeState.timeSeconds);
+        }
+        showToast(`⏯️ Продолжаем: ${resumeState.season} сезон, ${resumeState.episode} серия с ${resumeState.timecode}`, 'success');
+      } else {
+        if (resumeState.timeSeconds > 0) {
+          startPendingResumeSeekLoop(resumeState.timeSeconds);
+        }
+        showToast(`⏯️ Продолжаем просмотр с ${resumeState.timecode}`, 'success');
+      }
+    };
+  }
+
+  if (restartBtn) {
+    restartBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isResumePromptPending = false;
+      pendingResumeSeekSeconds = 0;
+      if (pendingResumeSeekTimer) {
+        clearInterval(pendingResumeSeekTimer);
+        pendingResumeSeekTimer = null;
+      }
+      hideResumePromptBanner();
+
+      if (resumeState.isSeries) {
+        playEpisodeByNumber(1, 1);
+        renderSeriesSeasons(currentMedia, 1, 1);
+      }
+      seekPlayerToSeconds(0, true);
+      saveMediaResumeSnapshot({
+        season: 1,
+        episode: 1,
+        time_seconds: 0,
+        forceSave: true,
+        resetTime: true
+      });
+      showToast('🔄 Воспроизведение с самого начала', 'info');
+    };
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isResumePromptPending = false;
+      hideResumePromptBanner();
+    };
+  }
+}
 
 function replaceIframeSrcNoHistory(iframe, newUrl) {
   if (!iframe || !newUrl) return;
@@ -546,8 +976,31 @@ function initFullscreenControls() {
           showInPlayerControls();
         }
         if (data.type === 'STORM_IFRAME_TIME' && typeof data.currentTime === 'number') {
+          if (pendingResumeSeekSeconds > 0 && Date.now() < pendingResumeSeekUntil) {
+            if (Math.abs(data.currentTime - pendingResumeSeekSeconds) > 5) {
+              seekPlayerToSeconds(pendingResumeSeekSeconds, true);
+            } else {
+              pendingResumeSeekSeconds = 0;
+              if (pendingResumeSeekTimer) {
+                clearInterval(pendingResumeSeekTimer);
+                pendingResumeSeekTimer = null;
+              }
+            }
+          }
           currentWatchTimeSeconds = Math.round(data.currentTime);
           window.currentWatchProgressSec = data.currentTime;
+          if (data.duration && isFinite(data.duration) && data.duration > 30) {
+            activeTrackingDurationSeconds = Math.round(data.duration);
+          }
+          if (currentWatchTimeSeconds >= 5 && !pendingResumeSeekSeconds) {
+            activeTrackingWatchedSeconds = currentWatchTimeSeconds;
+            if (currentWatchTimeSeconds % 5 === 0) {
+              saveMediaResumeSnapshot({
+                time_seconds: currentWatchTimeSeconds,
+                duration_seconds: activeTrackingDurationSeconds
+              });
+            }
+          }
         }
         if (data.type === 'STORM_LIFT_AUDIO_TRACKS' && Array.isArray(data.tracks) && data.tracks.length > 0) {
           if (currentMedia) {
@@ -1828,12 +2281,24 @@ export async function openPlayerModal(mediaItem, options = {}) {
   initFullscreenControls();
   initMobilePlayerControls();
 
-  // Автоматическое определение последней незаконченной серии для сериалов
-  if (!options.initialSeason || !options.initialEpisode) {
-    const resumeInfo = resolveLastUnfinishedEpisode(mediaItem);
-    if (resumeInfo) {
-      if (!options.initialSeason && resumeInfo.season) options.initialSeason = resumeInfo.season;
-      if (!options.initialEpisode && resumeInfo.episode) options.initialEpisode = resumeInfo.episode;
+  // Определяем сохраненную точку остановки (сезон, серия, точное время) и показываем интерактивную подсказку «Продолжить?»
+  const initialResumeState = resolveMediaResumeState(currentMedia, null, options);
+  if (initialResumeState) {
+    activeResumePromptState = initialResumeState;
+    isResumePromptPending = true;
+    renderResumePromptBanner(initialResumeState);
+    if (!options.initialSeason && initialResumeState.season) options.initialSeason = initialResumeState.season;
+    if (!options.initialEpisode && initialResumeState.episode) options.initialEpisode = initialResumeState.episode;
+  } else {
+    activeResumePromptState = null;
+    isResumePromptPending = false;
+    hideResumePromptBanner();
+    if (!options.initialSeason || !options.initialEpisode) {
+      const resumeInfo = resolveLastUnfinishedEpisode(mediaItem);
+      if (resumeInfo) {
+        if (!options.initialSeason && resumeInfo.season) options.initialSeason = resumeInfo.season;
+        if (!options.initialEpisode && resumeInfo.episode) options.initialEpisode = resumeInfo.episode;
+      }
     }
   }
 
@@ -2002,6 +2467,12 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
 
     currentMedia = { ...mediaItem, ...details, title: cleanVideoTitle(details?.title || mediaItem?.title || '') };
+    const enrichedResumeState = resolveMediaResumeState(currentMedia, details, options);
+    if (enrichedResumeState && (!activeResumePromptState || enrichedResumeState.timeSeconds > activeResumePromptState.timeSeconds || enrichedResumeState.season > activeResumePromptState.season || enrichedResumeState.episode > activeResumePromptState.episode)) {
+      activeResumePromptState = enrichedResumeState;
+      isResumePromptPending = true;
+      renderResumePromptBanner(enrichedResumeState);
+    }
     const modalTitleEl = document.getElementById('cinema-modal-title');
     if (modalTitleEl && currentMedia.title) {
       modalTitleEl.textContent = currentMedia.title;
@@ -2274,6 +2745,16 @@ export function closePlayerModal(options = {}) {
     const jogBtn = document.getElementById('inplayer-jog-btn');
     if (jogBtn) jogBtn.classList.remove('active');
     isPlayerScreenLocked = false;
+
+    saveMediaResumeSnapshot({ forceSync: true });
+    hideResumePromptBanner();
+    isResumePromptPending = false;
+    activeResumePromptState = null;
+    pendingResumeSeekSeconds = 0;
+    if (pendingResumeSeekTimer) {
+      clearInterval(pendingResumeSeekTimer);
+      pendingResumeSeekTimer = null;
+    }
 
     stopInvisibleEpisodeWatchTracker();
 
@@ -4343,6 +4824,14 @@ function selectQuickEpisode(episodeNum) {
   if (currentMedia?.id) {
     // Запускаем невидимый счетчик просмотра (серия будет отмечена только при просмотре >= 50%)
     startInvisibleEpisodeWatchTracker(currentMedia, quickBarActiveSeason, ep);
+    if (!isResumePromptPending) {
+      saveMediaResumeSnapshot({
+        season: quickBarActiveSeason,
+        episode: ep,
+        time_seconds: activeTrackingWatchedSeconds || 0,
+        forceSave: true
+      });
+    }
   }
 
   showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${ep}`, 'info');
@@ -4842,9 +5331,31 @@ function setupVideoFeatures(video, wrapper) {
       updateSidebarDuration(video.duration);
     }
   };
-  video.addEventListener('loadedmetadata', syncStreamDuration);
+  const checkVideoPendingSeek = () => {
+    if (pendingResumeSeekSeconds > 0 && Date.now() < pendingResumeSeekUntil && video.readyState >= 1) {
+      try {
+        video.currentTime = pendingResumeSeekSeconds;
+        pendingResumeSeekSeconds = 0;
+        if (pendingResumeSeekTimer) {
+          clearInterval(pendingResumeSeekTimer);
+          pendingResumeSeekTimer = null;
+        }
+        video.play().catch(() => {});
+      } catch (_) {}
+    }
+  };
+  video.addEventListener('loadedmetadata', () => { syncStreamDuration(); checkVideoPendingSeek(); });
   video.addEventListener('durationchange', syncStreamDuration);
-  video.addEventListener('canplay', syncStreamDuration);
+  video.addEventListener('canplay', () => { syncStreamDuration(); checkVideoPendingSeek(); });
+  video.addEventListener('pause', () => {
+    if (video.currentTime >= 5) {
+      saveMediaResumeSnapshot({
+        time_seconds: Math.round(video.currentTime),
+        duration_seconds: Math.round(video.duration || 0),
+        forceSync: true
+      });
+    }
+  });
   video.addEventListener('playing', syncStreamDuration);
   syncStreamDuration();
 
@@ -6644,7 +7155,9 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
 
   // 1. Универсальная быстрая панель серверов / FanFilm / RuTube / VK / Kodik
   if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
-    selectQuickSeason(sNum);
+    if (quickBarActiveSeason !== sNum) {
+      quickBarActiveSeason = sNum;
+    }
     selectQuickEpisode(ep);
     updateInPlayerEpisodeInfo();
     highlightActiveEpisodeInGrid(ep);
@@ -9664,6 +10177,12 @@ export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeN
       try {
         localStorage.setItem(activeTrackingStorageKey, String(activeTrackingWatchedSeconds));
       } catch (_) {}
+      saveMediaResumeSnapshot({
+        season: activeTrackingSeason,
+        episode: activeTrackingEpisode,
+        time_seconds: activeTrackingWatchedSeconds,
+        duration_seconds: activeTrackingDurationSeconds
+      });
     }
   }, 1000);
 }
@@ -12622,6 +13141,15 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
             <div class="series-episode-title" title="${escapeHtml(ep.name)}">${escapeHtml(ep.name)}</div>
             <div class="series-episode-meta-row">
               <span class="series-episode-airdate">${ep.air_date ? '📅 ' + ep.air_date : ''}</span>
+              ${(() => {
+                try {
+                  const savedSec = parseInt(localStorage.getItem(`storm_ep_watchtime_${mediaDetails.id}_s${seasonNum}_e${ep.episode_number}`) || '0', 10);
+                  if (savedSec >= 10 && !isWatched) {
+                    return `<span class="series-episode-resume-chip" title="Вы остановились на этом времени">⏱ ${formatResumeTimecode(savedSec)}</span>`;
+                  }
+                } catch (_) {}
+                return '';
+              })()}
               <span class="season-status-chip ${epStatusClass} ep-status-toggle" data-ep-num="${ep.episode_number}" title="Нажмите для переключения статуса серии">
                 ${epStatusLabel}
               </span>
@@ -13035,6 +13563,16 @@ if (typeof window !== 'undefined' && !window._stormRoomEpisodeSyncAttached) {
     if (!d) return;
     if (d.season && d.episode) {
       playEpisodeByNumber(d.episode, d.season);
+    }
+  });
+}
+
+if (typeof window !== 'undefined' && !window._stormResumeUnloadAttached) {
+  window._stormResumeUnloadAttached = true;
+  window.addEventListener('beforeunload', () => {
+    const modal = document.getElementById('cinema-modal');
+    if (modal && modal.classList.contains('is-open')) {
+      saveMediaResumeSnapshot({ forceSync: true });
     }
   });
 }

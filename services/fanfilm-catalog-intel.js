@@ -190,10 +190,17 @@ export const KNOWN_FANFILM_URLS = {
   "алое сердце алые сердца коре": "https://v17.fanfilm4k.media/4521-aloe-serdce-2016.html",
   "два с половиной человека": "https://v17.fanfilm4k.media/4221-dva-s-polovinoj-cheloveka-2003.html",
   "вторжение": "https://v17.fanfilm4k.media/2994-vtorzhenie-2021.html",
-  "древние": "https://v17.fanfilm4k.media/3390-drevnie-2013.html"
+  "древние": "https://v17.fanfilm4k.media/3390-drevnie-2013.html",
+  "видения 2015": "https://v17.fanfilm4k.media/19137-videnija-2015.html",
+  "visions 2015": "https://v17.fanfilm4k.media/19137-videnija-2015.html",
+  "видения 2023": "https://v17.fanfilm4k.media/70681-videnija-film.html",
+  "visions 2023": "https://v17.fanfilm4k.media/70681-videnija-film.html",
+  "звездные войны видения": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html",
+  "звездные войны видение": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html",
+  "star wars visions": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html"
 };
 
-export function resolveFanFilmUrl(title) {
+export function resolveFanFilmUrl(title, year = '') {
   if (!title) return '';
   const norm = String(title)
     .toLowerCase()
@@ -203,6 +210,16 @@ export function resolveFanFilmUrl(title) {
     .replace(/\s+/g, ' ')
     .trim();
 
+  const yrStr = String(year || '').trim();
+  if ((norm === 'видения' || norm === 'visions') && yrStr === '2015') {
+    return 'https://v17.fanfilm4k.media/19137-videnija-2015.html';
+  }
+  if ((norm === 'видения' || norm === 'visions') && yrStr === '2023') {
+    return 'https://v17.fanfilm4k.media/70681-videnija-film.html';
+  }
+  if (yrStr && KNOWN_FANFILM_URLS[`${norm} ${yrStr}`]) {
+    return KNOWN_FANFILM_URLS[`${norm} ${yrStr}`];
+  }
   if (KNOWN_FANFILM_URLS[norm]) return KNOWN_FANFILM_URLS[norm];
   return '';
 }

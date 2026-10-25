@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.1.0';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.0';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.0';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.0';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.0';
-import { getStatusIconSvg } from './status-icons.js?v=1.1.0';
-import { initFormFactorEngine } from './form-factor.js?v=1.1.0';
+import { initTheme, setTheme } from './theme.js?v=1.1.1';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.1';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.1';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.1';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.1';
+import { getStatusIconSvg } from './status-icons.js?v=1.1.1';
+import { initFormFactorEngine } from './form-factor.js?v=1.1.1';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.1.0';
+const STORM_ASSET_VER = '1.1.1';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -1846,6 +1846,13 @@ export function cleanVideoTitle(str) {
       s = mTrail[1].trim();
     }
   }
+  // Каноническое объединение франшизы «Звёздные Войны: Видения» (включая спин-офф/4-й сезон «Девятый джедай»)
+  if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(s)) {
+    return 'Звёздные Войны: Видения';
+  }
+  if (/^star\s+wars\s*:\s*visions/i.test(s)) {
+    return 'Star Wars: Visions';
+  }
   // Хвостовые разделители
   s = s.replace(/[-–—/|•:]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
@@ -2179,7 +2186,7 @@ export function isTrailerMedia(item) {
   const combinedText = `${cleanTitle} ${cleanOriginalTitle} ${category} ${genres}`.toLowerCase();
 
   // 1. Прямые маркеры трейлеров и промо в названии или категории
-  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
+  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|создание\s+фильма|как\s+создавался|история\s+создания|фильм\s+о\s+фильме|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
 
   if (trailerWordsRegex.test(cleanTitle) || trailerWordsRegex.test(cleanOriginalTitle) || trailerWordsRegex.test(category)) {
     return true;
@@ -2191,6 +2198,7 @@ export function isTrailerMedia(item) {
     'промо-ролик', 'промо ролик', 'официальный трейлер', 'русский трейлер',
     'дублированный трейлер', 'финальный трейлер', 'тизер-трейлер', 'концепт-трейлер',
     'concept trailer', 'fan trailer', 'фан-трейлер', 'фан трейлер',
+    'создание фильма', 'как создавался', 'история создания', 'фильм о фильме', 'making of',
     'обзор сериала', 'обзор фильма', 'обзор премьеры', 'разбор сериала', 'разбор фильма',
     'разбор концовки', 'разбор сюжета', 'лекция для сна', 'для сна', 'дата выхода',
     'когда выйдет', 'что известно', 'расписание выхода', 'простыми словами'
@@ -2202,7 +2210,7 @@ export function isTrailerMedia(item) {
   }
 
   // Обзоры и разборы в начале названия
-  if (/^(?:обзор|разбор|пересказ|рекап|сюжет|подробный разбор|честный обзор)\b/i.test(cleanTitle)) {
+  if (/^(?:создание фильма|как создавался|история создания|фильм о фильме|обзор|разбор|пересказ|рекап|сюжет|подробный разбор|честный обзор)\b/i.test(cleanTitle)) {
     return true;
   }
 
@@ -2597,11 +2605,11 @@ function normalizeMediaTitle(title, originalTitle = '') {
   if (!title && !originalTitle) return '';
   const clean = (t) => {
     if (!t) return '';
-    let s = String(t).toLowerCase()
+    let raw = cleanVideoTitle(t);
+    let s = String(raw).toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
       .replace(/[«»“”"'`]/g, ' ')
-      .replace(/\s*[\/|\\–—\-]\s*(?:[a-z0-9\s]+).*$/gi, ' ')
       .replace(/^\s*\(?(?:сериал|фильм|серия|т\/с|д\/ф|м\/ф|м\/с)\)?\s*[:\-–—]?\s*/gi, '')
       .replace(/(?<!\p{L})(?:часть\s+первая|part\s+one|part\s+i)(?!\p{L})/giu, ' 1 ')
       .replace(/(?<!\p{L})(?:часть\s+вторая|part\s+two|part\s+ii)(?!\p{L})/giu, ' 2 ')
@@ -2613,6 +2621,9 @@ function normalizeMediaTitle(title, originalTitle = '') {
       .replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '');
     if (s.includes('дандадан') || s.includes('dandadan')) {
       s = 'дандадан';
+    }
+    if (/^звездные\s+войны\s*[:\s]\s*видени[яе]/i.test(s) || /^star\s+wars\s*[:\s]\s*visions/i.test(s)) {
+      s = 'звездныевойнывидения';
     }
     return s.replace(/[^\p{L}\p{N}]+/gu, '').trim();
   };
@@ -2792,8 +2803,13 @@ function deduplicateMediaList(items) {
 
     const itemTitle = item.title || item.name || '';
     const origTitle = item.original_title || item.original_name || '';
-    const normKey = normalizeMediaTitle(itemTitle, origTitle);
-    const origKey = origTitle ? normalizeMediaTitle(origTitle, '') : '';
+    const itemType = detectClientMediaType(item) || item.media_type || '';
+    const isSeriesOrAnime = itemType === 'series' || itemType === 'anime-series' || itemType === 'cartoon-series' || ['anilibria', 'anixart', 'shikimori'].includes(item.source);
+    const itemYr = getMediaYear(item) || item.year || '';
+    const baseNormKey = normalizeMediaTitle(itemTitle, origTitle);
+    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle, '') : '';
+    const normKey = (!isSeriesOrAnime && baseNormKey && itemYr) ? `${baseNormKey}_movie_${itemYr}` : baseNormKey;
+    const origKey = (!isSeriesOrAnime && baseOrigKey && itemYr) ? `${baseOrigKey}_movie_${itemYr}` : baseOrigKey;
     const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
     const kpKey = (item.kp_id || item.kinopoisk_id) ? `kp_${item.kp_id || item.kinopoisk_id}` : '';
 

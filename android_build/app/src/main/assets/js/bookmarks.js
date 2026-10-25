@@ -1,11 +1,11 @@
-import { trackClientAction } from './achievements.js?v=1.1.0';
+import { trackClientAction } from './achievements.js?v=1.1.1';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.1.0';
-import { t } from './i18n.js?v=1.1.0';
-import { normalizeStatus } from './status-icons.js?v=1.1.0';
+import { getToken, showToast } from './auth.js?v=1.1.1';
+import { t } from './i18n.js?v=1.1.1';
+import { normalizeStatus } from './status-icons.js?v=1.1.1';
 
 let memoryBookmarksCache = [];
 
@@ -987,6 +987,9 @@ export function detectClientYear(item) {
     'avatar 2': '2022',
     'кот в сапогах 2': '2022',
     'скуби ду шалость или сладость': '2022',
+    'звёздные войны видения': '2021',
+    'звездные войны видения': '2021',
+    'star wars visions': '2021',
     'дюна': '2021',
     'локи': '2021',
     'пацаны': '2019',
@@ -1096,7 +1099,8 @@ export function getLocalContinueWatching() {
 
       const sec = typeof item.time_seconds === 'number' ? item.time_seconds : 0;
       const ep = parseInt(item.episode, 10) || 1;
-      return (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
+      const sNum = parseInt(item.season, 10) || 1;
+      return (pct >= 0.5 && sec >= 10) || (sec >= 15) || (pct >= 3.0) || (ep > 1) || (sNum > 1);
     }).map(item => {
       const cleanType = detectClientMediaType(item);
       const cleanYr = detectClientYear(item);
@@ -1202,7 +1206,7 @@ export function saveLocalWatchProgress(data) {
     }
   }
 
-  if (pct < 2.0 && sec < 30 && ep <= 1) return;
+  if (pct < 0.5 && sec < 10 && ep <= 1 && s <= 1) return;
 
   try {
     const list = getLocalContinueWatching();

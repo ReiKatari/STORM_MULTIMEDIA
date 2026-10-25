@@ -985,8 +985,8 @@ export function logWatchProgress(userId, data) {
     return { media_id, season, episode, time_seconds, progress_percent: 0, status: null };
   }
 
-  // Если фильм не смотрелся (время меньше 30 сек и прогресс меньше 2%), не добавляем в «Продолжить просмотр»
-  if (time_seconds < 30 && progressPercent < 2.0 && (!episode || episode <= 1)) {
+  // Если видео смотрелось менее 10 сек и это 1 сезон 1 серия, не добавляем в «Продолжить просмотр»
+  if (time_seconds < 10 && progressPercent < 0.5 && (!episode || episode <= 1) && (!season || season <= 1)) {
     return { media_id, season, episode, time_seconds, progress_percent: progressPercent, status: null };
   }
 
@@ -1118,6 +1118,39 @@ export function logWatchProgress(userId, data) {
     progress_percent: overallPercent,
     status: isFullyWatched ? 'completed' : (existingBookmark?.status || null)
   };
+}
+
+export function getLatestWatchProgressForMedia(userId, mediaId, source = '', title = '') {
+  if (!userId) return null;
+  try {
+    const cleanId = String(mediaId || '').trim();
+    const cleanTitle = String(title || '').trim().toLowerCase();
+    let row = null;
+    if (cleanId && source) {
+      row = db.prepare(`
+        SELECT * FROM watch_history
+        WHERE user_id = ? AND media_id = ? AND source = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(userId, cleanId, source);
+    }
+    if (!row && cleanId) {
+      row = db.prepare(`
+        SELECT * FROM watch_history
+        WHERE user_id = ? AND media_id = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(userId, cleanId);
+    }
+    if (!row && cleanTitle) {
+      row = db.prepare(`
+        SELECT * FROM watch_history
+        WHERE user_id = ? AND LOWER(TRIM(title)) = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(userId, cleanTitle);
+    }
+    return row || null;
+  } catch {
+    return null;
+  }
 }
 
 export function getContinueWatching(userId, limit = 12) {

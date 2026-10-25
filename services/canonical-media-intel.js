@@ -199,6 +199,14 @@ export const KNOWN_RELEASE_YEARS = {
   'фрирен': '2023',
   'атака титанов': '2013',
   'киберпанк: бегущие по краю': '2022',
+  'звёздные войны: видения': '2021',
+  'звездные войны: видения': '2021',
+  'звёздные войны видения': '2021',
+  'звездные войны видения': '2021',
+  'звёздные войны: видение': '2021',
+  'звездные войны: видение': '2021',
+  'star wars: visions': '2021',
+  'star wars visions': '2021',
 
   // Киношедевры и франшизы
   'изгой-один: звёздные войны. истории': '2016',
@@ -369,7 +377,13 @@ export const KNOWN_SERIES_SEASONS = {
   'игра в кальмара': 2,
   'squid game': 2,
   'ричер': 3,
-  'reacher': 3
+  'reacher': 3,
+  'звёздные войны: видения': 4,
+  'звездные войны: видения': 4,
+  'звёздные войны видения': 4,
+  'звездные войны видения': 4,
+  'star wars: visions': 4,
+  'star wars visions': 4
 };
 
 // Реестр известных аниме (по умолчанию 'anime-series', если не фильм)
@@ -388,6 +402,7 @@ export const KNOWN_ANIME_SERIES = [
   'семья шпиона', 'spy x family',
   'фрирен', 'frieren',
   'киберпанк: бегущие по краю', 'cyberpunk',
+  'звёздные войны: видения', 'звездные войны: видения', 'звездные войны видения', 'star wars: visions', 'star wars visions',
   'клеватесс', 'революция книжного червя', 'адский режим',
   'блич', 'наруто', 'ван-пис', 'тетрадь смерти', 'токийский гуль'
 ];
@@ -690,16 +705,32 @@ export function resolveCanonicalYear(title = '', link = '', poster = '', dateStr
   ].some(m => norm === m || norm.startsWith(m + ' ') || norm.includes(m));
 
   // 1. Проверка реестра подтверждённых дат (сортировка по убыванию длины ключа для исключения коллизий подстрок)
+  if (/зв[её]здные\s+войны\s*:\s*видени[яе]|star\s+wars\s*:\s*visions/i.test(String(title || ''))) {
+    return '2021';
+  }
+  const exactOnlyRoots = new Set([
+    'звёздные войны', 'звездные войны', 'star wars', 'гарри поттер', 'harry potter',
+    'властелин колец', 'аватар', 'avatar', 'матрица', 'терминатор', 'чужой', 'хищник',
+    'тачки', 'шрек', 'ледниковый период', 'гадкий я', 'кунг-фу панда', 'история игрушек',
+    'суперсемейка', 'бэтмен', 'супермен', 'человек-паук', 'мстители', 'тор', 'железный человек',
+    'дюна', 'одиссея', 'кэрри', 'carrie', 'леон', 'начало', 'престиж', 'довод', 'прометей',
+    'дракула', 'франкенштейн', 'обезьяна', 'балерина', 'гладиатор', 'носферату', 'фоллаут', 'fallout'
+  ]);
   const sortedEntries = Object.entries(KNOWN_RELEASE_YEARS).sort((a, b) => b[0].length - a[0].length);
   for (const [knownTitle, yr] of sortedEntries) {
-    if (knownTitle === 'монстры' || knownTitle === 'монстр') {
+    const cleanKnown = knownTitle.replace(/ё/g, 'е');
+    if (cleanKnown === 'монстры' || cleanKnown === 'монстр') {
       if (isMonsterCartoonOrMovie) continue;
-      if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.startsWith(knownTitle + ':')) {
+      if (norm === cleanKnown || norm.startsWith(cleanKnown + ' ') || norm.startsWith(cleanKnown + ':')) {
         return yr;
       }
       continue;
     }
-    if (norm === knownTitle || norm.startsWith(knownTitle + ' ') || norm.includes(knownTitle)) {
+    if (exactOnlyRoots.has(cleanKnown) || exactOnlyRoots.has(knownTitle)) {
+      if (norm === cleanKnown) return yr;
+      continue;
+    }
+    if (norm === cleanKnown || norm.startsWith(cleanKnown + ' ') || norm.startsWith(cleanKnown + ':')) {
       return yr;
     }
   }
@@ -917,7 +948,7 @@ export function isTrailerMedia(item) {
   const combinedText = `${cleanTitle} ${cleanOriginalTitle} ${category} ${genres}`.toLowerCase();
 
   // 1. Прямые маркеры трейлеров и промо в названии или категории
-  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
+  const trailerWordsRegex = /\b(трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|тизерная|trailer[s]?|teaser[s]?|промо[- ]ролик[а-я]*|отрывок|фрагмент[а-я]*|бэкстейдж|backstage|making[- ]of|создание\s+фильма|как\s+создавался|история\s+создания|фильм\s+о\s+фильме|съемки|съёмки|клип[а-я]*|музыкальный[- ]клип[а-я]*|саундтрек|sneak[- ]peek|first[- ]look|featurette|фан[- ]трейлер[а-я]*|fan[- ]trailer[s]?|концепт[- ]трейлер[а-я]*|concept[- ]trailer[s]?)\b/i;
 
   if (trailerWordsRegex.test(cleanTitle) || trailerWordsRegex.test(cleanOriginalTitle) || trailerWordsRegex.test(category)) {
     return true;
@@ -929,6 +960,7 @@ export function isTrailerMedia(item) {
     'промо-ролик', 'промо ролик', 'официальный трейлер', 'русский трейлер',
     'дублированный трейлер', 'финальный трейлер', 'тизер-трейлер', 'концепт-трейлер',
     'concept trailer', 'fan trailer', 'фан-трейлер', 'фан трейлер',
+    'создание фильма', 'как создавался', 'история создания', 'фильм о фильме', 'making of',
     'обзор сериала', 'обзор фильма', 'обзор премьеры', 'разбор сериала', 'разбор фильма',
     'разбор концовки', 'разбор сюжета', 'лекция для сна', 'для сна', 'дата выхода',
     'когда выйдет', 'что известно', 'расписание выхода', 'простыми словами',
@@ -945,7 +977,7 @@ export function isTrailerMedia(item) {
   }
 
   // Обзоры, разборы, лекции и вопросы в начале названия
-  if (/^(?:обзор|разбор|пересказ|рекап|сюжет|подробный разбор|честный обзор|лекция|доклад|что такое|почему|как устроена|как работает|в чем разница|95% вселенной)\b/i.test(cleanTitle)) {
+  if (/^(?:создание фильма|как создавался|история создания|фильм о фильме|обзор|разбор|пересказ|рекап|сюжет|подробный разбор|честный обзор|лекция|доклад|что такое|почему|как устроена|как работает|в чем разница|95% вселенной)\b/i.test(cleanTitle)) {
     return true;
   }
 
@@ -1031,10 +1063,14 @@ const PROTECTED_NUMBER_TITLES = [
 export function extractSeasonNumberFromTitle(rawTitle = '') {
   if (!rawTitle) return 1;
   const s = String(rawTitle).trim();
+  if (/(?:зв[её]здные\s+войны\s*:\s*видени[яе]|star\s+wars\s*:\s*visions).*(?:девятый\s+джедай|ninth\s+jedi)/i.test(s)) {
+    return 4;
+  }
   const mExplicit = s.match(/(?:\[|\(|\b)(?:тв|tv)[\s-]*(\d{1,2})(?:\]|\)|\b)/i)
     || s.match(/(\d{1,2})\s*(?:-?[йяе]|ый|ой)?\s*сезон/i)
     || s.match(/сезон\s*(\d{1,2})/i)
     || s.match(/\bseason\s*(\d{1,2})\b/i)
+    || s.match(/\bvolume\s*(\d{1,2})\b/i)
     || s.match(/\b(\d{1,2})(?:nd|rd|th)\s+season\b/i);
   if (mExplicit) {
     const n = parseInt(mExplicit[1], 10);
@@ -1058,6 +1094,14 @@ export function normalizeAnimeFranchiseTitle(rawTitle = '', isAnimeOrSeries = tr
   s = s.replace(/\s*постер\s*4[\u004B\u006B\u041A\u043A]/gi, '');
   s = s.replace(/\s*постер/gi, '');
   s = s.replace(/\s*[\(\[]\s*(?:4[\u004B\u006B\u041A\u043A]|Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR10\+?|HDR|Dolby\s*Vision|BDRip|WEB-DL|Remux).*?[\)\]]/gi, '');
+
+  // Каноническое объединение франшизы «Звёздные Войны: Видения» (включая спин-офф/сезон «Девятый джедай»)
+  if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(s)) {
+    return 'Звёздные Войны: Видения';
+  }
+  if (/^star\s+wars\s*:\s*visions/i.test(s)) {
+    return 'Star Wars: Visions';
+  }
 
   if (!isAnimeOrSeries) {
     return s.replace(/\s{2,}/g, ' ').trim();
