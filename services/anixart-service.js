@@ -22,19 +22,22 @@ function formatAnimeRelease(rel) {
   const title = rel.title_ru || rel.title_original || rel.title_alt || rel.title || 'Аниме релиз';
   const origTitle = rel.title_original || rel.title_alt || '';
 
-  // Извлекаем постер: приоритет официальному быстрому CDN static.anixart.tv
+  // Извлекаем постер: поддерживаем как static.anixart.tv (короткие коды), так и s3.anixmirai.com (UUID с .jpg)
   let rawPoster = '';
-  if (rel.poster) {
-    const posterCode = String(rel.poster).replace(/\.jpg$/i, '').trim();
-    if (posterCode.startsWith('http')) {
-      rawPoster = posterCode.replace(/https?:\/\/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\//i, 'https://static.anixart.tv/posters/');
+  const rawImgField = String(rel.image || rel.poster || '').trim();
+  if (rawImgField) {
+    if (rawImgField.startsWith('http')) {
+      rawPoster = rawImgField;
+      if (/\/posters\/[a-z0-9-]+$/i.test(rawPoster) && !/\.(?:jpg|jpeg|png|webp)$/i.test(rawPoster)) {
+        rawPoster += '.jpg';
+      }
     } else {
-      rawPoster = `https://static.anixart.tv/posters/${posterCode}.jpg`;
+      const posterCode = rawImgField.replace(/\.jpg$/i, '').trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(posterCode);
+      rawPoster = isUuid
+        ? `https://s3.anixmirai.com/posters/${posterCode}.jpg`
+        : `https://static.anixart.tv/posters/${posterCode}.jpg`;
     }
-  } else if (rel.image) {
-    rawPoster = String(rel.image)
-      .replace(/https?:\/\/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\//i, 'https://static.anixart.tv/posters/')
-      .trim();
   }
   if (!rawPoster && rel.screenshot_images && rel.screenshot_images.length > 0) {
     rawPoster = rel.screenshot_images[0];
@@ -54,6 +57,14 @@ function formatAnimeRelease(rel) {
   const canonicalGenres = resolveCanonicalGenres(cleanTitle, 'anime', rel.description || '', rel.genres);
   const mediaType = rel.category?.name === 'Фильм' ? 'anime-movie' : resolveCanonicalMediaType(cleanTitle, '', 'anime-series', canonicalGenres);
 
+  const rawStatusName = String(rel.status?.name || '').trim();
+  const isUpcomingAnix = Boolean(
+    rel.status?.id === 3 ||
+    /анонс|ожидается|скоро|anons|upcoming/i.test(rawStatusName) ||
+    (parseInt(resolvedYear, 10) || 0) > new Date().getFullYear() ||
+    ((Number(rel.episodes_released || 0) === 0) && (Number(rel.voiceovers_count || 0) === 0) && rawStatusName !== 'Вышел' && (parseInt(resolvedYear, 10) || 0) >= new Date().getFullYear())
+  );
+
   return {
     id: String(rel.id),
     source: 'anixart',
@@ -65,8 +76,9 @@ function formatAnimeRelease(rel) {
     year: resolvedYear,
     rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : (typeof rel.rating === 'number' ? Math.round(rel.rating / 1000) / 10 : 0),
     media_type: mediaType,
-    quality: 'HD 1080p',
-    status: rel.status?.name || 'Вышел',
+    is_upcoming: isUpcomingAnix,
+    quality: isUpcomingAnix ? 'Ожидается' : 'HD 1080p',
+    status: isUpcomingAnix ? 'Анонс' : (rawStatusName || 'Вышел'),
     category: mediaType === 'anime-movie' ? 'Аниме-фильм' : 'Аниме-сериал',
     episodes_released: rel.episodes_released || 0,
     episodes_total: rel.episodes_total || 0,
@@ -86,7 +98,7 @@ function formatAnimeRelease(rel) {
  */
 export async function getAnixartDiscover(category = 'popular', page = 0) {
   const pageNum = parseInt(page, 10) || 0;
-  const cacheKey = `discover_${category}_page_${pageNum}`;
+  const cacheKey = `discover_v3_${category}_page_${pageNum}`;
   const cached = getCache('anixart', cacheKey);
   if (cached) return cached;
 
@@ -163,7 +175,7 @@ export async function searchAnixart(query, page = 0) {
 
   const pageNum = parseInt(page, 10) || 0;
   const cleanQuery = query.trim();
-  const cacheKey = `search_${cleanQuery.toLowerCase()}_page_${pageNum}`;
+  const cacheKey = `search_v3_${cleanQuery.toLowerCase()}_page_${pageNum}`;
   const cached = getCache('anixart', cacheKey);
   if (cached) return cached;
 
@@ -195,7 +207,7 @@ export async function getAnixartReleaseDetails(releaseId) {
   const numId = parseInt(releaseId, 10);
   if (!numId) return null;
 
-  const cacheKey = `details_${numId}`;
+  const cacheKey = `details_v2_${numId}`;
   const cached = getCache('anixart', cacheKey);
   if (cached) return cached;
 

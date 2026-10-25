@@ -212,9 +212,9 @@ class MainActivity : ComponentActivity() {
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.51"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.1.2"
         } catch (_: Throwable) {
-            "1.0.51"
+            "1.1.2"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -854,7 +854,7 @@ class MainActivity : ComponentActivity() {
         val path = uri.path ?: "/api/"
 
         if (path == "/api/health" || path == "/api/player/health") {
-            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.0.51"}""")
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.1.2"}""")
         }
 
         if (path == "/api/media/image-proxy") {
@@ -1207,9 +1207,9 @@ class MainActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.51"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.1.2"
             } catch (_: Throwable) {
-                "1.0.51"
+                "1.1.2"
             }
         }
 

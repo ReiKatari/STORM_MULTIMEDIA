@@ -13,7 +13,9 @@ logs/
 
 # Environment and secrets
 .env
-.env.local
+.env.*
+!.env.example
+*.bak
 *.pem
 *.key
 

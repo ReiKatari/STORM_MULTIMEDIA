@@ -9776,7 +9776,15 @@ body.cinema-focus-active::-webkit-scrollbar,
 }
 
 .radial-action-item.action-watch { top: -85px; left: 0px; animation-delay: 0.02s; }
-.radial-action-item.action-trailer { top: -30px; left: 85px; animation-delay: 0.04s; }
+.radial-action-item.action-trailer,
+.radial-action-item.action-remove-continue { top: -30px; left: 85px; animation-delay: 0.04s; }
+.radial-action-item.action-remove-continue {
+  border-color: rgba(244, 63, 94, 0.55);
+}
+.radial-action-item.action-remove-continue:hover {
+  border-color: #fb7185;
+  box-shadow: 0 6px 22px rgba(244, 63, 94, 0.55), 0 0 14px rgba(244, 63, 94, 0.45);
+}
 .radial-action-item.action-bookmark { top: 60px; left: 60px; animation-delay: 0.06s; }
 .radial-action-item.action-download { top: 60px; left: -60px; animation-delay: 0.08s; }
 .radial-action-item.action-share { top: -30px; left: -85px; animation-delay: 0.10s; }
@@ -11262,6 +11270,7 @@ body.cinema-focus-active::-webkit-scrollbar,
 
 /* 1. Кнопка закладки в 1 клик на карточке (.media-card-bookmark-btn) */
 .media-card-bookmark-btn {
+  display: none !important;
   position: absolute;
   top: 8px;
   right: 42px;
@@ -11313,15 +11322,21 @@ body.cinema-focus-active::-webkit-scrollbar,
 
 /* 2. Панель быстрого перехода по лентам на Главной (.home-rails-top-bar) */
 .home-rails-top-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  margin: 0 0 18px 0;
-  border-radius: 14px;
-  background: var(--storm-card-gradient, rgba(16, 22, 36, 0.78));
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  padding: 10px 16px !important;
+  margin: 0 0 22px 0 !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, rgba(16, 23, 40, 0.88), rgba(10, 15, 28, 0.94)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   overflow: hidden;
 }
 
@@ -11334,13 +11349,15 @@ body.cinema-focus-active::-webkit-scrollbar,
 }
 
 .home-rail-jump-pills {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding: 2px 0;
+  padding: 3px 2px;
   cursor: grab;
 }
 
@@ -11351,39 +11368,121 @@ body.cinema-focus-active::-webkit-scrollbar,
 .home-rail-jump-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 7px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.78) 0%, rgba(15, 23, 42, 0.88) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.home-rail-jump-chip:hover {
+.home-rail-jump-chip:hover,
+.home-rail-jump-chip.is-active {
   transform: translateY(-1px);
   border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.12);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 0 10px var(--accent-glow);
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.18), rgba(139, 92, 246, 0.18));
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 12px var(--accent-glow);
 }
 
 .home-rail-jump-chip:active {
-  transform: translateY(1px) scale(0.98);
+  transform: translateY(1.5px) scale(0.98);
 }
 
+.jump-chip-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.jump-chip-count,
 .rail-jump-count {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(0, 210, 255, 0.16);
+  background: rgba(0, 210, 255, 0.2);
+  border: 1px solid rgba(0, 210, 255, 0.35);
   color: var(--accent);
+  line-height: 1.1;
+}
+
+.home-customize-btn {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 16px !important;
+  border-radius: 12px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+  border: 1px solid rgba(0, 210, 255, 0.32) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease !important;
+}
+
+.home-customize-btn:hover {
+  transform: translateY(-1px) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 14px var(--accent-glow) !important;
+}
+
+.home-customize-btn:active {
+  transform: translateY(1.5px) scale(0.98) !important;
+}
+
+@media (max-width: 640px) {
+  .home-rails-top-bar {
+    padding: 8px 10px !important;
+    gap: 8px !important;
+  }
+  .home-customize-btn {
+    padding: 7px 11px !important;
+    font-size: 11.5px !important;
+  }
+}
+
+/* Кнопка быстрого удаления из «Продолжить просмотр» на карточке */
+.media-card-remove-continue-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(244, 63, 94, 0.45);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fda4af;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  padding: 0;
+  line-height: 1;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.media-card-remove-continue-btn:hover {
+  transform: translateY(-1px) scale(1.06);
+  background: rgba(225, 29, 72, 0.92);
+  border-color: #fb7185;
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(225, 29, 72, 0.5);
+}
+
+.media-card-remove-continue-btn:active {
+  transform: translateY(1px) scale(0.95);
 }
 
 .rail-count-pill {

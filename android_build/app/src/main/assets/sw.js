@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER v4 (БЫСТРЫЙ КЭШ И БЕЗОПАСНЫЕ ES-МОДУЛИ)
    ========================================================================== */
 
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 const CACHE_NAME = `storm-multimedia-v4-${APP_VERSION}`;
 
 // Минимальная оболочка при установке (< 70 КБ), чтобы не нагружать сеть и процессор при старте
@@ -120,7 +120,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Версионированные скрипты и стили (?v=1.1.1): мгновенный Cache-First СТРОГО по точному URL (без ignoreSearch и без фейковых заглушек!)
+  // 3. Версионированные скрипты и стили (?v=1.1.2): мгновенный Cache-First СТРОГО по точному URL (без ignoreSearch и без фейковых заглушек!)
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     const hasVersionTag = url.searchParams.has('v') && !url.searchParams.has('retry');
     if (!hasVersionTag) {
@@ -130,15 +130,18 @@ self.addEventListener('fetch', (event) => {
 
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
+        try {
+          const netRes = await fetch(event.request);
+          if (isValidCacheableAsset(netRes, url.pathname)) {
+            cache.put(event.request, netRes.clone()).catch(() => {});
+            return netRes;
+          }
+        } catch (_) {}
         const cached = await cache.match(event.request);
         if (cached && isValidCacheableAsset(cached, url.pathname)) {
           return cached;
         }
-        const netRes = await fetch(event.request);
-        if (isValidCacheableAsset(netRes, url.pathname)) {
-          cache.put(event.request, netRes.clone()).catch(() => {});
-        }
-        return netRes;
+        return fetch(event.request);
       })
     );
     return;

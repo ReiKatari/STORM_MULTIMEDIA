@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.1.1';
+import { t, formatDate } from './i18n.js?v=1.1.2';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -66,6 +66,41 @@ export function showToast(message, type = 'info') {
   }, 3500);
 }
 
+export function clearUserSessionLocalCache() {
+  try {
+    localStorage.removeItem('storm_token');
+    localStorage.removeItem('storm_user');
+    localStorage.removeItem('storm_active_user_id');
+    localStorage.removeItem('storm_continue_watching');
+    localStorage.removeItem('storm_local_bookmarks');
+    localStorage.removeItem('storm_custom_lists');
+    localStorage.removeItem('storm_family_profiles');
+    localStorage.removeItem('storm_watched_hours');
+    localStorage.removeItem('storm_dismissed_continue_v1');
+    localStorage.removeItem('storm_achievements_cache');
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (
+        k.startsWith('storm_status_') ||
+        k.startsWith('storm_watched_') ||
+        k.startsWith('storm_season_status_') ||
+        k.startsWith('storm_series_completed_meta_') ||
+        k.startsWith('storm_resume_state_') ||
+        k.startsWith('storm_ep_watched_')
+      )) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    if (typeof window !== 'undefined') {
+      window.__STORM_MEMORY_BOOKMARKS__ = [];
+      window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { cleared: true } }));
+      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { cleared: true } }));
+    }
+  } catch (_) {}
+}
+
 export async function checkAuth() {
   try {
     const headers = {};
@@ -81,30 +116,35 @@ export async function checkAuth() {
 
     if (res.ok) {
       const data = await res.json();
-      if (data && data.user) {
+      if (data && data.user && data.user.id) {
+        const prevUserId = localStorage.getItem('storm_active_user_id');
+        if (prevUserId && String(prevUserId) !== String(data.user.id)) {
+          clearUserSessionLocalCache();
+        }
         currentUser = data.user;
         currentUser.stats = data.stats;
         if (data.token) {
           currentToken = data.token;
           localStorage.setItem('storm_token', currentToken);
         }
+        localStorage.setItem('storm_active_user_id', String(data.user.id));
         localStorage.setItem('storm_user', JSON.stringify(currentUser));
         updateAuthUI();
         notifyAuthChanged();
         return currentUser;
       } else {
+        const hadTokenOrUser = Boolean(currentToken || currentUser || localStorage.getItem('storm_active_user_id') || !localStorage.getItem('storm_guest_isolated_v3'));
         currentToken = null;
         currentUser = null;
-        localStorage.removeItem('storm_token');
-        localStorage.removeItem('storm_user');
+        if (hadTokenOrUser) {
+          clearUserSessionLocalCache();
+          localStorage.setItem('storm_guest_isolated_v3', '1');
+        }
       }
     } else if (res.status === 401 || res.status === 403) {
-      if (!currentToken || (!currentToken.startsWith('offline_') && !currentToken.startsWith('guest_'))) {
-        currentUser = null;
-        currentToken = null;
-        localStorage.removeItem('storm_token');
-        localStorage.removeItem('storm_user');
-      }
+      currentUser = null;
+      currentToken = null;
+      clearUserSessionLocalCache();
     }
   } catch (err) {
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = false;
@@ -123,130 +163,92 @@ export async function checkAuth() {
 }
 
 export async function register(username, email, password) {
-  const uStr = String(username || '').trim() || 'Пользователь';
-  const eStr = String(email || '').trim() || `${uStr.toLowerCase()}@storm.local`;
-  const pStr = String(password || '').trim() || 'Storm2026!';
+  const uStr = String(username || '').trim();
+  const eStr = String(email || '').trim();
+  const pStr = String(password || '').trim();
 
+  if (!uStr || !eStr || !pStr) {
+    throw new Error('Заполните имя пользователя, email и пароль');
+  }
+
+  let res;
   try {
-    const res = await fetch('/api/auth/register', {
+    res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: uStr, email: eStr, password: pStr }),
-      signal: AbortSignal.timeout(2500)
+      signal: AbortSignal.timeout(4000)
     });
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
-
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && data && data.user) {
-      currentToken = data.token;
-      currentUser = data.user;
-      localStorage.setItem('storm_token', currentToken);
-      localStorage.setItem('storm_user', JSON.stringify(currentUser));
-
-      updateAuthUI();
-      notifyAuthChanged();
-      showToast(t('msg_login_success'), 'success');
-      return currentUser;
-    }
-  } catch (_) {
+  } catch (netErr) {
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = false;
+    throw new Error('Сервер регистрации временно недоступен. Проверьте подключение к сети.');
   }
 
-  return loginOfflineUser(uStr, eStr);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data || !data.user) {
+    throw new Error(data?.error || 'Ошибка регистрации');
+  }
+
+  clearUserSessionLocalCache();
+  currentToken = data.token;
+  currentUser = data.user;
+  localStorage.setItem('storm_active_user_id', String(data.user.id));
+  localStorage.setItem('storm_token', currentToken);
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
+
+  updateAuthUI();
+  notifyAuthChanged();
+  showToast(t('msg_login_success'), 'success');
+  return currentUser;
 }
 
 export async function login(loginStr, password) {
   const lStr = String(loginStr || '').trim();
   const pStr = String(password || '').trim();
 
-  if (!lStr) {
-    throw new Error('Пожалуйста, введите имя пользователя или email');
+  if (!lStr || !pStr) {
+    throw new Error('Пожалуйста, введите логин и пароль');
   }
 
-  const isReiKatari = lStr.toLowerCase() === 'reikatari' || 
-                      lStr.toLowerCase() === 'reikatari@outlook.com' || 
-                      lStr.toLowerCase() === '45316432+reikatari@users.noreply.github.com' ||
-                      lStr.toLowerCase() === 'creator' ||
-                      lStr.toLowerCase() === 'admin';
-
+  let res;
   try {
-    const res = await fetch('/api/auth/login', {
+    res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login: lStr, password: pStr || 'Storm2026!' }),
-      signal: AbortSignal.timeout(2500)
+      body: JSON.stringify({ login: lStr, password: pStr }),
+      signal: AbortSignal.timeout(4000)
     });
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
-
-    if (res.ok) {
-      const data = await res.json();
-      currentToken = data.token;
-      currentUser = data.user;
-      localStorage.setItem('storm_token', currentToken);
-      localStorage.setItem('storm_user', JSON.stringify(currentUser));
-
-      updateAuthUI();
-      notifyAuthChanged();
-      showToast(t('msg_login_success'), 'success');
-      return currentUser;
-    } else {
-      // Если сервер отклонил (например, юзера еще нет) — пробуем быструю регистрацию
-      try {
-        const email = lStr.includes('@') ? lStr : `${lStr.toLowerCase()}@storm.local`;
-        const regRes = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: lStr, email, password: pStr || 'Storm2026!' }),
-          signal: AbortSignal.timeout(2500)
-        });
-        if (regRes.ok) {
-          const regData = await regRes.json();
-          currentToken = regData.token;
-          currentUser = regData.user;
-          localStorage.setItem('storm_token', currentToken);
-          localStorage.setItem('storm_user', JSON.stringify(currentUser));
-          updateAuthUI();
-          notifyAuthChanged();
-          showToast(t('msg_login_success'), 'success');
-          return currentUser;
-        }
-      } catch {}
-
-      if (isReiKatari) {
-        return loginOfflineAdmin('ReiKatari');
-      }
-
-      // Создаем локальную пользовательскую сессию, если сервер недоступен или вернул ошибку
-      return loginOfflineUser(lStr);
-    }
-  } catch (err) {
+  } catch (netErr) {
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = false;
-    // Автономный режим (Android WebView, офлайн или сбой сети)
-    if (isReiKatari) {
-      return loginOfflineAdmin('ReiKatari');
-    }
-
-    const cachedUser = localStorage.getItem('storm_user');
-    if (cachedUser) {
-      try {
-        const u = JSON.parse(cachedUser);
-        if (u.username && u.username.toLowerCase() === lStr.toLowerCase()) {
-          currentUser = u;
-          currentToken = localStorage.getItem('storm_token') || ('offline_token_' + Date.now());
-          localStorage.setItem('storm_token', currentToken);
-          updateAuthUI();
-          notifyAuthChanged();
-          showToast('Вход выполнен в автономном режиме', 'info');
-          return currentUser;
-        }
-      } catch {}
-    }
-
-    return loginOfflineUser(lStr);
+    throw new Error('Сервер авторизации временно недоступен. Проверьте подключение к сети.');
   }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data || !data.user) {
+    throw new Error(data?.error || 'Неверное имя пользователя или пароль');
+  }
+
+  const prevUserId = localStorage.getItem('storm_active_user_id');
+  if (prevUserId && String(prevUserId) !== String(data.user.id)) {
+    clearUserSessionLocalCache();
+  }
+
+  currentToken = data.token;
+  currentUser = data.user;
+  localStorage.setItem('storm_active_user_id', String(data.user.id));
+  localStorage.setItem('storm_token', currentToken);
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
+
+  updateAuthUI();
+  notifyAuthChanged();
+  showToast(t('msg_login_success'), 'success');
+  return currentUser;
 }
 
 export function loginOfflineUser(username = 'Пользователь', customEmail = '') {
+  clearUserSessionLocalCache();
   currentUser = {
     id: Math.floor(Math.random() * 10000) + 100,
     username: username,
@@ -266,6 +268,7 @@ export function loginOfflineUser(username = 'Пользователь', customEm
 }
 
 export function loginAsGuest() {
+  clearUserSessionLocalCache();
   currentUser = {
     id: 9999,
     username: 'Гость',
@@ -284,25 +287,6 @@ export function loginAsGuest() {
   return currentUser;
 }
 
-export function loginOfflineAdmin(username = 'ReiKatari') {
-  currentUser = {
-    id: 2,
-    username: username,
-    email: 'ReiKatari@outlook.com',
-    role: 'admin',
-    avatar: 'assets/favicon.svg',
-    created_at: 1789233981191,
-    stats: { bookmarks_count: 5, history_count: 10 }
-  };
-  currentToken = 'offline_admin_token_' + Date.now();
-  localStorage.setItem('storm_token', currentToken);
-  localStorage.setItem('storm_user', JSON.stringify(currentUser));
-  updateAuthUI();
-  notifyAuthChanged();
-  showToast(t('msg_login_success'), 'success');
-  return currentUser;
-}
-
 export async function logout() {
   if (currentToken) {
     try {
@@ -317,8 +301,7 @@ export async function logout() {
 
   currentToken = null;
   currentUser = null;
-  localStorage.removeItem('storm_token');
-  localStorage.removeItem('storm_user');
+  clearUserSessionLocalCache();
 
   updateAuthUI();
   notifyAuthChanged();
@@ -750,18 +733,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.1.1').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.1.2').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.1.1').then(achMod => {
+  import('./achievements.js?v=1.1.2').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.1.1').then(themeMod => {
+  import('./theme.js?v=1.1.2').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -825,7 +808,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.1.1').then(m => {
+      import('./player.js?v=1.1.2').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -839,10 +822,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.1.1').then(m => {
+      import('./player.js?v=1.1.2').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.1.1').then(m => {
+      import('./ad-shield.js?v=1.1.2').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -866,7 +849,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.1.1').then(m => {
+      import('./ad-shield.js?v=1.1.2').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -879,7 +862,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.1.1').then(m => {
+      import('./smart-skip.js?v=1.1.2').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -892,7 +875,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.1.1').then(m => {
+      import('./player.js?v=1.1.2').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -910,11 +893,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.1.1').then(m => {
+      import('./player.js?v=1.1.2').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.1.1').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.1.2').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1033,7 +1016,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.1.1').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.1.2').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1098,7 +1081,7 @@ export function initProfileHandlers() {
       try {
         const payload = {
           app: 'STORM MULTIMEDIA',
-          version: '1.1.1',
+          version: '1.1.2',
           exportedAt: new Date().toISOString(),
           bookmarks: JSON.parse(localStorage.getItem('storm_local_bookmarks') || '{}'),
           customLists: JSON.parse(localStorage.getItem('storm_custom_lists') || '[]'),
@@ -1118,7 +1101,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.1.1').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.1.2').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -1401,8 +1384,8 @@ const TAB_LABELS_MAP = {
 const DEFAULT_PROFILES = [
   {
     id: 'primary',
-    name: 'ReiKatari',
-    subtitle: 'Основной администратор',
+    name: 'Основной профиль',
+    subtitle: 'Персональный кинозал',
     avatar: '👑',
     avatarBg: 'linear-gradient(135deg, #f59e0b, #d97706)',
     isKid: false,

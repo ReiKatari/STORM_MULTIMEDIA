@@ -1,6 +1,7 @@
 /**
  * STORM MULTIMEDIA - Автоматическая синхронизация файлов в контейнер Synology NAS (Portainer Docker API)
  */
+import '../env-loader.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -67,11 +68,42 @@ function createTar(files) {
   return Buffer.concat(chunks);
 }
 
+async function ensureFastBootWrappers(host, port, jwt, epId, containerId) {
+  try {
+    const setupCmd = [
+      'if [ ! -f /usr/local/bin/npm.real ]; then mv /usr/local/bin/npm /usr/local/bin/npm.real; fi',
+      'printf "#!/bin/sh\\nif [ \\"\\$1\\" = \\"install\\" ] && [ -d \\"/app/node_modules/express\\" ]; then exit 0; fi\\nexec /usr/local/bin/npm.real \\"\\$@\\"\\n" > /usr/local/bin/npm',
+      'chmod +x /usr/local/bin/npm',
+      'if [ ! -f /sbin/apk.real ]; then cp /sbin/apk /sbin/apk.real; fi',
+      'printf "#!/bin/sh\\nif [ \\"\\$1\\" = \\"add\\" ] && [ -f \\"/usr/bin/wget\\" ]; then exit 0; fi\\nexec /sbin/apk.real \\"\\$@\\"\\n" > /sbin/apk',
+      'chmod +x /sbin/apk'
+    ].join(' && ');
+
+    const exRes = await fetch(`http://${host}:${port}/api/endpoints/${epId}/docker/containers/${containerId}/exec`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ AttachStdout: true, AttachStderr: true, Cmd: ['sh', '-c', setupCmd] })
+    });
+    if (exRes.ok) {
+      const { Id } = await exRes.json();
+      await fetch(`http://${host}:${port}/api/endpoints/${epId}/docker/exec/${Id}/start`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Detach: false, Tty: true })
+      });
+    }
+  } catch (_) {}
+}
+
 export async function syncToPortainer(options = {}) {
-  const host = options.host || '192.168.1.154';
-  const port = options.port || 9000;
-  const username = options.username || 'ReiKatari';
-  const password = options.password || 'SeR1eNi!2Ty9kP';
+  const host = options.host || process.env.PORTAINER_HOST || process.env.DB_HOST_FALLBACK || '127.0.0.1';
+  const port = Number(options.port || process.env.PORTAINER_PORT || 9000);
+  const username = options.username || process.env.PORTAINER_USER || '';
+  const password = options.password || process.env.PORTAINER_PASSWORD || '';
+
+  if (!username || !password) {
+    throw new Error('Укажите PORTAINER_HOST, PORTAINER_USER и PORTAINER_PASSWORD в локальном файле .env');
+  }
 
   console.log(`[Portainer Sync] Авторизация на http://${host}:${port}...`);
   const authRes = await fetch(`http://${host}:${port}/api/auth`, {
@@ -97,7 +129,7 @@ export async function syncToPortainer(options = {}) {
 
   console.log(`[Portainer Sync] Найден контейнер: ${stormContainer.Id.slice(0, 12)} (${stormContainer.State})`);
 
-  const rootFiles = ['package.json', 'server.js', 'db.js', 'mariadb.js'];
+  const rootFiles = ['package.json', 'env-loader.js', 'server.js', 'db.js', 'mariadb.js', '.env'];
   const filePaths = Array.from(new Set([
     ...rootFiles,
     ...collectDirFiles('services'),
@@ -130,12 +162,26 @@ export async function syncToPortainer(options = {}) {
   if (!uploadRes.ok) throw new Error('Upload error: ' + uploadRes.status);
   console.log('[Portainer Sync] Файлы успешно обновлены.');
 
+  await ensureFastBootWrappers(host, port, jwt, epId, stormContainer.Id);
+
   console.log('[Portainer Sync] Перезапуск контейнера...');
-  const restartRes = await fetch(`http://${host}:${port}/api/endpoints/${epId}/docker/containers/${stormContainer.Id}/restart?t=3`, {
+  const restartRes = await fetch(`http://${host}:${port}/api/endpoints/${epId}/docker/containers/${stormContainer.Id}/restart?t=2`, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + jwt }
   });
   console.log(`[Portainer Sync] Перезапуск завершен (HTTP ${restartRes.status})`);
+
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const hRes = await fetch(`http://${host}:3900/api/health`);
+      if (hRes.ok) {
+        const hJson = await hRes.json();
+        console.log(`[Portainer Sync] Сервер онлайн (версия ${hJson.version}, БД: ${hJson.database?.driver})`);
+        break;
+      }
+    } catch (_) {}
+  }
 }
 
 // Если запущен напрямую из CLI

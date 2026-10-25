@@ -1,3 +1,4 @@
+import './env-loader.js';
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
@@ -5,6 +6,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as nodeZlib from 'node:zlib';
+import * as nodeCrypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 let sharp = null;
@@ -18,6 +20,7 @@ try {
 import {
   registerUser,
   loginUser,
+  createSession,
   logoutUser,
   getUserByToken,
   updateUserSettings,
@@ -27,10 +30,13 @@ import {
   getUserBookmarks,
   getBookmark,
   setBookmark,
+  saveBookmarkWatchedEpisodes,
   removeBookmark,
   logWatchProgress,
   getLatestWatchProgressForMedia,
+  getWatchedHistoryEpisodesForMedia,
   getContinueWatching,
+  removeContinueWatchingItem,
   getCustomLists,
   getCustomListDetails,
   createCustomList,
@@ -600,7 +606,89 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-app.use(cors());
+// Защищённый CORS и глобальные HTTP-заголовки безопасности + строгий запрет кэширования персональных API
+app.use(cors({
+  origin: (origin, callback) => {
+    callback(null, true);
+  },
+  credentials: false
+}));
+
+function isSafeExternalHttpUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  let candidate = rawUrl.trim();
+  if (candidate.startsWith('//')) candidate = 'https:' + candidate;
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (parsed.username || parsed.password) return false;
+  const host = String(parsed.hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return false;
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host === '0:0:0:0:0:0:0:1' ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host === 'host.docker.internal' ||
+    host === 'metadata.google.internal' ||
+    host.startsWith('fe80:') ||
+    host.startsWith('fc') ||
+    host.startsWith('fd')
+  ) {
+    return false;
+  }
+  const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [_, a, b] = ipv4Match.map(Number);
+    if (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  if (!req.path.startsWith('/api/player/')) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
+  const p = req.path || '';
+  if (
+    p.startsWith('/api/auth') ||
+    p.startsWith('/api/bookmarks') ||
+    p.startsWith('/api/media/continue-watching') ||
+    p.startsWith('/api/media/progress') ||
+    p.startsWith('/api/media/item') ||
+    p.startsWith('/api/custom-lists') ||
+    p.startsWith('/api/profiles') ||
+    p.startsWith('/api/admin') ||
+    p.startsWith('/api/user') ||
+    p.startsWith('/api/sync') ||
+    p.startsWith('/api/achievements') ||
+    p.startsWith('/api/local-library')
+  ) {
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Vary', 'Authorization, Cookie');
+  }
+  next();
+});
 
 // Высокоскоростной RAM-кэш предварительно сжатых статических файлов (0% нагрузки CPU NAS, отклик < 0.5 мс)
 const STATIC_PUBLIC_DIR = path.join(__dirname, 'public');
@@ -803,39 +891,65 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// Middleware для извлечения пользователя
+// Middleware для строгой персональной аутентификации пользователя (без авто-логина под чужим профилем!)
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   let token = null;
+  let fromCookie = false;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
+    token = authHeader.substring(7).trim();
   } else if (req.headers.cookie) {
     const match = req.headers.cookie.match(/storm_token=([a-zA-Z0-9_-]+)/);
-    if (match) token = match[1];
+    if (match) {
+      token = match[1];
+      fromCookie = true;
+    }
   }
 
   if (token) {
-    req.user = getUserByToken(token);
-    req.token = token;
-  }
-  if (!req.user) {
-    // Бесшовный доступ к профилю, закладкам и спискам для экосистемы STORM SOFT
-    const defaultSession = getOrCreateDefaultUserSession();
-    if (defaultSession?.user) {
-      req.user = defaultSession.user;
-      req.token = defaultSession.token;
-      if (!token) {
-        setSessionCookie(res, defaultSession.token);
+    const validUser = getUserByToken(token);
+    if (validUser) {
+      req.user = validUser;
+      req.token = token;
+    } else {
+      req.user = null;
+      req.token = null;
+      if (fromCookie) {
+        res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
       }
     }
+  } else {
+    req.user = null;
+    req.token = null;
   }
   next();
+}
+
+function isUserAdmin(user) {
+  if (!user) return false;
+  const username = String(user.username || '').trim().toLowerCase();
+  const email = String(user.email || '').trim().toLowerCase();
+  const role = String(user.role || '').trim().toLowerCase();
+  return role === 'admin' ||
+         username === 'reikatari' ||
+         email === 'reikatari@outlook.com' ||
+         email === '45316432+reikatari@users.noreply.github.com';
 }
 
 function requireAuth(req, res, next) {
   if (!req.user) {
     return res.status(401).json({ error: 'Требуется авторизация' });
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Требуется авторизация администратора' });
+  }
+  if (!isUserAdmin(req.user)) {
+    return res.status(403).json({ error: 'Доступ разрешён только администратору' });
   }
   next();
 }
@@ -907,6 +1021,13 @@ const syncRateLimiter = createRateLimiter({
   message: 'Превышен лимит синхронизации. Попробуйте через 1 минуту.'
 });
 
+const deviceCodeRateLimiter = createRateLimiter({
+  prefix: 'device_code',
+  maxRequests: 20,
+  windowMs: 60000,
+  message: 'Слишком частые запросы кода ТВ-авторизации. Подождите 1 минуту.'
+});
+
 // ==========================================
 // 1. АУТЕНТИФИКАЦИЯ И ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ
 // ==========================================
@@ -951,11 +1072,36 @@ app.post('/api/auth/login', loginRateLimiter, (req, res) => {
 // ВХОД ПО ОДНОРАЗОВОМУ ТВ-КОДУ (DEVICE CODE FLOW / 2FA)
 // ==========================================
 const pendingDeviceCodes = new Map();
+const DEVICE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-app.post('/api/auth/device/code', (req, res) => {
+function generateSecureDeviceCode() {
+  const bytes = nodeCrypto.randomBytes(8);
+  let part1 = '';
+  let part2 = '';
+  for (let i = 0; i < 4; i++) {
+    part1 += DEVICE_CODE_ALPHABET[bytes[i] % DEVICE_CODE_ALPHABET.length];
+    part2 += DEVICE_CODE_ALPHABET[bytes[i + 4] % DEVICE_CODE_ALPHABET.length];
+  }
+  return `ST-${part1}-${part2}`;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateLimitBuckets.entries()) {
+    if (!v || now - v.startTime > 300000) rateLimitBuckets.delete(k);
+  }
+  for (const [k, v] of pendingDeviceCodes.entries()) {
+    if (!v || now - v.createdAt > 600000) pendingDeviceCodes.delete(k);
+  }
+}, 300000).unref();
+
+app.post('/api/auth/device/code', deviceCodeRateLimiter, (req, res) => {
   try {
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
-    const code = `ST-${randomDigits}`;
+    if (pendingDeviceCodes.size > 500) {
+      const firstKey = pendingDeviceCodes.keys().next().value;
+      if (firstKey) pendingDeviceCodes.delete(firstKey);
+    }
+    const code = generateSecureDeviceCode();
     pendingDeviceCodes.set(code, {
       createdAt: Date.now(),
       verifiedUser: null,
@@ -972,10 +1118,10 @@ app.post('/api/auth/device/code', (req, res) => {
   }
 });
 
-app.post('/api/auth/device/verify', requireAuth, (req, res) => {
+app.post('/api/auth/device/verify', requireAuth, deviceCodeRateLimiter, (req, res) => {
   try {
     const rawCode = (req.body.code || '').trim().toUpperCase();
-    if (!rawCode) return res.status(400).json({ error: 'Укажите 6-значный ТВ-код' });
+    if (!rawCode) return res.status(400).json({ error: 'Укажите ТВ-код' });
     const entry = pendingDeviceCodes.get(rawCode);
     if (!entry) {
       return res.status(404).json({ error: 'Код не найден или срок его действия истёк' });
@@ -985,15 +1131,16 @@ app.post('/api/auth/device/verify', requireAuth, (req, res) => {
       return res.status(410).json({ error: 'Срок действия кода истёк. Запросите новый код на ТВ.' });
     }
 
-    entry.verifiedUser = req.user;
-    entry.token = req.token || 'offline_token_reikatari';
+    const tvSession = createSession(req.user.id);
+    entry.verifiedUser = tvSession.user;
+    entry.token = tvSession.token;
     res.json({ success: true, message: `ТВ-устройство успешно авторизовано под профилем «${req.user.username}»!` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/auth/device/poll', (req, res) => {
+app.get('/api/auth/device/poll', deviceCodeRateLimiter, (req, res) => {
   try {
     const rawCode = (req.query.code || '').trim().toUpperCase();
     if (!rawCode) return res.status(400).json({ error: 'Укажите код' });
@@ -1042,34 +1189,26 @@ app.get('/api/player/health', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({
+  const baseHealth = {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    memory: process.memoryUsage(),
-    pid: process.pid,
-    version: '1.1.1',
+    version: '1.1.2',
     database: {
-      driver: 'mariadb',
-      connected: isMariaDbActive(),
-      host: getMariaDbHost(),
-      name: 'stormmultimedia'
+      connected: isMariaDbActive()
     }
-  });
+  };
+  if (isUserAdmin(req.user)) {
+    baseHealth.memory = process.memoryUsage();
+    baseHealth.pid = process.pid;
+    baseHealth.database.driver = 'mariadb';
+    baseHealth.database.host = getMariaDbHost();
+    baseHealth.database.name = 'stormmultimedia';
+  }
+  res.json(baseHealth);
 });
 
-app.post('/api/admin/sync-db', async (req, res) => {
-  const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
-  let currentUser = req.user;
-  const isAdmin = currentUser && (
-    (currentUser.username || '').toLowerCase() === 'reikatari' ||
-    (currentUser.role || '').toLowerCase() === 'admin'
-  );
-
-  if (!isLocal && !isAdmin) {
-    return res.status(403).json({ error: 'Доступ ограничен' });
-  }
-
+app.post('/api/admin/sync-db', requireAdmin, async (req, res) => {
   try {
     const { db } = await import('./db.js');
     await syncFromMariaDbToSqlite(db);
@@ -1079,31 +1218,19 @@ app.post('/api/admin/sync-db', async (req, res) => {
   }
 });
 
-app.post('/api/admin/restart', (req, res) => {
-  const ipStr = String(req.ip || '');
-  const isLocal = ipStr === '127.0.0.1' || ipStr === '::1' || ipStr === '::ffff:127.0.0.1' || ipStr.includes('192.168.1.') || req.hostname === 'localhost';
-  let currentUser = req.user;
-  const isAdmin = currentUser && (
-    (currentUser.username || '').toLowerCase() === 'reikatari' ||
-    (currentUser.role || '').toLowerCase() === 'admin'
-  );
-
-  if (!isLocal && !isAdmin) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
-
+app.post('/api/admin/restart', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Server process restarting' });
   setTimeout(() => {
-    console.log('[Server] Restart requested. Exiting process...');
+    console.log('[Server] Restart requested by admin. Exiting process...');
     process.exit(0);
   }, 400);
 });
 
-app.all('/api/admin/launch-minerva', async (req, res) => {
+app.post('/api/admin/launch-minerva', requireAdmin, async (req, res) => {
   try {
-    const { exec } = await import('node:child_process');
+    const { execFile } = await import('node:child_process');
     const script = '/volume1/WEBSITES/STORM MINERVA/synology-daemon.sh';
-    exec(`bash "${script}"`, (err, stdout, stderr) => {
+    execFile('bash', [script], { timeout: 15000 }, (err, stdout, stderr) => {
       res.json({
         success: !err,
         stdout: String(stdout || ''),
@@ -1126,7 +1253,8 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/me', (req, res) => {
   if (!req.user) {
-    return res.json({ user: null });
+    res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+    return res.json({ user: null, authenticated: false });
   }
   const stats = getUserStats(req.user.id);
   res.json({
@@ -1203,22 +1331,9 @@ app.get('/api/auth/stats', requireAuth, (req, res) => {
 });
 
 // Панель администратора: сводка активности пользователей (для ReiKatari / ReiKatari@outlook.com)
-app.get('/api/admin/users-overview', (req, res) => {
+app.get('/api/admin/users-overview', requireAuth, (req, res) => {
   try {
-    let currentUser = req.user;
-    const isLocal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || req.hostname === 'localhost';
-
-    if (!currentUser && isLocal) {
-      const session = getOrCreateDefaultUserSession();
-      if (session?.user) {
-        currentUser = session.user;
-      }
-    }
-
-    if (!currentUser) {
-      return res.status(401).json({ error: 'Требуется авторизация администратора' });
-    }
-
+    const currentUser = req.user;
     const username = (currentUser.username || '').trim().toLowerCase();
     const email = (currentUser.email || '').trim().toLowerCase();
     const role = (currentUser.role || '').trim().toLowerCase();
@@ -1226,9 +1341,7 @@ app.get('/api/admin/users-overview', (req, res) => {
     const isReiKatari = username === 'reikatari' ||
                         email === 'reikatari@outlook.com' ||
                         email === '45316432+reikatari@users.noreply.github.com' ||
-                        email.includes('reikatari') ||
-                        role === 'admin' ||
-                        isLocal;
+                        role === 'admin';
 
     if (!isReiKatari) {
       return res.status(403).json({ error: 'Доступ разрешен только администратору ReiKatari (ReiKatari@outlook.com)' });
@@ -1256,16 +1369,13 @@ app.get('/api/profiles', (req, res) => {
   }
 });
 
-app.post('/api/profiles/save', (req, res) => {
+app.post('/api/profiles/save', requireAuth, (req, res) => {
   try {
     const { profiles } = req.body;
-    if (!Array.isArray(profiles)) {
+    if (!Array.isArray(profiles) || profiles.length > 20) {
       return res.status(400).json({ error: 'Неверный формат профилей' });
     }
-    const userId = req.user ? req.user.id : null;
-    if (userId) {
-      saveUserFamilyProfiles(userId, profiles);
-    }
+    saveUserFamilyProfiles(req.user.id, profiles);
     res.json({ success: true, profiles });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1314,11 +1424,20 @@ function normalizeImageUrl(url) {
 
   if (clean.startsWith('//')) clean = `https:${clean}`;
 
-  // Автоматическое перенаправление устаревших / заблокированных CDN AniXart на официальный быстрый CDN static.anixart.tv
-  const anixMatch = clean.match(/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
+  // Поддержка как коротких кодов static.anixart.tv, так и UUID-постеров s3.anixmirai.com с обязательным расширением .jpg
+  const anixMatch = clean.match(/(?:s\d*\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
   if (anixMatch) {
     const code = anixMatch[1].replace(/\.jpg$/i, '');
-    return `https://static.anixart.tv/posters/${code}.jpg`;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code);
+    return isUuid
+      ? `https://s3.anixmirai.com/posters/${code}.jpg`
+      : `https://static.anixart.tv/posters/${code}.jpg`;
+  }
+  if (/static\.anixart\.tv\/posters\/[0-9a-f]{8}-[0-9a-f]{4}-/i.test(clean)) {
+    const uuidMatch = clean.match(/posters\/([0-9a-f-]+)(?:\.jpg)?/i);
+    if (uuidMatch) {
+      return `https://s3.anixmirai.com/posters/${uuidMatch[1].replace(/\.jpg$/i, '')}.jpg`;
+    }
   }
   return clean;
 }
@@ -1332,9 +1451,9 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
   }
 
   const candidateUrls = [];
-  if (normalized.includes('image.tmdb.org')) {
-    // В РФ image.tmdb.org блокируется CloudFront (403 Forbidden / сертификат).
-    // Высокоскоростные CDN-зеркала wsrv.nl и images.weserv.nl отдают оригинальные постеры мгновенно
+  if (normalized.includes('image.tmdb.org') || normalized.includes('anixmirai.com') || normalized.includes('anixsekai.com')) {
+    // В РФ image.tmdb.org и s3.anixmirai.com блокируются напрямую (таймаут 5с).
+    // Высокоскоростные CDN-зеркала wsrv.nl и images.weserv.nl отдают оригинальные постеры за < 90 мс!
     candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
     candidateUrls.push(`https://images.weserv.nl/?url=${encodeURIComponent(normalized)}`);
     candidateUrls.push(normalized);
@@ -1430,7 +1549,7 @@ async function resolveAnimePosterBuffer(title, orig) {
   const cleanOrig = cleanStr(orig);
   if (!cleanTitle && !cleanOrig) return null;
 
-  const cacheKey = `anime_cover_v2_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const cacheKey = `anime_cover_v3_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
 
   // 1. Проверка сохранённого в SQLite URL обложки
   const cachedUrl = getCache('anime_covers', cacheKey);
@@ -1439,15 +1558,25 @@ async function resolveAnimePosterBuffer(title, orig) {
     if (img) return img;
   }
 
-  const titleNoSeason = normalizeAnimeFranchiseTitle(cleanTitle, true) || cleanTitle.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '').trim();
-  const origNoSeason = normalizeAnimeFranchiseTitle(cleanOrig, true) || cleanOrig.replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '').trim();
+  const titleNoSeason = (normalizeAnimeFranchiseTitle(cleanTitle, true) || cleanTitle)
+    .replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '')
+    .replace(/(?:[.:—-]|\s+)\s*(?:фильм|movie|спецвыпуск\w*|special\w*|ova|ona).*$/i, '')
+    .trim();
+  const origNoSeason = (normalizeAnimeFranchiseTitle(cleanOrig, true) || cleanOrig)
+    .replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '')
+    .replace(/(?:[.:—-]|\s+)\s*(?:movie|special\w*|ova|ona|the movie).*$/i, '')
+    .trim();
 
+  const titleBeforeColon = cleanTitle.includes(':') ? cleanTitle.split(':')[0].trim() : (cleanTitle.includes('.') ? cleanTitle.split('.')[0].trim() : '');
+  const origBeforeColon = cleanOrig.includes(':') ? cleanOrig.split(':')[0].trim() : (cleanOrig.includes('.') ? cleanOrig.split('.')[0].trim() : '');
   const searchTerms = [...new Set([
     cleanTitle,
     titleNoSeason,
+    titleBeforeColon,
     cleanOrig,
-    origNoSeason
-  ].filter(t => t && t.length >= 2))];
+    origNoSeason,
+    origBeforeColon
+  ].filter(t => t && t.length >= 2))].slice(0, 4);
 
   const matchesRequestedTitle = (candRu, candOrig) => {
     const normCandRu = normPosterKey(normalizeAnimeFranchiseTitle(candRu || '', true) || candRu);
@@ -1653,7 +1782,14 @@ export const KNOWN_VERIFIED_POSTERS = {
   [normPosterKey('одних из нас')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
   [normPosterKey('одни из нас')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
   [normPosterKey('the last of us')]: 'https://image.tmdb.org/t/p/w500/69loIrm9JPpPRE3Akw4yRoitSYn.jpg',
-  [normPosterKey('видения 2015')]: 'https://v17.fanfilm4k.media/uploads/posts/2022-06/770693_1654138922.jpg'
+  [normPosterKey('видения 2015')]: 'https://v17.fanfilm4k.media/uploads/posts/2022-06/770693_1654138922.jpg',
+  [normPosterKey('тетрадь смерти')]: 'https://image.tmdb.org/t/p/w500/tCZFfYTIwrR7n94J6G14Y4hAFU6.jpg',
+  [normPosterKey('death note')]: 'https://image.tmdb.org/t/p/w500/tCZFfYTIwrR7n94J6G14Y4hAFU6.jpg',
+  [normPosterKey('провожающая в последний путь фрирен')]: 'https://image.tmdb.org/t/p/w500/dqZENchTd7lp5zht7BdlqM7RBhD.jpg',
+  [normPosterKey('провожающая в последний путь фрирен золотая земля')]: 'https://image.tmdb.org/t/p/w500/dqZENchTd7lp5zht7BdlqM7RBhD.jpg',
+  [normPosterKey('о моем перерождении в слизь')]: 'https://image.tmdb.org/t/p/w500/jQb1z04cI12k0f2P6xCFncP9xG.jpg',
+  [normPosterKey('монолог фармацевта')]: 'https://image.tmdb.org/t/p/w500/e3ojpANrFnmJCyeBNTinJcmathR.jpg',
+  [normPosterKey('дракон раджа')]: 'https://shikimori.io/system/animes/original/52357.jpg'
 };
 
 // Фоновый предпрогрев популярных постеров
@@ -1686,7 +1822,7 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
     if (img) return img;
   }
 
-  const cacheKey = `universal_cover_v2_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const cacheKey = `universal_cover_v3_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
   const cachedUrl = getCache('universal_covers', cacheKey);
   if (cachedUrl && !isPlaceholderImage(cachedUrl)) {
     const img = await fetchImageBuffer(cachedUrl, 4000);
@@ -1750,7 +1886,7 @@ app.get('/api/media/image-proxy', async (req, res) => {
 
     // 1. Если передана прямая ссылка (включая static.anixart.tv / tmdb / kinopoisk / shikimori):
     // Сервер загружает бинарный буфер и отдаёт браузеру напрямую с долгосрочным кэшем (без опасных 302 редиректов к заблокированным доменам)
-    if (normalizedUrl && !isPlaceholderImage(normalizedUrl)) {
+    if (normalizedUrl && !isPlaceholderImage(normalizedUrl) && isSafeExternalHttpUrl(normalizedUrl)) {
       const img = await fetchImageBuffer(normalizedUrl, 5000);
       if (img) {
         res.set('Content-Type', img.contentType);
@@ -2250,8 +2386,9 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       const isAnimeOrSer = item.media_type === 'anime-series' || item.media_type === 'series' || item.media_type === 'cartoon-series';
       const baseKey = normCatalogKey(item.title, isAnimeOrSer) || normCatalogKey(item.original_title, isAnimeOrSer) || `id_${item.id}`;
       const k = (!isAnimeOrSer && item.year) ? `${baseKey}_movie_${item.year}` : baseKey;
-      const resolved4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title, item.year) || '';
-      const isItemUpcoming = !resolved4k && !item.lift_id && Boolean(item.is_upcoming || isMediaUpcomingOrUnreleased(item));
+      const raw4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title, item.year) || '';
+      const resolved4k = (raw4k && !String(raw4k).includes('do=search')) ? raw4k : '';
+      const isItemUpcoming = Boolean(item.is_upcoming || isMediaUpcomingOrUnreleased(item));
       if (!catalogDedupMap.has(k)) {
         catalogDedupMap.set(k, {
           ...item,
@@ -2264,19 +2401,23 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         const prev = catalogDedupMap.get(k);
         const combined4k = prev.fanfilm_4k_url || resolved4k || null;
         const combinedLift = prev.lift_id || item.lift_id || null;
-        const preferNew = (item.source === 'tmdb' && prev.source !== 'tmdb') || (!prev.poster && item.poster);
+        const prevHasRealPoster = Boolean(prev.poster && !isPlaceholderImage(prev.poster));
+        const itemHasRealPoster = Boolean(item.poster && !isPlaceholderImage(item.poster));
+        const preferNew = (item.source === 'tmdb' && prev.source !== 'tmdb' && itemHasRealPoster) || (!prevHasRealPoster && itemHasRealPoster);
         const merged = preferNew ? { ...prev, ...item } : { ...item, ...prev };
         merged.fanfilm_4k_url = combined4k;
         merged.lift_id = combinedLift;
         merged.rating_kp = prev.rating_kp || item.rating_kp;
         merged.rating_imdb = prev.rating_imdb || item.rating_imdb;
         merged.countries = (prev.countries && prev.countries.length > 0) ? prev.countries : item.countries;
-        const isMergedUpcoming = !combined4k && !combinedLift && Boolean((prev.is_upcoming && item.is_upcoming) || isMediaUpcomingOrUnreleased(merged));
+        const isMergedUpcoming = Boolean(prev.is_upcoming || item.is_upcoming || isMediaUpcomingOrUnreleased(merged));
         const has4K = !isMergedUpcoming && Boolean(prev.is4K || item.is4K || combined4k);
         merged.is_upcoming = isMergedUpcoming;
         merged.is4K = has4K;
         merged.quality = isMergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (merged.quality || '1080p FHD'));
-        merged.poster = prev.poster || item.poster;
+        merged.poster = (prevHasRealPoster ? prev.poster : null)
+          || (itemHasRealPoster ? item.poster : null)
+          || `/api/media/image-proxy?title=${encodeURIComponent(merged.title || '')}&orig=${encodeURIComponent(merged.original_title || '')}`;
         merged.rating = Math.max(parseFloat(prev.rating) || 0, parseFloat(item.rating) || 0) || prev.rating || item.rating;
         catalogDedupMap.set(k, merged);
       }
@@ -2323,7 +2464,20 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       }
     }
 
-    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+    const curCalYear = new Date().getFullYear();
+    items.forEach(it => {
+      if (!it.poster || isPlaceholderImage(it.poster)) {
+        it.poster = `/api/media/image-proxy?title=${encodeURIComponent(it.title || '')}&orig=${encodeURIComponent(it.original_title || '')}`;
+      }
+    });
+    items.sort((a, b) => {
+      const ya = parseInt(a.year, 10) || 0;
+      const yb = parseInt(b.year, 10) || 0;
+      const aFuture = ya > curCalYear || Boolean(a.is_upcoming);
+      const bFuture = yb > curCalYear || Boolean(b.is_upcoming);
+      if (aFuture !== bFuture) return aFuture ? 1 : -1;
+      return yb - ya;
+    });
   }
 
   let calculatedTotalPages = 1;
@@ -2876,9 +3030,11 @@ async function executeUnifiedSearch(query, source = 'all') {
     }
 
     it.players = unifiedPlayers;
-    it.is4K = true;
-    it.quality = '4K Ultra HD';
-    it.fanfilm_4k_url = fanfilmUrl;
+    const isUpSearch = Boolean(it.is_upcoming || isMediaUpcomingOrUnreleased(it));
+    it.is_upcoming = isUpSearch;
+    it.is4K = !isUpSearch;
+    it.quality = isUpSearch ? 'Ожидается' : '4K Ultra HD';
+    it.fanfilm_4k_url = isUpSearch ? null : fanfilmUrl;
 
     const rawTitle = it.title || '';
     const cleanedTitle = String(rawTitle)
@@ -3522,14 +3678,17 @@ app.get('/api/media/item', async (req, res) => {
     if (cached && (Date.now() - cached.time < 30 * 60 * 1000)) {
       let userBookmark = null;
       let userWatchProgress = null;
+      let userWatchedHistory = [];
       if (req.user) {
         userBookmark = getBookmark(req.user.id, String(id || cached.data.id), source || 'fanfilm4k', cached.data.title, cached.data.original_title);
         userWatchProgress = getLatestWatchProgressForMedia(req.user.id, String(id || cached.data.id), source || 'fanfilm4k', cached.data.title);
+        userWatchedHistory = getWatchedHistoryEpisodesForMedia(req.user.id, String(id || cached.data.id), source || 'fanfilm4k', cached.data.title);
       }
       return res.json({
         ...cached.data,
         user_bookmark: userBookmark,
-        user_watch_progress: userWatchProgress
+        user_watch_progress: userWatchProgress,
+        user_watched_history: userWatchedHistory
       });
     }
 
@@ -3818,21 +3977,21 @@ app.get('/api/media/item', async (req, res) => {
         };
       }
 
-      // Проверяем, является ли релиз ожидаемой новинкой / не вышедшим в прокат
-      const isKnownUnreleased = /кэрри|carrie/i.test(mediaDetails.title || req.query.title || '') && /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || ''));
-      const isCarrieUnreleased = isKnownUnreleased;
-      let isReleaseUpcoming = isKnownUnreleased || Boolean(
+      // Динамическая проверка, является ли релиз ещё не вышедшим в прокат
+      const isKnownUnreleased = false;
+      const isCarrieUnreleased = false;
+      let isReleaseUpcoming = Boolean(
         String(id || '').startsWith('tmdb_up_') ||
-        mediaDetails.is_upcoming ||
+        isMediaUpcomingOrUnreleased(mediaDetails) ||
         (mediaDetails.release_date && (() => {
           const s = String(mediaDetails.release_date).trim();
           if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-            const d = new Date(s);
+            const d = new Date(`${s.substring(0, 10)}T23:59:59`);
             return !isNaN(d.getTime()) && d > new Date();
           }
           const parts = s.split('.');
           if (parts.length === 3) {
-            const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T23:59:59`);
             return !isNaN(d.getTime()) && d > new Date();
           }
           return false;
@@ -4247,19 +4406,19 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails.trivia = uniqueTrivia;
     }
 
-    // Проверка на статус не вышедшего в цифровой релиз фильма
-    const isKnownUnreleased = /кэрри|carrie/i.test(mediaDetails.title || '') && /flanagan|флэнаган/i.test((mediaDetails.title || '') + ' ' + (mediaDetails.description || ''));
-    const isCarrieUnreleased = isKnownUnreleased;
+    // 100% динамическая проверка даты выхода фильма/сериала
+    const isKnownUnreleased = false;
+    const isCarrieUnreleased = false;
     const isFutureDateCheck = (dateStr) => {
       if (!dateStr) return false;
       const s = String(dateStr).trim();
       if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-        const d = new Date(s);
+        const d = new Date(`${s.substring(0, 10)}T23:59:59`);
         return !isNaN(d.getTime()) && d > new Date();
       }
       const parts = s.split('.');
       if (parts.length === 3) {
-        const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T23:59:59`);
         return !isNaN(d.getTime()) && d > new Date();
       }
       return false;
@@ -4557,9 +4716,11 @@ app.get('/api/media/item', async (req, res) => {
 
     let userBookmark = null;
     let userWatchProgress = null;
+    let userWatchedHistory = [];
     if (req.user) {
       userBookmark = getBookmark(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title, mediaDetails.original_title);
       userWatchProgress = getLatestWatchProgressForMedia(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title);
+      userWatchedHistory = getWatchedHistoryEpisodesForMedia(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title);
     }
 
     itemDetailsCache.set(cacheKey, {
@@ -4574,7 +4735,8 @@ app.get('/api/media/item', async (req, res) => {
       ...mediaDetails,
       players: allPlayers,
       user_bookmark: userBookmark,
-      user_watch_progress: userWatchProgress
+      user_watch_progress: userWatchProgress,
+      user_watched_history: userWatchedHistory
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -5434,6 +5596,7 @@ app.get('/api/stream/chunk-proxy', async (req, res) => {
   try {
     const chunkUrl = req.query.url;
     if (!chunkUrl) return res.status(400).send('No url provided');
+    if (!isSafeExternalHttpUrl(chunkUrl)) return res.status(403).send('Forbidden target host');
 
     if (streamChunkCache.has(chunkUrl)) {
       const cached = streamChunkCache.get(chunkUrl);
@@ -5489,6 +5652,7 @@ app.get('/api/player/check-stream', async (req, res) => {
   try {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.json({ alive: true });
+    if (!isSafeExternalHttpUrl(targetUrl)) return res.status(403).json({ alive: false, error: 'Forbidden host' });
 
     // Потоки FanFilm4K и Stravers штатно воспроизводятся в браузерных iframe клиентов,
     // но блокируют прямые датацентровые запросы Node.js (403 Cloudflare). Всегда считаем их доступными.
@@ -7874,6 +8038,9 @@ app.get(['/api/player/kodik-embed', '/api/player/vpn-proxy', '/api/player/adbloc
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       return res.status(400).type('text/plain; charset=utf-8').send('Некорректный URL');
     }
+    if (!isSafeExternalHttpUrl(cleanUrl)) {
+      return res.status(403).type('text/plain; charset=utf-8').send('Доступ к внутренним адресам запрещён');
+    }
 
     // Сохраняем и восстанавливаем параметры сигнатуры балансера (d, d_sign, ref, ref_sign, season, episode и др.)
     const extraParams = new URLSearchParams();
@@ -8432,7 +8599,7 @@ app.get('/api/player/lift-download-options', async (req, res) => {
 app.get('/api/player/lift-subtitle.vtt', async (req, res) => {
   try {
     const rawUrl = String(req.query.url || '').trim();
-    if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
+    if (!rawUrl || !/^https?:\/\//i.test(rawUrl) || !isSafeExternalHttpUrl(rawUrl)) {
       return res.status(400).send('Invalid subtitle URL');
     }
     const cleanFilename = String(req.query.filename || 'subtitles.vtt')
@@ -8468,7 +8635,7 @@ app.get('/api/player/lift-playlist.m3u8', (req, res) => {
   const title = String(req.query.title || 'STORM MULTIMEDIA 4K Stream').replace(/[\r\n]+/g, ' ').trim();
   const quality = String(req.query.quality || '1080p').replace(/[\r\n]+/g, '').trim();
   const voice = String(req.query.voice || '').replace(/[\r\n]+/g, '').trim();
-  if (!streamUrl || !/^https?:\/\//i.test(streamUrl)) {
+  if (!streamUrl || !/^https?:\/\//i.test(streamUrl) || !isSafeExternalHttpUrl(streamUrl)) {
     return res.status(400).send('Invalid stream URL');
   }
   const displayTitle = `${title} [${quality}${voice ? ' • ' + voice : ''}]`;
@@ -9454,6 +9621,15 @@ app.post('/api/bookmarks/set', requireAuth, (req, res) => {
   }
 });
 
+app.post('/api/bookmarks/episodes', requireAuth, (req, res) => {
+  try {
+    const bookmark = saveBookmarkWatchedEpisodes(req.user.id, req.body || {});
+    res.json({ success: true, bookmark });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const handleRemoveBookmark = (req, res) => {
   try {
     const { media_id, source, title } = req.body;
@@ -9483,6 +9659,20 @@ app.get('/api/media/continue-watching', requireAuth, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+const handleRemoveContinueWatching = (req, res) => {
+  try {
+    const media_id = req.body?.media_id || req.body?.id || req.query?.media_id || '';
+    const source = req.body?.source || req.query?.source || '';
+    const title = req.body?.title || req.query?.title || '';
+    removeContinueWatchingItem(req.user.id, media_id, source, title);
+    res.json({ success: true, removed: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+app.post('/api/media/continue-watching/remove', requireAuth, handleRemoveContinueWatching);
+app.delete('/api/media/continue-watching/remove', requireAuth, handleRemoveContinueWatching);
 
 // Полная очистка закладок, списков и истории пользователя
 app.post('/api/user/purge-all-data', requireAuth, (req, res) => {
@@ -9933,7 +10123,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.1.1';
+  let currentAppVersion = '1.1.2';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -10025,7 +10215,7 @@ app.get('/api/updates/check', async (req, res) => {
 });
 
 // ==========================================
-// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.1.1)
+// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.1.2)
 // ==========================================
 
 // 13.1. Мультидорожечный загрузчик STORM Direct Downloader 2.0 (Встроенный HLS-муксер с аудио + субтитрами и прямой поток)
@@ -10298,8 +10488,8 @@ app.get('/api/media/season-recap', async (req, res) => {
 // 13.4. Умная лента «Новые серии и озвучки ваших сериалов» (My Airing Tracker)
 app.get('/api/media/airing-tracker', async (req, res) => {
   try {
-    const userId = req.user ? req.user.id : 1;
-    const bookmarks = getUserBookmarks(userId) || [];
+    const userId = req.user ? req.user.id : null;
+    const bookmarks = userId ? (getUserBookmarks(userId) || []) : [];
     const activeSeries = bookmarks.filter(b => {
       const st = String(b.status || '').toLowerCase();
       const mt = String(b.media_type || '').toLowerCase();
@@ -10400,10 +10590,10 @@ app.get('/api/media/airing-tracker', async (req, res) => {
 // 13.5. Кино-итоги и аналитика зрителя (STORM Rewind)
 app.get('/api/user/rewind-stats', (req, res) => {
   try {
-    const userId = req.user ? req.user.id : 1;
-    const stats = getUserStats(userId) || {};
-    const bookmarks = getUserBookmarks(userId) || [];
-    const cw = getContinueWatching(userId) || [];
+    const userId = req.user ? req.user.id : null;
+    const stats = userId ? (getUserStats(userId) || {}) : {};
+    const bookmarks = userId ? (getUserBookmarks(userId) || []) : [];
+    const cw = userId ? (getContinueWatching(userId) || []) : [];
 
     const totalCompleted = bookmarks.filter(b => b.status === 'completed').length;
     const totalWatching = bookmarks.filter(b => b.status === 'watching').length;
@@ -10671,16 +10861,23 @@ function parseLocalVideoFilename(filename) {
   };
 }
 
-app.get('/api/local-library/list', (req, res) => {
+app.get('/api/local-library/list', requireAdmin, (req, res) => {
   res.json({
     success: true,
-    items: Array.from(localLibraryStore.values())
+    items: Array.from(localLibraryStore.values()).map(({ fullPath, ...safeItem }) => safeItem)
   });
 });
 
-app.post('/api/local-library/scan', async (req, res) => {
+app.post('/api/local-library/scan', requireAdmin, async (req, res) => {
   try {
     const rawFolder = String(req.body?.folderPath || '').trim();
+    if (rawFolder) {
+      const normCheck = path.resolve(rawFolder).toLowerCase();
+      const forbiddenPrefixes = ['/etc', '/proc', '/sys', '/root', '/var/run', 'c:\\windows', 'c:\\program files'];
+      if (forbiddenPrefixes.some(fp => normCheck === fp || normCheck.startsWith(fp + path.sep) || normCheck.startsWith(fp + '/'))) {
+        return res.status(403).json({ error: 'Сканирование системных директорий запрещено' });
+      }
+    }
     const defaultDirs = [
       rawFolder,
       path.join(process.env.USERPROFILE || '', 'Videos'),
@@ -10744,12 +10941,12 @@ app.post('/api/local-library/scan', async (req, res) => {
         stream_url: `/api/local-library/stream?id=${encodeURIComponent(id)}`
       };
       localLibraryStore.set(id, item);
-      items.push(item);
+      const { fullPath: _fp, ...safeItem } = item;
+      items.push(safeItem);
     }
 
     res.json({
       success: true,
-      scannedFolder: targetDir,
       count: items.length,
       items
     });
@@ -10758,7 +10955,7 @@ app.post('/api/local-library/scan', async (req, res) => {
   }
 });
 
-app.get('/api/local-library/stream', (req, res) => {
+app.get('/api/local-library/stream', requireAdmin, (req, res) => {
   try {
     const id = String(req.query.id || '').trim();
     const entry = localLibraryStore.get(id);
@@ -10783,8 +10980,13 @@ app.get('/api/local-library/stream', (req, res) => {
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10) || 0;
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const start = Math.max(0, parseInt(parts[0], 10) || 0);
+      const rawEnd = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const end = Math.min(fileSize - 1, Number.isFinite(rawEnd) ? rawEnd : fileSize - 1);
+      if (start >= fileSize || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        return res.end();
+      }
       const chunkSize = (end - start) + 1;
       const stream = fs.createReadStream(filePath, { start, end });
       res.writeHead(206, {

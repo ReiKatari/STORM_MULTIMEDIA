@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.1.1';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.1';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.1';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.1';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.1';
-import { getStatusIconSvg } from './status-icons.js?v=1.1.1';
-import { initFormFactorEngine } from './form-factor.js?v=1.1.1';
+import { initTheme, setTheme } from './theme.js?v=1.1.2';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.2';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.2';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.2';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.2';
+import { getStatusIconSvg } from './status-icons.js?v=1.1.2';
+import { initFormFactorEngine } from './form-factor.js?v=1.1.2';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.1.1';
+const STORM_ASSET_VER = '1.1.2';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -218,7 +218,7 @@ export const clientTabCache = new Map();
 
 export function getPersistentTabCache(key) {
   try {
-    const raw = localStorage.getItem(`storm_cat_cache_v3_${key}`);
+    const raw = localStorage.getItem(`storm_cat_cache_v5_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
@@ -237,7 +237,7 @@ export function setPersistentTabCache(key, data) {
       totalPages: data.totalPages || 1,
       timestamp: Date.now()
     };
-    localStorage.setItem(`storm_cat_cache_v3_${key}`, JSON.stringify(toSave));
+    localStorage.setItem(`storm_cat_cache_v5_${key}`, JSON.stringify(toSave));
   } catch {}
 }
 
@@ -306,11 +306,18 @@ async function startStormApp() {
   try { initDynamicMediaIsland(); } catch (e) { console.warn('initDynamicMediaIsland error:', e); }
   try { updateFamilyProfileHeader(); } catch (e) { console.warn('updateFamilyProfileHeader error:', e); }
 
-  // Предзагрузка реальной истории просмотров без выдумок
+  // Автоматическая динамическая предзагрузка и синхронизация истории и закладок из БД на старте
   try {
-    refreshContinueWatchingCache().then(() => {
+    Promise.allSettled([
+      refreshContinueWatchingCache(),
+      fetchUserBookmarks()
+    ]).then(() => {
+      lastRenderedHomeKey = '';
+      syncAllRenderedCardsDynamicState();
       if (currentTab === 'home' && rawCatalogItems.length > 0) {
         renderHomeView(rawCatalogItems);
+      } else if (rawCatalogItems.length > 0) {
+        renderFilteredCatalog();
       }
     }).catch(() => {});
   } catch (_) {}
@@ -319,13 +326,32 @@ async function startStormApp() {
     onAuthChanged(() => {
       try { updateFamilyProfileHeader(); } catch (_) {}
       try { updateMobileDrawerUser(); } catch (_) {}
-      refreshContinueWatchingCache().then(() => {
+      Promise.allSettled([
+        refreshContinueWatchingCache(),
+        fetchUserBookmarks()
+      ]).then(() => {
+        lastRenderedHomeKey = '';
+        syncAllRenderedCardsDynamicState();
         if (currentTab === 'bookmarks' || currentTab === 'continue') {
           loadCurrentTab();
         } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
           renderHomeView(rawCatalogItems);
+        } else {
+          renderFilteredCatalog();
         }
       }).catch(() => {});
+    });
+
+    window.addEventListener('storm:dynamic-state-sync', () => {
+      syncAllRenderedCardsDynamicState();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        Promise.allSettled([refreshContinueWatchingCache(), fetchUserBookmarks()])
+          .then(() => syncAllRenderedCardsDynamicState())
+          .catch(() => {});
+      }
     });
   } catch (_) {}
 
@@ -1376,6 +1402,29 @@ function initCardActionSheet() {
       }
     });
   }
+
+  const actionsContainer = modal.querySelector('.action-sheet-actions');
+  if (actionsContainer && !modal.querySelector('#action-sheet-remove-continue-btn')) {
+    const rmBtn = document.createElement('button');
+    rmBtn.type = 'button';
+    rmBtn.className = 'action-sheet-btn';
+    rmBtn.id = 'action-sheet-remove-continue-btn';
+    rmBtn.innerHTML = `
+      <span class="action-sheet-btn-icon" style="color:#f43f5e;">✕</span>
+      <div class="action-sheet-btn-text">
+        <span class="action-sheet-btn-title">Убрать из «Продолжить просмотр»</span>
+        <span class="action-sheet-btn-desc">Скрыть релиз из ленты продолжения просмотра</span>
+      </div>
+    `;
+    rmBtn.addEventListener('click', () => {
+      if (currentActionItem) {
+        const itemToRemove = currentActionItem;
+        closeCardActionSheet();
+        removeMediaFromContinueWatching(itemToRemove);
+      }
+    });
+    actionsContainer.appendChild(rmBtn);
+  }
 }
 
 function openCardActionSheet(item) {
@@ -1545,6 +1594,10 @@ export function openRadialActionRing(event, item) {
         <span class="radial-action-icon">🎬</span>
         <span class="radial-action-label">Смотреть</span>
       </button>
+      <button type="button" class="radial-action-item action-remove-continue" data-action="remove-continue" title="Убрать из «Продолжить просмотр»">
+        <span class="radial-action-icon">✕</span>
+        <span class="radial-action-label">Убрать</span>
+      </button>
       <button type="button" class="radial-action-item action-bookmark" data-action="bookmark" title="Добавить в закладки">
         <span class="radial-action-icon">🔖</span>
         <span class="radial-action-label">Закладки</span>
@@ -1582,6 +1635,9 @@ export function openRadialActionRing(event, item) {
       switch (action) {
         case 'watch':
           openPlayerModal(item);
+          break;
+        case 'remove-continue':
+          removeMediaFromContinueWatching(item);
           break;
         case 'trailer':
           openPlayerModal(item, { isTrailer: true });
@@ -1837,11 +1893,11 @@ export function cleanVideoTitle(str) {
   // Сезон / ТВ / Часть в скобках и без скобок: (1 сезон), [2 сезон], [ТВ-2], Season 2, 2nd Season
   s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
   s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
-  // Хвостовой номер сезона у аниме и сериалов (например: "Киберпанк: Бегущие по краю 2" -> "Киберпанк: Бегущие по краю")
+  // Удаляем хвостовой номер ТОЛЬКО если за ним явно следует маркер сезона/арки (не обрезая сиквелы фильмов вроде «Вышка 2»)
   const lowerFull = s.toLowerCase().replace(/ё/g, 'е').trim();
   const isProtectedMovieSeq = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
   if (!isProtectedMovieSeq) {
-    const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*(?:часть|part|сезон|season|арка|битва).*)?$/i);
+    const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(?:сезон|season|арка|cour).*$/i);
     if (mTrail && mTrail[1].trim().length >= 3) {
       s = mTrail[1].trim();
     }
@@ -1884,10 +1940,13 @@ export function unwrapRawImageUrl(url) {
     }
   }
   if (clean.startsWith('//')) clean = `https:${clean}`;
-  const anixMatch = clean.match(/(?:s\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
+  const anixMatch = clean.match(/(?:s\d*\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
   if (anixMatch) {
     const code = anixMatch[1].replace(/\.jpg$/i, '');
-    return `https://static.anixart.tv/posters/${code}.jpg`;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code);
+    return isUuid
+      ? `https://s3.anixmirai.com/posters/${code}.jpg`
+      : `https://static.anixart.tv/posters/${code}.jpg`;
   }
   return clean;
 }
@@ -2014,56 +2073,21 @@ export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
   const cleanTitle = escapeHtml(title || '');
   const safeRawAttr = escapeHtml(rawClean || '');
   const classAttr = extraClass ? ` class="${extraClass}"` : '';
-  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}" loading="lazy" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
+  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}" loading="lazy" decoding="async" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
 }
 
 /**
  * Комплексная проверка медиа-элемента на стороне клиента на принадлежность к трейлерам/тизерам.
  * Полностью исключает появление любых карточек с трейлерами в каталогах, каруселях и закладках.
  */
-const _stormUpcomingIds = new Set([
-  '791523', '1477104', '1465063', '1153576', '1742441', '1236045', '1400837',
-  '1101412', '1148365', '1423191', '1281331', '1302904', '1248832', '1232569',
-  '1255833', '1561726', '1765072', '1288069', '1802674', '947493', '1788735',
-  '1777750', '1599191', '1750432', '1764166', '1760194', '1666700', '1572116',
-  '1729723', '1187326', '1732625', '1630030', '1679730', '1748007', '1418998',
-  '1623256', '1438966', '1241803', '1234139', '848700', '1790935', '1487317',
-  '1412795', '1429592', '1381078', '1058424', '1228834', '1514026', '1377237',
-  '1284186', '1503762', '1757506', '1283515', '1556321', '1388805', '1769556',
-  '1244523', '1763332', '1768117', '1763619', '1650896', '1767731', '1269325',
-  '1596303', '1766421', '1640396', '1618090', '1634905', '1768911', '1559680',
-  '1447963', '1590909', '1336068', '1375156', '718833', '1496785', '1754879',
-  '1443151', '1767115', '1768359', '1768029'
-]);
+// 100% динамический трекер ожидаемых премьер (без жёстко заданных списков ID или названий)
+const _stormUpcomingIds = new Set();
 try {
-  const savedUp = JSON.parse(localStorage.getItem('storm_upcoming_ids') || '[]');
-  if (Array.isArray(savedUp)) {
-    savedUp.forEach(x => _stormUpcomingIds.add(String(x)));
+  if (localStorage.getItem('storm_upcoming_ids_rev') !== 'dynamic-v3') {
+    localStorage.setItem('storm_upcoming_ids_rev', 'dynamic-v3');
+    localStorage.removeItem('storm_upcoming_ids');
   }
 } catch (_) {}
-
-const _stormUpcomingTitlePatterns = [
-  /ведьмин\s+лес|\bwildwood\b/i,
-  /барашек\s+шон\s+и\s+чудище|beast\s+of\s+mossy\s+bottom/i,
-  /остров\s+забвения|\bforgotten\s+island\b/i,
-  /кэрри.*2026|\bcarrie\b.*flanagan/i,
-  /одиссея.*2026|\bthe\s+odyssey\b/i,
-  /история\s+игрушек\s*5|\btoy\s+story\s*5\b/i,
-  /мстители\s*:\s*судный\s+день|\bavengers\s*:\s*doomsday\b/i,
-  /человек[- ]паук\s*:\s*новый\s+день|\bspider[- ]man\s*:\s*brand\s+new\s+day\b/i,
-  /шрек\s*5|\bshrek\s*5\b/i,
-  /ледниковый\s+период\s*6|\bice\s+age\s*6\b/i,
-  /бэтмен\s*:\s*часть\s*2|\bthe\s+batman\s+part\s+ii\b/i,
-  /мандалорец\s+и\s+грогу|\bmandalorian\s+and\s+grogu\b/i,
-  /чужая\s+мама|\bother\s+mommy\b/i,
-  /вышка\s*2|\bfall\s*2\s*:\s*deadpoint\b/i,
-  /matchbox\s*:\s*фильм|\bmatchbox\s+the\s+movie\b/i,
-  /социальная\s+расплата|\bthe\s+social\s+reckoning\b/i,
-  /практическая\s+магия\s*2|\bpractical\s+magic\s*2\b/i,
-  /пиноккио\s*:\s*раскрепощ[её]нный|\bpinocchio\s*:\s*unstrung\b/i,
-  /кит\s*:\s*во\s+тьме\s+глубин|\bwhalefall\b/i,
-  /з\/л\/о\s*:\s*сборник|\bv\/h\/s\/mixtape\b/i
-];
 
 export function markMediaIdAsUpcoming(rawId) {
   if (!rawId) return;
@@ -2100,68 +2124,93 @@ window.markMediaIdAsUpcoming = markMediaIdAsUpcoming;
 
 export function isUpcomingMediaItem(item) {
   if (!item || typeof item !== 'object') return false;
-  if (item.is_upcoming === true || item.isUpcoming === true) return true;
 
-  const rawId = String(item.id || item.tmdb_id || '').trim();
-  if (rawId.startsWith('tmdb_up_')) return true;
-  const cleanId = rawId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
-  if ((rawId && _stormUpcomingIds.has(rawId)) || (cleanId && _stormUpcomingIds.has(cleanId))) {
-    return true;
-  }
-
-  const titleCombo = `${item.title || ''} ${item.original_title || ''} ${item.name || ''} ${item.link || ''}`.trim();
-  if (titleCombo && _stormUpcomingTitlePatterns.some(rx => rx.test(titleCombo))) {
-    return true;
+  // 1. Динамический приоритет пользователя: если релиз уже просмотрен или начат — он НЕ «Ожидается»
+  const resolvedUserSt = String(item.user_status || resolveMediaUserStatus(item) || '').toLowerCase().trim();
+  if (['completed', 'watching', 'on_hold', 'dropped'].includes(resolvedUserSt) ||
+      Number(item.progress_percent || 0) > 0 ||
+      isMediaCardWatched(item)) {
+    return false;
   }
 
-  if (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) {
-    return true;
-  }
-  if (item.premiere && /ожидается|скоро|в кино|анонс/i.test(String(item.premiere))) {
-    return true;
-  }
-  if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) {
+  const yr = parseInt(item.year || getMediaYear(item), 10) || 0;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  if (yr > currentYear) {
     return true;
   }
 
+  // 2. Динамическая проверка даты премьеры по календарю реального времени
+  const dateStr = String(item.release_date || item.first_air_date || item.premiere || '').trim();
+  let parsedDate = null;
+  if (dateStr && dateStr !== `${yr}-01-01`) {
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      parsedDate = new Date(`${dateStr.substring(0, 10)}T23:59:59`);
+    } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateStr)) {
+      const [dd, mm, yyyy] = dateStr.split('.');
+      parsedDate = new Date(`${yyyy}-${mm}-${dd}T23:59:59`);
+    }
+    if (parsedDate && !isNaN(parsedDate.getTime()) && parsedDate > now) {
+      return true;
+    }
+  }
+
+  // 3. Наличие прямого рабочего потока или вышедших серий
   const hasDirectStream = Boolean(
     (item.fanfilm_4k_url && !String(item.fanfilm_4k_url).includes('do=search')) ||
     item.fanfilm_hd_url ||
     item.lift_id ||
+    item.iframe_uri ||
     item.vk_embed_url ||
     (item.rutube_id && String(item.rutube_id).length > 15) ||
     item.source === 'fanfilm4k' ||
     item.source === 'lift' ||
     item.source === 'anilibria' ||
-    item.source === 'anixart'
+    Number(item.episodes_released || 0) > 0
   );
+  if (hasDirectStream) {
+    return false;
+  }
 
-  const yr = parseInt(item.year, 10) || 0;
-  if (yr > new Date().getFullYear() && !hasDirectStream) {
+  const statusLow = String(item.status || '').toLowerCase().trim();
+  const votes = parseInt(item.vote_count, 10) || 0;
+  const ratingVal = parseFloat(item.rating || item.rating_tmdb || item.rating_kp || 0) || 0;
+
+  if (statusLow && ['planned', 'in production', 'post production', 'rumored', 'upcoming', 'anons', 'анонс', 'not yet aired', 'unreleased'].includes(statusLow)) {
+    if (votes < 5) return true;
+  }
+
+  // 4. Если дата релиза уже наступила (<= сегодня) и есть голоса/рейтинг — фильм УЖЕ ВЫШЕЛ (игнорируем устаревшие флаги кэша)
+  if (parsedDate && !isNaN(parsedDate.getTime()) && parsedDate <= now) {
+    if (votes > 0 || ratingVal > 0 || ['released', 'вышел', 'returning series', 'ended'].includes(statusLow)) {
+      return false;
+    }
+  }
+
+  if ((item.source === 'anixart' || item.source === 'shikimori') && Number(item.episodes_released || 0) === 0 && statusLow !== 'вышел' && statusLow !== 'released' && (yr >= currentYear || /анонс|anons/i.test(statusLow))) {
     return true;
   }
 
-  const dateStr = String(item.release_date || item.premiere || '').trim();
-  if (dateStr && dateStr !== `${yr}-01-01`) {
-    let parsedDate = null;
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-      parsedDate = new Date(dateStr.substring(0, 10));
-    } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateStr)) {
-      const [dd, mm, yyyy] = dateStr.split('.');
-      parsedDate = new Date(`${yyyy}-${mm}-${dd}`);
-    }
-    if (parsedDate && !isNaN(parsedDate.getTime())) {
-      if (parsedDate > new Date()) return true;
-      if (!hasDirectStream && parsedDate >= new Date('2026-04-15')) return true;
-    }
+  const rawId = String(item.id || item.tmdb_id || '').trim();
+  const cleanId = rawId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
+  if ((rawId && _stormUpcomingIds.has(rawId)) || (cleanId && _stormUpcomingIds.has(cleanId))) {
+    return true;
   }
 
-  if (!hasDirectStream && (item.source === 'tmdb' || rawId.startsWith('tmdb_')) && yr >= 2026) {
-    const votes = parseInt(item.vote_count, 10) || 0;
-    if (votes > 0 && votes < 180) return true;
+  if (!parsedDate && votes === 0) {
+    if (item.premiere && /ожидается|скоро|анонс/i.test(String(item.premiere))) return true;
+    if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) return true;
   }
 
-  return false;
+  if ((item.source === 'tmdb' || rawId.startsWith('tmdb_')) && yr >= currentYear && !parsedDate && votes === 0 && ratingVal === 0) {
+    return true;
+  }
+
+  if (rawId.startsWith('tmdb_up_') && (!parsedDate || votes === 0)) {
+    return true;
+  }
+
+  return Boolean((item.is_upcoming === true || item.isUpcoming === true) && !parsedDate && votes === 0 && ratingVal === 0);
 }
 window.isUpcomingMediaItem = isUpcomingMediaItem;
 
@@ -2411,9 +2460,16 @@ async function loadCurrentTab() {
     const history = await fetchContinueWatching();
     cachedContinueHistory = history;
     const excludedStatuses = ['completed', 'dropped', 'wont_watch'];
+    const seenContinueTabTitles = new Set();
     const rawItems = (history || [])
       .filter(h => {
         if (!h || (!h.media_id && !h.id) || !h.title) return false;
+        if (isDismissedFromContinueWatching(h.media_id || h.id, h.title)) return false;
+        const normK = normalizeMediaTitle(h.title || '');
+        if (normK) {
+          if (seenContinueTabTitles.has(normK)) return false;
+          seenContinueTabTitles.add(normK);
+        }
         const titleStr = String(h.title || '');
         if (titleStr.includes('FANFILM4K') || titleStr.includes('ФАН4К –') || titleStr.includes('4К UHD бесплатно')) return false;
 
@@ -2841,7 +2897,8 @@ function deduplicateMediaList(items) {
       const existing = itemMap.get(key);
       const fanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
         (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
-      const has4K = item.is4K || existing.is4K || Boolean(fanfilmUrl);
+      const mergedUpcoming = !fanfilmUrl && Boolean(item.is_upcoming || existing.is_upcoming || isUpcomingMediaItem(item) || isUpcomingMediaItem(existing));
+      const has4K = !mergedUpcoming && Boolean(item.is4K || existing.is4K || Boolean(fanfilmUrl));
 
       const isNewBetter =
         (item.source === 'tmdb' && existing.source !== 'tmdb') ||
@@ -2858,8 +2915,9 @@ function deduplicateMediaList(items) {
         genres: item.genres || existing.genres || '',
         release_date: item.release_date || existing.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
+        is_upcoming: mergedUpcoming,
         is4K: has4K,
-        quality: has4K ? '4K Ultra HD' : (item.quality || existing.quality),
+        quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (item.quality || existing.quality)),
         poster: item.poster || item.poster_url || existing.poster || existing.poster_url,
         user_status: item.user_status || existing.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
@@ -2872,8 +2930,9 @@ function deduplicateMediaList(items) {
         genres: existing.genres || item.genres || '',
         release_date: existing.release_date || item.release_date || '',
         fanfilm_4k_url: fanfilmUrl,
+        is_upcoming: mergedUpcoming,
         is4K: has4K,
-        quality: has4K ? '4K Ultra HD' : (existing.quality || item.quality),
+        quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (existing.quality || item.quality)),
         poster: existing.poster || existing.poster_url || item.poster || item.poster_url,
         user_status: existing.user_status || item.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
@@ -3193,7 +3252,108 @@ function renderHeroShowcase(items) {
 // -------------------------------------------------------------
 // ГОРИЗОНТАЛЬНЫЕ КАРУСЕЛИ РЕЙЛОВ (EMBY & PLEX HOME VIEW)
 // -------------------------------------------------------------
-function createRailCardHtml(item, idx, isWide = false) {
+
+export function isMediaCardWatched(item) {
+  if (!item) return false;
+  const st = item.user_status || resolveMediaUserStatus(item) || '';
+  if (st === 'completed') return true;
+  if (typeof item.progress_percent === 'number' && item.progress_percent >= 90) return true;
+  if (typeof item.series_progress_percent === 'number' && item.series_progress_percent >= 90) return true;
+
+  try {
+    const id = String(item.id || item.media_id || '').trim();
+    const rawTitle = String(item.title || item.name || '').trim();
+    const normTitle = normalizeMediaTitle(rawTitle, item.original_title || '');
+    const resumeTitleKey = rawTitle
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .trim();
+
+    if (id && localStorage.getItem(`storm_status_${id}`) === 'completed') return true;
+    if (normTitle && localStorage.getItem(`storm_status_title_${normTitle}`) === 'completed') return true;
+    if (resumeTitleKey && localStorage.getItem(`storm_watched_title_${resumeTitleKey}`) === '1') return true;
+
+    const candidateIds = new Set();
+    if (id) candidateIds.add(id);
+
+    if (resumeTitleKey) {
+      const rawSnap = localStorage.getItem(`storm_resume_state_title_${resumeTitleKey}`);
+      if (rawSnap) {
+        try {
+          const snap = JSON.parse(rawSnap);
+          if (snap) {
+            if (snap.media_id) candidateIds.add(String(snap.media_id));
+            if (typeof snap.progress_percent === 'number' && snap.progress_percent >= 90) return true;
+            if ((Number(snap.season) > 1 || Number(snap.episode) > 1) && Number(snap.time_seconds) >= 30) return true;
+          }
+        } catch {}
+      }
+    }
+
+    const hist = Array.isArray(cachedContinueHistory) ? cachedContinueHistory : getLocalContinueWatching();
+    if (Array.isArray(hist)) {
+      for (const h of hist) {
+        if (!h) continue;
+        const hId = String(h.media_id || h.id || '').trim();
+        const hNorm = normalizeMediaTitle(h.title || '');
+        if ((id && hId === id) || (normTitle && hNorm === normTitle)) {
+          if (hId) candidateIds.add(hId);
+          if ((typeof h.progress_percent === 'number' && h.progress_percent >= 90) ||
+              (typeof h.episode_progress_percent === 'number' && h.episode_progress_percent >= 90)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    for (const cid of candidateIds) {
+      if (!cid) continue;
+      for (let s = 1; s <= 10; s++) {
+        if (localStorage.getItem(`storm_season_status_${cid}_s${s}`) === 'completed') return true;
+        const wRaw = localStorage.getItem(`storm_watched_eps_${cid}_s${s}`) || (s === 1 ? localStorage.getItem(`storm_watched_eps_${cid}`) : null);
+        if (wRaw) {
+          try {
+            const arr = JSON.parse(wRaw);
+            if (Array.isArray(arr) && arr.length > 0) return true;
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+  return false;
+}
+
+export function removeMediaFromContinueWatching(item, cardEl = null) {
+  if (!item) return;
+  const mediaId = item.id || item.media_id || '';
+  const title = cleanVideoTitle(item.title || '');
+  const source = item.source || '';
+
+  if (cardEl) {
+    const railItem = cardEl.closest('.rail-item') || cardEl;
+    railItem.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
+    railItem.style.opacity = '0';
+    railItem.style.transform = 'scale(0.92)';
+  }
+
+  if (Array.isArray(cachedContinueHistory)) {
+    const normT = normalizeMediaTitle(title);
+    cachedContinueHistory = cachedContinueHistory.filter(h => {
+      if (!h) return false;
+      if (mediaId && String(h.media_id || h.id) === String(mediaId)) return false;
+      if (normT && normalizeMediaTitle(h.title || '') === normT) return false;
+      return true;
+    });
+  }
+
+  lastRenderedHomeKey = '';
+  removeFromLocalContinueWatching(mediaId, title, source);
+  showToast(`🗑️ «${title || 'Релиз'}» убран из «Продолжить просмотр»`, 'info');
+}
+
+function createRailCardHtml(item, idx, isWide = false, railId = '') {
   const poster = getSafePosterUrl(item.poster || 'assets/favicon.svg', item.title);
   const formattedTitle = formatMediaTitle(item);
   const isUpcoming = isUpcomingMediaItem(item);
@@ -3203,7 +3363,8 @@ function createRailCardHtml(item, idx, isWide = false) {
   const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
   const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
   const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming && item.is4K !== false && !/ожидается|скоро/i.test(item.quality || '')));
-  const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
+  const isWatched = isMediaCardWatched(item);
+  const isContinueRail = railId === 'rail-continue' || isWide;
   const yr = getMediaYear(item);
   const catLabel = getMediaCategoryLabel(item, item.media_type || 'movie');
   const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
@@ -3270,9 +3431,9 @@ function createRailCardHtml(item, idx, isWide = false) {
           <div class="media-card-top-right">
             ${isWatched ? '<span class="media-card-watched-tag" title="Просмотрено">✓</span>' : ''}
             ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
+            ${isContinueRail ? '<button type="button" class="media-card-remove-continue-btn" title="Убрать из «Продолжить просмотр»" aria-label="Убрать из «Продолжить просмотр»">✕</button>' : ''}
           </div>
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
-          <button type="button" class="media-card-bookmark-btn ${item.user_status ? 'is-bookmarked' : ''}" title="${bmTitle}">${bmIcon}</button>
           <button type="button" class="media-card-menu-btn" title="Все действия и коллекции">⋮</button>
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
@@ -3578,13 +3739,22 @@ export function updateCardsInDOM(mediaId, title = '', status = null, isWatched =
     const topRight = card.querySelector('.media-card-top-right');
     if (topRight) {
       const oldTag = topRight.querySelector('.media-card-watched-tag');
-      const shouldBeWatched = isWatched || status === 'completed';
+      const cardTitleText = card.querySelector('.media-card-title, .media-detailed-title')?.textContent || title || '';
+      const shouldBeWatched = isWatched || status === 'completed' || isMediaCardWatched({ id: cardId || mediaId, title: cardTitleText, user_status: status });
       if (shouldBeWatched) {
         if (!oldTag) {
           topRight.insertAdjacentHTML('afterbegin', '<span class="media-card-watched-tag" title="Просмотрено">✓</span>');
         }
       } else {
         if (oldTag) oldTag.remove();
+      }
+    }
+
+    // 3. Динамически снимаем ложную плашку «ОЖИДАЕТСЯ», если релиз просмотрен или начат
+    if (isWatched || ['completed', 'watching', 'on_hold', 'dropped'].includes(status || '')) {
+      const upBadge = card.querySelector('.storm-badge-upcoming');
+      if (upBadge) {
+        upBadge.outerHTML = '<span class="storm-badge storm-badge-4k">4K UHD</span>';
       }
     }
 
@@ -3597,6 +3767,58 @@ export function updateCardsInDOM(mediaId, title = '', status = null, isWatched =
     }
   });
 }
+
+export function syncAllRenderedCardsDynamicState() {
+  try {
+    const cards = document.querySelectorAll('.media-card, .media-detailed-card');
+    cards.forEach(card => {
+      const cardId = String(card.dataset.id || '').trim();
+      const titleEl = card.querySelector('.media-card-title, .media-detailed-title');
+      const cardTitle = String(titleEl?.textContent || '').trim();
+      if (!cardId && !cardTitle) return;
+
+      const syntheticItem = { id: cardId, title: cardTitle };
+      const st = resolveMediaUserStatus(syntheticItem);
+      const watched = st === 'completed' || isMediaCardWatched({ id: cardId, title: cardTitle, user_status: st });
+
+      const cardPoster = card.querySelector('.media-card-poster');
+      if (cardPoster) {
+        const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
+        if (st && st !== 'none') {
+          const desiredHtml = getStatusBadge(st);
+          if (!oldCardBadge) {
+            const overlay = cardPoster.querySelector('.media-card-overlay');
+            const wrapHtml = `<div class="media-card-status-badge">${desiredHtml}</div>`;
+            if (overlay) overlay.insertAdjacentHTML('beforebegin', wrapHtml);
+            else cardPoster.insertAdjacentHTML('beforeend', wrapHtml);
+          } else if (oldCardBadge.innerHTML !== desiredHtml) {
+            oldCardBadge.innerHTML = desiredHtml;
+          }
+        } else if (oldCardBadge) {
+          oldCardBadge.remove();
+        }
+      }
+
+      const topRight = card.querySelector('.media-card-top-right');
+      if (topRight) {
+        const oldTag = topRight.querySelector('.media-card-watched-tag');
+        if (watched && !oldTag) {
+          topRight.insertAdjacentHTML('afterbegin', '<span class="media-card-watched-tag" title="Просмотрено">✓</span>');
+        } else if (!watched && oldTag) {
+          oldTag.remove();
+        }
+      }
+
+      if (watched || ['completed', 'watching', 'on_hold', 'dropped'].includes(st || '')) {
+        const upBadge = card.querySelector('.storm-badge-upcoming');
+        if (upBadge) {
+          upBadge.outerHTML = '<span class="storm-badge storm-badge-4k">4K UHD</span>';
+        }
+      }
+    });
+  } catch (_) {}
+}
+window.syncAllRenderedCardsDynamicState = syncAllRenderedCardsDynamicState;
 
 let lastRenderedHomeKey = '';
 
@@ -3646,12 +3868,19 @@ function renderHomeView(items) {
   }
   renderHeroShowcase(featuredList);
 
-  // Рейл 1: Продолжить просмотр (только РЕАЛЬНАЯ история просмотров пользователя без выдумок)
+  // Рейл 1: Продолжить просмотр (только РЕАЛЬНАЯ история просмотров пользователя без выдумок и без дублей)
   const excludedFromContinue = ['completed', 'dropped', 'wont_watch'];
   const realHistory = (Array.isArray(cachedContinueHistory) ? cachedContinueHistory : getLocalContinueWatching()) || [];
+  const seenContinueTitles = new Set();
   const continueItems = realHistory
     .filter(i => {
       if (!i || (!i.media_id && !i.id) || !i.title) return false;
+      if (isDismissedFromContinueWatching(i.media_id || i.id, i.title)) return false;
+      const normKey = normalizeMediaTitle(i.title, i.original_title || '');
+      if (normKey) {
+        if (seenContinueTitles.has(normKey)) return false;
+        seenContinueTitles.add(normKey);
+      }
       const titleStr = String(i.title || '').trim().toLowerCase();
       if (titleStr.includes('fanfilm4k') || titleStr.includes('фан4к –') || titleStr.includes('4к uhd бесплатно')) return false;
 
@@ -4555,7 +4784,7 @@ function renderHomeView(items) {
           <div class="rail-carousel-wrap">
             <button type="button" class="rail-nav-btn rail-nav-prev" aria-label="Назад" title="Прокрутить ленту влево">❮</button>
             <div class="rail-carousel">
-              ${rail.items.map((item, idx) => createRailCardHtml(item, idx, rail.isWide)).join('')}
+              ${rail.items.map((item, idx) => createRailCardHtml(item, idx, rail.isWide, rail.id)).join('')}
             </div>
             <button type="button" class="rail-nav-btn rail-nav-next" aria-label="Вперёд" title="Прокрутить ленту вправо">❯</button>
           </div>
@@ -4642,6 +4871,15 @@ function renderHomeView(items) {
         bmBtn.onclick = (e) => {
           e.stopPropagation();
           handleQuickCardBookmark(item, bmBtn);
+        };
+      }
+
+      const removeContBtn = card.querySelector('.media-card-remove-continue-btn');
+      if (removeContBtn) {
+        removeContBtn.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          removeMediaFromContinueWatching(item, card);
         };
       }
 
@@ -4760,7 +4998,7 @@ function renderMediaItems(items) {
       const isReal4K = !isUpcoming && (item.is4K === true || (item.quality && item.quality.includes('4K')));
       const is1080p = !isUpcoming && !isReal4K && ((item.quality && (item.quality.includes('1080') || item.quality.includes('FHD'))) || item.source === 'fanfilm4k');
       const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming));
-      const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
+      const isWatched = isMediaCardWatched(item);
       const yr = getMediaYear(item);
       const catLabel = getMediaCategoryLabel(item, currentTab);
       const metaText = yr ? `${yr} • ${catLabel}` : catLabel;
@@ -4788,9 +5026,9 @@ function renderMediaItems(items) {
           <div class="media-card-top-right">
             ${isWatched ? '<span class="media-card-watched-tag" title="Просмотрено">✓</span>' : ''}
             ${item.rating ? `<span class="storm-badge storm-badge-rating">★ ${item.rating}</span>` : ''}
+            ${currentTab === 'continue' ? '<button type="button" class="media-card-remove-continue-btn" title="Убрать из «Продолжить просмотр»" aria-label="Убрать из «Продолжить просмотр»">✕</button>' : ''}
           </div>
           ${item.user_status ? `<div class="media-card-status-badge">${getStatusBadge(item.user_status)}</div>` : ''}
-          <button type="button" class="media-card-bookmark-btn ${item.user_status ? 'is-bookmarked' : ''}" title="${bmTitle}" data-idx="${idx}">${bmIcon}</button>
           <button type="button" class="media-card-menu-btn" title="Все действия и коллекции" data-idx="${idx}">⋮</button>
           <div class="media-card-overlay">
             <div class="media-play-icon">▶</div>
@@ -4850,6 +5088,15 @@ function renderMediaItems(items) {
         };
       }
 
+      const removeContBtn = card.querySelector('.media-card-remove-continue-btn');
+      if (removeContBtn) {
+        removeContBtn.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          removeMediaFromContinueWatching(items[idx], card);
+        };
+      }
+
       const menuBtn = card.querySelector('.media-card-menu-btn');
       if (menuBtn) {
         menuBtn.onclick = (e) => {
@@ -4900,7 +5147,7 @@ function renderMediaItems(items) {
       const hasAtmos = !isUpcoming && (item.isAtmos || (item.audio && item.audio.toLowerCase().includes('atmos')));
       const has60Fps = !isUpcoming && (item.fps === 60 || (item.quality && item.quality.includes('60')));
       const hasDub = !isUpcoming && Boolean(item.voiceover || (item.translations && item.translations.length > 0) || (item.source === 'fanfilm4k' && !isUpcoming));
-      const isWatched = item.user_status === 'completed' || (typeof item.progress_percent === 'number' && item.progress_percent >= 90);
+      const isWatched = isMediaCardWatched(item);
 
       return `
       <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
@@ -7511,6 +7758,8 @@ function showCardHoverPreview(card, item) {
           if (cardPoster) {
             const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
             if (oldCardBadge) oldCardBadge.remove();
+            const oldWatchedTag = cardPoster.querySelector('.media-card-watched-tag');
+            if (oldWatchedTag) oldWatchedTag.remove();
           }
 
           // Удаляем плашку статуса на исходной карточке (список)
@@ -7559,11 +7808,22 @@ function showCardHoverPreview(card, item) {
             const oldCardBadge = cardPoster.querySelector('.media-card-status-badge');
             if (oldCardBadge) oldCardBadge.remove();
             const overlay = cardPoster.querySelector('.media-card-overlay');
-            const badgeHtml = getStatusBadge(finalStatus);
+            const badgeHtml = `<div class="media-card-status-badge">${getStatusBadge(finalStatus)}</div>`;
             if (overlay) {
               overlay.insertAdjacentHTML('beforebegin', badgeHtml);
             } else {
               cardPoster.insertAdjacentHTML('beforeend', badgeHtml);
+            }
+            const topRight = cardPoster.querySelector('.media-card-top-right');
+            if (topRight) {
+              const oldWatchedTag = topRight.querySelector('.media-card-watched-tag');
+              if (finalStatus === 'completed') {
+                if (!oldWatchedTag) {
+                  topRight.insertAdjacentHTML('afterbegin', '<span class="media-card-watched-tag" title="Просмотрено">✓</span>');
+                }
+              } else if (oldWatchedTag) {
+                oldWatchedTag.remove();
+              }
             }
           }
 

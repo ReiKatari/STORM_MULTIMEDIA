@@ -7523,3 +7523,16 @@ body.tv-mode .custom-list-card:focus {
   }
 }
 
+
+
+/* STORM ULTRA-SMOOTH SCROLL & GPU CONTAINMENT */
+.media-container.view-grid .media-card,
+.media-container.view-compact-grid .media-card {
+  contain: layout style;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.media-card-poster img {
+  will-change: transform;
+  backface-visibility: hidden;
+}

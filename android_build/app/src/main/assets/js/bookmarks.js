@@ -1,11 +1,11 @@
-import { trackClientAction } from './achievements.js?v=1.1.1';
+import { trackClientAction } from './achievements.js?v=1.1.2';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.1.1';
-import { t } from './i18n.js?v=1.1.1';
-import { normalizeStatus } from './status-icons.js?v=1.1.1';
+import { getToken, showToast } from './auth.js?v=1.1.2';
+import { t } from './i18n.js?v=1.1.2';
+import { normalizeStatus } from './status-icons.js?v=1.1.2';
 
 let memoryBookmarksCache = [];
 
@@ -22,15 +22,31 @@ export function getMemoryBookmarksCache() {
   return memoryBookmarksCache;
 }
 
-export function getSeriesCompletedMeta(mediaId) {
+export function normalizeSeriesTitleStorageKey(title = '') {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s*[\(\[]\s*(?:постер|4[kк]|uhd|сериал|фильм|\d+\s*сезон|сезон\s*\d+|19\d\d|20\d\d).*?[\)\]]/gi, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+}
+
+export function getSeriesCompletedMeta(mediaId, title = '') {
   try {
-    const raw = localStorage.getItem(`storm_series_completed_meta_${mediaId}`);
-    if (raw) return JSON.parse(raw);
+    if (mediaId) {
+      const raw = localStorage.getItem(`storm_series_completed_meta_${mediaId}`);
+      if (raw) return JSON.parse(raw);
+    }
+    const tKey = normalizeSeriesTitleStorageKey(title);
+    if (tKey) {
+      const rawByTitle = localStorage.getItem(`storm_series_completed_meta_title_${tKey}`);
+      if (rawByTitle) return JSON.parse(rawByTitle);
+    }
   } catch {}
   return null;
 }
 
-export function saveSeriesCompletedMeta(mediaId, meta = {}) {
+export function saveSeriesCompletedMeta(mediaId, meta = {}, title = '') {
   try {
     const toSave = {
       maxSeason: Number(meta.maxSeason) || 1,
@@ -38,41 +54,209 @@ export function saveSeriesCompletedMeta(mediaId, meta = {}) {
       totalEpisodes: Number(meta.totalEpisodes) || 0,
       completedAt: meta.completedAt || Date.now()
     };
-    localStorage.setItem(`storm_series_completed_meta_${mediaId}`, JSON.stringify(toSave));
+    const serialized = JSON.stringify(toSave);
+    if (mediaId) {
+      localStorage.setItem(`storm_series_completed_meta_${mediaId}`, serialized);
+    }
+    const tKey = normalizeSeriesTitleStorageKey(title);
+    if (tKey) {
+      localStorage.setItem(`storm_series_completed_meta_title_${tKey}`, serialized);
+    }
   } catch {}
 }
 
-export function getWatchedEpisodesSummary(mediaId) {
+export function getWatchedEpisodesSummary(mediaId, title = '') {
   let highestSeason = 1;
   let highestEpisode = 0;
   let totalWatchedCount = 0;
   const watchedMap = new Map();
+  const tKey = normalizeSeriesTitleStorageKey(title);
 
   try {
     for (let s = 1; s <= 30; s++) {
-      let raw = localStorage.getItem(`storm_watched_eps_${mediaId}_s${s}`);
-      if (!raw && s === 1) {
-        raw = localStorage.getItem(`storm_watched_eps_${mediaId}`);
-      }
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr) && arr.length > 0) {
-          const numArr = arr.map(Number).filter(n => !isNaN(n) && n > 0);
-          if (numArr.length > 0) {
-            highestSeason = Math.max(highestSeason, s);
-            const maxEp = Math.max(...numArr);
-            if (s >= highestSeason) {
-              highestEpisode = Math.max(highestEpisode, maxEp);
-            }
-            totalWatchedCount += numArr.length;
-            watchedMap.set(s, new Set(numArr));
+      const mergedSet = new Set();
+      const rawId = mediaId ? (localStorage.getItem(`storm_watched_eps_${mediaId}_s${s}`) || (s === 1 ? localStorage.getItem(`storm_watched_eps_${mediaId}`) : null)) : null;
+      const rawTitle = tKey ? localStorage.getItem(`storm_watched_eps_title_${tKey}_s${s}`) : null;
+      for (const raw of [rawId, rawTitle]) {
+        if (!raw) continue;
+        try {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            arr.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => mergedSet.add(n));
           }
+        } catch {}
+      }
+      if (mergedSet.size > 0) {
+        const numArr = Array.from(mergedSet);
+        highestSeason = Math.max(highestSeason, s);
+        const maxEp = Math.max(...numArr);
+        if (s >= highestSeason) {
+          highestEpisode = Math.max(highestEpisode, maxEp);
         }
+        totalWatchedCount += numArr.length;
+        watchedMap.set(s, mergedSet);
       }
     }
   } catch {}
 
   return { highestSeason, highestEpisode, totalWatchedCount, watchedMap };
+}
+
+export function hydrateBookmarkWatchedEpisodesToLocal(bookmark) {
+  if (!bookmark || typeof bookmark !== 'object') return;
+  try {
+    const bId = String(bookmark.media_id || bookmark.id || '').trim();
+    const rawTitle = String(bookmark.title || bookmark.original_title || '').trim();
+    const normTitle = rawTitle.toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
+    const tKey = normalizeSeriesTitleStorageKey(rawTitle);
+    const normSt = normalizeStatus(bookmark.status || bookmark.user_status || '');
+
+    if (normSt && normSt !== 'none') {
+      if (bId) localStorage.setItem(`storm_status_${bId}`, normSt);
+      if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, normSt);
+    }
+
+    if (!bookmark.watched_episodes_json || bookmark.watched_episodes_json === '{}') return;
+    const parsed = typeof bookmark.watched_episodes_json === 'string'
+      ? JSON.parse(bookmark.watched_episodes_json)
+      : bookmark.watched_episodes_json;
+    if (!parsed || typeof parsed !== 'object') return;
+
+    if (parsed.seasons && typeof parsed.seasons === 'object') {
+      for (const [sStr, epArr] of Object.entries(parsed.seasons)) {
+        const sNum = Number(sStr) || 1;
+        if (!Array.isArray(epArr)) continue;
+        const cleanEps = Array.from(new Set(epArr.map(Number).filter(n => Number.isFinite(n) && n > 0))).sort((a, b) => a - b);
+        const jsonStr = JSON.stringify(cleanEps);
+        if (bId) {
+          localStorage.setItem(`storm_watched_eps_${bId}_s${sNum}`, jsonStr);
+          if (sNum === 1) localStorage.setItem(`storm_watched_eps_${bId}`, jsonStr);
+        }
+        if (tKey) {
+          localStorage.setItem(`storm_watched_eps_title_${tKey}_s${sNum}`, jsonStr);
+        }
+      }
+    }
+
+    if (parsed.season_statuses && typeof parsed.season_statuses === 'object') {
+      for (const [sStr, stVal] of Object.entries(parsed.season_statuses)) {
+        const sNum = Number(sStr) || 1;
+        if (!stVal) continue;
+        if (bId) localStorage.setItem(`storm_season_status_${bId}_s${sNum}`, String(stVal));
+        if (tKey) localStorage.setItem(`storm_season_status_title_${tKey}_s${sNum}`, String(stVal));
+      }
+    }
+
+    if (parsed.completed_meta && typeof parsed.completed_meta === 'object') {
+      saveSeriesCompletedMeta(bId, parsed.completed_meta, rawTitle);
+    }
+  } catch {}
+}
+
+export function serializeLocalWatchedEpisodesForMedia(mediaId, title = '', seasonsHint = []) {
+  const bId = String(mediaId || '').trim();
+  const tKey = normalizeSeriesTitleStorageKey(title);
+  const seasonsObj = {};
+  const seasonStatusesObj = {};
+  let totalWatched = 0;
+  let totalExpected = 0;
+
+  if (Array.isArray(seasonsHint) && seasonsHint.length > 0) {
+    seasonsHint.forEach(s => {
+      const cnt = Number(s.episode_count || s.episodes_count || (Array.isArray(s.episodes) ? s.episodes.length : 0)) || 0;
+      totalExpected += cnt;
+    });
+  }
+
+  for (let s = 1; s <= 30; s++) {
+    const merged = new Set();
+    const rawId = bId ? (localStorage.getItem(`storm_watched_eps_${bId}_s${s}`) || (s === 1 ? localStorage.getItem(`storm_watched_eps_${bId}`) : null)) : null;
+    const rawTitle = tKey ? localStorage.getItem(`storm_watched_eps_title_${tKey}_s${s}`) : null;
+    for (const raw of [rawId, rawTitle]) {
+      if (!raw) continue;
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          arr.map(Number).filter(n => Number.isFinite(n) && n > 0).forEach(n => merged.add(n));
+        }
+      } catch {}
+    }
+    if (merged.size > 0) {
+      const sorted = Array.from(merged).sort((a, b) => a - b);
+      seasonsObj[String(s)] = sorted;
+      totalWatched += sorted.length;
+    }
+    const stVal = (bId ? localStorage.getItem(`storm_season_status_${bId}_s${s}`) : null) ||
+                  (tKey ? localStorage.getItem(`storm_season_status_title_${tKey}_s${s}`) : null);
+    if (stVal) {
+      seasonStatusesObj[String(s)] = stVal;
+    }
+  }
+
+  const completedMeta = getSeriesCompletedMeta(bId, title);
+  return {
+    payload: {
+      seasons: seasonsObj,
+      season_statuses: seasonStatusesObj,
+      completed_meta: completedMeta || null
+    },
+    episodes_watched: totalWatched,
+    total_episodes: totalExpected || Number(completedMeta?.totalEpisodes) || 0
+  };
+}
+
+let _episodeSyncTimer = null;
+export function syncWatchedEpisodesToServer(mediaData, overrideStatus = null, immediate = false) {
+  if (!mediaData) return;
+  const activeToken = getToken();
+  if (!activeToken || activeToken.startsWith('offline_') || activeToken.startsWith('guest_')) return;
+
+  const doSync = () => {
+    try {
+      const mediaId = String(mediaData.id || mediaData.media_id || '').trim();
+      const title = String(mediaData.title || '').trim();
+      if (!mediaId && !title) return;
+      const seasonsArr = Array.isArray(mediaData.seasons) ? mediaData.seasons : [];
+      const serialized = serializeLocalWatchedEpisodesForMedia(mediaId, title, seasonsArr);
+      const statusToSend = overrideStatus
+        ? normalizeStatus(overrideStatus)
+        : (mediaData.user_status ? normalizeStatus(mediaData.user_status) : null);
+
+      fetch('/api/bookmarks/episodes', {
+        method: 'POST',
+        headers: buildAuthHeaders(true),
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          media_id: mediaId,
+          source: mediaData.source || 'tmdb',
+          title,
+          original_title: mediaData.original_title || '',
+          poster_url: mediaData.poster || mediaData.poster_url || '',
+          media_type: mediaData.media_type || 'series',
+          year: mediaData.year || '',
+          status: statusToSend,
+          episodes_watched: serialized.episodes_watched,
+          total_episodes: serialized.total_episodes || Number(mediaData.total_episodes) || 0,
+          watched_episodes_json: serialized.payload
+        })
+      }).catch(() => {});
+    } catch {}
+  };
+
+  if (immediate) {
+    if (_episodeSyncTimer) clearTimeout(_episodeSyncTimer);
+    doSync();
+  } else {
+    if (_episodeSyncTimer) clearTimeout(_episodeSyncTimer);
+    _episodeSyncTimer = setTimeout(doSync, 220);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__stormNormalizeSeriesTitleKey = normalizeSeriesTitleStorageKey;
+  window.__stormHydrateBookmarkEpisodes = hydrateBookmarkWatchedEpisodesToLocal;
+  window.__stormSerializeWatchedEpisodes = serializeLocalWatchedEpisodesForMedia;
+  window.__stormSyncWatchedEpisodesToServer = syncWatchedEpisodesToServer;
 }
 
 export function checkSeriesHasNewEpisodes(item) {
@@ -88,8 +272,8 @@ export function checkSeriesHasNewEpisodes(item) {
 
   if (!isSeries) return null;
 
-  const summary = getWatchedEpisodesSummary(mediaId);
-  const meta = getSeriesCompletedMeta(mediaId);
+  const summary = getWatchedEpisodesSummary(mediaId, item.title || item.original_title || '');
+  const meta = getSeriesCompletedMeta(mediaId, item.title || item.original_title || '');
 
   const baselineSeason = Math.max(summary.highestSeason, meta?.maxSeason || 1);
   const baselineEpisode = meta?.maxSeason && meta.maxSeason > summary.highestSeason
@@ -238,6 +422,15 @@ export function autoTransitionSeriesToWatching(item, nextSeason = 1, nextEpisode
   }));
 }
 
+export function normalizeCanonicalTitleMatch(str = '') {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s*[\(\[]\s*(?:4[kк]|uhd|hd|1080p|сериал|фильм|\d+\s*сезон|19\d\d|20\d\d).*?[\)\]]/gi, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
 export function resolveMediaUserStatus(item) {
   if (!item) return null;
   const directStatus = item.user_status || item.bookmark_status;
@@ -247,26 +440,38 @@ export function resolveMediaUserStatus(item) {
   }
 
   const id = String(item.id || item.media_id || '');
+  const strippedId = id.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
   let resolved = null;
 
   if (id) {
-    const s = localStorage.getItem(`storm_status_${id}`);
+    const s = localStorage.getItem(`storm_status_${id}`) || (strippedId ? localStorage.getItem(`storm_status_${strippedId}`) : null);
     if (s && s !== 'none') resolved = s;
   }
 
-  const rawTitle = String(item.title || item.original_title || '').trim();
-  const normTitle = rawTitle.toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
-  if (!resolved && normTitle) {
-    const s = localStorage.getItem(`storm_status_title_${normTitle}`) || localStorage.getItem(`storm_status_title_${rawTitle.toLowerCase()}`);
+  const rawTitle = String(item.title || '').trim();
+  const origTitle = String(item.original_title || '').trim();
+  const normTitle = rawTitle.toLowerCase().replace(/ё/g, 'е').replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
+  const canonTitle = normalizeCanonicalTitleMatch(rawTitle);
+  const canonOrig = normalizeCanonicalTitleMatch(origTitle);
+
+  if (!resolved && (normTitle || canonTitle)) {
+    const s = (normTitle && localStorage.getItem(`storm_status_title_${normTitle}`)) ||
+              (rawTitle && localStorage.getItem(`storm_status_title_${rawTitle.toLowerCase()}`)) ||
+              (canonTitle && localStorage.getItem(`storm_status_canon_${canonTitle}`)) ||
+              (canonOrig && localStorage.getItem(`storm_status_canon_${canonOrig}`));
     if (s && s !== 'none') resolved = s;
   }
 
   if (!resolved && memoryBookmarksCache.length > 0) {
     const match = memoryBookmarksCache.find(b => {
       const bId = String(b.id || b.media_id || '');
-      if (id && bId === id) return true;
-      const bTitle = String(b.title || '').trim().toLowerCase().replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
-      return bTitle && (bTitle === normTitle || normTitle.includes(bTitle) || bTitle.includes(normTitle));
+      const bStripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
+      if (id && (bId === id || (strippedId && bStripped && strippedId === bStripped))) return true;
+      const bCanon = normalizeCanonicalTitleMatch(b.title || '');
+      const bOrigCanon = normalizeCanonicalTitleMatch(b.original_title || '');
+      if (canonTitle && (bCanon === canonTitle || (bOrigCanon && bOrigCanon === canonTitle))) return true;
+      if (canonOrig && (bOrigCanon === canonOrig || (bCanon && bCanon === canonOrig))) return true;
+      return false;
     });
     if (match?.status && match.status !== 'none') {
       resolved = match.status;
@@ -348,7 +553,7 @@ export function syncLocalBookmarkItem(mediaData, status) {
   saveLocalBookmarksList(filtered);
 }
 
-const DB_CLEAN_REVISION = '2026-10-08-purge-v1';
+const DB_CLEAN_REVISION = '2026-10-25-security-isolation-v3';
 export function checkAndApplyClientPurge() {
   try {
     if (localStorage.getItem('storm_purge_rev') !== DB_CLEAN_REVISION) {
@@ -381,8 +586,10 @@ function buildAuthHeaders(json = false) {
 export async function fetchUserBookmarks(status = null, type = null) {
   let serverBookmarks = [];
   let serverAnswered = false;
+  const activeToken = getToken();
 
-  // 1. Запрос к серверу
+  // 1. Запрос к серверу (только для авторизованного пользователя)
+  if (activeToken && !activeToken.startsWith('offline_') && !activeToken.startsWith('guest_')) {
   try {
     let url = '/api/bookmarks';
     const params = new URLSearchParams();
@@ -405,51 +612,45 @@ export async function fetchUserBookmarks(status = null, type = null) {
   } catch (err) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
   }
+  }
 
   const localBookmarks = getLocalBookmarksList();
 
-  // 2. Объединяем серверные и локальные закладки без потери данных
+  // 2. Синхронизируем серверные закладки и статусы в локальный кэш и гидрируем просмотренные серии
   const mergedMap = new Map();
   for (const b of serverBookmarks) {
     if (!b) continue;
-    const key = (b.title ? String(b.title).toLowerCase().trim() : '') || `${b.source || ''}_${b.media_id || b.id || ''}`;
+    hydrateBookmarkWatchedEpisodesToLocal(b);
+    const bId = String(b.media_id || b.id || '').trim();
+    const bNormStatus = normalizeStatus(b.status || b.user_status || '');
+    const bTitleLow = String(b.title || '').trim().toLowerCase().replace(/ё/g, 'е');
+    const bCanon = normalizeCanonicalTitleMatch(b.title || '');
+    const bOrigCanon = normalizeCanonicalTitleMatch(b.original_title || '');
+    try {
+      if (bNormStatus && bNormStatus !== 'none') {
+        if (bId) localStorage.setItem(`storm_status_${bId}`, bNormStatus);
+        if (bTitleLow) localStorage.setItem(`storm_status_title_${bTitleLow}`, bNormStatus);
+        if (bCanon) localStorage.setItem(`storm_status_canon_${bCanon}`, bNormStatus);
+        if (bOrigCanon) localStorage.setItem(`storm_status_canon_${bOrigCanon}`, bNormStatus);
+      }
+    } catch (_) {}
+    const key = bCanon || bTitleLow || `${b.source || ''}_${bId}`;
     if (key) mergedMap.set(key, b);
   }
-  for (const lb of localBookmarks) {
-    if (!lb) continue;
-    const key = (lb.title ? String(lb.title).toLowerCase().trim() : '') || `${lb.source || ''}_${lb.media_id || lb.id || ''}`;
-    if (!key) continue;
-    if (!mergedMap.has(key)) {
-      mergedMap.set(key, lb);
-      // Если закладка есть локально, но ещё не на сервере — фоново синхронизируем на сервер
-      if (serverAnswered && !status && !type) {
-        fetch('/api/bookmarks/set', {
-          method: 'POST',
-          headers: buildAuthHeaders(true),
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            media_id: lb.media_id || lb.id,
-            source: lb.source || 'tmdb',
-            title: lb.title,
-            original_title: lb.original_title || '',
-            poster_url: lb.poster_url || lb.poster || '',
-            media_type: lb.media_type || 'movie',
-            year: lb.year || '',
-            status: normalizeStatus(lb.status || lb.user_status || 'planned'),
-            is_favorite: lb.is_favorite ? 1 : 0
-          })
-        }).catch(() => {});
-      }
-    } else {
-      const existing = mergedMap.get(key);
-      if ((lb.updated_at || 0) > (existing.updated_at || 0)) {
-        mergedMap.set(key, { ...existing, ...lb });
+
+  if (!serverAnswered) {
+    for (const lb of localBookmarks) {
+      if (!lb) continue;
+      const lbCanon = normalizeCanonicalTitleMatch(lb.title || '');
+      const key = lbCanon || (lb.title ? String(lb.title).toLowerCase().trim() : '') || `${lb.source || ''}_${lb.media_id || lb.id || ''}`;
+      if (key && !mergedMap.has(key)) {
+        mergedMap.set(key, lb);
       }
     }
   }
 
   let combined = Array.from(mergedMap.values());
-  if (!status && !type && combined.length > 0) {
+  if (!status && !type && serverAnswered) {
     saveLocalBookmarksList(combined);
   }
 
@@ -466,39 +667,119 @@ export async function fetchUserBookmarks(status = null, type = null) {
   }
 
   setMemoryBookmarksCache(combined);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('storm:dynamic-state-sync', { detail: { bookmarksCount: combined.length } }));
+  }
   return combined;
 }
 
-export function removeFromLocalContinueWatching(mediaId, title = '') {
+export function normalizeContinueTitleKey(title = '') {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+}
+
+export function isDismissedFromContinueWatching(mediaId, title = '') {
   try {
-    const raw = localStorage.getItem('storm_continue_watching');
-    if (!raw) return;
-    let list = JSON.parse(raw);
-    if (!Array.isArray(list)) return;
+    const raw = localStorage.getItem('storm_dismissed_continue_v1');
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return false;
+    const cleanId = String(mediaId || '').trim();
+    const tKey = normalizeContinueTitleKey(title);
+    return parsed.some(entry => {
+      if (!entry) return false;
+      if (cleanId && entry.id && String(entry.id) === cleanId) return true;
+      if (tKey && entry.tKey && entry.tKey === tKey) return true;
+      return false;
+    });
+  } catch {
+    return false;
+  }
+}
 
-    const cleanTitle = String(title || '').trim().toLowerCase();
-    const cleanId = String(mediaId || '');
-
-    const filtered = list.filter(it => {
-      if (!it) return false;
-      const itId = String(it.media_id || it.id || '');
-      const itTitle = String(it.title || '').trim().toLowerCase();
-      if (cleanId && itId === cleanId) return false;
-      if (cleanTitle && (itTitle === cleanTitle || itTitle.includes(cleanTitle) || cleanTitle.includes(itTitle))) return false;
+export function setDismissedFromContinueWatching(mediaId, title = '', dismissed = true) {
+  try {
+    const cleanId = String(mediaId || '').trim();
+    const tKey = normalizeContinueTitleKey(title);
+    if (!cleanId && !tKey) return;
+    let list = [];
+    try {
+      const raw = localStorage.getItem('storm_dismissed_continue_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+    } catch {}
+    list = list.filter(entry => {
+      if (!entry) return false;
+      if (cleanId && entry.id && String(entry.id) === cleanId) return false;
+      if (tKey && entry.tKey && entry.tKey === tKey) return false;
       return true;
     });
+    if (dismissed) {
+      list.unshift({ id: cleanId, tKey, ts: Date.now() });
+      list = list.slice(0, 120);
+    }
+    localStorage.setItem('storm_dismissed_continue_v1', JSON.stringify(list));
+  } catch {}
+}
 
-    localStorage.setItem('storm_continue_watching', JSON.stringify(filtered));
-    window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { mediaId, title, removed: true } }));
+export function removeFromLocalContinueWatching(mediaId, title = '', source = '') {
+  try {
+    const cleanTitle = String(title || '').trim().toLowerCase();
+    const tKey = normalizeContinueTitleKey(title);
+    const cleanId = String(mediaId || '').trim();
+
+    setDismissedFromContinueWatching(cleanId, title, true);
+
+    if (cleanId) {
+      try { localStorage.removeItem(`storm_resume_state_${cleanId}`); } catch {}
+    }
+    if (tKey) {
+      try { localStorage.removeItem(`storm_resume_state_title_${tKey}`); } catch {}
+    }
+
+    const raw = localStorage.getItem('storm_continue_watching');
+    if (raw) {
+      let list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        const filtered = list.filter(it => {
+          if (!it) return false;
+          const itId = String(it.media_id || it.id || '').trim();
+          const itTitle = String(it.title || '').trim().toLowerCase();
+          const itKey = normalizeContinueTitleKey(it.title || '');
+          if (cleanId && itId === cleanId) return false;
+          if (tKey && itKey && itKey === tKey) return false;
+          if (cleanTitle && (itTitle === cleanTitle || itTitle.includes(cleanTitle) || cleanTitle.includes(itTitle))) return false;
+          return true;
+        });
+        localStorage.setItem('storm_continue_watching', JSON.stringify(filtered));
+      }
+    }
+
+    fetch('/api/media/continue-watching/remove', {
+      method: 'POST',
+      headers: buildAuthHeaders(true),
+      credentials: 'same-origin',
+      body: JSON.stringify({ media_id: cleanId, source: source || '', title: title || '' })
+    }).catch(() => {});
+
+    window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { mediaId: cleanId, title, removed: true } }));
   } catch (e) {
     console.error('Ошибка удаления из продолжать просмотр:', e);
   }
 }
 
 export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') {
-  if (!media || !media.id) return;
-  const mediaId = String(media.id);
-  const normTitle = String(media.title || '').trim().toLowerCase();
+  if (!media || !(media.id || media.media_id)) return;
+  const mediaId = String(media.id || media.media_id);
+  const rawTitle = String(media.title || '').trim();
+  const normTitle = rawTitle.toLowerCase();
+  const tKey = normalizeSeriesTitleStorageKey(rawTitle);
 
   try {
     localStorage.setItem(`storm_status_${mediaId}`, newStatus);
@@ -514,7 +795,8 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
     defaultCount = 10;
   }
 
-  const seasons = Array.isArray(media.seasons) && media.seasons.length > 0
+  const hasExactSeasons = Array.isArray(media.seasons) && media.seasons.length > 0;
+  const seasons = hasExactSeasons
     ? media.seasons
     : Array.from({ length: 3 }, (_, i) => ({ season_number: i + 1, episode_count: defaultCount }));
 
@@ -522,42 +804,70 @@ export function markAllSeriesSeasonsAndEpisodes(media, newStatus = 'completed') 
   let maxEpisodeNum = 1;
   let totalEpCount = 0;
 
-  seasons.forEach(s => {
-    const sNum = Number(s.season || s.season_number) || 1;
-    const count = Number(s.episode_count || s.episodes_count || (s.episodes ? s.episodes.length : defaultCount)) || defaultCount;
-    maxSeasonNum = Math.max(maxSeasonNum, sNum);
-    maxEpisodeNum = Math.max(maxEpisodeNum, count);
-    totalEpCount += count;
-    const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
-    const statusKey = `storm_season_status_${mediaId}_s${sNum}`;
+  const applyForSeasons = (seasonsArr) => {
+    maxSeasonNum = 1;
+    maxEpisodeNum = 1;
+    totalEpCount = 0;
+    seasonsArr.forEach(s => {
+      const sNum = Number(s.season || s.season_number) || 1;
+      const count = Number(s.episode_count || s.episodes_count || (s.episodes ? s.episodes.length : defaultCount)) || defaultCount;
+      maxSeasonNum = Math.max(maxSeasonNum, sNum);
+      maxEpisodeNum = Math.max(maxEpisodeNum, count);
+      totalEpCount += count;
+      const sKey = `storm_watched_eps_${mediaId}_s${sNum}`;
+      const statusKey = `storm_season_status_${mediaId}_s${sNum}`;
 
-    try {
-      if (newStatus === 'completed') {
-        localStorage.setItem(statusKey, 'completed');
-        const eps = Array.from({ length: count }, (_, i) => i + 1);
-        localStorage.setItem(sKey, JSON.stringify(eps));
-        if (sNum === 1) {
-          localStorage.setItem(`storm_watched_eps_${mediaId}`, JSON.stringify(eps));
+      try {
+        if (newStatus === 'completed') {
+          localStorage.setItem(statusKey, 'completed');
+          if (tKey) localStorage.setItem(`storm_season_status_title_${tKey}_s${sNum}`, 'completed');
+          const eps = Array.from({ length: count }, (_, i) => i + 1);
+          const epsJson = JSON.stringify(eps);
+          localStorage.setItem(sKey, epsJson);
+          if (sNum === 1) localStorage.setItem(`storm_watched_eps_${mediaId}`, epsJson);
+          if (tKey) localStorage.setItem(`storm_watched_eps_title_${tKey}_s${sNum}`, epsJson);
+        } else if (newStatus === 'planned') {
+          localStorage.removeItem(statusKey);
+          localStorage.removeItem(sKey);
+          if (sNum === 1) localStorage.removeItem(`storm_watched_eps_${mediaId}`);
+          if (tKey) {
+            localStorage.removeItem(`storm_season_status_title_${tKey}_s${sNum}`);
+            localStorage.removeItem(`storm_watched_eps_title_${tKey}_s${sNum}`);
+          }
         }
-      } else if (newStatus === 'planned') {
-        localStorage.removeItem(statusKey);
-        localStorage.removeItem(sKey);
-        if (sNum === 1) localStorage.removeItem(`storm_watched_eps_${mediaId}`);
-      }
-    } catch {}
-  });
-
-  if (newStatus === 'completed') {
-    saveSeriesCompletedMeta(mediaId, {
-      maxSeason: maxSeasonNum,
-      maxEpisode: maxEpisodeNum,
-      totalEpisodes: totalEpCount,
-      completedAt: Date.now()
+      } catch {}
     });
+
+    if (newStatus === 'completed') {
+      saveSeriesCompletedMeta(mediaId, {
+        maxSeason: maxSeasonNum,
+        maxEpisode: maxEpisodeNum,
+        totalEpisodes: totalEpCount,
+        completedAt: Date.now()
+      }, rawTitle);
+    }
+  };
+
+  applyForSeasons(seasons);
+
+  // Если сериал помечен с карточки каталога без загруженного списка сезонов — уточняем точные сезоны/серии на сервере
+  if (!hasExactSeasons && newStatus === 'completed' && rawTitle) {
+    fetch(`/api/media/item?title=${encodeURIComponent(rawTitle)}&source=tmdb&media_type=series`, {
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin'
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(itemData => {
+        if (itemData && Array.isArray(itemData.seasons) && itemData.seasons.length > 0) {
+          applyForSeasons(itemData.seasons);
+          syncWatchedEpisodesToServer({ ...media, seasons: itemData.seasons, user_status: 'completed' }, 'completed', true);
+        }
+      })
+      .catch(() => {});
   }
 
   if (newStatus === 'completed' || newStatus === 'dropped' || newStatus === 'wont_watch') {
-    removeFromLocalContinueWatching(mediaId, media.title);
+    removeFromLocalContinueWatching(mediaId, media.title, media.source || '');
   }
 
   window.dispatchEvent(new CustomEvent('storm:series-status-changed', {
@@ -571,7 +881,7 @@ export async function saveBookmarkStatus(mediaData, status) {
   const mediaId = String(mediaData.id || mediaData.media_id || '');
   const normTitle = String(mediaData.title || '').trim().toLowerCase();
 
-  // Всегда локально сохраняем статус в localStorage для мгновенного отклика
+  // Всегда локально сохраняем статус в localStorage (включая канонический ключ названия) для мгновенного отклика
   try {
     if (mediaId) {
       localStorage.setItem(`storm_status_${mediaId}`, normStatus);
@@ -579,6 +889,10 @@ export async function saveBookmarkStatus(mediaData, status) {
     if (normTitle) {
       localStorage.setItem(`storm_status_title_${normTitle}`, normStatus);
     }
+    const canonT = normalizeCanonicalTitleMatch(mediaData.title || '');
+    const canonO = normalizeCanonicalTitleMatch(mediaData.original_title || '');
+    if (canonT) localStorage.setItem(`storm_status_canon_${canonT}`, normStatus);
+    if (canonO) localStorage.setItem(`storm_status_canon_${canonO}`, normStatus);
     syncLocalBookmarkItem(mediaData, normStatus);
     if (normStatus && normStatus !== 'none' && normStatus !== 'not_started') {
       const bList = getLocalBookmarksList();
@@ -604,6 +918,9 @@ export async function saveBookmarkStatus(mediaData, status) {
   }
 
   try {
+    const serializedEpInfo = isSeries
+      ? serializeLocalWatchedEpisodesForMedia(mediaId, mediaData.title || '', Array.isArray(mediaData.seasons) ? mediaData.seasons : [])
+      : null;
     const res = await fetch('/api/bookmarks/set', {
       method: 'POST',
       headers: buildAuthHeaders(true),
@@ -617,6 +934,9 @@ export async function saveBookmarkStatus(mediaData, status) {
         media_type: mediaData.media_type || mType || 'movie',
         year: mediaData.year || detectClientYear(mediaData) || '',
         status: normStatus,
+        episodes_watched: serializedEpInfo ? serializedEpInfo.episodes_watched : (mediaData.episodes_watched || 0),
+        total_episodes: serializedEpInfo ? (serializedEpInfo.total_episodes || mediaData.total_episodes || 0) : (mediaData.total_episodes || 0),
+        watched_episodes_json: serializedEpInfo ? serializedEpInfo.payload : undefined,
         is_favorite: (normStatus === 'favorite' || mediaData.is_favorite === 1 || mediaData.is_favorite === true) ? 1 : (mediaData.is_favorite ? 1 : 0)
       })
     });
@@ -639,9 +959,11 @@ export async function saveBookmarkStatus(mediaData, status) {
 
 export async function deleteBookmark(mediaId, source, title = '') {
   const normTitle = String(title || '').trim().toLowerCase();
+  const canonT = normalizeCanonicalTitleMatch(title || '');
   try {
     if (mediaId) localStorage.removeItem(`storm_status_${mediaId}`);
     if (normTitle) localStorage.removeItem(`storm_status_title_${normTitle}`);
+    if (canonT) localStorage.removeItem(`storm_status_canon_${canonT}`);
     syncLocalBookmarkItem({ id: mediaId, title }, 'none');
   } catch {}
 
@@ -678,8 +1000,9 @@ export function detectClientMediaType(item) {
     return 'movie';
   }
 
-  // Дюна и Дюна: Часть вторая - строго художественный фильм
-  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть')) {
+  // Дюна и Уличный боец (2026) - строго художественные фильмы
+  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть') ||
+      t === 'уличный боец' || t.startsWith('уличный боец ') || t === 'street fighter' || t.startsWith('street fighter ')) {
     return 'movie';
   }
 
@@ -867,6 +1190,8 @@ export function detectClientYear(item) {
 
   const knownYears = {
     // 2026
+    'уличный боец': '2026',
+    'street fighter': '2026',
     'история о перекуре за супермаркетом': '2026',
     'super no ura de yani suu futari': '2026',
     'человек паук новый день': '2026',
@@ -1065,8 +1390,21 @@ export function getLocalContinueWatching() {
 
     let hasChanges = false;
 
+    const seenTitleKeys = new Set();
     const sanitized = list.filter(item => {
       if (!item || !item.media_id || !item.title) return false;
+      if (isDismissedFromContinueWatching(item.media_id || item.id, item.title)) {
+        hasChanges = true;
+        return false;
+      }
+      const tKey = normalizeContinueTitleKey(item.title);
+      if (tKey) {
+        if (seenTitleKeys.has(tKey)) {
+          hasChanges = true;
+          return false;
+        }
+        seenTitleKeys.add(tKey);
+      }
       const t = String(item.title || '').trim().toLowerCase();
       if (t.includes('fanfilm4k') || t.includes('фан4к –') || t.includes('4к uhd бесплатно')) return false;
 
@@ -1209,6 +1547,9 @@ export function saveLocalWatchProgress(data) {
   if (pct < 0.5 && sec < 10 && ep <= 1 && s <= 1) return;
 
   try {
+    if (sec >= 15 || pct >= 3) {
+      setDismissedFromContinueWatching(data.media_id, cleanTitle, false);
+    }
     const list = getLocalContinueWatching();
     const now = Date.now();
     const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
@@ -1273,34 +1614,41 @@ export async function syncWatchProgress(data) {
 
 export async function fetchContinueWatching() {
   const localItems = getLocalContinueWatching();
+  const activeToken = getToken();
 
   let serverItems = [];
-  try {
-    const res = await fetch('/api/media/continue-watching', {
-      headers: buildAuthHeaders(false),
-      credentials: 'same-origin',
-      signal: AbortSignal.timeout(4000)
-    });
-    if (res.ok) {
-      const parsed = await res.json();
-      if (Array.isArray(parsed)) {
-        serverItems = parsed;
+  if (activeToken && !activeToken.startsWith('offline_') && !activeToken.startsWith('guest_')) {
+    try {
+      const res = await fetch('/api/media/continue-watching', {
+        headers: buildAuthHeaders(false),
+        credentials: 'same-origin',
+        signal: AbortSignal.timeout(4000)
+      });
+      if (res.ok) {
+        const parsed = await res.json();
+        if (Array.isArray(parsed)) {
+          serverItems = parsed;
+        }
       }
+    } catch (err) {
+      // Игнорируем сетевые сбои, отдавая локальный кэш
     }
-  } catch (err) {
-    // Игнорируем сетевые сбои, отдавая локальный кэш
   }
 
-  // Объединяем серверную и локальную историю, исключая дубликаты
+  // Объединяем серверную и локальную историю, исключая дубликаты по нормализованному названию
   const mergedMap = new Map();
 
   for (const item of serverItems) {
-    const key = (item.title ? item.title.toLowerCase().trim() : '') || `${item.source}_${item.media_id}`;
-    mergedMap.set(key, item);
+    if (!item) continue;
+    const key = normalizeContinueTitleKey(item.title) || `${item.source}_${item.media_id}`;
+    if (!mergedMap.has(key)) {
+      mergedMap.set(key, item);
+    }
   }
 
   for (const item of localItems) {
-    const key = (item.title ? item.title.toLowerCase().trim() : '') || `${item.source}_${item.media_id}`;
+    if (!item) continue;
+    const key = normalizeContinueTitleKey(item.title) || `${item.source}_${item.media_id}`;
     if (!mergedMap.has(key)) {
       mergedMap.set(key, item);
     } else {
@@ -1313,6 +1661,7 @@ export async function fetchContinueWatching() {
 
   const result = Array.from(mergedMap.values()).filter(item => {
     if (!item) return false;
+    if (isDismissedFromContinueWatching(item.media_id || item.id, item.title)) return false;
     const t = String(item.title || '').trim().toLowerCase();
     const localStatus = localStorage.getItem(`storm_status_${item.media_id || item.id}`) || localStorage.getItem(`storm_status_title_${t}`);
     if (localStatus === 'completed' || localStatus === 'dropped' || localStatus === 'wont_watch') return false;

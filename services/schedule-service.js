@@ -450,7 +450,7 @@ export async function getShikimoriSchedule(weekStart, weekEnd) {
  * 4. TMDB Upcoming Movies (актуальные мировые кинопремьеры)
  */
 export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
-  const cacheKey = `tmdb_upcoming_${weekStart.getTime()}_${weekEnd.getTime()}_v112`;
+  const cacheKey = `tmdb_upcoming_${weekStart.getTime()}_${weekEnd.getTime()}_v113`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -494,13 +494,16 @@ export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
       const dayOfWeek = rDate.getDay();
       const dateFormatted = `${String(rDate.getDate()).padStart(2, '0')}.${String(rDate.getMonth() + 1).padStart(2, '0')}.${rDate.getFullYear()}`;
       const poster = m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : 'assets/favicon.svg';
+      const endOfReleaseDay = new Date(`${m.release_date.substring(0, 10)}T23:59:59`).getTime();
+      const isFuture = !isNaN(endOfReleaseDay) ? (endOfReleaseDay > Date.now()) : true;
 
       items.push({
-        id: `tmdb_up_${m.id}`,
+        id: isFuture ? `tmdb_up_${m.id}` : `tmdb_${m.id}`,
         title: m.title,
         original_title: m.original_title || '',
         poster: wrapPoster(poster, m.title, m.original_title || ''),
-        year: String(rDate.getFullYear() || '2026'),
+        year: String(rDate.getFullYear() || new Date().getFullYear()),
+        vote_count: m.vote_count || 0,
         season: 1,
         episode: 1,
         episode_title: 'Мировая премьера',
@@ -508,9 +511,9 @@ export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
         release_date: dateFormatted,
         air_time: '20:00 МСК',
         studio: 'Red Head Sound',
-        quality: 'Ожидается',
-        is4K: false,
-        is_upcoming: true,
+        quality: isFuture ? 'Ожидается' : '4K Ultra HD',
+        is4K: !isFuture,
+        is_upcoming: isFuture,
         rating: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 8.0,
         genres: 'Кинопремьера',
         description: m.overview || 'Официальная премьера фильма в кинотеатрах и на стриминговых сервисах.',

@@ -552,9 +552,9 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
     const isUpcomingText = /ожидается|скоро|в кино|премьера|трейлер/i.test(elAllText) || /ожидается|скоро|премьера/i.test(title);
     const tagLeft = el.find('.tag.top-left, .card__year, .top__year').first().text().trim();
     const realYear = resolveCanonicalYear(title, link, poster, tagLeft);
-    const numYr = parseInt(realYear || '2026', 10);
-    const isKnownUnreleased = /кэрри.*2026|flanagan|клэйфейс|clayface|история игрушек 5|мстители.*судный|бэтмен.*2|одиссея.*2026/i.test(title + ' ' + elAllText) || (numYr > new Date().getFullYear());
-    const isUpcoming = Boolean(isUpcomingText || isKnownUnreleased || (numYr >= 2026 && (elAllText.includes('ожидается') || elAllText.includes('скоро') || !tagLeft)));
+    const numYr = parseInt(realYear || String(new Date().getFullYear()), 10);
+    const isFutureYear = numYr > new Date().getFullYear();
+    const isUpcoming = Boolean(isUpcomingText || isFutureYear || (numYr >= new Date().getFullYear() && (elAllText.includes('ожидается') || elAllText.includes('скоро'))));
 
     // 100% исключение невышедших релизов и карточек-анонсов с одними трейлерами
     if (isUpcoming) {
@@ -1006,10 +1006,9 @@ export async function getFanFilmDetails(idOrUrl) {
     }
 
     const numYr = parseInt(resolvedYear || '2024', 10);
-    const isCarrieUnreleased = /кэрри.*2026|flanagan|флэнаган/i.test(title + ' ' + description);
     const effective4kUrl = final4kUrl || url;
     const hasStreams = Boolean(effective4kUrl || kpId || seasonsData.length > 0);
-    const isUnreleasedUpcoming = isCarrieUnreleased || (!hasStreams && numYr > new Date().getFullYear());
+    const isUnreleasedUpcoming = !hasStreams && numYr > new Date().getFullYear();
 
     // Плееры (полный список из 13+ источников с приоритетом FanFilm 4K на первом месте)
     const players = getAvailablePlayers({
@@ -1019,7 +1018,7 @@ export async function getFanFilmDetails(idOrUrl) {
       media_type: (seasonsData.length > 0 || isExplicitSeries) ? 'series' : detectedType,
       genres: resolveCanonicalGenres(title, '', description, genres),
       source: 'fanfilm4k',
-      fanfilm_4k_url: (effective4kUrl && !isCarrieUnreleased) ? effective4kUrl : '',
+      fanfilm_4k_url: effective4kUrl || '',
       fanfilm_hd_url: finalHdUrl,
       is_upcoming: isUnreleasedUpcoming
     });
@@ -1084,7 +1083,7 @@ export async function getFanFilmDetails(idOrUrl) {
       slogan,
       is_upcoming: isUnreleasedUpcoming,
       is4K: Boolean(final4kUrl && !isCarrieUnreleased),
-      quality: (final4kUrl && !isCarrieUnreleased) ? '4K Ultra HD' : (isUnreleasedUpcoming ? 'Ожидается' : '1080p Full HD'),
+      quality: final4kUrl ? '4K Ultra HD' : (isUnreleasedUpcoming ? 'Ожидается' : '1080p Full HD'),
       kp_id: kpId,
       fanfilm_4k_url: (final4kUrl && !isCarrieUnreleased) ? final4kUrl : '',
       fanfilm_hd_url: finalHdUrl,

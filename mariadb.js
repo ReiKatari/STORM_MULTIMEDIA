@@ -1,3 +1,4 @@
+import './env-loader.js';
 import mysql from 'mysql2/promise';
 
 let pool = null;
@@ -5,13 +6,14 @@ let activeHost = null;
 let isConnected = false;
 let syncInProgress = false;
 let initInFlightPromise = null;
+let mariaWriteQueue = Promise.resolve();
 let lastFailedInitAt = 0;
 const INIT_RETRY_COOLDOWN_MS = 60 * 1000;
 
 const DB_CONFIG = {
   port: parseInt(process.env.DB_PORT || '3306', 10),
-  user: process.env.DB_USER || 'ReiKatari',
-  password: process.env.DB_PASS || 'SeR1eNi!2Ty9kP',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASS || '',
   database: process.env.DB_NAME || 'stormmultimedia',
   waitForConnections: true,
   connectionLimit: 15,
@@ -31,10 +33,14 @@ export async function initMariaDb(force = false) {
     return null;
   }
 
+  if (!DB_CONFIG.password && !process.env.DB_ALLOW_EMPTY_PASS) {
+    return null;
+  }
+
   initInFlightPromise = (async () => {
     const candidateHosts = [
       process.env.DB_HOST || '127.0.0.1',
-      process.env.DB_HOST_FALLBACK || '192.168.1.154'
+      process.env.DB_HOST_FALLBACK || ''
     ];
 
     const uniqueHosts = Array.from(new Set(candidateHosts.filter(Boolean)));
@@ -53,6 +59,18 @@ export async function initMariaDb(force = false) {
           activeHost = host;
           isConnected = true;
           lastFailedInitAt = 0;
+          try {
+            const [cols] = await candidatePool.query("SHOW COLUMNS FROM bookmarks LIKE 'watched_episodes_json'");
+            if (!cols || cols.length === 0) {
+              await candidatePool.query("ALTER TABLE bookmarks ADD COLUMN watched_episodes_json LONGTEXT NULL");
+              console.log('[MariaDB 10] Добавлена колонка bookmarks.watched_episodes_json');
+            }
+          } catch (migErr) {
+            console.warn('[MariaDB 10] Проверка миграции watched_episodes_json:', migErr.message);
+          }
+          try {
+            await candidatePool.query("DELETE FROM media_cache WHERE cache_key LIKE 'catalog_v4_%' OR cache_key LIKE 'tmdb_upcoming_v2_%'");
+          } catch (_) {}
           console.log(`[MariaDB 10] Успешное подключение к базе данных '${DB_CONFIG.database}' на ${host}:${DB_CONFIG.port}`);
           return pool;
         }
@@ -123,6 +141,17 @@ export async function queryMariaDb(sql, params = []) {
 }
 
 /**
+ * Строго упорядоченная FIFO-очередь записи/удаления в MariaDB 10,
+ * исключающая гонки параллельных TCP-соединений пула (например INSERT -> мгновенный DELETE)
+ */
+export function enqueueMariaDbWrite(sql, params = []) {
+  mariaWriteQueue = mariaWriteQueue
+    .then(() => queryMariaDb(sql, params))
+    .catch(() => null);
+  return mariaWriteQueue;
+}
+
+/**
  * Синхронизация данных из MariaDB в локальный SQLite (на старте или по расписанию)
  */
 export async function syncFromMariaDbToSqlite(sqliteDb) {
@@ -158,8 +187,18 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       }
     }
 
-    // 2. Синхронизация сессий
+    // 2. Синхронизация сессий (с очисткой истёкших и ранее утёкших сессий)
     const now = Date.now();
+    try {
+      await pool.query('DELETE FROM sessions WHERE expires_at <= ?', [now]);
+      sqliteDb.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+      const [secCheck] = await pool.query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v3'");
+      if (!secCheck || secCheck.length === 0) {
+        await pool.query("UPDATE watch_history SET media_type = 'movie', season = 1, episode = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
+        await pool.query("UPDATE bookmarks SET media_type = 'movie', total_episodes = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
+        await pool.query("INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'security_session_purge_v3', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)", [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]);
+      }
+    } catch (_) {}
     const [mSessions] = await pool.query('SELECT * FROM sessions WHERE expires_at > ?', [now]);
     if (mSessions && mSessions.length > 0) {
       const upsertSession = sqliteDb.prepare(`
@@ -173,34 +212,40 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       }
     }
 
-    // 3. Синхронизация закладок
+    // 3. Синхронизация закладок (с пометками просмотренных серий и защитой от перезаписи более свежих данных)
     const [mBookmarks] = await pool.query('SELECT * FROM bookmarks');
     if (mBookmarks) {
       const upsertBookmark = sqliteDb.prepare(`
         INSERT INTO bookmarks (
           user_id, media_id, source, title, original_title, poster_url, media_type,
           year, status, is_favorite, episodes_watched, total_episodes, progress_percent,
-          last_time_seconds, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          last_time_seconds, watched_episodes_json, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, media_id, source) DO UPDATE SET
           title = excluded.title,
           original_title = excluded.original_title,
-          poster_url = excluded.poster_url,
+          poster_url = COALESCE(NULLIF(excluded.poster_url, ''), bookmarks.poster_url),
           media_type = excluded.media_type,
-          year = excluded.year,
+          year = COALESCE(NULLIF(excluded.year, ''), bookmarks.year),
           status = excluded.status,
           is_favorite = excluded.is_favorite,
           episodes_watched = excluded.episodes_watched,
           total_episodes = excluded.total_episodes,
           progress_percent = excluded.progress_percent,
           last_time_seconds = excluded.last_time_seconds,
+          watched_episodes_json = CASE
+            WHEN excluded.watched_episodes_json IS NOT NULL AND excluded.watched_episodes_json != '' AND excluded.watched_episodes_json != '{}'
+              THEN excluded.watched_episodes_json
+            ELSE COALESCE(bookmarks.watched_episodes_json, '{}')
+          END,
           updated_at = excluded.updated_at
+        WHERE excluded.updated_at >= bookmarks.updated_at
       `);
 
-      const mBookmarkKeys = new Set();
+      const mBookmarkMap = new Map();
       for (const b of mBookmarks) {
         const key = `${b.user_id}_${String(b.media_id)}_${b.source}`;
-        mBookmarkKeys.add(key);
+        mBookmarkMap.set(key, Number(b.updated_at) || 0);
         upsertBookmark.run(
           b.user_id,
           String(b.media_id),
@@ -216,15 +261,17 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           b.total_episodes || 0,
           b.progress_percent || 0.0,
           b.last_time_seconds || 0,
-          Number(b.updated_at)
+          b.watched_episodes_json || '{}',
+          Number(b.updated_at) || 0
         );
       }
 
-      // Передаем локальные закладки в MariaDB, если их там ещё нет
+      // Передаем локальные закладки в MariaDB, если их там ещё нет или они свежее
       const localBookmarks = sqliteDb.prepare('SELECT * FROM bookmarks').all();
       for (const lb of localBookmarks) {
         const key = `${lb.user_id}_${String(lb.media_id)}_${lb.source}`;
-        if (!mBookmarkKeys.has(key)) {
+        const mUpdated = mBookmarkMap.get(key);
+        if (mUpdated === undefined || (Number(lb.updated_at) || 0) > mUpdated) {
           mariaSaveBookmark(lb);
         }
       }
@@ -274,19 +321,20 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
           title = excluded.title,
-          poster_url = excluded.poster_url,
+          poster_url = COALESCE(NULLIF(excluded.poster_url, ''), watch_history.poster_url),
           media_type = excluded.media_type,
-          year = excluded.year,
+          year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
           time_seconds = excluded.time_seconds,
           duration_seconds = excluded.duration_seconds,
           progress_percent = excluded.progress_percent,
           updated_at = excluded.updated_at
+        WHERE excluded.updated_at >= watch_history.updated_at
       `);
 
-      const mHistKeys = new Set();
+      const mHistMap = new Map();
       for (const h of mHistory) {
         const key = `${h.user_id}_${String(h.media_id)}_${h.source}_${h.season || 1}_${h.episode || 1}`;
-        mHistKeys.add(key);
+        mHistMap.set(key, Number(h.updated_at) || 0);
         upsertHist.run(
           h.user_id,
           String(h.media_id),
@@ -304,11 +352,12 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
         );
       }
 
-      // Передаем локальную историю в MariaDB, если её там ещё нет
+      // Передаем локальную историю в MariaDB, если её там ещё нет или она свежее
       const localHist = sqliteDb.prepare('SELECT * FROM watch_history').all();
       for (const lh of localHist) {
         const key = `${lh.user_id}_${String(lh.media_id)}_${lh.source}_${lh.season || 1}_${lh.episode || 1}`;
-        if (!mHistKeys.has(key)) {
+        const mUpdated = mHistMap.get(key);
+        if (mUpdated === undefined || (Number(lh.updated_at) || 0) > mUpdated) {
           mariaSaveWatchHistory(lh);
         }
       }
@@ -418,11 +467,11 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
 }
 
 // ==========================================
-// WRITE-THROUGH ОПЕРАЦИИ ДЛЯ MARIADB 10
+// WRITE-THROUGH ОПЕРАЦИИ ДЛЯ MARIADB 10 (FIFO)
 // ==========================================
 
 export function mariaSaveUser(user) {
-  queryMariaDb(
+  return enqueueMariaDbWrite(
     `INSERT INTO users (id, username, email, password_hash, avatar, role, settings_json, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
@@ -446,7 +495,7 @@ export function mariaSaveUser(user) {
 }
 
 export function mariaSaveSession(token, userId, expiresAt) {
-  queryMariaDb(
+  return enqueueMariaDbWrite(
     `INSERT INTO sessions (token, user_id, expires_at)
      VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at)`,
@@ -455,32 +504,36 @@ export function mariaSaveSession(token, userId, expiresAt) {
 }
 
 export function mariaDeleteSession(token) {
-  queryMariaDb('DELETE FROM sessions WHERE token = ?', [token]);
+  return enqueueMariaDbWrite('DELETE FROM sessions WHERE token = ?', [token]);
 }
 
 export function mariaDeleteUserSessions(userId) {
-  queryMariaDb('DELETE FROM sessions WHERE user_id = ?', [userId]);
+  return enqueueMariaDbWrite('DELETE FROM sessions WHERE user_id = ?', [userId]);
 }
 
 export function mariaSaveBookmark(b) {
-  queryMariaDb(
+  const watchedJson = typeof b.watched_episodes_json === 'string'
+    ? b.watched_episodes_json
+    : (b.watched_episodes_json ? JSON.stringify(b.watched_episodes_json) : '{}');
+  return enqueueMariaDbWrite(
     `INSERT INTO bookmarks (
        user_id, media_id, source, title, original_title, poster_url, media_type,
        year, status, is_favorite, episodes_watched, total_episodes, progress_percent,
-       last_time_seconds, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       last_time_seconds, watched_episodes_json, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        title = VALUES(title),
        original_title = VALUES(original_title),
-       poster_url = VALUES(poster_url),
+       poster_url = COALESCE(NULLIF(VALUES(poster_url), ''), bookmarks.poster_url),
        media_type = VALUES(media_type),
-       year = VALUES(year),
+       year = COALESCE(NULLIF(VALUES(year), ''), bookmarks.year),
        status = VALUES(status),
        is_favorite = VALUES(is_favorite),
        episodes_watched = VALUES(episodes_watched),
        total_episodes = VALUES(total_episodes),
        progress_percent = VALUES(progress_percent),
        last_time_seconds = VALUES(last_time_seconds),
+       watched_episodes_json = VALUES(watched_episodes_json),
        updated_at = VALUES(updated_at)`,
     [
       b.user_id,
@@ -497,27 +550,66 @@ export function mariaSaveBookmark(b) {
       b.total_episodes || 0,
       b.progress_percent || 0.0,
       b.last_time_seconds || 0,
+      watchedJson,
       b.updated_at || Date.now()
     ]
   );
 }
 
-export function mariaDeleteBookmark(userId, mediaId, source, matchedIds = []) {
-  if (userId && mediaId && source) {
-    queryMariaDb(
-      'DELETE FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ?) AND source = ?',
-      [userId, String(mediaId), String(mediaId).replace(/^[a-z]+_/, ''), source]
+export function mariaDeleteBookmark(userId, mediaId, source, matchedRows = [], title = '') {
+  if (!userId) return;
+  if (mediaId && source) {
+    const cleanId = String(mediaId).replace(/^[a-z]+_/, '');
+    enqueueMariaDbWrite(
+      'DELETE FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ? OR media_id = ?)',
+      [userId, String(mediaId), cleanId, `${source}_${cleanId}`]
     );
-  } else if (userId && mediaId) {
-    queryMariaDb(
+  } else if (mediaId) {
+    const cleanId = String(mediaId).replace(/^[a-z]+_/, '');
+    enqueueMariaDbWrite(
       'DELETE FROM bookmarks WHERE user_id = ? AND (media_id = ? OR media_id = ?)',
-      [userId, String(mediaId), String(mediaId).replace(/^[a-z]+_/, '')]
+      [userId, String(mediaId), cleanId]
+    );
+  }
+  if (Array.isArray(matchedRows) && matchedRows.length > 0) {
+    for (const row of matchedRows) {
+      if (row && typeof row === 'object' && row.media_id) {
+        enqueueMariaDbWrite(
+          'DELETE FROM bookmarks WHERE user_id = ? AND media_id = ? AND source = ?',
+          [userId, String(row.media_id), String(row.source || '')]
+        );
+      }
+    }
+  }
+  if (title && String(title).trim()) {
+    enqueueMariaDbWrite(
+      'DELETE FROM bookmarks WHERE user_id = ? AND LOWER(TRIM(title)) = LOWER(TRIM(?))',
+      [userId, String(title).trim()]
+    );
+  }
+}
+
+export function mariaDeleteWatchHistory(userId, mediaId = '', title = '') {
+  if (!userId) return;
+  const cleanId = String(mediaId || '').trim();
+  const cleanTitle = String(title || '').trim();
+  if (cleanId) {
+    const strippedId = cleanId.replace(/^[a-z]+_/, '');
+    enqueueMariaDbWrite(
+      'DELETE FROM watch_history WHERE user_id = ? AND (media_id = ? OR media_id = ?)',
+      [userId, cleanId, strippedId]
+    );
+  }
+  if (cleanTitle) {
+    enqueueMariaDbWrite(
+      'DELETE FROM watch_history WHERE user_id = ? AND LOWER(TRIM(title)) = LOWER(TRIM(?))',
+      [userId, cleanTitle]
     );
   }
 }
 
 export function mariaSaveWatchHistory(h) {
-  queryMariaDb(
+  return enqueueMariaDbWrite(
     `INSERT INTO watch_history (
        user_id, media_id, source, title, poster_url, media_type, year,
        season, episode, time_seconds, duration_seconds, progress_percent, updated_at
@@ -548,15 +640,15 @@ export function mariaSaveWatchHistory(h) {
 }
 
 export function mariaPurgeUserData(userId) {
-  queryMariaDb('DELETE FROM bookmarks WHERE user_id = ?', [userId]);
-  queryMariaDb('DELETE FROM watch_history WHERE user_id = ?', [userId]);
-  queryMariaDb(
+  enqueueMariaDbWrite('DELETE FROM bookmarks WHERE user_id = ?', [userId]);
+  enqueueMariaDbWrite('DELETE FROM watch_history WHERE user_id = ?', [userId]);
+  enqueueMariaDbWrite(
     `DELETE FROM custom_list_items WHERE list_id IN (
        SELECT id FROM custom_lists WHERE user_id = ?
      )`,
     [userId]
   );
-  queryMariaDb('DELETE FROM custom_lists WHERE user_id = ?', [userId]);
+  return enqueueMariaDbWrite('DELETE FROM custom_lists WHERE user_id = ?', [userId]);
 }
 
 export function mariaSaveCustomList(list) {

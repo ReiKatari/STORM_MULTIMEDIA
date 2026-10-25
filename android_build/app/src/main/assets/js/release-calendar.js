@@ -4,9 +4,9 @@
    с переключением недель, фильтрами, реальными обложками и студиями
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.1.1';
-import { openPlayerModal } from './player.js?v=1.1.1';
-import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.1.1';
+import { showToast } from './auth.js?v=1.1.2';
+import { openPlayerModal } from './player.js?v=1.1.2';
+import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.1.2';
 
 let selectedWeek = 'current'; // 'current' | 'next'
 let selectedDay = new Date().getDay(); // 0=ВС, 1=ПН, 2=ВТ...
@@ -44,7 +44,7 @@ export function unwrapPosterUrl(url) {
 }
 
 export function wrapPosterUrl(url, title = '') {
-  if (!url) {
+  if (!url || String(url).includes('missing_original') || String(url).includes('missing_preview') || String(url).includes('favicon.svg')) {
     if (title) return `/api/media/image-proxy?title=${encodeURIComponent(title)}`;
     return POSTER_FALLBACK_SVG;
   }
@@ -596,9 +596,9 @@ function renderDayGrid(grid, items, dayId, week) {
         <div class="cal-poster-wrap">
           <img src="${posterUrl}" class="cal-poster-img" alt="${escapeHtml(it.title)}" loading="lazy" onerror="if(!this.dataset.triedFallback){ this.dataset.triedFallback='1'; this.src='/api/media/image-proxy?title=' + encodeURIComponent('${escapeHtml(it.title)}') + '&orig=' + encodeURIComponent('${escapeHtml(it.original_title || '')}'); } else { this.onerror=null; this.src='${POSTER_FALLBACK_SVG}'; }">
           <span class="cal-poster-ep-badge">${epBadge}</span>
-          ${(it.is_upcoming || String(it.id || '').startsWith('tmdb_up_') || /ожидается/i.test(it.quality || ''))
+          ${(statusClass !== 'released' && (typeof window.isUpcomingMediaItem === 'function' ? window.isUpcomingMediaItem(it) : Boolean(it.is_upcoming)))
             ? '<span class="cal-poster-4k-badge" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#ffffff;">ОЖИДАЕТСЯ</span>'
-            : (is4K ? '<span class="cal-poster-4k-badge">4K UHD</span>' : '')}
+            : (is4K || statusClass === 'released' ? '<span class="cal-poster-4k-badge">4K UHD</span>' : '')}
         </div>
 
         <!-- Информация об эпизоде -->

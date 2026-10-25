@@ -1,13 +1,17 @@
+import './env-loader.js';
 import { db } from './db.js';
 import mysql from 'mysql2/promise';
 
 async function migrate() {
+  if (!process.env.DB_PASS) {
+    throw new Error('Укажите DB_HOST, DB_USER и DB_PASS в локальном файле .env');
+  }
   const pool = mysql.createPool({
-    host: '192.168.1.154',
-    port: 3306,
-    user: 'ReiKatari',
-    password: 'SeR1eNi!2Ty9kP',
-    database: 'stormmultimedia',
+    host: process.env.DB_HOST_FALLBACK || process.env.DB_HOST || '127.0.0.1',
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASS,
+    database: process.env.DB_NAME || 'stormmultimedia',
     waitForConnections: true,
     connectionLimit: 10
   });

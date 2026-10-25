@@ -19,46 +19,71 @@ async function shikiFetch(pathAndQuery, timeoutMs = 4500) {
 }
 
 export async function getShikimoriCatalog(category = 'popular', page = 1) {
-  const cacheKey = `shikimori_${category}_page_${page}`;
+  const cacheKey = `shikimori_v4_${category}_page_${page}`;
   const cached = getCache('shikimori', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
   let order = 'popularity';
   let kind = '';
+  let statusFilter = '';
 
-  if (category === 'new') order = 'aired_on';
+  if (category === 'new') {
+    order = 'aired_on';
+    statusFilter = 'ongoing,released';
+  }
   if (category === 'anime-movies') kind = 'movie';
   if (category === 'anime-series') kind = 'tv';
 
   let pathAndQuery = `/api/animes?limit=50&page=${page}&order=${order}`;
   if (kind) pathAndQuery += `&kind=${kind}`;
+  if (statusFilter) pathAndQuery += `&status=${statusFilter}`;
 
   try {
     const res = await shikiFetch(pathAndQuery, 5000);
     if (!res.ok) throw new Error(`Shikimori error ${res.status}`);
 
     const data = await res.json();
-    const items = data.map(item => {
+    const validRaw = (Array.isArray(data) ? data : []).filter(item => {
+      if (!item) return false;
+      const imgOrig = String(item.image?.original || item.image?.preview || '');
+      const isMissingImg = !imgOrig || imgOrig.includes('missing_');
+      if (isMissingImg) return false;
+      return true;
+    });
+
+    const items = validRaw.map(item => {
       const title = item.russian || item.name;
       const rawYear = item.aired_on ? item.aired_on.substring(0, 4) : (item.released_on ? item.released_on.substring(0, 4) : '');
       const resolvedYear = resolveCanonicalYear(title, '', '', '', rawYear) || '2026';
       const genres = resolveCanonicalGenres(title, 'anime', '', null);
       const mediaType = item.kind === 'movie' ? 'anime-movie' : resolveCanonicalMediaType(title, '', 'anime-series', genres);
+      const imgOrig = String(item.image?.original || item.image?.preview || '');
+      const hasValidImg = Boolean(imgOrig && !imgOrig.includes('missing_'));
+      const posterUrl = hasValidImg
+        ? (imgOrig.startsWith('http') ? imgOrig : `${SHIKIMORI_BASE}${imgOrig}`)
+        : `/api/media/image-proxy?title=${encodeURIComponent(title)}&orig=${encodeURIComponent(item.name || '')}`;
+      const isShikiUpcoming = Boolean(
+        item.status === 'anons' ||
+        (parseInt(resolvedYear, 10) || 0) > new Date().getFullYear() ||
+        (item.aired_on && new Date(item.aired_on) > new Date()) ||
+        (item.status !== 'released' && Number(item.episodes_aired || 0) === 0 && (!item.aired_on || (parseInt(resolvedYear, 10) || 0) >= new Date().getFullYear()))
+      );
       return {
         id: String(item.id),
         source: 'shikimori',
         title,
         original_title: item.name,
-        poster: item.image?.original ? `${SHIKIMORI_BASE}${item.image.original}` : 'assets/favicon.svg',
+        poster: posterUrl,
         year: resolvedYear,
         rating: parseFloat(item.score) || 0,
         media_type: mediaType,
         category: mediaType === 'anime-movie' ? 'Аниме-фильм' : 'Аниме-сериал',
         genres,
-        quality: 'HD 1080p',
-        status: item.status === 'released' ? 'Вышел' : 'Онгоинг',
+        is_upcoming: isShikiUpcoming,
+        quality: isShikiUpcoming ? 'Ожидается' : 'HD 1080p',
+        status: isShikiUpcoming ? 'Анонс' : (item.status === 'released' ? 'Вышел' : 'Онгоинг'),
         episodes_total: item.episodes || 0,
-        episodes_released: item.episodes_aired || item.episodes || 0
+        episodes_released: isShikiUpcoming ? 0 : (item.episodes_aired || item.episodes || 0)
       };
     });
 
@@ -73,7 +98,7 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
 
 export async function searchShikimori(query) {
   if (!query || !query.trim()) return [];
-  const cacheKey = `shikimori_search_${query.toLowerCase().trim()}`;
+  const cacheKey = `shikimori_search_v3_${query.toLowerCase().trim()}`;
   const cached = getCache('shikimori', cacheKey);
   if (Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -88,11 +113,15 @@ export async function searchShikimori(query) {
       source: 'shikimori',
       title: item.russian || item.name,
       original_title: item.name,
-      poster: item.image?.original ? `${SHIKIMORI_BASE}${item.image.original}` : 'assets/favicon.svg',
+      poster: (item.image?.original && !String(item.image.original).includes('missing_'))
+        ? `${SHIKIMORI_BASE}${item.image.original}`
+        : `/api/media/image-proxy?title=${encodeURIComponent(item.russian || item.name || '')}&orig=${encodeURIComponent(item.name || '')}`, 
       year: item.aired_on ? item.aired_on.substring(0, 4) : '',
       rating: parseFloat(item.score) || 0,
       media_type: item.kind === 'movie' ? 'anime-movie' : 'anime-series',
-      quality: 'HD 1080p'
+      is_upcoming: Boolean(item.status === 'anons' || (item.aired_on && new Date(item.aired_on) > new Date())),
+      status: item.status === 'anons' ? 'Анонс' : (item.status === 'released' ? 'Вышел' : 'Онгоинг'),
+      quality: (item.status === 'anons' || (item.aired_on && new Date(item.aired_on) > new Date())) ? 'Ожидается' : 'HD 1080p'
     }));
 
     if (items.length > 0) {
