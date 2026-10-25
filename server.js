@@ -1047,7 +1047,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.52',
+    version: '1.1.0',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -3976,6 +3976,9 @@ app.get('/api/media/item', async (req, res) => {
             }))
           });
         }
+      }
+      if (Array.isArray(mediaDetails.seasons) && mediaDetails.seasons.length > 1) {
+        mediaDetails.seasons.sort((a, b) => (Number(a.season_number ?? a.season ?? 0) || 0) - (Number(b.season_number ?? b.season ?? 0) || 0));
       }
 
       if (!mediaDetails.year && mediaDetails.release_date) {
@@ -8670,6 +8673,17 @@ app.get('/api/player/lift-embed', async (req, res) => {
     html = html.replace(
       /app\s*=\s*VenomPlayer\.make\(opts\);/,
       `try {
+        if (opts && opts.playlist && Array.isArray(opts.playlist.seasons)) {
+          opts.playlist.seasons.sort(function(a, b) { return (Number(a.season) || 0) - (Number(b.season) || 0); });
+          opts.playlist.seasons.forEach(function(s) {
+            if (s && Array.isArray(s.episodes)) {
+              s.episodes.sort(function(a, b) { return (parseFloat(a.episode) || 0) - (parseFloat(b.episode) || 0); });
+            }
+          });
+          var targetS = Number(REQ_SEASON) || (opts.playlist.seasons[0] ? Number(opts.playlist.seasons[0].season) : 1);
+          var targetE = String(REQ_EPISODE || "1");
+          opts.playlist.current = { season: targetS, episode: targetE };
+        }
         if (opts && Array.isArray(opts.sections)) { window._initialSections = opts.sections; }
         else if (opts && opts.playlist && Array.isArray(opts.playlist.seasons)) {
           var curS = opts.playlist.current ? opts.playlist.current.season : 1;
@@ -8750,24 +8764,31 @@ app.get('/api/player/series-options', async (req, res) => {
             }));
 
             if (liftStream.isSeries && liftStream.seasons.length > 0) {
-              const formattedSeasons = liftStream.seasons.map(s => ({
-                season: Number(s.season),
-                name: `Сезон ${s.season}`,
-                episodes_count: s.episodes.length,
-                episodes: s.episodes.map(e => ({
-                  episode: Number(e.episode) || 1,
-                  id: e.id,
-                  name: e.title || `${e.episode} серия`,
-                  duration: e.duration ? `${Math.round(e.duration / 60)} мин.` : '',
-                  sections: e.sections || [],
-                  translations: (e.audioNames || liftStream.audioTracks || []).map((voName, idx) => ({
-                    id: `lift_vo_${idx}`,
-                    name: voName,
-                    quality: '1080p / 4K',
-                    is_uhd: true
-                  }))
-                }))
-              }));
+              const formattedSeasons = liftStream.seasons
+                .map(s => {
+                  const sortedEps = (Array.isArray(s.episodes) ? [...s.episodes] : [])
+                    .sort((a, b) => (parseFloat(a.episode) || 0) - (parseFloat(b.episode) || 0))
+                    .map(e => ({
+                      episode: Number(e.episode) || 1,
+                      id: e.id,
+                      name: e.title || `${e.episode} серия`,
+                      duration: e.duration ? `${Math.round(e.duration / 60)} мин.` : '',
+                      sections: e.sections || [],
+                      translations: (e.audioNames || liftStream.audioTracks || []).map((voName, idx) => ({
+                        id: `lift_vo_${idx}`,
+                        name: voName,
+                        quality: '1080p / 4K',
+                        is_uhd: true
+                      }))
+                    }));
+                  return {
+                    season: Number(s.season),
+                    name: `Сезон ${s.season}`,
+                    episodes_count: sortedEps.length,
+                    episodes: sortedEps
+                  };
+                })
+                .sort((a, b) => (Number(a.season) || 0) - (Number(b.season) || 0));
               return res.json({
                 success: true,
                 type: 'series',
@@ -8900,6 +8921,12 @@ app.get('/api/player/series-options', async (req, res) => {
       }
 
       if (fallbackSeasons.length > 0) {
+        fallbackSeasons.sort((a, b) => (Number(a.season) || 0) - (Number(b.season) || 0));
+        fallbackSeasons.forEach(s => {
+          if (Array.isArray(s.episodes)) {
+            s.episodes.sort((a, b) => (Number(a.episode) || 0) - (Number(b.episode) || 0));
+          }
+        });
         return res.json({
           success: true,
           type: 'series',
@@ -9064,8 +9091,8 @@ app.get('/api/player/series-options', async (req, res) => {
       type: 'serial',
       embed_base: iframeSrc,
       active: {
-        season: parsed.active?.seasons || 1,
-        episode: parsed.active?.episode || 1,
+        season: seasons[0]?.season || 1,
+        episode: seasons[0]?.episodes?.[0]?.episode || 1,
         translation: parsed.active?.translation || '',
         id_translation: parsed.active?.id_translation || null,
         is_uhd: parsed.active?.uhd === 1
@@ -9645,7 +9672,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.0.52';
+  let currentAppVersion = '1.1.0';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -9737,7 +9764,7 @@ app.get('/api/updates/check', async (req, res) => {
 });
 
 // ==========================================
-// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.0.52)
+// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.1.0)
 // ==========================================
 
 // 13.1. Мультидорожечный загрузчик STORM Direct Downloader 2.0 (Встроенный HLS-муксер с аудио + субтитрами и прямой поток)

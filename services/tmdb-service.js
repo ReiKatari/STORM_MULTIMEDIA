@@ -495,6 +495,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
       if (isTv && Array.isArray(data.seasons)) {
         seasons = data.seasons
           .filter(s => s.season_number > 0)
+          .sort((a, b) => (Number(a.season_number) || 0) - (Number(b.season_number) || 0))
           .map(s => {
             const epCountText = s.episode_count ? ` (${s.episode_count} серий)` : '';
             const fallbackOverview = `${s.name || `Сезон ${s.season_number}`}${epCountText}. Официальный сезон сериала «${title.trim()}», включающий все вышедшие серии в высоком разрешении.`;

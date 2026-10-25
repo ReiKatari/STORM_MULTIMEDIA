@@ -4,10 +4,10 @@
    настроения, компании и семантического запроса зрителя
    ========================================================================== */
 
-import { fetchUserBookmarks, fetchContinueWatching, saveBookmarkStatus } from './bookmarks.js?v=1.0.52';
-import { openPlayerModal } from './player.js?v=1.0.52';
-import { showToast } from './auth.js?v=1.0.52';
-import { getBaselineCatalog } from './catalog-baseline.js?v=1.0.52';
+import { fetchUserBookmarks, fetchContinueWatching, saveBookmarkStatus } from './bookmarks.js?v=1.1.0';
+import { openPlayerModal } from './player.js?v=1.1.0';
+import { showToast } from './auth.js?v=1.1.0';
+import { getBaselineCatalog } from './catalog-baseline.js?v=1.1.0';
 
 let advisorState = {
   mood: 'personal',

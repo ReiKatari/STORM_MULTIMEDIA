@@ -3,8 +3,8 @@
    Распознавание команд через Web Speech API и голосовые ответы
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.0.52';
-import { trackClientAction } from './achievements.js?v=1.0.52';
+import { showToast } from './auth.js?v=1.1.0';
+import { trackClientAction } from './achievements.js?v=1.1.0';
 
 let recognition = null;
 let isListening = false;

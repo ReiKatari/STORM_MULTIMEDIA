@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.52';
-import { getUser, showToast } from './auth.js?v=1.0.52';
-import { t } from './i18n.js?v=1.0.52';
-import { trackClientAction } from './achievements.js?v=1.0.52';
-import { renderReviewsSection } from './reviews.js?v=1.0.52';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.0.52';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.52';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.52';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.52';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.52';
-import { saveMediaForOffline } from './offline-storage.js?v=1.0.52';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.52';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.52';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.52';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.52';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.52';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.1.0';
+import { getUser, showToast } from './auth.js?v=1.1.0';
+import { t } from './i18n.js?v=1.1.0';
+import { trackClientAction } from './achievements.js?v=1.1.0';
+import { renderReviewsSection } from './reviews.js?v=1.1.0';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.1.0';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.1.0';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.1.0';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.1.0';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.1.0';
+import { saveMediaForOffline } from './offline-storage.js?v=1.1.0';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.1.0';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.1.0';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.1.0';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.1.0';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.1.0';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -413,6 +413,17 @@ const FS_EXPAND_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="non
 const FS_EXIT_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>';
 const LOCK_OPEN_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
 const LOCK_CLOSED_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+function sortSeasonsAndEpisodes(seasonsArr) {
+  if (!Array.isArray(seasonsArr)) return [];
+  seasonsArr.forEach(s => {
+    if (s && Array.isArray(s.episodes)) {
+      s.episodes.sort((a, b) => (Number(a.episode ?? a.episode_number ?? a.ordinal ?? a.position ?? 0) || 0) - (Number(b.episode ?? b.episode_number ?? b.ordinal ?? b.position ?? 0) || 0));
+    }
+  });
+  seasonsArr.sort((a, b) => (Number(a.season ?? a.season_number ?? 0) || 0) - (Number(b.season ?? b.season_number ?? 0) || 0));
+  return seasonsArr;
+}
 
 function formatCleanEpisodeTitle(epNum, rawName) {
   const num = Number(epNum) || 1;
@@ -1876,6 +1887,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   // Немедленно инициализируем селекторы и кнопки, чтобы они были интерактивны СРАЗУ
   const cachedStatus = mediaItem.user_status || localStorage.getItem(`storm_status_${mediaItem.id}`) || null;
+  renderDetailedMediaInfo(currentMedia);
   renderStatusButtons(cachedStatus);
   renderCustomListsSelector();
   renderPlayerUtilityButtons();
@@ -2925,6 +2937,7 @@ async function initSeriesQuickBar(playerUrl) {
       return;
     }
 
+    sortSeasonsAndEpisodes(data.seasons);
     quickBarSeriesData = data;
     quickBar.style.display = 'flex';
     const modal = document.getElementById('cinema-modal');
@@ -2932,8 +2945,16 @@ async function initSeriesQuickBar(playerUrl) {
     adjustCinemaModalScale();
     requestAnimationFrame(adjustCinemaModalScale);
 
-    quickBarActiveSeason = (data.active?.season !== undefined && Number.isFinite(data.active.season)) ? data.active.season : (data.seasons[0].season || 1);
-    quickBarActiveEpisode = (data.active?.episode !== undefined && Number.isFinite(data.active.episode)) ? data.active.episode : 1;
+    const urlSeasonMatch = String(playerUrl || '').match(/[?&]season=(\d+)/i);
+    const urlEpMatch = String(playerUrl || '').match(/[?&]episode=(\d+)/i);
+    const explicitUrlSeason = urlSeasonMatch ? parseInt(urlSeasonMatch[1], 10) : null;
+    const explicitUrlEp = urlEpMatch ? parseInt(urlEpMatch[1], 10) : null;
+    const keepCurrentSeason = quickBarActiveSeason && data.seasons.some(s => Number(s.season) === Number(quickBarActiveSeason))
+      ? Number(quickBarActiveSeason)
+      : null;
+
+    quickBarActiveSeason = explicitUrlSeason || keepCurrentSeason || Number(data.seasons[0]?.season) || 1;
+    quickBarActiveEpisode = explicitUrlEp || (quickBarActiveEpisode && Number.isFinite(Number(quickBarActiveEpisode)) ? Number(quickBarActiveEpisode) : 1);
     quickBarActiveTranslationId = data.active?.id_translation || null;
 
     // Умный выбор озвучки: проверяем любимую студию пользователя
@@ -3092,7 +3113,8 @@ export function initUniversalSeriesQuickBar(initialSeason = 1, initialEpisode = 
     }];
   }
 
-  const sVal = Number(initialSeason) || 1;
+  sortSeasonsAndEpisodes(seasonsList);
+  const sVal = Number(initialSeason) || (seasonsList[0] ? Number(seasonsList[0].season) : 1) || 1;
   const epVal = Number(initialEpisode) || 1;
 
   quickBarSeriesData = {
@@ -3165,6 +3187,7 @@ function getOrCreateQuickStatusPortal() {
 
 function renderQuickBarDropdowns() {
   if (!quickBarSeriesData || !quickBarSeriesData.seasons) return;
+  sortSeasonsAndEpisodes(quickBarSeriesData.seasons);
 
   const currentSeasonObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
   if (!currentSeasonObj) return;
@@ -3602,6 +3625,7 @@ export function openSeriesWheelModal() {
   const seasons = (quickBarSeriesData && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0)
     ? quickBarSeriesData.seasons
     : [{ season: 1, name: 'Сезон 1', episodes: Array.from({ length: 8 }, (_, i) => ({ episode: i + 1, name: `${i + 1} серия` })) }];
+  sortSeasonsAndEpisodes(seasons);
 
   tempWheelSeason = quickBarActiveSeason || seasons[0].season || 1;
   tempWheelEpisode = quickBarActiveEpisode || 1;
@@ -6126,6 +6150,7 @@ export function renderInPlayerEpisodesSheet(overlay) {
 
   // 1. FanFilm / Kodik (quickBarSeriesData)
   if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
+    sortSeasonsAndEpisodes(quickBarSeriesData.seasons);
     chipsBar.style.display = quickBarSeriesData.seasons.length > 1 ? 'flex' : 'none';
     chipsBar.innerHTML = quickBarSeriesData.seasons.map(s => `
       <button type="button" class="inplayer-season-chip ${s.season === quickBarActiveSeason ? 'active' : ''}" data-season="${s.season}">
@@ -6212,6 +6237,7 @@ export function renderInPlayerEpisodesSheet(overlay) {
   // 2b. TMDB сериалы напрямую из метаданных currentMedia.seasons
   if (currentMedia?.seasons && currentMedia.seasons.length > 0) {
     const seasonsList = currentMedia.seasons.filter(s => (s.season_number > 0 || currentMedia.seasons.length === 1));
+    sortSeasonsAndEpisodes(seasonsList);
     const curSeasonNum = (typeof activeSeasonNum !== 'undefined' ? activeSeasonNum : (currentSeasonIndex || 1));
     chipsBar.style.display = seasonsList.length > 1 ? 'flex' : 'none';
     chipsBar.innerHTML = seasonsList.map(s => `
@@ -11402,7 +11428,7 @@ function renderDetailedMediaInfo(mediaDetails) {
       <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" style="max-height: var(--cinema-poster-max-h, 175px) !important;" onerror="this.src='assets/favicon.svg'">
       <div class="cinema-side-poster-glow"></div>
       <div class="cinema-side-badges">
-        ${(media?.is_upcoming || (typeof window.isUpcomingMediaItem === 'function' && window.isUpcomingMediaItem(media)))
+        ${(mediaDetails?.is_upcoming || currentMedia?.is_upcoming || (typeof window.isUpcomingMediaItem === 'function' && window.isUpcomingMediaItem(mediaDetails || currentMedia)))
           ? '<span class="storm-badge storm-badge-upcoming" id="cinema-side-quality-badge" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
           : '<span class="storm-badge storm-badge-4k" id="cinema-side-quality-badge">4K UHD</span>'}
         <span class="storm-badge storm-badge-rating">★ ${ratingKp}</span>
@@ -12190,6 +12216,11 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       }];
       seasons = mediaDetails.seasons;
     }
+  }
+
+  sortSeasonsAndEpisodes(seasons);
+  if (Array.isArray(mediaDetails.seasons)) {
+    sortSeasonsAndEpisodes(mediaDetails.seasons);
   }
 
   let activeSeasonNum = initialSeason ? parseInt(initialSeason, 10) : null;

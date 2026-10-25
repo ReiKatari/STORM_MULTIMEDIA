@@ -933,6 +933,7 @@ export async function getFanFilmDetails(idOrUrl) {
         });
       }
     }
+    seasonsData.sort((a, b) => (Number(a.season_number ?? a.season ?? 0) || 0) - (Number(b.season_number ?? b.season ?? 0) || 0));
 
     // Определение года выпуска (если мировая премьера была раньше, используем реальный год премьеры)
     let resolvedYear = year;

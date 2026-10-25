@@ -522,7 +522,8 @@ export async function getLiftDetails(rawId) {
     if (episodesMap && typeof episodesMap === 'object') {
       const sortedSeasonKeys = Object.keys(episodesMap).sort((a, b) => Number(a) - Number(b));
       for (const sKey of sortedSeasonKeys) {
-        const epArr = Array.isArray(episodesMap[sKey]) ? episodesMap[sKey] : [];
+        const epArr = (Array.isArray(episodesMap[sKey]) ? [...episodesMap[sKey]] : [])
+          .sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
         if (epArr.length > 0) {
           seasons.push({
             season_number: Number(sKey),
@@ -848,25 +849,27 @@ export async function extractLiftStreamData(liftId, { season = '', episode = '',
           const normalizedSeasons = parsedSeasons.map(s => ({
             season: Number(s.season),
             blocked: Boolean(s.blocked),
-            episodes: (Array.isArray(s.episodes) ? s.episodes : []).map(ep => {
-              const epAudio = ep.audio || { names: ['Русская озвучка'], order: [0] };
-              return {
-                episode: String(ep.episode),
-                id: ep.id,
-                videoKey: ep.videoKey,
-                title: ep.title || `Серия ${ep.episode}`,
-                duration: Number(ep.duration || 0),
-                hls: appendToken(ep.hls),
-                dash: appendToken(ep.dash),
-                dasha: appendToken(ep.dasha),
-                audio: epAudio,
-                audioNames: Array.isArray(epAudio.names) ? epAudio.names : ['Русская озвучка'],
-                cc: Array.isArray(ep.cc) ? ep.cc : [],
-                sections: Array.isArray(ep.sections) ? ep.sections : [],
-                preview: ep.preview || defaultPreview
-              };
-            })
-          }));
+            episodes: (Array.isArray(s.episodes) ? [...s.episodes] : [])
+              .sort((a, b) => (parseFloat(a.episode) || 0) - (parseFloat(b.episode) || 0))
+              .map(ep => {
+                const epAudio = ep.audio || { names: ['Русская озвучка'], order: [0] };
+                return {
+                  episode: String(ep.episode),
+                  id: ep.id,
+                  videoKey: ep.videoKey,
+                  title: ep.title || `Серия ${ep.episode}`,
+                  duration: Number(ep.duration || 0),
+                  hls: appendToken(ep.hls),
+                  dash: appendToken(ep.dash),
+                  dasha: appendToken(ep.dasha),
+                  audio: epAudio,
+                  audioNames: Array.isArray(epAudio.names) ? epAudio.names : ['Русская озвучка'],
+                  cc: Array.isArray(ep.cc) ? ep.cc : [],
+                  sections: Array.isArray(ep.sections) ? ep.sections : [],
+                  preview: ep.preview || defaultPreview
+                };
+              })
+          })).sort((a, b) => (Number(a.season) || 0) - (Number(b.season) || 0));
 
           const targetSeasonNum = Number(season) || (normalizedSeasons[0] && normalizedSeasons[0].season) || 1;
           const activeSeasonObj = normalizedSeasons.find(s => s.season === targetSeasonNum) || normalizedSeasons[0];

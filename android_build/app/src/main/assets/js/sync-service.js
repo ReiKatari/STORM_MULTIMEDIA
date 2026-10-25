@@ -3,7 +3,7 @@
  * аналитики «Кино-итоги STORM Rewind» и сканера локальной медиатеки (ПК / NAS)
  */
 
-import { showToast, getUser, getToken } from './auth.js?v=1.0.52';
+import { showToast, getUser, getToken } from './auth.js?v=1.1.0';
 
 function getAuthHeaders() {
   const token = (typeof getToken === 'function' ? getToken() : '') || localStorage.getItem('storm_token') || localStorage.getItem('storm_auth_token');
@@ -334,7 +334,7 @@ function renderLocalLibraryCards(container, items) {
       const item = items[parseInt(card.dataset.idx, 10)];
       if (!item) return;
       document.getElementById('sync-modal')?.classList.remove('is-open');
-      import('./player.js?v=1.0.52').then(m => {
+      import('./player.js?v=1.1.0').then(m => {
         if (m.openPlayerModal) {
           m.openPlayerModal({
             ...item,

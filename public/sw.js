@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - SERVICE WORKER v4 (БЫСТРЫЙ КЭШ И БЕЗОПАСНЫЕ ES-МОДУЛИ)
    ========================================================================== */
 
-const APP_VERSION = '1.0.52';
+const APP_VERSION = '1.1.0';
 const CACHE_NAME = `storm-multimedia-v4-${APP_VERSION}`;
 
 // Минимальная оболочка при установке (< 70 КБ), чтобы не нагружать сеть и процессор при старте
@@ -120,7 +120,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Версионированные скрипты и стили (?v=1.0.52): мгновенный Cache-First СТРОГО по точному URL (без ignoreSearch и без фейковых заглушек!)
+  // 3. Версионированные скрипты и стили (?v=1.1.0): мгновенный Cache-First СТРОГО по точному URL (без ignoreSearch и без фейковых заглушек!)
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     const hasVersionTag = url.searchParams.has('v') && !url.searchParams.has('retry');
     if (!hasVersionTag) {
