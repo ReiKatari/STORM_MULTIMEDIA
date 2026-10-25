@@ -3,7 +3,7 @@
    Прямое воспроизведение раздач и торрентов через локальные движки
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.1.2';
+import { showToast } from './auth.js?v=1.1.2-s2';
 
 let torrentEnginesConfig = {
   torrServerUrl: 'http://127.0.0.1:8090',

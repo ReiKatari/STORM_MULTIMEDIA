@@ -874,20 +874,24 @@ class MainActivity : ComponentActivity() {
         if (path.startsWith("/api/auth/")) {
             val prefs = getSharedPreferences("storm_auth_prefs", MODE_PRIVATE)
             if (path == "/api/auth/logout") {
+                prefs.edit().clear().apply()
                 return createJsonResponse("""{"success":true}""")
             }
-            val savedUser = prefs.getString("username", "ReiKatari") ?: "ReiKatari"
-            val savedEmail = prefs.getString("email", "ReiKatari@storm.local") ?: "ReiKatari@storm.local"
+            val savedUser = prefs.getString("username", null)
+            val savedEmail = prefs.getString("email", null)
+            if (savedUser.isNullOrBlank()) {
+                return createJsonResponse("""{"user":null,"authenticated":false}""")
+            }
             val userJson = JSONObject().apply {
-                put("id", 1)
+                put("id", prefs.getInt("user_id", 0))
                 put("username", savedUser)
-                put("email", savedEmail)
-                put("role", "admin")
+                put("email", savedEmail ?: "")
+                put("role", prefs.getString("role", "user") ?: "user")
                 put("avatar", "assets/avatar_default.svg")
             }
             val respJson = JSONObject().apply {
                 put("success", true)
-                put("token", "native_android_token_1")
+                put("token", prefs.getString("token", "offline_android_token") ?: "offline_android_token")
                 put("user", userJson)
                 put("stats", JSONObject().put("bookmarks_count", 0).put("history_count", 0))
             }

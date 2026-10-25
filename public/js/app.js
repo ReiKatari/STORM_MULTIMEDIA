@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.1.2';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.2';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.2';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.2';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.2';
-import { getStatusIconSvg } from './status-icons.js?v=1.1.2';
-import { initFormFactorEngine } from './form-factor.js?v=1.1.2';
+import { initTheme, setTheme } from './theme.js?v=1.1.2-s2';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.1.2-s2';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.1.2-s2';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.1.2-s2';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.1.2-s2';
+import { getStatusIconSvg } from './status-icons.js?v=1.1.2-s2';
+import { initFormFactorEngine } from './form-factor.js?v=1.1.2-s2';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.1.2';
@@ -3919,10 +3919,10 @@ function renderHomeView(items) {
     })
     .map(i => {
       const ep = parseInt(i.episode, 10) || 1;
-      const totalEp = parseInt(i.total_episodes, 10) || 12;
-      let pct = Math.round(i.progress_percent || 0);
       const mType = detectClientMediaType(i) || i.media_type || 'movie';
       const isSeries = mType === 'series' || mType === 'anime-series' || mType === 'cartoon-series';
+      const totalEp = isSeries ? (parseInt(i.total_episodes, 10) || 12) : 1;
+      let pct = Math.round(i.progress_percent || 0);
       if (pct <= 0 && isSeries && ep >= 1) {
         pct = Math.min(100, Math.max(1, Math.round((ep / totalEp) * 100)));
       }
@@ -3936,10 +3936,10 @@ function renderHomeView(items) {
         genres: i.genres || '',
         progress_percent: pct,
         series_progress_percent: i.series_progress_percent,
-        next_up: i.next_up,
+        next_up: isSeries ? i.next_up : '',
         user_status: (i.user_status === 'watching' || i.bookmark_status === 'watching') ? 'watching' : (i.user_status || i.bookmark_status || null),
-        season: i.season || 1,
-        episode: ep,
+        season: isSeries ? (i.season || 1) : 1,
+        episode: isSeries ? ep : 1,
         total_episodes: totalEp
       };
     })
@@ -5034,7 +5034,7 @@ function renderMediaItems(items) {
             <div class="media-play-icon">▶</div>
           </div>
           ${item.progress_percent > 0 ? (
-            ((typeof checkIfMediaIsSeries === 'function' ? checkIfMediaIsSeries(item) : (item.media_type === 'series' || item.media_type === 'cartoon-series' || item.media_type === 'anime-series' || Boolean(item.season || item.episode))) && typeof renderSegmentedEpisodeBar === 'function') ? renderSegmentedEpisodeBar(item.progress_percent, parseInt(item.total_episodes, 10) || 8) : `
+            ((typeof checkIfMediaIsSeries === 'function' ? checkIfMediaIsSeries(item) : (item.media_type === 'series' || item.media_type === 'cartoon-series' || item.media_type === 'anime-series' || (parseInt(item.season, 10) > 1 || parseInt(item.episode, 10) > 1))) && typeof renderSegmentedEpisodeBar === 'function') ? renderSegmentedEpisodeBar(item.progress_percent, parseInt(item.total_episodes, 10) || 8) : `
             <div class="media-card-progress storm-progress-container">
               <div class="storm-progress-bar" style="width: ${item.progress_percent}%"></div>
             </div>
@@ -7488,7 +7488,7 @@ function initModals() {
       e.preventDefault();
       const loginInput = document.getElementById('login-username');
       const passInput = document.getElementById('login-password');
-      const loginVal = (loginInput?.value || '').trim() || 'ReiKatari';
+      const loginVal = (loginInput?.value || '').trim();
       const passVal = (passInput?.value || '').trim();
       const submitBtn = loginForm.querySelector('button[type="submit"]');
       const origText = submitBtn ? submitBtn.textContent : '';

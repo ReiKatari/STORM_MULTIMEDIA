@@ -538,17 +538,7 @@ export function getOrCreateDefaultUserSession() {
     if (u) mariaSaveUser(u);
   }
 
-  const existingSession = db.prepare('SELECT token FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY expires_at DESC LIMIT 1').get(user.id, now);
-  if (existingSession) {
-    return {
-      token: existingSession.token,
-      user: {
-        ...user,
-        settings: JSON.parse(user.settings_json || '{}')
-      }
-    };
-  }
-
+  // Каждый вход создаёт изолированный криптографический токен устройства (без переиспользования общих токенов)
   return createSession(user.id);
 }
 
@@ -573,6 +563,20 @@ export function logoutUser(token) {
   if (token) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
     mariaDeleteSession(token);
+  }
+}
+
+export function logoutAllUserSessions(userId, keepToken = null) {
+  if (!userId) return;
+  if (keepToken) {
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, keepToken);
+  } else {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  }
+  mariaDeleteUserSessions(userId);
+  if (keepToken) {
+    const row = db.prepare('SELECT token, user_id, expires_at FROM sessions WHERE token = ?').get(keepToken);
+    if (row) mariaSaveSession(row.token, row.user_id, row.expires_at);
   }
 }
 
@@ -2401,14 +2405,15 @@ try {
     WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%';
   `);
   db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
-  const secMig = db.prepare("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v3'").get();
+  const secMig = db.prepare("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v4'").get();
   if (!secMig) {
     db.exec('DELETE FROM sessions;');
-    db.prepare("INSERT OR REPLACE INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'security_session_purge_v3', ?, ?)").run(
+    db.exec("DELETE FROM watch_history WHERE user_id = 2 AND title IN ('Посвященный', 'Пасть', 'Её личный ад', 'Меченая', 'Мортал Комбат', 'Одинокий рейнджер', 'Крикуны');");
+    db.prepare("INSERT OR REPLACE INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'security_session_purge_v4', ?, ?)").run(
       JSON.stringify({ purgedAt: Date.now() }),
       Date.now() + 86400000 * 3650
     );
-    console.log('[Security] Все старые публичные авто-сессии аннулированы. Включена строгая изоляция пользователей.');
+    console.log('[Security SQLite] Все ранее выданные сессии отозваны, чужие записи истории очищены.');
   }
 } catch (e) {
   console.warn('[Security Migration Warning]:', e.message);

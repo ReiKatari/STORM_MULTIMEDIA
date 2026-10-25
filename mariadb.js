@@ -192,11 +192,19 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     try {
       await pool.query('DELETE FROM sessions WHERE expires_at <= ?', [now]);
       sqliteDb.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
-      const [secCheck] = await pool.query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v3'");
+      const [secCheck] = await pool.query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v4'");
       if (!secCheck || secCheck.length === 0) {
+        await pool.query("DELETE FROM sessions");
+        await pool.query(
+          "DELETE FROM watch_history WHERE user_id = 2 AND (id IN (597, 625, 628, 630, 631, 634, 709) OR title IN ('Посвященный', 'Пасть', 'Её личный ад', 'Меченая', 'Мортал Комбат', 'Одинокий рейнджер', 'Крикуны'))"
+        );
         await pool.query("UPDATE watch_history SET media_type = 'movie', season = 1, episode = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
         await pool.query("UPDATE bookmarks SET media_type = 'movie', total_episodes = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
-        await pool.query("INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'security_session_purge_v3', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)", [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]);
+        await pool.query(
+          "INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'security_session_purge_v4', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)",
+          [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]
+        );
+        console.log('[Security MariaDB] Все старые сессии отозваны, чужие записи из watch_history удалены.');
       }
     } catch (_) {}
     const [mSessions] = await pool.query('SELECT * FROM sessions WHERE expires_at > ?', [now]);

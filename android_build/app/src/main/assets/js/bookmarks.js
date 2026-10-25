@@ -1,11 +1,11 @@
-import { trackClientAction } from './achievements.js?v=1.1.2';
+import { trackClientAction } from './achievements.js?v=1.1.2-s2';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.1.2';
-import { t } from './i18n.js?v=1.1.2';
-import { normalizeStatus } from './status-icons.js?v=1.1.2';
+import { getToken, showToast } from './auth.js?v=1.1.2-s2';
+import { t } from './i18n.js?v=1.1.2-s2';
+import { normalizeStatus } from './status-icons.js?v=1.1.2-s2';
 
 let memoryBookmarksCache = [];
 
@@ -1613,48 +1613,54 @@ export async function syncWatchProgress(data) {
 }
 
 export async function fetchContinueWatching() {
-  const localItems = getLocalContinueWatching();
   const activeToken = getToken();
 
+  // Если пользователь не авторизован (нет серверного токена), не показываем чужой или старый кэш
+  if (!activeToken || activeToken.startsWith('offline_')) {
+    return [];
+  }
+  if (activeToken.startsWith('guest_')) {
+    return getLocalContinueWatching();
+  }
+
   let serverItems = [];
-  if (activeToken && !activeToken.startsWith('offline_') && !activeToken.startsWith('guest_')) {
-    try {
-      const res = await fetch('/api/media/continue-watching', {
-        headers: buildAuthHeaders(false),
-        credentials: 'same-origin',
-        signal: AbortSignal.timeout(4000)
-      });
-      if (res.ok) {
-        const parsed = await res.json();
-        if (Array.isArray(parsed)) {
-          serverItems = parsed;
-        }
+  let serverAnswered = false;
+  try {
+    const res = await fetch('/api/media/continue-watching', {
+      headers: buildAuthHeaders(false),
+      credentials: 'same-origin',
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const parsed = await res.json();
+      if (Array.isArray(parsed)) {
+        serverItems = parsed;
+        serverAnswered = true;
       }
-    } catch (err) {
-      // Игнорируем сетевые сбои, отдавая локальный кэш
+    } else if (res.status === 401 || res.status === 403) {
+      try { localStorage.removeItem('storm_continue_watching'); } catch (_) {}
+      return [];
     }
+  } catch (err) {
+    // При временном сетевом сбое используем только локальный кэш текущего владельца
   }
 
-  // Объединяем серверную и локальную историю, исключая дубликаты по нормализованному названию
   const mergedMap = new Map();
-
-  for (const item of serverItems) {
-    if (!item) continue;
-    const key = normalizeContinueTitleKey(item.title) || `${item.source}_${item.media_id}`;
-    if (!mergedMap.has(key)) {
-      mergedMap.set(key, item);
+  if (serverAnswered) {
+    for (const item of serverItems) {
+      if (!item) continue;
+      const key = normalizeContinueTitleKey(item.title) || `${item.source}_${item.media_id}`;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, item);
+      }
     }
-  }
-
-  for (const item of localItems) {
-    if (!item) continue;
-    const key = normalizeContinueTitleKey(item.title) || `${item.source}_${item.media_id}`;
-    if (!mergedMap.has(key)) {
-      mergedMap.set(key, item);
-    } else {
-      const existing = mergedMap.get(key);
-      if ((item.updated_at || 0) >= (existing.updated_at || 0)) {
-        mergedMap.set(key, { ...existing, ...item });
+  } else {
+    const localItems = getLocalContinueWatching();
+    for (const item of localItems) {
+      if (!item) continue;
+      const key = normalizeContinueTitleKey(item.title) || `${item.source}_${item.media_id}`;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, item);
       }
     }
   }
@@ -1692,6 +1698,11 @@ export async function fetchContinueWatching() {
     };
   });
   result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  if (serverAnswered) {
+    try {
+      localStorage.setItem('storm_continue_watching', JSON.stringify(result.slice(0, 30)));
+    } catch (_) {}
+  }
   return result;
 }
 

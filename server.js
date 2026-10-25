@@ -22,6 +22,7 @@ import {
   loginUser,
   createSession,
   logoutUser,
+  logoutAllUserSessions,
   getUserByToken,
   updateUserSettings,
   updateUserProfile,
@@ -1248,6 +1249,15 @@ app.post('/api/auth/logout', (req, res) => {
     logoutUser(req.token);
   }
   res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+  res.json({ success: true });
+});
+
+app.post('/api/auth/logout-all', requireAuth, (req, res) => {
+  const keepCurrent = Boolean(req.body?.keepCurrent);
+  logoutAllUserSessions(req.user.id, keepCurrent ? req.token : null);
+  if (!keepCurrent) {
+    res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+  }
   res.json({ success: true });
 });
 
