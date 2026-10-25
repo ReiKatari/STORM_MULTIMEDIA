@@ -4,6 +4,7 @@ import compression from 'compression';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import * as nodeZlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 let sharp = null;
@@ -133,6 +134,7 @@ import {
 import {
   resolveCanonicalMediaType,
   resolveCanonicalYear,
+  normalizeAnimeFranchiseTitle,
   resolveCanonicalGenres,
   resolveCanonicalSeriesSeasonsCount,
   isTrailerMedia
@@ -596,8 +598,149 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-app.use(compression());
 app.use(cors());
+
+// Высокоскоростной RAM-кэш предварительно сжатых статических файлов (0% нагрузки CPU NAS, отклик < 0.5 мс)
+const STATIC_PUBLIC_DIR = path.join(__dirname, 'public');
+const STATIC_MIME_MAP = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon'
+};
+const memoryStaticAssetCache = new Map();
+
+function getOrBuildStaticAssetEntry(fullPath, ext) {
+  let stat;
+  try {
+    stat = fs.statSync(fullPath);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile() || stat.size > 4 * 1024 * 1024) return null;
+
+  const cached = memoryStaticAssetCache.get(fullPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return cached;
+  }
+
+  const raw = fs.readFileSync(fullPath);
+  const etag = `W/"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
+  const compressible = raw.length >= 256 && ext !== '.ico';
+  const br = compressible
+    ? nodeZlib.brotliCompressSync(raw, {
+        params: {
+          [nodeZlib.constants.BROTLI_PARAM_QUALITY]: 5,
+          [nodeZlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length
+        }
+      })
+    : null;
+  const gzip = compressible ? nodeZlib.gzipSync(raw, { level: 6 }) : null;
+
+  const entry = {
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+    etag,
+    contentType: STATIC_MIME_MAP[ext] || 'application/octet-stream',
+    raw,
+    br,
+    gzip
+  };
+  memoryStaticAssetCache.set(fullPath, entry);
+  return entry;
+}
+
+// Фоновый прогрев RAM-кэша статики сразу при старте сервера
+setImmediate(() => {
+  try {
+    const warmDirs = [STATIC_PUBLIC_DIR, path.join(STATIC_PUBLIC_DIR, 'js'), path.join(STATIC_PUBLIC_DIR, 'styles'), path.join(STATIC_PUBLIC_DIR, 'assets')];
+    for (const dir of warmDirs) {
+      if (!fs.existsSync(dir)) continue;
+      for (const name of fs.readdirSync(dir)) {
+        const ext = path.extname(name).toLowerCase();
+        if (STATIC_MIME_MAP[ext]) {
+          getOrBuildStaticAssetEntry(path.join(dir, name), ext);
+        }
+      }
+    }
+  } catch (_) {}
+});
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api/') || req.path.startsWith('/ws/')) return next();
+
+  const reqRel = req.path === '/' ? '/index.html' : req.path;
+  const ext = path.extname(reqRel).toLowerCase();
+  if (!STATIC_MIME_MAP[ext]) return next();
+
+  let decodedRel;
+  try {
+    decodedRel = decodeURIComponent(reqRel);
+  } catch {
+    return next();
+  }
+  const fullPath = path.resolve(STATIC_PUBLIC_DIR, '.' + decodedRel);
+  if (!fullPath.startsWith(STATIC_PUBLIC_DIR + path.sep) && fullPath !== STATIC_PUBLIC_DIR) {
+    return next();
+  }
+
+  const entry = getOrBuildStaticAssetEntry(fullPath, ext);
+  if (!entry) return next();
+
+  const isHtmlOrSw = ext === '.html' || decodedRel === '/sw.js';
+  const hasImmutableVer = Boolean((ext === '.js' || ext === '.css') && req.query && req.query.v && !req.query.retry);
+
+  if (isHtmlOrSw) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  } else if (hasImmutableVer) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (ext === '.js' || ext === '.css' || ext === '.json') {
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  } else {
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+  }
+
+  res.setHeader('ETag', entry.etag);
+  res.setHeader('Vary', 'Accept-Encoding');
+  res.setHeader('Content-Type', entry.contentType);
+
+  if (req.headers['if-none-match'] === entry.etag) {
+    res.statusCode = 304;
+    return res.end();
+  }
+
+  const acceptEnc = String(req.headers['accept-encoding'] || '');
+  let body = entry.raw;
+  if (entry.br && /\bbr\b/.test(acceptEnc)) {
+    res.setHeader('Content-Encoding', 'br');
+    body = entry.br;
+  } else if (entry.gzip && /\bgzip\b/.test(acceptEnc)) {
+    res.setHeader('Content-Encoding', 'gzip');
+    body = entry.gzip;
+  }
+
+  res.setHeader('Content-Length', body.length);
+  if (req.method === 'HEAD') {
+    return res.end();
+  }
+  return res.end(body);
+});
+
+app.use(compression({
+  level: 6,
+  threshold: 1024,
+  brotli: {
+    enabled: true,
+    params: {
+      [nodeZlib.constants.BROTLI_PARAM_QUALITY]: 4
+    }
+  }
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -647,8 +790,11 @@ app.post('/api/remote/command', (req, res) => {
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '7d',
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      const hasVer = Boolean(res.req?.query?.v && !res.req?.query?.retry);
+      res.setHeader('Cache-Control', hasVer ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate');
     } else {
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     }
@@ -900,7 +1046,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.45',
+    version: '1.0.51',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -3258,7 +3404,7 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails = await getAnixartReleaseDetails(cleanAnixId);
     } else if (source === 'anilibria' || String(id || '').startsWith('libria_') || String(id || '').startsWith('anilib')) {
       const cleanLibriaId = String(id || '').replace(/^(?:anilibria_|anilib_|libria_)/i, '');
-      const details = await getAniLibriaDetails(cleanLibriaId, req.query.title || '');
+      const details = await getAniLibriaDetails(cleanLibriaId, normalizeAnimeFranchiseTitle(req.query.title || '', true));
       if (details) {
         mediaDetails = {
           ...details,
@@ -3724,7 +3870,26 @@ app.get('/api/media/item', async (req, res) => {
           new Promise(r => setTimeout(() => r({ items: [] }), 2200))
         ]);
         if (tmdbSearch.items?.length > 0) {
-          const isAnimeSource = source === 'anilibria' || source === 'anixart' || String(mediaDetails.media_type || '').includes('anime');
+          const isAnimeSource = source === 'anilibria' || source === 'anixart' || source === 'shikimori' || String(mediaDetails.media_type || '').includes('anime');
+    if (isAnimeSource && mediaDetails.media_type !== 'anime-movie') {
+      if (mediaDetails.title) {
+        mediaDetails.title = normalizeAnimeFranchiseTitle(mediaDetails.title, true) || mediaDetails.title;
+      }
+      if (mediaDetails.original_title) {
+        mediaDetails.original_title = normalizeAnimeFranchiseTitle(mediaDetails.original_title, true) || mediaDetails.original_title;
+      }
+      if (source !== 'anilibria' && (!mediaDetails.seasons || mediaDetails.seasons.length <= 1) && mediaDetails.title) {
+        try {
+          const libriaData = await getAniLibriaDetails('', mediaDetails.title);
+          if (libriaData && Array.isArray(libriaData.seasons) && libriaData.seasons.length > (mediaDetails.seasons?.length || 0)) {
+            mediaDetails.seasons = libriaData.seasons;
+            if (!mediaDetails.episodes || mediaDetails.episodes.length === 0) {
+              mediaDetails.episodes = libriaData.episodes;
+            }
+          }
+        } catch (_) {}
+      }
+    }
           const validItems = tmdbSearch.items.filter(it => {
             const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || '', isSeries ? '1' : '', '');
             return sc >= 200;
@@ -5280,53 +5445,69 @@ function normalizeMatchText(s) {
     .trim();
 }
 
-function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle = '', year = '', season = '', episode = '', pubYear = 0) {
+function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle = '', year = '', season = '', episode = '', pubYear = 0, originalTitle = '', categoryName = '') {
   const normTarget = normalizeMatchText(cleanTitle);
+  const normOrig = normalizeMatchText(originalTitle);
   const normCand = normalizeMatchText(candidateTitle);
-  if (!normTarget || !normCand) return -1;
+  if ((!normTarget && !normOrig) || !normCand) return -1;
 
-  // 100% отклоняем любые трейлеры, тизеры, промо-ролики, отрывки, фрагменты и анонсы
+  // 1. Строго отклоняем некинематографические категории RuTube (Авто-мото, Видеоигры, Спорт, Охота, Хобби, Таро и т.д.)
+  const catNorm = String(categoryName || '').toLowerCase().trim();
+  if (catNorm && /(?:авто[- ]?мото|видеоигр|спорт|охота|рыбалк|путешеств|строительств|ремонт|сад\s+и\s+огород|техник|оборудован|кулинар|еда\b|животн|лайфстайл|хобби|красот|новости|сми\b|наука|обучени|образован|бизнес|финанс|недвижимост|эзотерик|астролог|интервью|подкаст|политик|экономик|религи|психолог|дизайн)/i.test(catNorm)) {
+    return -1;
+  }
+  const isCinemaCategory = Boolean(catNorm && /(?:фильм|сериал|мультфильм|аниме|кино)/i.test(catNorm));
+
+  // 2. 100% отклоняем любые трейлеры, тизеры, промо-ролики, отрывки, фрагменты и анонсы при поиске полного фильма
   if (/\b(?:трейлер[а-я]*|тизер[а-я]*|тизер-трейлер[а-я]*|trailer[s]?|teaser[s]?|промо[- ]?ролик[а-я]*|отрывок[а-я]*|фрагмент[а-я]*|анонс[а-я]*|съемки|съёмки|бэкстейдж|backstage|making[- ]of|featurette|sneak[- ]peek|first[- ]look|фан[- ]трейлер|концепт[- ]трейлер)\b/i.test(candidateTitle + ' ' + String(candidateDesc || '').slice(0, 160))) {
     return -1;
   }
 
-  // Отклоняем музыкальные сборники, шансон, приколы, радио и караоке
+  // 3. Отклоняем любительские видео с календарными датами ("Ведьмин лес. 13 сентября 2026", "13.09.2026"), эндуро/мото/покатушки/гонки/таро/влоги
+  if (/\b\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+20\d\d)?\b/i.test(candidateTitle) ||
+      /\b\d{2}\.\d{2}\.20\d\d\b/.test(candidateTitle) ||
+      /\b(?:эндуро|enduro|мотокросс|питбайк|квадроцикл|мото\b|покатушк[а-я]*|оффроуд|off[- ]?road|трофи[- ]?рейд|джиппинг|велогонк[а-я]*|забег|марафон|соревновани[яей]|этап\s+кубка|чемпионат|турнир|рыбалк[а-я]*|поход|сплав|страйкбол|пейнтбол|сталкерстрайк|кладоискател[а-я]*|таро\b|tarot\b|расклад|колод[аыу]|влог|vlog|распаковк[а-я]*)\b/i.test(candidateTitle + ' ' + String(candidateDesc || '').slice(0, 220))) {
+    return -1;
+  }
+
+  // 4. Отклоняем музыкальные сборники, шансон, приколы, радио и караоке
   if (/\b(?:русская\s+музыка|музыка\s+в\s+машину|сборник\s+песен|сборник\s+хитов|лучших\s+песен|хиты\s+\d{4}|песни\s+\d{4}|песни\s+о\s+любви|дискотека|шансон|шансона|радио|плейлист|playlist|клипы|караоке|смешные\s+приколы|сборник\s+приколов|приколы\s+\d{4}|мультики\s+для\s+детей)\b/i.test(candidateTitle)) {
     return -1;
   }
 
-  const sigWords = normTarget.split(' ').filter(w => w.length >= 2 && !MEDIA_MATCH_STOPWORDS.has(w));
-  if (sigWords.length === 0) return -1;
-
   const candWords = normCand.split(' ').filter(Boolean);
-  let matchedCount = 0;
-  let firstWordMatched = false;
-  let lastWordMatched = false;
-
-  for (let i = 0; i < sigWords.length; i++) {
-    const w = sigWords[i];
-    const numEquiv = ORDINAL_TO_NUM[w];
-    const isMatched = candWords.some(cw => {
-      if (cw === w) return true;
-      if (numEquiv && cw === numEquiv) return true;
-      if (w.length >= 4 && cw.length >= 4 && Math.abs(cw.length - w.length) <= 2) {
-        const stemLen = Math.min(w.length, cw.length) - 1;
-        if (stemLen >= 3 && cw.slice(0, stemLen) === w.slice(0, stemLen)) return true;
+  const checkWordsMatch = (targetStr) => {
+    if (!targetStr) return false;
+    const sigWords = targetStr.split(' ').filter(w => w.length >= 2 && !MEDIA_MATCH_STOPWORDS.has(w));
+    if (sigWords.length === 0) return false;
+    let matchedCount = 0;
+    let firstWordMatched = false;
+    let lastWordMatched = false;
+    for (let i = 0; i < sigWords.length; i++) {
+      const w = sigWords[i];
+      const numEquiv = ORDINAL_TO_NUM[w];
+      const isMatched = candWords.some(cw => {
+        if (cw === w) return true;
+        if (numEquiv && cw === numEquiv) return true;
+        if (w.length >= 4 && cw.length >= 4 && Math.abs(cw.length - w.length) <= 2) {
+          const stemLen = Math.min(w.length, cw.length) - 1;
+          if (stemLen >= 3 && cw.slice(0, stemLen) === w.slice(0, stemLen)) return true;
+        }
+        return false;
+      });
+      if (isMatched) {
+        matchedCount++;
+        if (i === 0) firstWordMatched = true;
+        if (i === sigWords.length - 1) lastWordMatched = true;
       }
-      return false;
-    });
-    if (isMatched) {
-      matchedCount++;
-      if (i === 0) firstWordMatched = true;
-      if (i === sigWords.length - 1) lastWordMatched = true;
     }
-  }
+    if (sigWords.length <= 3) return matchedCount >= sigWords.length;
+    return matchedCount >= sigWords.length - 1 && firstWordMatched && lastWordMatched;
+  };
 
-  if (sigWords.length <= 3) {
-    if (matchedCount < sigWords.length) return -1;
-  } else {
-    if (matchedCount < sigWords.length - 1 || !firstWordMatched || !lastWordMatched) return -1;
-  }
+  const matchedRu = checkWordsMatch(normTarget);
+  const matchedOrig = normOrig && normOrig.length >= 4 && normOrig !== normTarget ? checkWordsMatch(normOrig) : false;
+  if (!matchedRu && !matchedOrig) return -1;
 
   const hasSeasonReq = Boolean(season && String(season).trim() !== '');
   if (!hasSeasonReq) {
@@ -5335,8 +5516,9 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
       return -1;
     }
     // Если в исходном названии нет цифр, отклоняем номерные сиквелы (например, "Обитель зла 2..6") и спин-оффы с подзаголовками
-    if (!/\d/.test(normTarget)) {
-      const escapedTarget = normTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const activeTarget = matchedRu ? normTarget : normOrig;
+    if (activeTarget && !/\d/.test(activeTarget)) {
+      const escapedTarget = activeTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const sequelRe = new RegExp(`\\b${escapedTarget}\\s+[2-9]\\b`, 'i');
       if (sequelRe.test(normCand)) return -1;
     }
@@ -5366,7 +5548,7 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   if (reqYear >= 1920 && reqYear <= 2030) {
     const yearMatches = String(candidateTitle).match(/\b(19\d\d|20\d\d)\b/g) || [];
     for (const ym of yearMatches) {
-      if (normTarget.includes(ym)) continue;
+      if (normTarget.includes(ym) || (normOrig && normOrig.includes(ym))) continue;
       const cy = parseInt(ym, 10);
       if (Math.abs(cy - reqYear) > 1) {
         return -1;
@@ -5378,10 +5560,19 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   }
 
   let score = 100;
-  if (normCand === normTarget || normCand.startsWith(normTarget + ' ')) {
+  if (matchedRu && (normCand === normTarget || normCand.startsWith(normTarget + ' '))) {
     score += 350;
-  } else if (normCand.includes(normTarget)) {
+  } else if (matchedOrig && (normCand === normOrig || normCand.startsWith(normOrig + ' '))) {
+    score += 350;
+  } else if ((matchedRu && normCand.includes(normTarget)) || (matchedOrig && normCand.includes(normOrig))) {
     score += 200;
+  }
+
+  if (matchedRu && matchedOrig) {
+    score += 300;
+  }
+  if (isCinemaCategory) {
+    score += 250;
   }
 
   if (reqYear >= 1920 && reqYear <= 2030) {
@@ -5394,30 +5585,42 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
     }
   }
 
+  const hasCinemaMarker = /\b(?:фильм|мультфильм|аниме|дубляж|озвучк[а-я]*|red\s*head\s*sound|hdrezka|профессиональн|лицензи|4k|uhd|1080p)\b/i.test(candidateTitle + ' ' + String(candidateDesc || '').slice(0, 200));
   if (/дубляж|red\s*head\s*sound|hdrezka|профессиональн|лицензи/i.test(candidateTitle)) {
     score += 200;
   }
-  if (!hasSeasonReq && /\bфильм\b/i.test(candidateTitle)) {
-    score += 100;
+  if (!hasSeasonReq && /\b(?:фильм|мультфильм)\b/i.test(candidateTitle)) {
+    score += 120;
   }
   if (/часами\s+выбираешь|телеграм|t\.me\/|подпишись\s+на/i.test(candidateDesc || '')) {
     score -= 400;
+  }
+
+  // Для свежих премьер 2025+ требуем подтверждение кино-категории, двуязычного названия или кино-маркеров и высокий рейтинг совпадения
+  if (!hasSeasonReq && reqYear >= 2025) {
+    if (!isCinemaCategory && !(matchedRu && matchedOrig) && !hasCinemaMarker) {
+      return -1;
+    }
+    if (score < 450) {
+      return -1;
+    }
   }
 
   return score;
 }
 
 // Помощник поиска реального видеопотока в VK Видео (фильмы, сериалы, озвучки и промо)
-async function resolveBestVkEmbed(title = '', year = '', season = '', episode = '', allowShort = false) {
+async function resolveBestVkEmbed(title = '', year = '', season = '', episode = '', allowShort = false, originalTitle = '') {
   const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
-  if (!cleanTitle) return '';
+  const cleanOrig = String(originalTitle || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  if (!cleanTitle && !cleanOrig) return '';
 
   const epSuffix = season ? ` ${season} сезон ${episode || 1} серия` : '';
   const queries = [
     `${cleanTitle}${epSuffix} ${year || ''}`.trim(),
     `${cleanTitle}${epSuffix} фильм`.trim(),
-    cleanTitle
-  ];
+    cleanOrig ? `${cleanTitle} ${cleanOrig} ${year || ''}`.trim() : cleanTitle
+  ].filter(Boolean);
 
   const parseDur = (s) => {
     if (!s || typeof s !== 'string') return 0;
@@ -5430,7 +5633,6 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
 
   const candidates = [];
   const seenKeys = new Set();
-  const minDur = season ? 900 : 3600;
   const maxDur = season ? 7200 : 14400;
 
   for (const q of queries.slice(0, 2)) {
@@ -5469,12 +5671,12 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
           const durStr = typeof it[5] === 'string' ? it[5] : '';
           const rawSec = typeof it[19] === 'number' ? it[19] : (typeof it[18] === 'number' ? it[18] : 0);
           const durationSec = rawSec > 0 ? rawSec : parseDur(durStr);
-          const effectiveMinDur = allowShort ? (season ? 300 : 900) : (season ? 600 : 2400);
+          const effectiveMinDur = allowShort ? (season ? 300 : 900) : (season ? 600 : 3300);
           if (durationSec < effectiveMinDur) continue;
           if (durationSec > maxDur) continue;
 
-          const sc = scoreMediaCandidate(rawTitle, '', cleanTitle, year, season, episode, 0);
-          if (sc < 0) continue;
+          const sc = scoreMediaCandidate(rawTitle, '', cleanTitle, year, season, episode, 0, cleanOrig, '');
+          if (sc < (allowShort ? 250 : 350)) continue;
 
           const hash = (typeof it[42] === 'string' && /^[a-f0-9]{14,24}$/i.test(it[42]))
             ? it[42]
@@ -5489,7 +5691,7 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
         }
       }
     } catch (_) {}
-    if (candidates.some(c => c.score >= 500 && c.duration >= 3600)) break;
+    if (candidates.some(c => c.score >= 550 && c.duration >= 3600)) break;
   }
 
   if (candidates.length > 0) {
@@ -5504,25 +5706,25 @@ async function resolveBestVkEmbed(title = '', year = '', season = '', episode = 
 }
 
 // Помощник поиска реального видеопотока в RuTube (полные фильмы, сериалы и дублированные видео)
-async function resolveBestRuTubeId(title = '', year = '', season = '', episode = '', variantIndex = 0, allowShort = false) {
+async function resolveBestRuTubeId(title = '', year = '', season = '', episode = '', variantIndex = 0, allowShort = false, originalTitle = '') {
   const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
-  if (!cleanTitle) return '';
+  const cleanOrig = String(originalTitle || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  if (!cleanTitle && !cleanOrig) return '';
 
   const epSuffix = season ? ` ${season} сезон ${episode || 1} серия` : '';
   const rawQueries = year
     ? [
-        `${cleanTitle}${epSuffix} ${year}`.trim(),
         `${cleanTitle}${epSuffix} фильм ${year}`.trim(),
-        `${cleanTitle}${epSuffix}`.trim()
-      ]
+        cleanOrig && cleanOrig.toLowerCase() !== cleanTitle.toLowerCase() ? `${cleanTitle} ${cleanOrig} ${year}`.trim() : '',
+        `${cleanTitle}${epSuffix} ${year}`.trim()
+      ].filter(Boolean)
     : [
         `${cleanTitle}${epSuffix}`.trim(),
         `${cleanTitle} фильм`.trim()
-      ];
+      ].filter(Boolean);
 
   const candidates = [];
   const seenIds = new Set();
-  const minDur = season ? 900 : 3600;
   const maxDur = season ? 7200 : 14400;
 
   for (const rq of rawQueries) {
@@ -5544,14 +5746,15 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
           if (seenIds.has(it.id)) continue;
           seenIds.add(it.id);
           const dur = parseInt(it.duration, 10) || 0;
-          const effectiveMinDur = allowShort ? (season ? 300 : 900) : (season ? 600 : 2400);
+          const effectiveMinDur = allowShort ? (season ? 300 : 900) : (season ? 600 : 3300);
           if (dur < effectiveMinDur) continue;
           if (dur > maxDur) continue;
 
           const pubTs = it.publication_ts || it.created_ts || '';
           const pubYear = pubTs ? new Date(pubTs).getFullYear() : 0;
-          const sc = scoreMediaCandidate(it.title || '', it.description || '', cleanTitle, year, season, episode, pubYear);
-          if (sc < 0) continue;
+          const catName = it.category?.name || '';
+          const sc = scoreMediaCandidate(it.title || '', it.description || '', cleanTitle, year, season, episode, pubYear, cleanOrig, catName);
+          if (sc < (allowShort ? 250 : 350)) continue;
 
           candidates.push({
             id: it.id,
@@ -5561,7 +5764,7 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
         }
       }
     } catch (_) {}
-    if (candidates.some(c => c.score >= 500 && c.duration >= 3600)) break;
+    if (candidates.some(c => c.score >= 600 && c.duration >= 3600)) break;
   }
 
   if (candidates.length > 0) {
@@ -5574,6 +5777,290 @@ async function resolveBestRuTubeId(title = '', year = '', season = '', episode =
   }
 
   return '';
+}
+
+const _officialTrailerCache = new Map();
+async function resolveOfficialTrailerSource({ title = '', original_title = '', year = '' } = {}) {
+  const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  const cleanOrig = String(original_title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
+  const cacheKey = `${cleanTitle.toLowerCase()}|${cleanOrig.toLowerCase()}|${year || ''}`;
+  const cached = _officialTrailerCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts < 1800000)) {
+    return cached.data;
+  }
+
+  const normRu = normalizeMatchText(cleanTitle);
+  const normOrig = normalizeMatchText(cleanOrig);
+  const ruWords = normRu.split(' ').filter(w => w.length >= 3 && !MEDIA_MATCH_STOPWORDS.has(w));
+  const origWords = normOrig.split(' ').filter(w => w.length >= 3 && !MEDIA_MATCH_STOPWORDS.has(w));
+  const reqYear = parseInt(year, 10) || 0;
+
+  const queries = [];
+  if (cleanOrig) queries.push(`${cleanOrig} ${year || ''}`.trim());
+  if (cleanTitle) queries.push(`${cleanTitle} ${year || ''} трейлер`.trim());
+  if (cleanTitle && cleanOrig && cleanTitle.toLowerCase() !== cleanOrig.toLowerCase()) {
+    queries.push(`${cleanTitle} ${cleanOrig}`.trim());
+  }
+
+  const candidates = [];
+  const seenIds = new Set();
+
+  for (const q of queries.slice(0, 3)) {
+    try {
+      const apiRes = await fetch(`https://rutube.ru/api/search/video/?query=${encodeURIComponent(q)}&page=1&format=json`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://rutube.ru/'
+        },
+        signal: AbortSignal.timeout(2600)
+      });
+      if (!apiRes.ok) continue;
+      const data = await apiRes.json();
+      const list = Array.isArray(data?.results) ? data.results : [];
+      for (const it of list) {
+        if (!it || !it.id || !/^[a-f0-9]{32}$/i.test(it.id) || seenIds.has(it.id) || it.is_deleted || it.is_hidden) continue;
+        seenIds.add(it.id);
+        const dur = parseInt(it.duration, 10) || 0;
+        if (dur < 35 || dur > 360) continue;
+
+        const catName = String(it.category?.name || '').toLowerCase();
+        if (catName && /(?:авто[- ]?мото|видеоигр|спорт|охота|рыбалк|строительств|ремонт|кулинар|животн|хобби|новости|наука|обучени|бизнес|эзотерик)/i.test(catName)) continue;
+
+        const candTitle = String(it.title || '');
+        if (/\b(?:эндуро|мото|покатушк|гонк|таро|tarot|обзор|разбор|реакция|майнкрафт|роблокс)\b/i.test(candTitle)) continue;
+
+        const candNorm = normalizeMatchText(candTitle);
+        const candWords = candNorm.split(' ').filter(Boolean);
+        const matchRu = ruWords.length > 0 && ruWords.every(w => candWords.some(cw => cw === w || (w.length >= 4 && cw.startsWith(w.slice(0, w.length - 1)))));
+        const matchOrig = origWords.length > 0 && origWords.every(w => candWords.includes(w));
+        if (!matchRu && !matchOrig) continue;
+
+        if (reqYear >= 1950) {
+          const yms = candTitle.match(/\b(19\d\d|20\d\d)\b/g) || [];
+          if (yms.some(ym => Math.abs(parseInt(ym, 10) - reqYear) > 2)) continue;
+        }
+
+        let sc = 100;
+        if (matchRu && matchOrig) sc += 250;
+        else if (matchOrig) sc += 160;
+        else sc += 140;
+        if (/(?:фильм|мультфильм|сериал|аниме)/i.test(catName)) sc += 180;
+        if (/(?:официальн|финальн|русский\s+трейлер|дубляж|трейлер)/i.test(candTitle)) sc += 160;
+        if (/\b(?:4k|4к|uhd|1080p)\b/i.test(candTitle)) sc += 80;
+        if (reqYear && candTitle.includes(String(reqYear))) sc += 120;
+
+        candidates.push({
+          embedUrl: `/api/player/rutube-embed/${it.id}`,
+          trailerTitle: candTitle,
+          durationSec: dur,
+          score: sc
+        });
+      }
+      if (candidates.some(c => c.score >= 520)) break;
+    } catch (_) {}
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0] || null;
+  _officialTrailerCache.set(cacheKey, { data: best, ts: Date.now() });
+  return best;
+}
+
+function escapeServerHtml(s = '') {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderPremiereOrTrailerFallbackHtml({ title = '', original_title = '', year = '', trailer = null } = {}) {
+  const displayTitle = escapeServerHtml(title || original_title || 'Премьера');
+  const subParts = [];
+  if (original_title && original_title.trim().toLowerCase() !== String(title || '').trim().toLowerCase()) {
+    subParts.push(escapeServerHtml(original_title.trim()));
+  }
+  if (year) subParts.push(escapeServerHtml(String(year).trim()));
+  const displaySub = subParts.join(' • ');
+
+  const durFormatted = trailer && trailer.durationSec
+    ? `${Math.floor(trailer.durationSec / 60)}:${String(trailer.durationSec % 60).padStart(2, '0')}`
+    : '';
+  const safeTrailerUrl = trailer && trailer.embedUrl ? escapeServerHtml(trailer.embedUrl) : '';
+  const safeTrailerTitle = trailer && trailer.trailerTitle ? escapeServerHtml(trailer.trailerTitle) : displayTitle;
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>${displayTitle} — Ожидание цифрового релиза</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background:
+        radial-gradient(circle at 50% 15%, rgba(0, 210, 255, 0.16) 0%, transparent 55%),
+        radial-gradient(circle at 80% 85%, rgba(168, 85, 247, 0.14) 0%, transparent 50%),
+        #080b14;
+      color: #f8fafc;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .premiere-stage {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .premiere-card {
+      max-width: 620px; width: 100%;
+      padding: 28px 26px;
+      border-radius: 20px;
+      background: linear-gradient(165deg, rgba(22, 29, 49, 0.92), rgba(11, 15, 27, 0.95));
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      box-shadow: 0 22px 55px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      text-align: center;
+    }
+    .premiere-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 14px; border-radius: 999px;
+      background: rgba(0, 210, 255, 0.13);
+      border: 1px solid rgba(0, 210, 255, 0.38);
+      color: #38bdf8;
+      font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .premiere-title {
+      margin: 0 0 6px;
+      font-size: clamp(20px, 3.2vw, 28px);
+      font-weight: 800; color: #ffffff; line-height: 1.2;
+    }
+    .premiere-sub {
+      color: #94a3b8; font-size: 14px; font-weight: 600;
+      margin-bottom: 14px;
+    }
+    .premiere-desc {
+      margin: 0 auto 22px; max-width: 520px;
+      color: #cbd5e1; font-size: 13.8px; line-height: 1.58;
+    }
+    .premiere-actions {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      justify-content: center;
+    }
+    .p-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 18px; border-radius: 11px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.92));
+      color: #f1f5f9; font-size: 13.5px; font-weight: 700;
+      cursor: pointer; transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.38);
+    }
+    .p-btn:hover {
+      transform: translateY(-1.5px);
+      border-color: rgba(56, 189, 248, 0.55);
+      color: #ffffff;
+    }
+    .p-btn:active { transform: translateY(1px) scale(0.985); }
+    .p-btn.hero {
+      background: linear-gradient(135deg, #00d2ff 0%, #3b82f6 55%, #6366f1 100%);
+      color: #ffffff; border-color: rgba(125, 211, 252, 0.65);
+      box-shadow: 0 8px 24px rgba(0, 210, 255, 0.34);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+    #trailer-layer {
+      display: none; position: fixed; inset: 0; background: #000; z-index: 20;
+    }
+    #trailer-layer iframe {
+      width: 100%; height: 100%; border: 0;
+    }
+    .trailer-topbar {
+      position: fixed; top: 12px; left: 12px; right: 12px; z-index: 30;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      pointer-events: none;
+    }
+    .trailer-pill {
+      pointer-events: auto;
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 12px; border-radius: 9px;
+      background: rgba(8, 11, 20, 0.84);
+      border: 1px solid rgba(0, 210, 255, 0.45);
+      backdrop-filter: blur(8px);
+      color: #38bdf8; font-size: 12px; font-weight: 800;
+      max-width: 72%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .trailer-back {
+      pointer-events: auto;
+      padding: 6px 13px; border-radius: 9px;
+      border: 1px solid rgba(148, 163, 184, 0.38);
+      background: rgba(15, 23, 42, 0.86);
+      backdrop-filter: blur(8px);
+      color: #f8fafc; font-size: 12.5px; font-weight: 700; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="premiere-stage" id="premiere-stage">
+    <div class="premiere-card">
+      <div class="premiere-badge">🎬 Кинотеатральная премьера • Ожидается цифровой релиз</div>
+      <h1 class="premiere-title">${displayTitle}</h1>
+      ${displaySub ? `<div class="premiere-sub">${displaySub}</div>` : ''}
+      <p class="premiere-desc">
+        Полная цифровая версия этого релиза в 4K / Full HD ещё не вышла в онлайн-кинотеатрах и базах балансеров (Lift, Alloha, Collaps, HDRezka, VideoCDN). Как только состоится цифровой релиз, фильм автоматически станет доступен здесь без рекламы.
+      </p>
+      <div class="premiere-actions">
+        <button type="button" class="p-btn hero" onclick="openOfficialTrailer()">▶ Смотреть официальный трейлер${durFormatted ? ` (${durFormatted})` : ''}</button>
+        <button type="button" class="p-btn" onclick="checkTorrent()">🧲 Проверить P2P WebTorrent</button>
+        <button type="button" class="p-btn" id="planned-btn" onclick="markPlanned(this)">📌 В список «В планах»</button>
+      </div>
+    </div>
+  </div>
+  <div id="trailer-layer">
+    <div class="trailer-topbar">
+      <div class="trailer-pill" title="${safeTrailerTitle || displayTitle}">🎞 ОФИЦИАЛЬНЫЙ ТРЕЙЛЕР • ${safeTrailerTitle || displayTitle}</div>
+      <button type="button" class="trailer-back" onclick="closeOfficialTrailer()">← Назад к релизу</button>
+    </div>
+    <div id="trailer-mount" style="width:100%;height:100%;"></div>
+  </div>
+  <script>
+    function openOfficialTrailer() {
+      var st = document.getElementById('premiere-stage');
+      var ly = document.getElementById('trailer-layer');
+      var mt = document.getElementById('trailer-mount');
+      if (!ly || !mt) return;
+      if (st) st.style.display = 'none';
+      ly.style.display = 'block';
+      mt.innerHTML = '';
+      var fr = document.createElement('iframe');
+      fr.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture; encrypted-media');
+      fr.setAttribute('allowfullscreen', 'true');
+      fr.src = '${safeTrailerUrl}' || ('/api/player/rutube-search-embed?title=' + encodeURIComponent('${displayTitle} официальный русский трейлер'));
+      mt.appendChild(fr);
+    }
+    try { window.parent.postMessage({ type: 'STORM_PREMIERE_PLACEHOLDER_LOADED', title: '${displayTitle}' }, '*'); } catch (_) {}
+    function closeOfficialTrailer() {
+      var st = document.getElementById('premiere-stage');
+      var ly = document.getElementById('trailer-layer');
+      var mt = document.getElementById('trailer-mount');
+      if (mt) mt.innerHTML = '';
+      if (ly) ly.style.display = 'none';
+      if (st) st.style.display = 'flex';
+    }
+    function checkTorrent() {
+      try { window.parent.postMessage({ type: 'STORM_SELECT_PLAYER_ID', playerId: 'webtorrent' }, '*'); } catch (_) {}
+    }
+    function markPlanned(btn) {
+      try {
+        window.parent.postMessage({ type: 'STORM_BOOKMARK_PLANNED' }, '*');
+        if (btn) btn.textContent = '✅ Добавлено в «В планах»';
+      } catch (_) {}
+    }
+  </script>
+</body>
+</html>`;
 }
 
 const _fanFilmIframeCache = new Map();
@@ -5729,10 +6216,10 @@ async function resolveKodikDirectIframe({ cleanTitle = '', original_title = '', 
 // Автоматический шлюз поиска и воспроизведения VK Видео
 app.get('/api/player/vk-search-embed', async (req, res) => {
   try {
-    const { title = '', year = '', season = '', episode = '' } = req.query;
+    const { title = '', original_title = '', year = '', season = '', episode = '' } = req.query;
     const [vkUrl, ruId] = await Promise.all([
-      resolveBestVkEmbed(title, year, season, episode, false),
-      resolveBestRuTubeId(title, year, season, episode, 0, false)
+      resolveBestVkEmbed(title, year, season, episode, false, original_title),
+      resolveBestRuTubeId(title, year, season, episode, 0, false, original_title)
     ]);
     if (vkUrl) {
       return res.redirect(302, vkUrl);
@@ -5740,23 +6227,23 @@ app.get('/api/player/vk-search-embed', async (req, res) => {
     if (ruId) {
       return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
     }
-    const shortVk = await resolveBestVkEmbed(title, year, season, episode, true);
+    const shortVk = await resolveBestVkEmbed(title, year, season, episode, true, original_title);
     if (shortVk) {
       return res.redirect(302, shortVk);
     }
-    return res.redirect(302, `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(title)}&year=${encodeURIComponent(year)}`);
+    return res.redirect(302, `/api/player/kinobox-embed?balancer=auto&fallback_mode=1&title=${encodeURIComponent(title)}${original_title ? `&original_title=${encodeURIComponent(original_title)}` : ''}&year=${encodeURIComponent(year)}`);
   } catch (err) {
-    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(req.query.title || '')}&year=${encodeURIComponent(req.query.year || '')}`);
+    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(req.query.title || '')}${req.query.original_title ? `&original_title=${encodeURIComponent(req.query.original_title)}` : ''}&year=${encodeURIComponent(req.query.year || '')}`);
   }
 });
 
 // Автоматический шлюз поиска и воспроизведения RuTube / Wink
 app.get('/api/player/rutube-search-embed', async (req, res) => {
   try {
-    const { title = '', year = '', season = '', episode = '', no_ff = '' } = req.query;
+    const { title = '', original_title = '', year = '', season = '', episode = '', no_ff = '' } = req.query;
     const [ruId, vkUrl] = await Promise.all([
-      resolveBestRuTubeId(title, year, season, episode, 0, false),
-      resolveBestVkEmbed(title, year, season, episode, false)
+      resolveBestRuTubeId(title, year, season, episode, 0, false, original_title),
+      resolveBestVkEmbed(title, year, season, episode, false, original_title)
     ]);
     if (ruId) {
       return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
@@ -5765,15 +6252,39 @@ app.get('/api/player/rutube-search-embed', async (req, res) => {
       return res.redirect(302, vkUrl);
     }
     if (no_ff !== '1') {
-      const ffIframe = await resolveFanFilmDirectIframe(title);
+      const ffIframe = await resolveFanFilmDirectIframe(title, false, year);
       if (ffIframe) {
         return res.redirect(302, `/api/player/fanfilm-embed?url=${encodeURIComponent(ffIframe)}&title=${encodeURIComponent(title)}&year=${encodeURIComponent(year || '')}`);
       }
     }
-    const epParam = season ? `&is_series=1&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
-    return res.redirect(302, `/api/player/lift-embed?title=${encodeURIComponent(title)}&year=${encodeURIComponent(year || '')}${epParam}`);
+    // Проверяем Lift напрямую без циклического 302 редиректа
+    try {
+      const matchedLiftId = await Promise.race([
+        resolveLiftMatch({
+          title,
+          original_title,
+          year,
+          is_series: Boolean(season)
+        }),
+        new Promise(r => setTimeout(() => r(null), 2800))
+      ]);
+      if (matchedLiftId) {
+        const epParam = season ? `&is_series=1&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || '1')}` : '';
+        return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(title)}${original_title ? `&original_title=${encodeURIComponent(original_title)}` : ''}&year=${encodeURIComponent(year || '')}${epParam}`);
+      }
+    } catch (_) {}
+
+    const trailer = await resolveOfficialTrailerSource({ title, original_title, year });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderPremiereOrTrailerFallbackHtml({ title, original_title, year, trailer }));
   } catch (err) {
-    return res.status(500).send('Ошибка поиска видеопотока');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderPremiereOrTrailerFallbackHtml({
+      title: req.query.title || '',
+      original_title: req.query.original_title || '',
+      year: req.query.year || '',
+      trailer: null
+    }));
   }
 });
 
@@ -5837,8 +6348,8 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
     // 2. Если включен режим гарантированного резерва (fallback_mode=1) — проверяем RuTube и VK Видео в первую очередь
     if (fallback_mode === '1') {
       const [ruId, vkUrl] = await Promise.all([
-        resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false),
-        resolveBestVkEmbed(cleanTitle, year, season, episode, false)
+        resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false, original_title),
+        resolveBestVkEmbed(cleanTitle, year, season, episode, false, original_title)
       ]);
       if (ruId) {
         return res.redirect(302, `/api/player/rutube-embed/${ruId}`);
@@ -5860,8 +6371,8 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
     if (balancer === 'videocdn' || balancer === 'bazon') {
       const variantIdx = balancer === 'bazon' ? 1 : 0;
       const [ruId, vkUrl] = await Promise.all([
-        resolveBestRuTubeId(cleanTitle, year, season, episode, variantIdx, false),
-        resolveBestVkEmbed(cleanTitle, year, season, episode, false)
+        resolveBestRuTubeId(cleanTitle, year, season, episode, variantIdx, false, original_title),
+        resolveBestVkEmbed(cleanTitle, year, season, episode, false, original_title)
       ]);
       if (balancer === 'videocdn' && vkUrl) {
         return res.redirect(302, vkUrl);
@@ -5903,7 +6414,7 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
           else if (balancer === 'collaps' || balancer === 'alloha') voiceHint = 'дубляж';
           else if (balancer === 'vidsrc') voiceHint = 'original';
           const voiceParam = voiceHint ? `&voice=${encodeURIComponent(voiceHint)}` : '';
-          return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(cleanTitle)}${year ? `&year=${encodeURIComponent(year)}` : ''}${wantSeries ? '&is_series=1' : ''}${epQuery}${voiceParam}`);
+          return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(cleanTitle)}${original_title ? `&original_title=${encodeURIComponent(original_title)}` : ''}${year ? `&year=${encodeURIComponent(year)}` : ''}${wantSeries ? '&is_series=1' : ''}${epQuery}${voiceParam}`);
         }
       } catch (_) {}
     }
@@ -5911,8 +6422,8 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
     // 7. Если ни на FanFilm4K, ни в Lift релиза нет — проверяем Kodik API и гарантированный поток RuTube / VK Видео
     const [kodikDirect, ruId, vkUrl] = await Promise.all([
       resolveKodikDirectIframe({ cleanTitle, original_title, shikimori_id, season, episode }),
-      resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false),
-      resolveBestVkEmbed(cleanTitle, year, season, episode, false)
+      resolveBestRuTubeId(cleanTitle, year, season, episode, 0, false, original_title),
+      resolveBestVkEmbed(cleanTitle, year, season, episode, false, original_title)
     ]);
 
     if (kodikDirect) {
@@ -5925,10 +6436,18 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
       return res.redirect(302, vkUrl);
     }
 
-    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(year)}&no_ff=1`);
+    const trailer = await resolveOfficialTrailerSource({ title: cleanTitle, original_title, year });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderPremiereOrTrailerFallbackHtml({ title: cleanTitle, original_title, year, trailer }));
   } catch (err) {
     console.warn('[Kinobox Embed Error]:', err.message);
-    return res.redirect(302, `/api/player/rutube-search-embed?title=${encodeURIComponent(req.query.title || '')}&year=${encodeURIComponent(req.query.year || '')}&no_ff=1`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderPremiereOrTrailerFallbackHtml({
+      title: req.query.title || '',
+      original_title: req.query.original_title || '',
+      year: req.query.year || '',
+      trailer: null
+    }));
   }
 });
 
@@ -6805,6 +7324,38 @@ app.get('/api/player/fanfilm-embed', async (req, res) => {
               }, 300);
             })();
 
+            // STORM Universal Control & Activity Bridge (Seek, Speed, Play/Pause, Activity)
+            (function() {
+              var _lastAct = 0;
+              function sendAct() {
+                var n = Date.now();
+                if (n - _lastAct < 350) return;
+                _lastAct = n;
+                try { window.parent.postMessage({ type: 'STORM_IFRAME_ACTIVITY' }, '*'); } catch (_) {}
+              }
+              document.addEventListener('mousemove', sendAct, { passive: true });
+              document.addEventListener('touchstart', sendAct, { passive: true });
+              window.addEventListener('message', function(ev) {
+                try {
+                  var d = typeof ev.data === 'string' ? JSON.parse(ev.data) : (ev.data || {});
+                  var v = document.querySelector('video');
+                  if (!v) return;
+                  if (d.type === 'STORM_SEEK_DELTA' || d.event === 'seek' || d.action === 'seek') {
+                    var delta = Number(d.delta !== undefined ? d.delta : d.val) || 0;
+                    if (delta) v.currentTime = Math.max(0, Math.min(v.duration || Infinity, (v.currentTime || 0) + delta));
+                  } else if (d.type === 'STORM_SEEK_TO' && d.time !== undefined) {
+                    v.currentTime = Math.max(0, Number(d.time) || 0);
+                  } else if (d.type === 'STORM_SET_SPEED' && d.speed) {
+                    v.playbackRate = Number(d.speed) || 1;
+                  } else if (d.type === 'STORM_PLAY_PAUSE') {
+                    if (d.action === 'pause') v.pause();
+                    else if (d.action === 'play') v.play().catch(function(){});
+                    else if (v.paused) v.play().catch(function(){});
+                    else v.pause();
+                  }
+                } catch (_) {}
+              });
+            })();
             // STORM Fullscreen Bridge: перехват кликов по кнопкам полноэкранного режима, горячей клавиши F и вызовов Fullscreen API
             (function() {
               function notifyParentFullscreen() {
@@ -7662,7 +8213,7 @@ app.get('/api/player/lift-playlist.m3u8', (req, res) => {
 // Прямой очищенный от рекламы плеер Lift (VenomPlayer 4K/FHD + все озвучки СНГ + субтитры + превью таймлайна + автопропуск заставок)
 app.get('/api/player/lift-embed', async (req, res) => {
   const { lift_id, title, original_title, year, kp_id, imdb_id, is_series, season, episode, voice } = req.query;
-  const fallbackKinoboxUrl = `/api/player/kinobox-embed?balancer=kinobox&no_lift=1&title=${encodeURIComponent(title || '')}${year ? `&year=${encodeURIComponent(year)}` : ''}${kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : ''}${imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : ''}${season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}` : ''}`;
+  const fallbackKinoboxUrl = `/api/player/kinobox-embed?balancer=kinobox&no_lift=1&title=${encodeURIComponent(title || '')}${original_title ? `&original_title=${encodeURIComponent(original_title)}` : ''}${year ? `&year=${encodeURIComponent(year)}` : ''}${kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : ''}${imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : ''}${season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}` : ''}`;
 
   try {
     const matchedLiftId = await resolveLiftMatch({
@@ -7936,13 +8487,74 @@ app.get('/api/player/lift-embed', async (req, res) => {
     } catch (_) {}
   }
 
+  var _lastActivitySent = 0;
+  function notifyParentActivity() {
+    var now = Date.now();
+    if (now - _lastActivitySent < 350) return;
+    _lastActivitySent = now;
+    try { window.parent.postMessage({ type: 'STORM_IFRAME_ACTIVITY' }, '*'); } catch (_) {}
+  }
+  document.addEventListener('mousemove', notifyParentActivity, { passive: true });
+  document.addEventListener('touchstart', notifyParentActivity, { passive: true });
+  document.addEventListener('keydown', notifyParentActivity, { passive: true });
+
+  setInterval(function() {
+    try {
+      var vid = document.querySelector('video');
+      if (vid && !isNaN(vid.currentTime)) {
+        window.parent.postMessage({
+          type: 'STORM_IFRAME_TIME',
+          currentTime: vid.currentTime,
+          duration: vid.duration || 0,
+          paused: vid.paused
+        }, '*');
+      }
+    } catch (_) {}
+  }, 500);
+
   window.addEventListener('message', function(e) {
     var d = e.data || {};
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d); } catch (_) { d = {}; }
+    }
+    var vidEl = document.querySelector('video');
+    if ((d.type === 'STORM_SEEK_DELTA' || d.event === 'seek' || d.action === 'seek' || d.api === 'seekDelta') && vidEl) {
+      var deltaSec = Number(d.delta !== undefined ? d.delta : d.val) || 0;
+      if (deltaSec) {
+        vidEl.currentTime = Math.max(0, Math.min(vidEl.duration || Infinity, (vidEl.currentTime || 0) + deltaSec));
+      }
+    }
+    if (d.type === 'STORM_SEEK_TO' && vidEl && d.time !== undefined) {
+      vidEl.currentTime = Math.max(0, Number(d.time) || 0);
+    }
+    if ((d.type === 'STORM_SET_SPEED' || d.action === 'speed') && vidEl && d.speed) {
+      vidEl.playbackRate = Number(d.speed) || 1;
+    }
+    if (d.type === 'STORM_PLAY_PAUSE' && vidEl) {
+      if (d.action === 'pause') vidEl.pause();
+      else if (d.action === 'play') vidEl.play().catch(function(){});
+      else if (vidEl.paused) vidEl.play().catch(function(){});
+      else vidEl.pause();
+    }
     if (d.type === 'STORM_SET_AUDIO' && d.name && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.sound) {
-      app._settings.ctrl.sound.value = d.name;
+      var ctrlSnd = app._settings.ctrl;
+      var availList = (ctrlSnd.ls && ctrlSnd.ls.sound && Array.isArray(ctrlSnd.ls.sound.value)) ? ctrlSnd.ls.sound.value : [];
+      var targetAudio = d.name;
+      if (availList.length > 0) {
+        var reqLow = String(d.name).toLowerCase();
+        var exact = availList.find(function(x) { return String(x).toLowerCase() === reqLow; });
+        var partial = availList.find(function(x) {
+          var xl = String(x).toLowerCase();
+          return xl.includes(reqLow) || reqLow.includes(xl);
+        });
+        if (exact) targetAudio = exact;
+        else if (partial) targetAudio = partial;
+        else if (typeof d.index === 'number' && availList[d.index]) targetAudio = availList[d.index];
+      }
+      ctrlSnd.sound.value = targetAudio;
       try {
-        localStorage.setItem('storm_lift_audio_' + LIFT_ID, d.name);
-        localStorage.setItem('storm_lift_default_audio', d.name);
+        localStorage.setItem('storm_lift_audio_' + LIFT_ID, targetAudio);
+        localStorage.setItem('storm_lift_default_audio', targetAudio);
       } catch (_) {}
     }
     if (d.type === 'STORM_SET_SUBTITLE' && d.name !== undefined && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.cc) {
@@ -7980,6 +8592,16 @@ app.get('/api/player/lift-embed', async (req, res) => {
       setTimeout(applySavedPreferences, 450);
       if (app._settings && app._settings.ctrl) {
         var ctrl = app._settings.ctrl;
+        try {
+          if (ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value) && ctrl.ls.sound.value.length > 0) {
+            window.parent.postMessage({
+              type: 'STORM_LIFT_AUDIO_TRACKS',
+              liftId: LIFT_ID,
+              tracks: ctrl.ls.sound.value,
+              active: ctrl.sound ? ctrl.sound.value : ''
+            }, '*');
+          }
+        } catch (_) {}
         if (ctrl.sound && typeof ctrl.sound.watch === 'function') {
           ctrl.sound.watch(function(v) {
             if (v) {
@@ -9001,7 +9623,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.0.45';
+  let currentAppVersion = '1.0.51';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -9093,7 +9715,7 @@ app.get('/api/updates/check', async (req, res) => {
 });
 
 // ==========================================
-// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.0.45)
+// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.0.51)
 // ==========================================
 
 // 13.1. Мультидорожечный загрузчик STORM Direct Downloader 2.0 (Встроенный HLS-муксер с аудио + субтитрами и прямой поток)

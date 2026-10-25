@@ -4,15 +4,126 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
+  <script>
+    (function() {
+      var VER = '1.0.51';
+      window.__STORM_SW_MANAGED__ = true;
+      try {
+        var savedTheme = localStorage.getItem('storm_theme');
+        if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+        var savedAccent = localStorage.getItem('storm_accent');
+        if (savedAccent && savedAccent !== 'default') document.documentElement.setAttribute('data-accent', savedAccent);
+        var savedFont = localStorage.getItem('storm_font');
+        if (savedFont) document.documentElement.setAttribute('data-font', savedFont);
+        var savedScale = parseFloat(localStorage.getItem('storm_ui_scale') || '1');
+        if (!isNaN(savedScale) && savedScale >= 0.75 && savedScale <= 2.0) {
+          document.documentElement.style.setProperty('--storm-ui-scale', String(savedScale));
+        }
+      } catch (_) {}
+
+      // Автоматическая очистка устаревшего Service Worker v3.x и битых кэшей ES-модулей
+      try {
+        var cleanedVer = localStorage.getItem('storm_sw_clean_ver');
+        if (cleanedVer !== VER) {
+          var isLegacyV3 = !cleanedVer;
+          var hadController = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+          var tasks = [];
+          if (window.caches && typeof caches.keys === 'function') {
+            tasks.push(
+              caches.keys().then(function(keys) {
+                return Promise.all(
+                  keys.map(function(k) {
+                    return k.indexOf(VER) === -1 ? caches.delete(k) : Promise.resolve();
+                  })
+                );
+              })
+            );
+          }
+          if (isLegacyV3 && navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
+            tasks.push(
+              navigator.serviceWorker.getRegistrations().then(function(regs) {
+                return Promise.all(regs.map(function(r) { return r.unregister(); }));
+              })
+            );
+          }
+          Promise.all(tasks).finally(function() {
+            try { localStorage.setItem('storm_sw_clean_ver', VER); } catch (_) {}
+            if (isLegacyV3 && hadController && !sessionStorage.getItem('storm_sw_healed_' + VER)) {
+              try { sessionStorage.setItem('storm_sw_healed_' + VER, '1'); } catch (_) {}
+              window.location.reload();
+            }
+          });
+        }
+      } catch (_) {}
+
+      // Аварийное самовосстановление при сбое линковки любого ES-модуля
+      function healBrokenModule(msg) {
+        if (!msg) return;
+        if (
+          msg.indexOf('does not provide an export named') !== -1 ||
+          msg.indexOf('Failed to fetch dynamically imported module') !== -1 ||
+          msg.indexOf('error loading dynamically imported module') !== -1 ||
+          msg.indexOf('Importing a module script failed') !== -1
+        ) {
+          try {
+            if (sessionStorage.getItem('storm_mod_healed_' + VER)) return;
+            sessionStorage.setItem('storm_mod_healed_' + VER, '1');
+            var cleanups = [];
+            if (window.caches && caches.keys) {
+              cleanups.push(caches.keys().then(function(ks) { return Promise.all(ks.map(function(k) { return caches.delete(k); })); }));
+            }
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              cleanups.push(navigator.serviceWorker.getRegistrations().then(function(rs) { return Promise.all(rs.map(function(r) { return r.unregister(); })); }));
+            }
+            Promise.all(cleanups).finally(function() { window.location.reload(); });
+          } catch (_) {}
+        }
+      }
+      window.addEventListener('error', function(e) { healBrokenModule(String((e && e.message) || '')); }, true);
+      window.addEventListener('unhandledrejection', function(e) { healBrokenModule(String((e && e.reason && (e.reason.message || e.reason)) || '')); });
+
+      // Отложенная регистрация Service Worker v4 после отрисовки витрины
+      if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+        window.addEventListener('load', function() {
+          setTimeout(function() {
+            navigator.serviceWorker.register('/sw.js?v=' + VER, { updateViaCache: 'none' }).then(function(reg) {
+              if (reg && reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+              }
+            }).catch(function() {});
+          }, 1500);
+        });
+      }
+    })();
+  </script>
   <link rel="shortcut icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#8b5cf6">
-  
+
+  <!-- Параллельная предзагрузка критического ядра ES-модулей витрины -->
+  <link rel="modulepreload" href="/js/app.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/theme.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/i18n.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/auth.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/bookmarks.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/status-icons.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/form-factor.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.0.51">
+  <link rel="modulepreload" href="/js/achievements.js?v=1.0.51">
+
+  <!-- Подключение 10 динамических гарнитур STORM AURORA FLUID (Cyrillic + Latin) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.min.css" media="print" onload="this.media='all'">
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.45">
-  <link rel="stylesheet" href="/styles/components.css?v=1.0.45">
-  <link rel="stylesheet" href="/styles/main.css?v=1.0.45">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.45">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.0.51">
+  <link rel="stylesheet" href="/styles/components.css?v=1.0.51">
+  <link rel="stylesheet" href="/styles/main.css?v=1.0.51">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.51" id="storm-tv-mode-css" media="print" onload="this.media='all'">
+  <script>try{if(localStorage.getItem('storm_tv_mode')==='true')document.getElementById('storm-tv-mode-css').media='all';}catch(_){}</script>
+  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.0.51"></noscript>
 </head>
 <body data-active-tab="home">
 
@@ -696,10 +807,10 @@
       <div class="storm-modal-body">
         <!-- Вкладки профиля -->
         <div class="profile-tab-links">
-          <button class="profile-tab-link active" data-ptab="overview">📊 Обзор и настройки</button>
-          <button class="profile-tab-link" data-ptab="achievements" id="profile-tab-achievements">🏆 Достижения (67)</button>
-          <button class="profile-tab-link" data-ptab="edit">🎨 Аватарка и данные</button>
-          <button class="profile-tab-link" data-ptab="security">🛡️ Безопасность и бэкап</button>
+          <button class="profile-tab-link active" data-ptab="overview" data-i18n="profile_tab_overview">📊 Обзор и настройки</button>
+          <button class="profile-tab-link" data-ptab="achievements" id="profile-tab-achievements">🏆 Достижения (0/54)</button>
+          <button class="profile-tab-link" data-ptab="edit" data-i18n="profile_tab_edit">🎨 Аватарка и данные</button>
+          <button class="profile-tab-link" data-ptab="security" data-i18n="profile_tab_security">🛡️ Безопасность и бэкап</button>
         </div>
 
         <!-- 1. Обзор и статистика -->
@@ -906,15 +1017,15 @@
           <div class="profile-settings-card" style="margin-top: 16px;">
             <div class="profile-settings-card-header">
               <span>🎨</span>
-              <span>Персонализация и оформление STORM AURORA FLUID</span>
+              <span data-i18n="profile_custom_header">Персонализация и оформление STORM AURORA FLUID</span>
             </div>
 
             <!-- Визуальная галерея тем (Swatches) + выпадающий список -->
             <div class="profile-setting-block">
               <div class="profile-setting-row">
                 <div>
-                  <div class="profile-setting-title">Тема оформления</div>
-                  <div class="profile-setting-desc">Нажмите на карточку стиля для мгновенного переключения</div>
+                  <div class="profile-setting-title" data-i18n="profile_theme_title">Тема оформления</div>
+                  <div class="profile-setting-desc" data-i18n="profile_theme_desc">Нажмите на карточку стиля для мгновенного переключения</div>
                 </div>
                 <select class="storm-select" id="profile-theme-select" style="min-width: 210px;">
                   <option value="STORM MIDNIGHT">STORM MIDNIGHT</option>
@@ -979,8 +1090,8 @@
             <div class="profile-setting-block">
               <div class="profile-setting-row">
                 <div>
-                  <div class="profile-setting-title">Акцентный цвет подсветки</div>
-                  <div class="profile-setting-desc">13 динамических неоновых оттенков для кнопок и свечения</div>
+                  <div class="profile-setting-title" data-i18n="profile_accent_title">Акцентный цвет подсветки</div>
+                  <div class="profile-setting-desc" data-i18n="profile_accent_desc">13 динамических неоновых оттенков для кнопок и свечения</div>
                 </div>
                 <select class="storm-select" id="profile-accent-select" style="min-width: 210px;">
                   <option value="default">По умолчанию (от темы)</option>
@@ -1020,8 +1131,8 @@
             <!-- Шрифт, Масштаб и Язык -->
             <div class="profile-setting-row">
               <div>
-                <div class="profile-setting-title">Шрифт интерфейса</div>
-                <div class="profile-setting-desc">10 динамических гарнитур STORM AURORA FLUID</div>
+                <div class="profile-setting-title" data-i18n="profile_font_title">Шрифт интерфейса</div>
+                <div class="profile-setting-desc" data-i18n="profile_font_desc">10 динамических гарнитур STORM AURORA FLUID</div>
               </div>
               <select class="storm-select" id="profile-font-select" style="min-width: 210px;">
                 <option value="Inter">Inter Variable (По умолчанию)</option>
@@ -1039,8 +1150,8 @@
 
             <div class="profile-setting-row">
               <div>
-                <div class="profile-setting-title">Масштаб интерфейса</div>
-                <div class="profile-setting-desc">Динамическое масштабирование элементов (85% – 135%)</div>
+                <div class="profile-setting-title" data-i18n="profile_scale_title">Масштаб интерфейса</div>
+                <div class="profile-setting-desc" data-i18n="profile_scale_desc">Динамическое масштабирование элементов (85% – 135%)</div>
               </div>
               <select class="storm-select" id="profile-scale-select" style="min-width: 210px;">
                 <option value="0.85">85% (Компактный)</option>
@@ -1055,7 +1166,7 @@
             <div class="profile-setting-row" style="border-bottom: none; padding-bottom: 0;">
               <div>
                 <div class="profile-setting-title" data-i18n="lang_select_title">Язык интерфейса</div>
-                <div class="profile-setting-desc">11 локализаций STORM MULTIMEDIA (автоопределение языка ОС)</div>
+                <div class="profile-setting-desc" data-i18n="profile_lang_desc">11 локализаций STORM MULTIMEDIA (автоопределение языка ОС)</div>
               </div>
               <select class="storm-select" id="profile-lang-select" style="min-width: 210px;">
                 <option value="ru">RU • Русский</option>
@@ -1077,16 +1188,16 @@
           <div class="profile-settings-card" style="margin-top: 12px;">
             <div class="profile-settings-card-header">
               <span>🎬</span>
-              <span>Плеер, качество 4K UHD и защита от рекламы</span>
+              <span data-i18n="profile_player_header">Плеер, качество 4K UHD и защита от рекламы</span>
             </div>
 
             <div class="profile-setting-row">
               <div>
                 <div class="profile-setting-title" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                  <span>Плеер по умолчанию</span>
+                  <span data-i18n="profile_default_player_title">Плеер по умолчанию</span>
                   <span class="storm-badge" style="font-size: 10px; padding: 2px 6px; background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">Без рекламы • Автопропуск</span>
                 </div>
-                <div class="profile-setting-desc">Открывает любые фильмы и сериалы сразу в чистом мультитрековом плеере с автопропуском заставок</div>
+                <div class="profile-setting-desc" data-i18n="profile_default_player_desc">Открывает любые фильмы и сериалы сразу в чистом мультитрековом плеере с автопропуском заставок</div>
               </div>
               <select class="storm-select" id="profile-default-player-select" style="min-width: 250px;">
                 <option value="lift_adfree" selected>🔥 Lift 4K и FHD (Без рекламы • Все озвучки)</option>
@@ -1100,8 +1211,8 @@
 
             <div class="profile-setting-row">
               <div>
-                <div class="profile-setting-title">Блокировка рекламы и VAST-вставок (AdShield)</div>
-                <div class="profile-setting-desc">Вырезание рекламных роликов, баннеров и ускорение вставок в 16 раз</div>
+                <div class="profile-setting-title" data-i18n="profile_adblock_title">Блокировка рекламы и VAST-вставок (AdShield)</div>
+                <div class="profile-setting-desc" data-i18n="profile_adblock_desc">Вырезание рекламных роликов, баннеров и ускорение вставок в 16 раз</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-adblock-toggle" checked>
@@ -1111,8 +1222,8 @@
 
             <div class="profile-setting-row">
               <div>
-                <div class="profile-setting-title">Маскирование водяных знаков (CleanView)</div>
-                <div class="profile-setting-desc">Бесшовное оптическое скрытие вшитых логотипов букмекеров</div>
+                <div class="profile-setting-title" data-i18n="profile_cleanview_title">Маскирование водяных знаков (CleanView)</div>
+                <div class="profile-setting-desc" data-i18n="profile_cleanview_desc">Бесшовное оптическое скрытие вшитых логотипов букмекеров</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-cleanview-toggle">
@@ -1122,8 +1233,8 @@
 
             <div class="profile-setting-row">
               <div>
-                <div class="profile-setting-title">Автопропуск заставок и титров (Smart Skip)</div>
-                <div class="profile-setting-desc">Автоматический переход через опенинги и показ кнопки пропуска</div>
+                <div class="profile-setting-title" data-i18n="profile_autoskip_title">Автопропуск заставок и титров (Smart Skip)</div>
+                <div class="profile-setting-desc" data-i18n="profile_autoskip_desc">Автоматический переход через опенинги и показ кнопки пропуска</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-autoskip-toggle" checked>
@@ -1133,8 +1244,8 @@
 
             <div class="profile-setting-row">
               <div>
-                <div class="profile-setting-title">Автопереключение серий и резервный плеер</div>
-                <div class="profile-setting-desc">Бесшовный переход к следующей серии и автозамена при сбое источника</div>
+                <div class="profile-setting-title" data-i18n="profile_autonext_title">Автопереключение серий и резервный плеер</div>
+                <div class="profile-setting-desc" data-i18n="profile_autonext_desc">Бесшовный переход к следующей серии и автозамена при сбое источника</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-autonext-toggle" checked>
@@ -1144,8 +1255,8 @@
 
             <div class="profile-setting-row" style="border-bottom: none; padding-bottom: 0;">
               <div>
-                <div class="profile-setting-title">Кинотеатральная подсветка Ambilight</div>
-                <div class="profile-setting-desc">Динамическое фоновое свечение вокруг экрана плеера</div>
+                <div class="profile-setting-title" data-i18n="profile_ambilight_title">Кинотеатральная подсветка Ambilight</div>
+                <div class="profile-setting-desc" data-i18n="profile_ambilight_desc">Динамическое фоновое свечение вокруг экрана плеера</div>
               </div>
               <label class="storm-toggle-switch">
                 <input type="checkbox" id="profile-ambilight-toggle" checked>
@@ -1158,7 +1269,7 @@
           <div class="profile-settings-card" style="margin-top: 12px; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.45 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.0.51 • Официальный релиз</div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -1821,45 +1932,44 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.0.45"></script>
+  <script type="module" src="/js/app.js?v=1.0.51"></script>
 
-  <!-- Интеллектуальный сторожевой таймер (Watchdog): защита от зависания инициализации на мобильных устройствах -->
+  <!-- Интеллектуальный сторожевой таймер (Watchdog): резервное восстановление при обрыве мобильной сети -->
   <script>
     (function() {
-      function checkAppLoaded() {
+      function hasRenderedCatalog() {
         var container = document.getElementById('media-render-container');
-        var hasRealContent = container && container.querySelector('.media-card, .storm-media-rail, .storm-rails-container');
-        if (!hasRealContent) {
-          console.warn('⚠️ STORM Watchdog: обнаружена задержка инициализации, принудительный запуск каталога...');
+        return Boolean(
+          window.__STORM_APP_BOOTED__ &&
+          container &&
+          container.querySelector('.media-card, .storm-media-rail, .storm-rails-container')
+        );
+      }
+
+      setTimeout(function() {
+        if (!hasRenderedCatalog()) {
           if (typeof window.startStormApp === 'function') {
             window.startStormApp();
           } else if (typeof window.stormRefreshCatalog === 'function') {
             window.stormRefreshCatalog();
           }
         }
-      }
+      }, 4500);
 
-      // Первая мягкая проверка через 2.2 секунды
-      setTimeout(checkAppLoaded, 2200);
-
-      // Вторая контрольная проверка через 4.5 секунды
       setTimeout(function() {
-        var container = document.getElementById('media-render-container');
-        var hasRealContent = container && container.querySelector('.media-card, .storm-media-rail, .storm-rails-container');
-        if (!hasRealContent) {
+        if (!hasRenderedCatalog()) {
           if (typeof window.startStormApp === 'function') {
             window.startStormApp();
           } else if (typeof window.stormRefreshCatalog === 'function') {
             window.stormRefreshCatalog();
           } else {
-            // Динамическая перезагрузка модуля app.js в случае сетевого сбоя или кэш-ошибки
             var s = document.createElement('script');
             s.type = 'module';
-            s.src = '/js/app.js?retry=' + Date.now();
+            s.src = '/js/app.js?v=1.0.51&retry=' + Date.now();
             document.body.appendChild(s);
           }
         }
-      }, 4500);
+      }, 8500);
     })();
   </script>
 </body>

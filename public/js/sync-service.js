@@ -3,11 +3,10 @@
  * аналитики «Кино-итоги STORM Rewind» и сканера локальной медиатеки (ПК / NAS)
  */
 
-import { showToast } from './ui.js';
-import { getUser } from './auth.js';
+import { showToast, getUser, getToken } from './auth.js?v=1.0.51';
 
 function getAuthHeaders() {
-  const token = localStorage.getItem('storm_auth_token');
+  const token = (typeof getToken === 'function' ? getToken() : '') || localStorage.getItem('storm_token') || localStorage.getItem('storm_auth_token');
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   return headers;
@@ -17,8 +16,12 @@ export async function openSyncModal() {
   const modal = document.getElementById('sync-modal');
   const body = document.getElementById('sync-modal-body');
   if (!modal || !body) return;
-
   modal.classList.add('is-open');
+  return renderSyncModalContent(body);
+}
+
+export async function renderSyncModalContent(body = document.getElementById('sync-modal-body')) {
+  if (!body) return;
 
   if (!getUser()) {
     body.innerHTML = `
@@ -331,7 +334,7 @@ function renderLocalLibraryCards(container, items) {
       const item = items[parseInt(card.dataset.idx, 10)];
       if (!item) return;
       document.getElementById('sync-modal')?.classList.remove('is-open');
-      import('./player.js').then(m => {
+      import('./player.js?v=1.0.51').then(m => {
         if (m.openPlayerModal) {
           m.openPlayerModal({
             ...item,

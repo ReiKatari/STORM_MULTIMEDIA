@@ -117,6 +117,14 @@ export function saveCleanViewSettings(settings = {}) {
       maskOpacity: currentSettings.maskOpacity,
       customCoords: currentSettings.customCoords
     }));
+    const profileCleanToggle = document.getElementById('profile-cleanview-toggle');
+    if (profileCleanToggle && profileCleanToggle.checked !== Boolean(currentSettings.watermarkMaskEnabled)) {
+      profileCleanToggle.checked = Boolean(currentSettings.watermarkMaskEnabled);
+    }
+    const profileAdToggle = document.getElementById('profile-adblock-toggle');
+    if (profileAdToggle && profileAdToggle.checked !== Boolean(currentSettings.adSkipperEnabled)) {
+      profileAdToggle.checked = Boolean(currentSettings.adSkipperEnabled);
+    }
   } catch (e) {
     console.warn('Не удалось сохранить настройки CleanView:', e.message);
   }
@@ -582,8 +590,13 @@ export function setCleanViewMaskEnabled(val) {
   loadCleanViewSettings();
   currentSettings.watermarkMaskEnabled = Boolean(val);
   saveCleanViewSettings();
-  applyMaskSettings();
-  updateShieldButtonState();
+  const activeVideoBox = currentContainer || document.querySelector('#cinema-player-wrapper .player-video-box');
+  if (activeVideoBox && (!maskElement || !maskElement.isConnected)) {
+    mountCleanViewOverlay(activeVideoBox);
+  } else {
+    applyMaskSettings();
+    updateShieldButtonState();
+  }
 }
 
 export function setAdShieldEnabled(val) {

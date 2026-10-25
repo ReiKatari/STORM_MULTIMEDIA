@@ -1,171 +1,168 @@
 /* ==========================================================================
-   STORM MULTIMEDIA - SERVICE WORKER (PWA И АВТОНОМНЫЙ РЕЖИМ)
+   STORM MULTIMEDIA - SERVICE WORKER v4 (БЫСТРЫЙ КЭШ И БЕЗОПАСНЫЕ ES-МОДУЛИ)
    ========================================================================== */
 
-const CACHE_NAME = 'storm-multimedia-v3.6-1.0.45';
-const STATIC_ASSETS = [
+const APP_VERSION = '1.0.51';
+const CACHE_NAME = `storm-multimedia-v4-${APP_VERSION}`;
+
+// Минимальная оболочка при установке (< 70 КБ), чтобы не нагружать сеть и процессор при старте
+const SHELL_ASSETS = [
   '/',
   '/index.html',
-  '/remote.html',
-  '/styles/storm-theme.css?v=1.0.45',
-  '/styles/components.css?v=1.0.45',
-  '/styles/main.css?v=1.0.45',
-  '/styles/tv-mode.css?v=1.0.45',
-  '/js/status-icons.js?v=1.0.45',
-  '/js/catalog-baseline.js?v=1.0.45',
-  '/js/form-factor.js?v=1.0.45',
-  '/js/app.js?v=1.0.45',
-  '/js/auth.js?v=1.0.45',
-  '/js/bookmarks.js?v=1.0.45',
-  '/js/player.js?v=1.0.45',
-  '/js/i18n.js?v=1.0.45',
-  '/js/theme.js?v=1.0.45',
-  '/js/achievements.js?v=1.0.45',
-  '/js/reviews.js?v=1.0.45',
-  '/js/watch-together.js?v=1.0.45',
-  '/js/subtitles-manager.js?v=1.0.45',
-  '/js/voice-assistant.js?v=1.0.45',
-  '/js/gamepad-tv.js?v=1.0.45',
-  '/js/sync-service.js?v=1.0.45',
-  '/js/smart-skip.js?v=1.0.45',
-  '/js/smart-lights.js?v=1.0.45',
-  '/js/neural-recommender.js?v=1.0.45',
-  '/js/offline-storage.js?v=1.0.45',
-  '/js/torrserver-client.js?v=1.0.45',
-  '/js/whisper-subtitles.js?v=1.0.45',
-  '/js/release-calendar.js?v=1.0.45',
-  '/js/storm-remote.js?v=1.0.45',
-  '/js/admin-dashboard.js?v=1.0.45',
-  '/js/updater.js?v=1.0.45',
-  '/js/ad-shield.js?v=1.0.45',
-  '/js/pro-media-engine.js?v=1.0.45',
   '/assets/favicon.svg',
   '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('Часть ресурсов не удалось закэшировать при установке:', err);
-      });
+      return cache.addAll(SHELL_ASSETS).catch(() => {});
     })
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.map((key) => (key !== CACHE_NAME ? caches.delete(key) : Promise.resolve()))
       );
-    })
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  } else if (data.type === 'PURGE_ALL_CACHES') {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    );
+  }
+});
+
+function isValidCacheableAsset(response, pathname) {
+  if (!response || !response.ok || response.status !== 200 || response.type === 'error') {
+    return false;
+  }
+  const ct = (response.headers.get('content-type') || '').toLowerCase();
+  if (pathname.endsWith('.js') && !ct.includes('javascript') && !ct.includes('ecmascript')) {
+    return false;
+  }
+  if (pathname.endsWith('.css') && !ct.includes('css')) {
+    return false;
+  }
+  return true;
+}
+
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
   const url = new URL(event.request.url);
 
-  // Не перехватываем сторонние кросс-доменные запросы (видеостримы, внешние CDN)
-  if (url.origin !== self.location.origin) {
+  // Не перехватываем сторонние кросс-доменные запросы и сам sw.js
+  if (url.origin !== self.location.origin || url.pathname === '/sw.js') {
     return;
   }
 
-  // Для API-запросов: прямой сетевой запрос к серверу с мягким кэшированием
+  // 1. API-запросы: прямой сетевой запрос с резервом каталога для офлайн-режима
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(event.request).then((netRes) => {
-        if (netRes && netRes.status === 200 && url.pathname === '/api/media/catalog') {
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, netRes.clone())).catch(() => {});
-        }
-        return netRes;
-      }).catch(async () => {
-        const cached = await caches.match(event.request, { ignoreSearch: true });
-        if (cached) return cached;
-        if (url.pathname === '/api/media/catalog') {
-          return new Response(JSON.stringify({ items: [], total_items: 0 }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        return new Response(JSON.stringify({ error: 'Автономный режим: нет подключения к сети' }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      })
-    );
-    return;
-  }
-
-  // Для скриптов, стилей и HTML: Network-First с быстрым таймаутом (2800мс) и устойчивым fallback на кэш с ignoreSearch
-  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname === '/' || url.pathname.endsWith('.html')) {
-    event.respondWith(
-      new Promise((resolve) => {
-        let resolved = false;
-        const controller = new AbortController();
-        const timer = setTimeout(() => {
-          controller.abort();
-          caches.match(event.request, { ignoreSearch: true }).then((cached) => {
-            if (cached && !resolved) {
-              resolved = true;
-              resolve(cached);
+    if (url.pathname === '/api/media/catalog') {
+      event.respondWith(
+        fetch(event.request)
+          .then((netRes) => {
+            if (netRes && netRes.status === 200) {
+              const clone = netRes.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
             }
-          }).catch(() => {});
-        }, 2800);
-
-        fetch(event.request, { signal: controller.signal, cache: 'no-store' })
-          .then((networkResponse) => {
-            clearTimeout(timer);
-            if (networkResponse && networkResponse.status === 200) {
-              const responseClone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseClone);
-              }).catch(() => {});
-            }
-            if (!resolved) {
-              resolved = true;
-              resolve(networkResponse);
-            }
+            return netRes;
           })
           .catch(async () => {
-            clearTimeout(timer);
-            const cached = await caches.match(event.request, { ignoreSearch: true });
-            if (cached && !resolved) {
-              resolved = true;
-              resolve(cached);
-            } else if (!resolved) {
-              resolved = true;
-              resolve(new Response('/* ServiceWorker Cache Fallback */', {
-                status: 200,
-                headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
-              }));
-            }
-          });
+            const cached = await caches.match(event.request);
+            if (cached) return cached;
+            return new Response(JSON.stringify({ items: [], total_items: 0 }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            });
+          })
+      );
+    }
+    return;
+  }
+
+  // 2. HTML-страницы и навигация: всегда свежий Network-First (резерв из кэша только при обрыве сети)
+  if (
+    event.request.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('.html')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((netRes) => {
+          if (netRes && netRes.status === 200) {
+            const clone = netRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
+          }
+          return netRes;
+        })
+        .catch(async () => {
+          const exact = await caches.match(event.request, { ignoreSearch: true });
+          if (exact) return exact;
+          const fallbackIndex = await caches.match('/index.html');
+          if (fallbackIndex) return fallbackIndex;
+          throw new Error('Offline');
+        })
+    );
+    return;
+  }
+
+  // 3. Версионированные скрипты и стили (?v=1.0.51): мгновенный Cache-First СТРОГО по точному URL (без ignoreSearch и без фейковых заглушек!)
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    const hasVersionTag = url.searchParams.has('v') && !url.searchParams.has('retry');
+    if (!hasVersionTag) {
+      // Неверсионированные или retry-запросы идут напрямую в сеть
+      return;
+    }
+
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached && isValidCacheableAsset(cached, url.pathname)) {
+          return cached;
+        }
+        const netRes = await fetch(event.request);
+        if (isValidCacheableAsset(netRes, url.pathname)) {
+          cache.put(event.request, netRes.clone()).catch(() => {});
+        }
+        return netRes;
       })
     );
     return;
   }
 
-  // Для остальных статических файлов (картинки, шрифты): Stale-While-Revalidate с ignoreSearch
-  event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then((cached) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          }).catch(() => {});
-        }
-        return networkResponse;
-      }).catch(() => {
-        return cached;
-      });
-
-      return cached || fetchPromise;
-    })
-  );
+  // 4. Иконки, шрифты, локальные обложки: Cache-First с фоновым обновлением
+  if (
+    url.pathname.startsWith('/assets/') ||
+    url.pathname === '/manifest.json' ||
+    /\.(svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)
+  ) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        const fetchPromise = fetch(event.request)
+          .then((netRes) => {
+            if (netRes && netRes.status === 200) {
+              cache.put(event.request, netRes.clone()).catch(() => {});
+            }
+            return netRes;
+          })
+          .catch(() => cached);
+        return cached || fetchPromise;
+      })
+    );
+  }
 });

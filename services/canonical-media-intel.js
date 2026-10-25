@@ -1017,3 +1017,83 @@ export function resolveCanonicalSeriesSeasonsCount(title = '') {
   return null;
 }
 
+// Тайтлы, где число в конце является частью канонического названия франшизы (не номером сезона)
+const PROTECTED_NUMBER_TITLES = [
+  'кайдзю номер 8', 'кайдзю №8', 'кайдзю № 8', 'kaiju no. 8', 'kaiju no 8',
+  'моб психо 100', 'mob psycho 100',
+  '86', 'восемьдесят шесть', 'eighty six', 'eighty-six',
+  'зона 88', 'area 88',
+  'токио 24-й район', 'tokyo 24th ward',
+  'гандам 00', 'gundam 00',
+  'вавилон 5', 'babylon 5',
+  '1984', '2012', '1917', '9', '300', '24'
+];
+
+export function extractSeasonNumberFromTitle(rawTitle = '') {
+  if (!rawTitle) return 1;
+  const s = String(rawTitle).trim();
+  const mExplicit = s.match(/(?:\[|\(|\b)(?:тв|tv)[\s-]*(\d{1,2})(?:\]|\)|\b)/i)
+    || s.match(/(\d{1,2})\s*(?:-?[йяе]|ый|ой)?\s*сезон/i)
+    || s.match(/сезон\s*(\d{1,2})/i)
+    || s.match(/\bseason\s*(\d{1,2})\b/i)
+    || s.match(/\b(\d{1,2})(?:nd|rd|th)\s+season\b/i);
+  if (mExplicit) {
+    const n = parseInt(mExplicit[1], 10);
+    if (n >= 1 && n <= 20) return n;
+  }
+  const mTrail = s.match(/^(.+?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*.+)?$/);
+  if (mTrail) {
+    const candidateFull = s.toLowerCase().replace(/ё/g, 'е').trim();
+    if (!PROTECTED_NUMBER_TITLES.includes(candidateFull)) {
+      return parseInt(mTrail[2], 10) || 1;
+    }
+  }
+  return 1;
+}
+
+export function normalizeAnimeFranchiseTitle(rawTitle = '', isAnimeOrSeries = true) {
+  if (!rawTitle) return '';
+  let s = String(rawTitle).trim();
+
+  // Удаляем пометки качества и постеров
+  s = s.replace(/\s*постер\s*4[\u004B\u006B\u041A\u043A]/gi, '');
+  s = s.replace(/\s*постер/gi, '');
+  s = s.replace(/\s*[\(\[]\s*(?:4[\u004B\u006B\u041A\u043A]|Ultra\s*HD|UHD|2160p|1080p|720p|480p|HDR10\+?|HDR|Dolby\s*Vision|BDRip|WEB-DL|Remux).*?[\)\]]/gi, '');
+
+  if (!isAnimeOrSeries) {
+    return s.replace(/\s{2,}/g, ' ').trim();
+  }
+
+  // 1. Удаляем явные пометки сезона/части в скобках и без скобок: [ТВ-2], (2 сезон), Season 2, 2nd Season, Часть 2, Part 2
+  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+|арка\s*[^\)\]]+)\s*[\)\]]/gi, '');
+  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:часть|part|cour)\s*\d+$/gi, '');
+  s = s.replace(/\s+x([2-5])$/gi, '');
+
+  // 2. Проверяем защищённые названия с числом, после которых идёт ещё одна цифра сезона (например: "Кайдзю номер 8 2" -> "Кайдзю номер 8")
+  const lowerClean = s.toLowerCase().replace(/ё/g, 'е').trim();
+  for (const prot of PROTECTED_NUMBER_TITLES) {
+    if (lowerClean === prot) {
+      return s.replace(/\s{2,}/g, ' ').trim();
+    }
+    const protRegex = new RegExp(`^(${prot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\s+(?:[2-9]|1[0-2])(?:\s*[:.\-–—].*)?$`, 'i');
+    const mProt = s.match(protRegex);
+    if (mProt) {
+      return mProt[1].trim();
+    }
+  }
+
+  // 3. Удаляем хвостовой номер сезона вида "Киберпанк: Бегущие по краю 2", "Cyberpunk: Edgerunners 2", "Гроб принцессы Чайки 2: Битва..."
+  const mSeasonSuffix = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*(?:часть|part|сезон|season|арка|битва|во\s+имя|пробуждение|восстание|финал).*)?$/i);
+  if (mSeasonSuffix) {
+    const basePart = mSeasonSuffix[1].trim();
+    const fullLower = s.toLowerCase().replace(/ё/g, 'е').trim();
+    if (!PROTECTED_NUMBER_TITLES.includes(fullLower) && basePart.length >= 2) {
+      s = basePart;
+    }
+  }
+
+  s = s.replace(/[-–—/|•:]\s*$/, '').trim();
+  return s.replace(/\s{2,}/g, ' ').trim();
+}
+

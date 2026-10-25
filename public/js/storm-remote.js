@@ -3,7 +3,7 @@
    Генерация QR-кода (с автоопределением LAN IP) и управление ТВ/плеером
    ========================================================================== */
 
-import { showToast } from './auth.js';
+import { showToast } from './auth.js?v=1.0.51';
 
 let remoteSessionId = localStorage.getItem('storm_remote_session') || ('storm_' + Math.random().toString(36).substring(2, 8));
 localStorage.setItem('storm_remote_session', remoteSessionId);
@@ -228,12 +228,12 @@ export function handleIncomingRemoteAction(data) {
       }
       break;
     case 'next_ep':
-      import('./player.js').then(m => {
+      import('./player.js?v=1.0.51').then(m => {
         if (m.playInPlayerNextEpisode) m.playInPlayerNextEpisode();
       }).catch(() => {});
       break;
     case 'prev_ep':
-      import('./player.js').then(m => {
+      import('./player.js?v=1.0.51').then(m => {
         if (m.playInPlayerPrevEpisode) m.playInPlayerPrevEpisode();
       }).catch(() => {});
       break;
@@ -247,7 +247,7 @@ export function handleIncomingRemoteAction(data) {
       break;
     }
     case 'toggle_tv_mode':
-      import('./gamepad-tv.js').then(m => {
+      import('./gamepad-tv.js?v=1.0.51').then(m => {
         if (m.toggleTvMode) m.toggleTvMode();
       }).catch(() => {});
       break;
@@ -277,7 +277,7 @@ export function handleIncomingRemoteAction(data) {
       }
       break;
     case 'toggle_ambilight':
-      document.getElementById('toggle-ambilight-btn')?.click();
+      (document.getElementById('studio-tab-ambilight') || document.getElementById('toggle-ambilight-btn'))?.click();
       break;
     case 'toggle_fullscreen':
       try {

@@ -2,6 +2,20 @@
  * STORM MULTIMEDIA - Автоматическая синхронизация файлов в контейнер Synology NAS (Portainer Docker API)
  */
 import fs from 'fs';
+import path from 'path';
+
+function collectDirFiles(dirRel, out = []) {
+  if (!fs.existsSync(dirRel)) return out;
+  for (const entry of fs.readdirSync(dirRel, { withFileTypes: true })) {
+    const fullRel = path.posix.join(dirRel.replace(/\\/g, '/'), entry.name);
+    if (entry.isDirectory()) {
+      collectDirFiles(fullRel, out);
+    } else if (entry.isFile() && !/\.(?:apk|zip|exe|db|sqlite|sqlite3|log)$/i.test(entry.name)) {
+      out.push(fullRel);
+    }
+  }
+  return out;
+}
 
 function createTar(files) {
   const chunks = [];
@@ -9,7 +23,20 @@ function createTar(files) {
     const content = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, 'utf8');
     const header = Buffer.alloc(512, 0);
 
-    header.write(file.name, 0, Math.min(100, file.name.length), 'utf8');
+    let namePart = file.name.replace(/\\/g, '/');
+    let prefixPart = '';
+    if (Buffer.byteLength(namePart, 'utf8') > 99) {
+      const idx = namePart.lastIndexOf('/');
+      if (idx > 0) {
+        prefixPart = namePart.slice(0, idx);
+        namePart = namePart.slice(idx + 1);
+      }
+    }
+
+    header.write(namePart, 0, Math.min(100, Buffer.byteLength(namePart, 'utf8')), 'utf8');
+    if (prefixPart) {
+      header.write(prefixPart, 345, Math.min(155, Buffer.byteLength(prefixPart, 'utf8')), 'utf8');
+    }
     header.write('0000644\0', 100, 8, 'ascii');
     header.write('0000000\0', 108, 8, 'ascii');
     header.write('0000000\0', 116, 8, 'ascii');
@@ -70,37 +97,12 @@ export async function syncToPortainer(options = {}) {
 
   console.log(`[Portainer Sync] Найден контейнер: ${stormContainer.Id.slice(0, 12)} (${stormContainer.State})`);
 
-  const filePaths = [
-    'package.json',
-    'server.js',
-    'db.js',
-    'public/index.html',
-    'public/remote.html',
-    'public/sw.js',
-    'public/js/catalog-baseline.js',
-    'services/catalog-fallback.js',
-    'services/fanfilm-service.js',
-    'services/fanfilm-catalog-intel.js',
-    'services/kinobox-service.js',
-    'services/canonical-media-intel.js',
-    'services/tmdb-service.js',
-    'public/js/fanfilm-catalog-intel.js',
-    'public/js/app.js',
-    'public/js/player.js',
-    'public/js/auth.js',
-    'public/js/ad-shield.js',
-    'public/js/smart-skip.js',
-    'public/js/bookmarks.js',
-    'public/js/gamepad-tv.js',
-    'public/js/storm-remote.js',
-    'public/js/release-calendar.js',
-    'public/js/neural-recommender.js',
-    'public/js/updater.js',
-    'public/js/form-factor.js',
-    'public/styles/tv-mode.css',
-    'public/styles/main.css',
-    'public/styles/components.css'
-  ];
+  const rootFiles = ['package.json', 'server.js', 'db.js', 'mariadb.js'];
+  const filePaths = Array.from(new Set([
+    ...rootFiles,
+    ...collectDirFiles('services'),
+    ...collectDirFiles('public')
+  ]));
 
   const tarFiles = [];
   for (const rel of filePaths) {
@@ -109,9 +111,9 @@ export async function syncToPortainer(options = {}) {
         name: rel.replace(/\\/g, '/'),
         content: fs.readFileSync(rel)
       });
-      console.log(`  [+] Упакован: ${rel}`);
     }
   }
+  console.log(`  [+] Упаковано файлов: ${tarFiles.length}`);
 
   const tarBuffer = createTar(tarFiles);
   console.log(`[Portainer Sync] Загрузка архива (${tarBuffer.length} байт) в /app...`);

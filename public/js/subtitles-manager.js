@@ -3,7 +3,7 @@
  * и интерактивным живым словарем (STORM Subtitles Studio 2.0)
  */
 
-import { showToast } from './ui.js';
+import { showToast } from './auth.js?v=1.0.51';
 
 let currentVideo = null;
 let parsedCues = [];
@@ -177,8 +177,18 @@ function startSubtitleRenderLoop() {
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
   function render() {
-    if (currentVideo && overlayElement && (parsedCues.length > 0 || secondaryCues.length > 0)) {
-      const adjustedTime = currentVideo.currentTime - subtitleOffsetSec;
+    if (!overlayElement) {
+      const box = document.querySelector('.player-video-box') || document.getElementById('cinema-player-wrapper');
+      if (box) {
+        overlayElement = document.createElement('div');
+        overlayElement.className = 'storm-custom-subtitles-overlay';
+        applyOverlayStyles();
+        box.appendChild(overlayElement);
+      }
+    }
+    const rawTime = currentVideo ? currentVideo.currentTime : (Number(window.currentWatchProgressSec) || 0);
+    if (overlayElement && (parsedCues.length > 0 || secondaryCues.length > 0)) {
+      const adjustedTime = rawTime - subtitleOffsetSec;
       const activePrimary = parsedCues.find(c => adjustedTime >= c.start && adjustedTime <= c.end);
       const activeSecondary = dualSubtitlesEnabled
         ? secondaryCues.find(c => adjustedTime >= c.start && adjustedTime <= c.end)
@@ -515,4 +525,27 @@ export function renderSubtitlesControls(container) {
       updateSubtitleStyle({ color: e.target.value });
     };
   }
+}
+
+export function getActiveSubtitleText() {
+  try {
+    if (currentVideo && Array.isArray(parsedCues) && parsedCues.length > 0) {
+      const t = (currentVideo.currentTime || 0) - subtitleOffsetSec;
+      const cue = parsedCues.find(c => t >= c.start && t <= c.end);
+      if (cue && cue.text) return String(cue.text).replace(/<[^>]+>/g, '').trim();
+    }
+    if (currentVideo && currentVideo.textTracks) {
+      for (let i = 0; i < currentVideo.textTracks.length; i++) {
+        const tr = currentVideo.textTracks[i];
+        if (tr.mode === 'showing' && tr.activeCues && tr.activeCues.length > 0) {
+          const txt = Array.from(tr.activeCues).map(c => c.text || '').join(' ').replace(/<[^>]+>/g, '').trim();
+          if (txt) return txt;
+        }
+      }
+    }
+    if (typeof lastRenderedPrimaryText === 'string' && lastRenderedPrimaryText.trim()) {
+      return lastRenderedPrimaryText.replace(/<[^>]+>/g, '').trim();
+    }
+  } catch (_) {}
+  return '';
 }

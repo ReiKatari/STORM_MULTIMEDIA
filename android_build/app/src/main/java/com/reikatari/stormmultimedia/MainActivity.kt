@@ -212,9 +212,9 @@ class MainActivity : ComponentActivity() {
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.45"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.51"
         } catch (_: Throwable) {
-            "1.0.45"
+            "1.0.51"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -477,7 +477,22 @@ class MainActivity : ComponentActivity() {
         val cleanId = rawLiftId.replace(Regex("^lift_"), "").trim()
         if (cleanId.matches(Regex("^\\d+$"))) return cleanId
 
-        val queries = listOf(title, origTitle).map { it.replace(Regex("\\(\\d{4}\\)"), "").trim() }.filter { it.length >= 2 }.distinct()
+        val norm = { s: String ->
+            s.lowercase()
+                .replace("ё", "е")
+                .replace(Regex("[^a-zа-я0-9]+"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        }
+        val targetRu = norm(title.replace(Regex("\\(\\d{4}\\)"), ""))
+        val targetOrig = norm(origTitle.replace(Regex("\\(\\d{4}\\)"), ""))
+        val reqYear = year.toIntOrNull() ?: 0
+
+        val queries = listOf(title, origTitle)
+            .map { it.replace(Regex("\\(\\d{4}\\)"), "").trim() }
+            .filter { it.length >= 2 }
+            .distinct()
+
         for (q in queries) {
             try {
                 val resp = fetchLiftRaw(
@@ -487,18 +502,19 @@ class MainActivity : ComponentActivity() {
                 )
                 if (resp != null && resp.first in 200..299 && resp.second.isNotEmpty()) {
                     val arr = JSONArray(String(resp.second, Charsets.UTF_8))
-                    if (arr.length() > 0) {
-                        val qNorm = q.lowercase().replace("ё", "е")
-                        for (i in 0 until arr.length()) {
-                            val obj = arr.getJSONObject(i)
-                            val name = obj.optString("name", "").lowercase().replace("ё", "е")
-                            val orig = obj.optString("origin_name", "").lowercase()
-                            val itemYear = obj.optString("year", "")
-                            if ((name == qNorm || orig == qNorm) && (year.isBlank() || itemYear == year)) {
-                                return obj.optInt("id", 0).takeIf { it > 0 }?.toString() ?: ""
-                            }
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val info = obj.optJSONObject("info") ?: JSONObject()
+                        val name = norm(obj.optString("name", info.optString("name", "")))
+                        val orig = norm(obj.optString("origin_name", info.optString("name_eng", "")))
+                        val itemYear = obj.optString("year", info.optString("year", "")).toIntOrNull() ?: 0
+                        val yearOk = reqYear == 0 || itemYear == 0 || kotlin.math.abs(reqYear - itemYear) <= 2
+                        val titleOk = (targetRu.isNotBlank() && name == targetRu) ||
+                            (targetOrig.isNotBlank() && orig == targetOrig)
+                        if (titleOk && yearOk) {
+                            val foundId = obj.optInt("id", info.optInt("id", 0))
+                            if (foundId > 0) return foundId.toString()
                         }
-                        return arr.getJSONObject(0).optInt("id", 0).takeIf { it > 0 }?.toString() ?: ""
                     }
                 }
             } catch (_: Throwable) {}
@@ -506,33 +522,147 @@ class MainActivity : ComponentActivity() {
         return ""
     }
 
-    private fun resolveRuTubeIdByTitle(title: String, year: String, season: String, episode: String): String {
+    private fun resolveRuTubeIdByTitle(title: String, origTitle: String, year: String, season: String, episode: String, allowTrailer: Boolean = false): Pair<String, Boolean> {
         val cleanTitle = title.replace(Regex("\\(\\d{4}\\)"), "").trim()
-        if (cleanTitle.isBlank()) return ""
-        val suffix = if (season.isNotBlank() && episode.isNotBlank()) " $season сезон $episode серия" else if (year.isNotBlank()) " $year" else " фильм"
-        val query = "$cleanTitle$suffix"
-        return try {
-            val apiUrl = "https://rutube.ru/api/search/video/?query=${URLEncoder.encode(query, "UTF-8")}&format=json"
-            val resp = fetchHttpBytes(apiUrl, 4500, "https://rutube.ru/")
-            if (resp != null) {
+        val cleanOrig = origTitle.replace(Regex("\\(\\d{4}\\)"), "").trim()
+        if (cleanTitle.isBlank() && cleanOrig.isBlank()) return Pair("", false)
+
+        val norm = { s: String ->
+            s.lowercase()
+                .replace("ё", "е")
+                .replace(Regex("[^a-zа-я0-9]+"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        }
+        val targetWords = norm(cleanTitle).split(" ").filter { it.length >= 3 }
+        val origWords = norm(cleanOrig).split(" ").filter { it.length >= 3 }
+        val blockedCats = Regex("(?:авто[- ]?мото|видеоигр|спорт|охота|рыбалк|путешеств|строительств|ремонт|сад|техник|кулинар|животн|лайфстайл|хобби|красот|новости|наука|обучени|бизнес|недвижимост|эзотерик|интервью)", RegexOption.IGNORE_CASE)
+        val blockedTitleRe = Regex("(?:\\b\\d{1,2}\\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\\b|эндуро|enduro|мото|питбайк|покатушк|оффроуд|гонк|рыбалк|страйкбол|таро|tarot|влог|vlog|прохождение|стрим|обзор|разбор)", RegexOption.IGNORE_CASE)
+        val trailerRe = Regex("(?:трейлер|тизер|trailer|teaser|промо|фрагмент|отрывок)", RegexOption.IGNORE_CASE)
+
+        val queries = mutableListOf<String>()
+        if (allowTrailer) {
+            if (cleanOrig.isNotBlank()) queries.add("$cleanOrig $year".trim())
+            if (cleanTitle.isNotBlank()) queries.add("$cleanTitle $year трейлер".trim())
+        } else {
+            val suffix = if (season.isNotBlank() && episode.isNotBlank()) " $season сезон $episode серия" else if (year.isNotBlank()) " фильм $year" else " фильм"
+            if (cleanTitle.isNotBlank()) queries.add("$cleanTitle$suffix".trim())
+            if (cleanTitle.isNotBlank() && cleanOrig.isNotBlank()) queries.add("$cleanTitle $cleanOrig $year".trim())
+        }
+
+        for (query in queries) {
+            try {
+                val apiUrl = "https://rutube.ru/api/search/video/?query=${URLEncoder.encode(query, "UTF-8")}&format=json"
+                val resp = fetchHttpBytes(apiUrl, 4500, "https://rutube.ru/") ?: continue
                 val json = JSONObject(String(resp.second, Charsets.UTF_8))
-                val results = json.optJSONArray("results")
-                if (results != null && results.length() > 0) {
-                    for (i in 0 until results.length()) {
-                        val it = results.getJSONObject(i)
-                        val id = it.optString("id", "")
-                        val dur = it.optInt("duration", 0)
-                        if (id.length == 32 && dur >= 300) {
-                            return id
+                val results = json.optJSONArray("results") ?: continue
+                for (i in 0 until results.length()) {
+                    val it = results.getJSONObject(i)
+                    val id = it.optString("id", "")
+                    if (id.length != 32) continue
+                    val dur = it.optInt("duration", 0)
+                    val candTitle = it.optString("title", "")
+                    val catName = it.optJSONObject("category")?.optString("name", "") ?: ""
+                    if (catName.isNotBlank() && blockedCats.containsMatchIn(catName)) continue
+                    if (blockedTitleRe.containsMatchIn(candTitle)) continue
+
+                    val candNorm = norm(candTitle)
+                    val ruMatch = targetWords.isNotEmpty() && targetWords.all { candNorm.contains(it) }
+                    val origMatch = origWords.isNotEmpty() && origWords.all { candNorm.contains(it) }
+                    if (!ruMatch && !origMatch) continue
+
+                    if (!allowTrailer) {
+                        if (trailerRe.containsMatchIn(candTitle)) continue
+                        val minDur = if (season.isNotBlank()) 900 else 3600
+                        if (dur < minDur || dur > 14400) continue
+                        val reqY = year.toIntOrNull() ?: 0
+                        if (reqY >= 2025 && !catName.contains("Фильм", true) && !catName.contains("Мультфильм", true) && !catName.contains("Сериал", true) && !catName.contains("Аниме", true)) {
+                            continue
+                        }
+                        return Pair(id, false)
+                    } else {
+                        if (dur in 35..360) {
+                            return Pair(id, true)
                         }
                     }
-                    return results.getJSONObject(0).optString("id", "")
                 }
-            }
-            ""
-        } catch (_: Throwable) {
-            ""
+            } catch (_: Throwable) {}
         }
+        return Pair("", false)
+    }
+
+    private fun buildPremiereFallbackHtml(title: String, origTitle: String, year: String, trailerRuId: String): WebResourceResponse {
+        val safeTitle = title.ifBlank { origTitle.ifBlank { "Премьера" } }
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+        val safeSub = listOf(origTitle.takeIf { it.isNotBlank() && !it.equals(title, true) }, year.takeIf { it.isNotBlank() })
+            .filterNotNull().joinToString(" • ")
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        val trailerBtn = if (trailerRuId.isNotBlank()) {
+            """<button class="btn primary" onclick="playTrailer()">▶ Смотреть официальный трейлер</button>"""
+        } else ""
+        val html = """
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+              <style>
+                *{box-sizing:border-box}
+                html,body{margin:0;padding:0;width:100%;height:100%;background:radial-gradient(circle at 50% 20%,#162038 0%,#080b14 70%);color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}
+                .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center}
+                .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:rgba(0,210,255,0.14);border:1px solid rgba(0,210,255,0.38);color:#38bdf8;font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:14px}
+                h1{margin:0 0 6px;font-size:clamp(20px,3.2vw,28px);font-weight:800}
+                .sub{color:#94a3b8;font-size:14px;margin-bottom:14px}
+                .desc{max-width:540px;color:#cbd5e1;font-size:14px;line-height:1.55;margin:0 0 22px}
+                .actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+                .btn{padding:11px 18px;border-radius:10px;border:1px solid rgba(148,163,184,0.28);background:rgba(30,41,59,0.75);color:#f8fafc;font-size:13.5px;font-weight:700;cursor:pointer}
+                .btn.primary{background:linear-gradient(135deg,#00d2ff,#3b82f6);color:#04101c;border-color:transparent;box-shadow:0 6px 20px rgba(0,210,255,0.32)}
+                #trailer-box{display:none;position:fixed;inset:0;background:#000}
+                #trailer-box iframe{width:100%;height:100%;border:0}
+                .tr-bar{position:fixed;top:12px;left:12px;z-index:10;display:flex;gap:8px;align-items:center}
+                .tr-pill{padding:6px 12px;border-radius:8px;background:rgba(8,11,20,0.82);border:1px solid rgba(0,210,255,0.45);color:#38bdf8;font-size:12px;font-weight:700}
+              </style>
+            </head>
+            <body>
+              <div class="wrap" id="info-wrap">
+                <div class="badge">🎬 КИНОТЕАТРАЛЬНАЯ ПРЕМЬЕРА • ОЖИДАЕТСЯ ЦИФРОВОЙ РЕЛИЗ</div>
+                <h1>$safeTitle</h1>
+                ${if (safeSub.isNotBlank()) "<div class=\"sub\">$safeSub</div>" else ""}
+                <p class="desc">Полная цифровая версия релиза в 4K / Full HD ещё не вышла в онлайн-кинотеатрах. Как только цифровой релиз состоится, фильм автоматически станет доступен здесь без рекламы.</p>
+                <div class="actions">
+                  $trailerBtn
+                  <button class="btn" onclick="window.parent.postMessage({type:'STORM_BOOKMARK_PLANNED'},'*');this.textContent='✅ В списке «В планах»'">📌 Добавить в «В планах»</button>
+                </div>
+              </div>
+              <div id="trailer-box">
+                <div class="tr-bar">
+                  <span class="tr-pill">🎞 ОФИЦИАЛЬНЫЙ ТРЕЙЛЕР</span>
+                  <button class="btn" style="padding:6px 12px;font-size:12px" onclick="closeTrailer()">← Назад</button>
+                </div>
+                <div id="tr-mount" style="width:100%;height:100%"></div>
+              </div>
+              <script>
+                function playTrailer(){
+                  document.getElementById('info-wrap').style.display='none';
+                  document.getElementById('trailer-box').style.display='block';
+                  var m=document.getElementById('tr-mount');
+                  m.innerHTML='';
+                  var f=document.createElement('iframe');
+                  f.setAttribute('allow','autoplay; fullscreen; picture-in-picture; encrypted-media');
+                  f.setAttribute('allowfullscreen','true');
+                  f.src='https://rutube.ru/play/embed/$trailerRuId?skinColor=00d2ff';
+                  m.appendChild(f);
+                }
+                function closeTrailer(){
+                  document.getElementById('tr-mount').innerHTML='';
+                  document.getElementById('trailer-box').style.display='none';
+                  document.getElementById('info-wrap').style.display='flex';
+                }
+              </script>
+            </body>
+            </html>
+        """.trimIndent()
+        return createHtmlResponse(html)
     }
 
     private fun buildRuTubeEmbedHtml(ruId: String): WebResourceResponse {
@@ -599,9 +729,9 @@ class MainActivity : ComponentActivity() {
 
         // Если это прямой запрос RuTube поиска
         if (path == "/api/player/rutube-search-embed" || balancer == "rutube" || balancer == "bazon") {
-            val ruId = resolveRuTubeIdByTitle(title, year, if (season != "1" || episode != "1") season else "", episode)
-            if (ruId.isNotBlank()) {
-                return buildRuTubeEmbedHtml(ruId)
+            val ruPair = resolveRuTubeIdByTitle(title, origTitle, year, if (season != "1" || episode != "1") season else "", episode, false)
+            if (ruPair.first.isNotBlank()) {
+                return buildRuTubeEmbedHtml(ruPair.first)
             }
         }
 
@@ -657,15 +787,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Гарантированный резерв через RuTube
-        val fallbackRuId = resolveRuTubeIdByTitle(title, year, "", "")
-        if (fallbackRuId.isNotBlank()) {
-            return buildRuTubeEmbedHtml(fallbackRuId)
+        // Гарантированный резерв через проверенный кино-каталог RuTube
+        val fallbackRuPair = resolveRuTubeIdByTitle(title, origTitle, year, "", "", false)
+        if (fallbackRuPair.first.isNotBlank()) {
+            return buildRuTubeEmbedHtml(fallbackRuPair.first)
         }
 
-        return createHtmlResponse(
-            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>body{margin:0;background:#0a0d14;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center;padding:20px;}</style></head><body><div>🎬 Выберите другой плеер в списке источников ниже</div></body></html>"
-        )
+        // Если цифровая премьера ещё не вышла — ищем официальный трейлер и показываем честный экран премьеры
+        val trailerPair = resolveRuTubeIdByTitle(title, origTitle, year, "", "", true)
+        return buildPremiereFallbackHtml(title, origTitle, year, trailerPair.first)
     }
 
     private fun normalizeLiftJsonArrayToStormItems(arr: JSONArray): JSONArray {
@@ -724,7 +854,7 @@ class MainActivity : ComponentActivity() {
         val path = uri.path ?: "/api/"
 
         if (path == "/api/health" || path == "/api/player/health") {
-            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.0.45"}""")
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.0.51"}""")
         }
 
         if (path == "/api/media/image-proxy") {
@@ -1077,9 +1207,9 @@ class MainActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.45"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.51"
             } catch (_: Throwable) {
-                "1.0.45"
+                "1.0.51"
             }
         }
 

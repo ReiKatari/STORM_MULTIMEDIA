@@ -52,24 +52,141 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.0.45';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.45';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.45';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.45';
-import { openPlayerModal, closePlayerModal, setSleepTimer, cancelSleepTimer, getSleepTimerRemaining, checkIfMediaIsSeries } from './player.js?v=1.0.45';
-import { initGamepadAndTvMode, toggleTvMode } from './gamepad-tv.js?v=1.0.45';
-import { initVoiceAssistant, toggleVoiceListening } from './voice-assistant.js?v=1.0.45';
-import { renderSyncModalContent } from './sync-service.js?v=1.0.45';
-import { joinWatchRoom, createWatchRoom } from './watch-together.js?v=1.0.45';
-import { openNeuralRecommenderModal } from './neural-recommender.js?v=1.0.45';
-import { openReleaseCalendarModal, openLiveTvEpgModal } from './release-calendar.js?v=1.0.45';
-import { openRemoteQrModal } from './storm-remote.js?v=1.0.45';
-import { initAdminDashboard } from './admin-dashboard.js?v=1.0.45';
-import { renderOfflineLibrary, saveMediaForOffline } from './offline-storage.js?v=1.0.45';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.45';
-import { getStatusIconSvg } from './status-icons.js?v=1.0.45';
-import { checkForUpdates } from './updater.js?v=1.0.45';
-import { initFormFactorEngine } from './form-factor.js?v=1.0.45';
+import { initTheme, setTheme } from './theme.js?v=1.0.51';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.0.51';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.0.51';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.0.51';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.0.51';
+import { getStatusIconSvg } from './status-icons.js?v=1.0.51';
+import { initFormFactorEngine } from './form-factor.js?v=1.0.51';
+
+// Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
+const STORM_ASSET_VER = '1.0.51';
+
+let _playerModLoaded = null;
+let _playerModPromise = null;
+const loadPlayerModule = () => (_playerModPromise ||= import(`./player.js?v=${STORM_ASSET_VER}`).then(m => (_playerModLoaded = m)));
+
+const openPlayerModal = async (...args) => {
+  const m = _playerModLoaded || await loadPlayerModule();
+  return m.openPlayerModal(...args);
+};
+const closePlayerModal = (...args) => {
+  if (_playerModLoaded) return _playerModLoaded.closePlayerModal(...args);
+  document.getElementById('cinema-modal')?.classList.remove('is-open');
+};
+const setSleepTimer = async (...args) => {
+  const m = _playerModLoaded || await loadPlayerModule();
+  return m.setSleepTimer(...args);
+};
+const cancelSleepTimer = (...args) => {
+  if (_playerModLoaded) return _playerModLoaded.cancelSleepTimer(...args);
+};
+const getSleepTimerRemaining = () => (_playerModLoaded ? _playerModLoaded.getSleepTimerRemaining() : 0);
+
+function checkIfMediaIsSeries(media) {
+  if (_playerModLoaded && typeof _playerModLoaded.checkIfMediaIsSeries === 'function') {
+    return _playerModLoaded.checkIfMediaIsSeries(media);
+  }
+  if (!media) return false;
+  const titleLower = String(media.title || media.name || '').toLowerCase();
+  if (titleLower.includes('обитель зла') && (titleLower.includes('мутация') || titleLower.includes('вендетта') || titleLower.includes('вырождение') || titleLower.includes('проклятие') || titleLower.includes('остров смерти') || titleLower.includes('resident evil'))) {
+    return false;
+  }
+  const isMonsterCartoonOrMovie = [
+    'корпорация монстров', 'университет монстров', 'монстры на каникулах',
+    'монстры против пришельцев', 'миньоны и монстры', 'монстр траки', 'монстро'
+  ].some(m => titleLower === m || titleLower.startsWith(m + ' ') || titleLower.includes(m));
+  const isExplicitSeriesTitle = !isMonsterCartoonOrMovie && (
+    titleLower === 'монстры' || titleLower.startsWith('монстры ') || titleLower.startsWith('монстры:') ||
+    titleLower === 'монстр' || titleLower.startsWith('монстр ') || titleLower.startsWith('монстр:') ||
+    titleLower.includes('менталист') || titleLower.includes('the mentalist') ||
+    titleLower.includes('дневники вампира') || titleLower.includes('vampire diaries') ||
+    titleLower.includes('рик и морти') || titleLower.includes('rick and morty') ||
+    titleLower.includes('гриффины') || titleLower.includes('симпсоны') || titleLower.includes('южный парк') ||
+    /сезон\s*\d+/i.test(titleLower) || /\b(s\d+|season\s*\d+)\b/i.test(titleLower)
+  );
+  if (isExplicitSeriesTitle) return true;
+  const isExplicitMovie = media.media_type === 'movie' || media.type === 'movie' ||
+                          media.media_type === 'cartoon' || media.media_type === 'anime-movie' ||
+                          media.category === 'Фильм' || media.category === 'фильм' ||
+                          media.category === 'Мультфильм';
+  if (isExplicitMovie) return false;
+  if ((typeof media.seasons === 'number' && media.seasons > 1) ||
+      (Array.isArray(media.seasons) && media.seasons.length > 1) ||
+      (Array.isArray(media.episodes) && media.episodes.length > 1) ||
+      (media.rutube_id && (media.seasons || media.episodes)) ||
+      (parseInt(media.total_episodes, 10) || 0) > 1 ||
+      (parseInt(media.episode, 10) || 0) > 1 ||
+      (parseInt(media.season, 10) || 0) > 1 ||
+      ((media.source === 'anilibria' || media.source === 'anixart') && media.media_type !== 'anime-movie')) {
+    return true;
+  }
+  const linkStr = String(media.link || media.url || '');
+  return media.media_type === 'series' || media.media_type === 'tv' ||
+         media.media_type === 'cartoon-series' || media.media_type === 'anime-series' ||
+         media.category === 'Сериал' || media.category === 'сериал' ||
+         media.category === 'Аниме-сериал' || media.category === 'Мультсериал' ||
+         linkStr.includes('serial') || linkStr.includes('fan-serials');
+}
+
+let _gamepadModPromise = null;
+const loadGamepadTvModule = () => (_gamepadModPromise ||= import(`./gamepad-tv.js?v=${STORM_ASSET_VER}`));
+const initGamepadAndTvMode = (...args) => loadGamepadTvModule().then(m => m.initGamepadAndTvMode(...args)).catch(() => {});
+const toggleTvMode = (...args) => loadGamepadTvModule().then(m => m.toggleTvMode(...args)).catch(() => {});
+
+let _voiceModPromise = null;
+let _voiceCallbacks = null;
+let _voiceInitialized = false;
+const initVoiceAssistant = (callbacks) => {
+  _voiceCallbacks = callbacks;
+};
+const toggleVoiceListening = async (...args) => {
+  const m = await (_voiceModPromise ||= import(`./voice-assistant.js?v=${STORM_ASSET_VER}`));
+  if (!_voiceInitialized && _voiceCallbacks) {
+    _voiceInitialized = true;
+    m.initVoiceAssistant(_voiceCallbacks);
+  }
+  return m.toggleVoiceListening(...args);
+};
+
+let _syncModPromise = null;
+const renderSyncModalContent = (...args) => (_syncModPromise ||= import(`./sync-service.js?v=${STORM_ASSET_VER}`)).then(m => m.renderSyncModalContent(...args)).catch(() => {});
+
+let _roomsModPromise = null;
+const loadWatchTogetherModule = () => (_roomsModPromise ||= import(`./watch-together.js?v=${STORM_ASSET_VER}`));
+const joinWatchRoom = (...args) => loadWatchTogetherModule().then(m => m.joinWatchRoom(...args));
+const createWatchRoom = (...args) => loadWatchTogetherModule().then(m => m.createWatchRoom(...args));
+
+let _recommenderModPromise = null;
+const openNeuralRecommenderModal = (...args) => (_recommenderModPromise ||= import(`./neural-recommender.js?v=${STORM_ASSET_VER}`)).then(m => m.openNeuralRecommenderModal(...args)).catch(() => {});
+
+let _calendarModPromise = null;
+const loadCalendarModule = () => (_calendarModPromise ||= import(`./release-calendar.js?v=${STORM_ASSET_VER}`));
+const openReleaseCalendarModal = (...args) => loadCalendarModule().then(m => m.openReleaseCalendarModal(...args)).catch(() => {});
+const openLiveTvEpgModal = (...args) => loadCalendarModule().then(m => m.openLiveTvEpgModal(...args)).catch(() => {});
+
+let _remoteModPromise = null;
+const openRemoteQrModal = (...args) => (_remoteModPromise ||= import(`./storm-remote.js?v=${STORM_ASSET_VER}`)).then(m => m.openRemoteQrModal(...args)).catch(() => {});
+
+let _adminModPromise = null;
+const initAdminDashboard = () => {
+  const adminBtn = document.getElementById('admin-dashboard-btn');
+  if (adminBtn) {
+    adminBtn.onclick = () => (_adminModPromise ||= import(`./admin-dashboard.js?v=${STORM_ASSET_VER}`)).then(m => m.openAdminDashboardModal()).catch(() => {});
+  }
+};
+
+let _offlineModPromise = null;
+const loadOfflineModule = () => (_offlineModPromise ||= import(`./offline-storage.js?v=${STORM_ASSET_VER}`));
+const renderOfflineLibrary = (...args) => loadOfflineModule().then(m => m.renderOfflineLibrary(...args)).catch(() => {});
+const saveMediaForOffline = (...args) => loadOfflineModule().then(m => m.saveMediaForOffline(...args)).catch(() => {});
+
+let _updaterModPromise = null;
+const checkForUpdates = (...args) => (_updaterModPromise ||= import(`./updater.js?v=${STORM_ASSET_VER}`)).then(m => m.checkForUpdates(...args)).catch(() => {});
+
+let _achModPromise = null;
+const trackClientAction = (action, meta) => (_achModPromise ||= import(`./achievements.js?v=${STORM_ASSET_VER}`)).then(m => m.trackClientAction?.(action, meta)).catch(() => {});
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
@@ -141,6 +258,7 @@ export function isStormNativeApp() {
 }
 
 async function startStormApp() {
+  window.__STORM_APP_BOOTED__ = true;
   try {
     if (isStormNativeApp()) {
       document.body.classList.add('is-native-app');
@@ -283,8 +401,16 @@ async function startStormApp() {
   try { checkAuth(); } catch (_) {}
   try { initDeepLinking(); } catch (_) {}
 
+  // Фоновый прогрев модуля плеера после отрисовки витрины (мгновенное открытие карточек 0 мс)
+  try {
+    const scheduleIdle = window.requestIdleCallback || ((cb) => setTimeout(cb, 500));
+    setTimeout(() => {
+      scheduleIdle(() => { loadPlayerModule().catch(() => {}); });
+    }, 450);
+  } catch (_) {}
+
   // Автоматическая тихая проверка обновлений при старте
-  try { setTimeout(() => checkForUpdates(false), 2500); } catch (_) {}
+  try { setTimeout(() => checkForUpdates(false), 4500); } catch (_) {}
 }
 
 async function initDeepLinking() {
@@ -581,6 +707,91 @@ if (typeof window !== 'undefined') {
   window.handleStormBackNavigation = handleStormBackNavigation;
   window.showExitConfirmModal = showExitConfirmModal;
   window.closeExitConfirmModal = closeExitConfirmModal;
+
+  // Защита кнопки «Назад» в браузере и PWA для всех вторичных модальных окон и мобильной шторки
+  if (!window.__STORM_MODAL_HISTORY_GUARD_BOUND__) {
+    window.__STORM_MODAL_HISTORY_GUARD_BOUND__ = true;
+    let hasOverlayHistoryEntry = false;
+    let isClosingOverlayViaBack = false;
+
+    const getOpenSecondaryOverlays = () => Array.from(
+      document.querySelectorAll('.modal-backdrop.is-open, .storm-modal-backdrop.is-open, #mobile-drawer-backdrop.is-open')
+    ).filter(el => el.id !== 'cinema-modal' && el.id !== 'storm-exit-confirm-modal');
+
+    // Инициализируем базовую корневую запись истории при открытии сайта без параметра ?media=
+    try {
+      if (!window.location.search.includes('media=')) {
+        window.history.replaceState({ ...(window.history.state || {}), stormRoot: true }, '', window.location.href);
+      }
+    } catch (_) {}
+
+    const syncOverlayHistoryState = () => {
+      const openList = getOpenSecondaryOverlays();
+      const cinemaOpen = Boolean(document.getElementById('cinema-modal')?.classList.contains('is-open'));
+      if (openList.length > 0 && !cinemaOpen && !hasOverlayHistoryEntry) {
+        try {
+          if (!window.history.state || !window.history.state.stormRoot) {
+            window.history.replaceState({ ...(window.history.state || {}), stormRoot: true }, '', window.location.href);
+          }
+          window.history.pushState({ stormOverlay: openList[openList.length - 1].id || 'modal' }, '', window.location.href);
+          hasOverlayHistoryEntry = true;
+        } catch (_) {}
+      } else if (openList.length === 0 && hasOverlayHistoryEntry) {
+        hasOverlayHistoryEntry = false;
+        if (window.history.state && window.history.state.stormOverlay) {
+          isClosingOverlayViaBack = true;
+          try {
+            window.history.back();
+          } catch (_) {
+            isClosingOverlayViaBack = false;
+          }
+          setTimeout(() => { isClosingOverlayViaBack = false; }, 160);
+        }
+      }
+    };
+
+    const attachModalObserver = () => {
+      if (!document.body) return;
+      const obs = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.type === 'attributes' && m.attributeName === 'class') {
+            const t = m.target;
+            if (t && t.id !== 'cinema-modal' && (
+              t.classList?.contains('modal-backdrop') ||
+              t.classList?.contains('storm-modal-backdrop') ||
+              t.id === 'mobile-drawer-backdrop'
+            )) {
+              syncOverlayHistoryState();
+              break;
+            }
+          }
+        }
+      });
+      obs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attachModalObserver, { once: true });
+    } else {
+      attachModalObserver();
+    }
+
+    window.addEventListener('popstate', () => {
+      if (isClosingOverlayViaBack) {
+        isClosingOverlayViaBack = false;
+        return;
+      }
+      const openList = getOpenSecondaryOverlays();
+      if (openList.length > 0) {
+        hasOverlayHistoryEntry = false;
+        const topModal = openList[openList.length - 1];
+        topModal.classList.remove('is-open');
+        if (getOpenSecondaryOverlays().length === 0) {
+          document.body.classList.remove('modal-open');
+        }
+      }
+    });
+  }
 }
 
 export function switchTab(tab, options = {}) {
@@ -644,7 +855,7 @@ export function switchTab(tab, options = {}) {
     const bTab = b.dataset.bottomTab;
     let isActive = false;
     if (tab === 'home' && bTab === 'home') isActive = true;
-    else if (['new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series'].includes(tab) && bTab === 'catalog') isActive = true;
+    else if (['new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series', 'offline'].includes(tab) && bTab === 'catalog') isActive = true;
     else if (tab === 'bookmarks' && bTab === 'bookmarks') isActive = true;
     b.classList.toggle('active', isActive);
   });
@@ -1594,6 +1805,20 @@ function renderSkeletonGrid() {
   container.innerHTML = html;
 }
 
+const PROTECTED_FRANCHISE_NUM_TITLES = [
+  'кайдзю номер 8', 'кайдзю №8', 'кайдзю № 8', 'kaiju no. 8', 'kaiju no 8',
+  'моб психо 100', 'mob psycho 100',
+  '86', 'восемьдесят шесть', 'eighty six', 'eighty-six',
+  'зона 88', 'area 88', 'токио 24-й район', 'гандам 00', 'вавилон 5',
+  '1984', '2012', '1917', '9', '300', '24', 'бегущий по лезвию 2049',
+  'гладиатор 2', 'дюна: часть вторая', 'дюна 2', 'аватар 2', 'аватар 3',
+  'головоломка 2', 'зверополис 2', 'моана 2', 'шрек 2', 'шрек 3', 'шрек 4',
+  'кунг-фу панда 2', 'кунг-фу панда 3', 'кунг-фу панда 4',
+  'гадкий я 2', 'гадкий я 3', 'гадкий я 4', 'история игрушек 2', 'история игрушек 3', 'история игрушек 4', 'история игрушек 5',
+  'терминатор 2', 'терминатор 3', 'чужой 3', 'иллюзия обмана 2', 'иллюзия обмана 3',
+  'холоп 2', 'бэтмен 2', 'соник 2', 'соник 3', 'ужасающий 2', 'ужасающий 3', 'микки 17'
+];
+
 export function cleanVideoTitle(str) {
   if (!str) return '';
   let s = String(str).trim();
@@ -1608,8 +1833,20 @@ export function cleanVideoTitle(str) {
   s = s.replace(/(?:^|\s+)(?:Ultra\s*HD|UHD|HDR10\+?|HDR|Dolby\s*Vision|BDRip|DVDRip|WEB-DL|Remux)(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
   // фильм / сериал в скобках
   s = s.replace(/\s*[\(\[]\s*(?:фильм|сериал)\s*[\)\]]/gi, '');
+  // Сезон / ТВ / Часть в скобках и без скобок: (1 сезон), [2 сезон], [ТВ-2], Season 2, 2nd Season
+  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
+  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+  // Хвостовой номер сезона у аниме и сериалов (например: "Киберпанк: Бегущие по краю 2" -> "Киберпанк: Бегущие по краю")
+  const lowerFull = s.toLowerCase().replace(/ё/g, 'е').trim();
+  const isProtectedMovieSeq = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
+  if (!isProtectedMovieSeq) {
+    const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*(?:часть|part|сезон|season|арка|битва).*)?$/i);
+    if (mTrail && mTrail[1].trim().length >= 3) {
+      s = mTrail[1].trim();
+    }
+  }
   // Хвостовые разделители
-  s = s.replace(/[-–—/|•]\s*$/, '').trim();
+  s = s.replace(/[-–—/|•:]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -7261,10 +7498,8 @@ window.addEventListener('touchstart', hideCardHoverPreview, { passive: true });
 let deferredInstallPrompt = null;
 
 function initPwaServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(err => {
-      console.warn('Регистрация Service Worker не удалась:', err);
-    });
+  if ('serviceWorker' in navigator && !window.__STORM_SW_MANAGED__ && window.location.protocol !== 'file:') {
+    navigator.serviceWorker.register(`/sw.js?v=${STORM_ASSET_VER}`, { updateViaCache: 'none' }).catch(() => {});
   }
 
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -7292,9 +7527,17 @@ function initPwaServiceWorker() {
 // НОВЫЕ КИБЕР-ФУНКЦИИ И ИНТЕГРАЦИИ
 // -------------------------------------------------------------
 function initNewCyberFeatures() {
-  // 1. Smart TV и геймпад
-  initGamepadAndTvMode();
+  // 1. Smart TV и геймпад (мгновенно для ТВ/APK, отложенно для браузера ПК/смартфона)
   initFormFactorEngine();
+  const needsImmediateTv = isStormNativeApp() ||
+    localStorage.getItem('storm_tv_mode') === 'true' ||
+    /TV|AFT|BRAVIA|Web0S|Tizen|MiBOX/i.test(navigator.userAgent || '');
+  if (needsImmediateTv) {
+    initGamepadAndTvMode();
+  } else {
+    setTimeout(() => initGamepadAndTvMode(), 350);
+    window.addEventListener('gamepadconnected', () => initGamepadAndTvMode(), { once: true });
+  }
   const tvBtn = document.getElementById('toggle-tv-mode-btn');
   if (tvBtn) {
     tvBtn.onclick = () => toggleTvMode();
@@ -7469,7 +7712,7 @@ export function closeMobileDrawer() {
     const bTab = b.dataset.bottomTab;
     let isActive = false;
     if (currentTab === 'home' && bTab === 'home') isActive = true;
-    else if (['new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series'].includes(currentTab) && bTab === 'catalog') isActive = true;
+    else if (['new', 'movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series', 'offline'].includes(currentTab) && bTab === 'catalog') isActive = true;
     else if (currentTab === 'bookmarks' && bTab === 'bookmarks') isActive = true;
     b.classList.toggle('active', isActive);
   });
@@ -7875,9 +8118,6 @@ export function openStormThemedSelectModal(selectEl) {
         selectEl.value = chosenOpt.value;
         selectEl.dispatchEvent(new Event('change', { bubbles: true }));
         selectEl.dispatchEvent(new Event('input', { bubbles: true }));
-        if (typeof selectEl.onchange === 'function') {
-          try { selectEl.onchange({ target: selectEl }); } catch (_) {}
-        }
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
           try { navigator.vibrate(10); } catch (_) {}
         }

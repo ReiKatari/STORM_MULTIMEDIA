@@ -2430,7 +2430,7 @@ body.cinema-open {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 2000;
+  z-index: 2147483640 !important;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -7318,7 +7318,7 @@ body.tv-mode .custom-list-card:focus {
 }
 
 /* =============================================================
-   ОБЪЁМНЫЙ SHIMMER-ЭФФЕКТ ОБЛОЖЕК И МОБИЛЬНАЯ ОПТИМИЗАЦИЯ 1.0.45
+   ОБЪЁМНЫЙ SHIMMER-ЭФФЕКТ ОБЛОЖЕК И МОБИЛЬНАЯ ОПТИМИЗАЦИЯ 1.0.49
    ============================================================= */
 @keyframes stormPosterPulse {
   0% { background-position: 0% 50%; }

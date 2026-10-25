@@ -3,7 +3,8 @@
    Локальное и алгоритмическое распознавание интро/аутро + таймкоды
    ========================================================================== */
 
-import { showToast } from './auth.js';
+import { showToast } from './auth.js?v=1.0.51';
+import { trackClientAction } from './achievements.js?v=1.0.51';
 
 let activeVideo = null;
 let currentSkipIntervals = null;
@@ -15,16 +16,23 @@ export function isAutoSkipIntroEnabled() {
 }
 
 export function setAutoSkipIntroEnabled(val) {
-  localStorage.setItem('storm_autoskip_intro', val ? 'true' : 'false');
+  const enabled = Boolean(val);
+  localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
+  const toggleEl = document.getElementById('profile-autoskip-toggle');
+  if (toggleEl && toggleEl.checked !== enabled) {
+    toggleEl.checked = enabled;
+  }
+  if (enabled && activeVideo && currentSkipIntervals) {
+    lastAutoSkippedSegment = '';
+    checkSkipIntervals();
+  }
 }
 
-// Стандартные интервалы для аниме и сериалов (только для ручного пропуска)
+// Стандартные интервалы для аниме и сериалов
 export function getEstimatedSkipIntervals(durationSeconds, mediaType = '') {
   if (!durationSeconds || durationSeconds < 300) return null;
-  // Для фильмов приблизительный пропуск не применяется
   if (mediaType === 'movie' || durationSeconds > 3600) return null;
 
-  // Обычное аниме или короткая серия
   if (durationSeconds <= 1800) {
     return {
       verified: false,
@@ -33,7 +41,6 @@ export function getEstimatedSkipIntervals(durationSeconds, mediaType = '') {
     };
   }
 
-  // Сериал средней длительности
   return {
     verified: false,
     intro: { start: 90, end: 195, label: 'Заставка' },
@@ -78,9 +85,10 @@ function checkSkipIntervals() {
   // 1. Проверка интро (опенинга / заставки)
   if (currentSkipIntervals.intro && t >= currentSkipIntervals.intro.start && t < currentSkipIntervals.intro.end) {
     const segKey = `intro_${currentSkipIntervals.intro.start}_${currentSkipIntervals.intro.end}`;
-    if (autoSkip && currentSkipIntervals.verified && lastAutoSkippedSegment !== segKey) {
+    if (autoSkip && lastAutoSkippedSegment !== segKey) {
       lastAutoSkippedSegment = segKey;
       activeVideo.currentTime = currentSkipIntervals.intro.end;
+      trackClientAction('use_skip');
       showToast(`⏩ ${currentSkipIntervals.intro.label} автоматически пропущено`, 'info');
       removeSkipBanner();
       return;
@@ -91,6 +99,15 @@ function checkSkipIntervals() {
 
   // 2. Проверка аутро (титров / эндинга)
   if (currentSkipIntervals.outro && t >= currentSkipIntervals.outro.start && t < currentSkipIntervals.outro.end) {
+    const segKey = `outro_${currentSkipIntervals.outro.start}_${currentSkipIntervals.outro.end}`;
+    if (autoSkip && currentSkipIntervals.verified && lastAutoSkippedSegment !== segKey) {
+      lastAutoSkippedSegment = segKey;
+      activeVideo.currentTime = currentSkipIntervals.outro.end;
+      trackClientAction('use_skip');
+      showToast(`⏩ ${currentSkipIntervals.outro.label} автоматически пропущено`, 'info');
+      removeSkipBanner();
+      return;
+    }
     showSkipBanner(currentSkipIntervals.outro.label, currentSkipIntervals.outro.end);
     return;
   }
@@ -122,6 +139,7 @@ function showSkipBanner(label, targetTime) {
       e.stopPropagation();
       if (activeVideo) {
         activeVideo.currentTime = targetTime;
+        trackClientAction('use_skip');
         showToast(`⏩ ${label} пропущено`, 'info');
       }
       removeSkipBanner();
@@ -147,7 +165,6 @@ function removeSkipBanner() {
   }
 }
 
-// Рендеринг меток глав (Chapters) на полосе прогресса
 export function renderChaptersOnTrack(video, intervals) {
   const track = document.getElementById('player-chapters-track');
   if (!track || !video || !video.duration || !intervals) return;

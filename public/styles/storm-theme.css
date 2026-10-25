@@ -1,49 +1,47 @@
 /* ==========================================================================
-   STORM DESIGN SYSTEM - 9 ЭТАЛОННЫХ ТЕМ ОФОРМЛЕНИЯ (STORM AURORA FLUID)
+   STORM DESIGN SYSTEM - 10 ЭТАЛОННЫХ ТЕМ И 13 АКЦЕНТОВ (STORM AURORA FLUID)
    ========================================================================== */
 
 :root {
   --storm-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --storm-ui-scale: 1;
-}
 
-[data-theme="STORM DARK"] {
-  --bg-primary: #0c1017;
-  --bg-secondary: #131923;
-  --bg-tertiary: #192231;
-  --bg-card: rgba(19, 25, 35, 0.85);
-  --bg-card-hover: rgba(25, 34, 49, 0.95);
-  --bg-input: #101620;
-  --border-color: rgba(0, 210, 255, 0.2);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(0, 210, 255, 0.45);
-  --accent: #00d2ff;
-  --accent-secondary: #3a7bd5;
-  --accent-glow: rgba(0, 210, 255, 0.35);
-  --accent-subtle: rgba(0, 210, 255, 0.12);
+  --bg-primary: #0f0c1f;
+  --bg-secondary: #17132e;
+  --bg-tertiary: #201a3e;
+  --bg-card: rgba(23, 19, 46, 0.88);
+  --bg-card-hover: rgba(32, 26, 62, 0.95);
+  --bg-input: #131026;
+  --border-color: rgba(168, 85, 247, 0.28);
+  --border-subtle: rgba(168, 85, 247, 0.1);
+  --border-hover: rgba(168, 85, 247, 0.55);
+  --accent: #a855f7;
+  --accent-secondary: #6366f1;
+  --accent-glow: rgba(168, 85, 247, 0.42);
+  --accent-subtle: rgba(168, 85, 247, 0.14);
   --text-primary: #ffffff;
-  --text-secondary: #e2e8f0;
-  --text-muted: #94a3b8;
-  --shadow-color: rgba(0, 0, 0, 0.55);
-  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
-  --card-bg-gradient: linear-gradient(180deg, rgba(19, 25, 35, 0.92) 0%, rgba(12, 16, 23, 0.98) 100%);
-  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.75), 0 0 24px rgba(0, 210, 255, 0.25);
-  --glass-bg: rgba(12, 16, 23, 0.78);
-  --glass-specular: rgba(255, 255, 255, 0.12);
-  --dock-bg: rgba(12, 16, 23, 0.88);
-  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 210, 255, 0.22);
-  --btn-3d-shadow: 0 4px 0 #077994, 0 8px 16px rgba(0, 210, 255, 0.3);
-  --btn-3d-shadow-press: 0 1px 0 #077994, 0 3px 8px rgba(0, 210, 255, 0.2);
+  --text-secondary: #e9d5ff;
+  --text-muted: #c084fc;
+  --shadow-color: rgba(0, 0, 0, 0.7);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 14px rgba(168, 85, 247, 0.12);
+  --card-bg-gradient: linear-gradient(180deg, rgba(23, 19, 46, 0.92) 0%, rgba(15, 12, 31, 0.98) 100%);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 24px rgba(168, 85, 247, 0.25);
+  --glass-bg: rgba(15, 12, 31, 0.82);
+  --glass-specular: rgba(168, 85, 247, 0.18);
+  --dock-bg: rgba(18, 14, 38, 0.88);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(168, 85, 247, 0.22);
+  --btn-3d-shadow: 0 4px 0 #6b21a8, 0 8px 16px rgba(168, 85, 247, 0.35);
+  --btn-3d-shadow-press: 0 1px 0 #6b21a8, 0 3px 8px rgba(168, 85, 247, 0.2);
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-fluid: cubic-bezier(0.2, 0, 0, 1);
 
   /* Адаптивные метрики масштабирования (Fluid Typography & Scalable Layout Metrics) */
-  --font-hero-title: clamp(20px, 1.4rem + 1vw, 32px);
-  --font-modal-title: clamp(14px, 0.95rem + 0.35vw, 18px);
-  --font-section-title: clamp(15px, 1rem + 0.4vw, 20px);
-  --font-card-title: clamp(12px, 0.8rem + 0.2vw, 14.5px);
-  --font-body: clamp(12px, 0.78rem + 0.2vw, 14px);
-  --font-meta: clamp(10.5px, 0.7rem + 0.15vw, 12px);
+  --font-hero-title: calc(clamp(20px, 1.4rem + 1vw, 32px) * var(--storm-ui-scale, 1));
+  --font-modal-title: calc(clamp(14px, 0.95rem + 0.35vw, 18px) * var(--storm-ui-scale, 1));
+  --font-section-title: calc(clamp(15px, 1rem + 0.4vw, 20px) * var(--storm-ui-scale, 1));
+  --font-card-title: calc(clamp(12px, 0.8rem + 0.2vw, 14.5px) * var(--storm-ui-scale, 1));
+  --font-body: calc(clamp(12px, 0.78rem + 0.2vw, 14px) * var(--storm-ui-scale, 1));
+  --font-meta: calc(clamp(10.5px, 0.7rem + 0.15vw, 12px) * var(--storm-ui-scale, 1));
 
   --touch-target-min: 44px;
   --touch-target-compact: 38px;
@@ -52,7 +50,49 @@
   --gap-grid: clamp(10px, 1.1vw, 20px);
   --padding-section: clamp(12px, 1.4vw, 24px);
 
-  /* Индивидуальные стили вкладок */
+  /* Статусные глобальные цвета */
+  --color-green: #10b981;
+  --color-green-glow: rgba(16, 185, 129, 0.4);
+  --color-cyan: #06b6d4;
+  --color-cyan-glow: rgba(6, 182, 212, 0.4);
+  --color-amber: #f59e0b;
+  --color-amber-glow: rgba(245, 158, 11, 0.4);
+  --color-orange: #f97316;
+  --color-orange-glow: rgba(249, 115, 22, 0.4);
+  --color-red: #ef4444;
+  --color-red-glow: rgba(239, 68, 68, 0.4);
+  --color-purple: #8b5cf6;
+  --color-purple-glow: rgba(139, 92, 246, 0.4);
+}
+
+html[data-theme="STORM DARK"] {
+  --bg-primary: #0c1017;
+  --bg-secondary: #131923;
+  --bg-tertiary: #192231;
+  --bg-card: rgba(19, 25, 35, 0.88);
+  --bg-card-hover: rgba(25, 34, 49, 0.96);
+  --bg-input: #101620;
+  --border-color: rgba(0, 210, 255, 0.26);
+  --border-subtle: rgba(0, 210, 255, 0.1);
+  --border-hover: rgba(0, 210, 255, 0.52);
+  --accent: #00d2ff;
+  --accent-secondary: #3a7bd5;
+  --accent-glow: rgba(0, 210, 255, 0.38);
+  --accent-subtle: rgba(0, 210, 255, 0.14);
+  --text-primary: #ffffff;
+  --text-secondary: #e2e8f0;
+  --text-muted: #94a3b8;
+  --shadow-color: rgba(0, 0, 0, 0.55);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.55), 0 0 14px rgba(0, 210, 255, 0.12);
+  --card-bg-gradient: linear-gradient(180deg, rgba(19, 25, 35, 0.94) 0%, rgba(12, 16, 23, 0.98) 100%);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.75), 0 0 24px rgba(0, 210, 255, 0.25);
+  --glass-bg: rgba(12, 16, 23, 0.82);
+  --glass-specular: rgba(0, 210, 255, 0.16);
+  --dock-bg: rgba(12, 16, 23, 0.9);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 210, 255, 0.22);
+  --btn-3d-shadow: 0 4px 0 #077994, 0 8px 16px rgba(0, 210, 255, 0.32);
+  --btn-3d-shadow-press: 0 1px 0 #077994, 0 3px 8px rgba(0, 210, 255, 0.2);
+
   --tab-continue-color: #10b981;
   --tab-continue-bg: rgba(16, 185, 129, 0.12);
   --tab-continue-border: rgba(16, 185, 129, 0.4);
@@ -75,35 +115,34 @@
   --tab-offline-3d: 0 4px 0 #b45309, 0 8px 18px rgba(245, 158, 11, 0.35);
 }
 
-[data-theme="STORM NIGHT"] {
-  --bg-primary: #05070a;
-  --bg-secondary: #0a0e14;
-  --bg-tertiary: #101620;
-  --bg-card: rgba(10, 14, 20, 0.92);
-  --bg-card-hover: rgba(16, 22, 32, 0.98);
-  --bg-input: #080b10;
-  --border-color: rgba(0, 240, 255, 0.25);
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-hover: rgba(0, 240, 255, 0.55);
+html[data-theme="STORM NIGHT"] {
+  --bg-primary: #040508;
+  --bg-secondary: #080b11;
+  --bg-tertiary: #0e141f;
+  --bg-card: rgba(8, 11, 17, 0.94);
+  --bg-card-hover: rgba(14, 20, 31, 0.98);
+  --bg-input: #06090e;
+  --border-color: rgba(0, 240, 255, 0.28);
+  --border-subtle: rgba(0, 240, 255, 0.1);
+  --border-hover: rgba(0, 240, 255, 0.58);
   --accent: #00f0ff;
   --accent-secondary: #0088ff;
   --accent-glow: rgba(0, 240, 255, 0.45);
   --accent-subtle: rgba(0, 240, 255, 0.14);
   --text-primary: #ffffff;
   --text-secondary: #e2e8f0;
-  --text-muted: #94a3b8;
-  --shadow-color: rgba(0, 0, 0, 0.85);
-  --card-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 240, 255, 0.1);
-  --card-bg-gradient: linear-gradient(180deg, rgba(10, 14, 20, 0.95) 0%, rgba(5, 7, 10, 0.98) 100%);
-  --card-hover-shadow: 0 22px 45px -10px rgba(0, 0, 0, 0.9), 0 0 26px rgba(0, 240, 255, 0.28);
-  --glass-bg: rgba(5, 7, 10, 0.82);
-  --glass-specular: rgba(255, 255, 255, 0.1);
-  --dock-bg: rgba(7, 10, 15, 0.88);
-  --dock-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 240, 255, 0.25);
+  --text-muted: #7dd3fc;
+  --shadow-color: rgba(0, 0, 0, 0.88);
+  --card-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.85), 0 0 15px rgba(0, 240, 255, 0.12);
+  --card-bg-gradient: linear-gradient(180deg, rgba(8, 11, 17, 0.96) 0%, rgba(4, 5, 8, 0.99) 100%);
+  --card-hover-shadow: 0 22px 45px -10px rgba(0, 0, 0, 0.92), 0 0 26px rgba(0, 240, 255, 0.28);
+  --glass-bg: rgba(4, 5, 8, 0.86);
+  --glass-specular: rgba(0, 240, 255, 0.16);
+  --dock-bg: rgba(6, 9, 14, 0.92);
+  --dock-shadow: 0 14px 40px rgba(0, 0, 0, 0.88), 0 0 24px rgba(0, 240, 255, 0.25);
   --btn-3d-shadow: 0 4px 0 #008fa0, 0 8px 18px rgba(0, 240, 255, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #008fa0, 0 3px 8px rgba(0, 240, 255, 0.2);
 
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #00ffaa;
   --tab-continue-bg: rgba(0, 255, 170, 0.12);
   --tab-continue-border: rgba(0, 255, 170, 0.45);
@@ -126,35 +165,34 @@
   --tab-offline-3d: 0 4px 0 #c2410c, 0 8px 18px rgba(251, 146, 60, 0.4);
 }
 
-[data-theme="STORM MATRIX"] {
+html[data-theme="STORM MATRIX"] {
   --bg-primary: #030a05;
   --bg-secondary: #07150a;
   --bg-tertiary: #0c2211;
-  --bg-card: rgba(7, 21, 10, 0.88);
-  --bg-card-hover: rgba(12, 34, 17, 0.95);
+  --bg-card: rgba(7, 21, 10, 0.9);
+  --bg-card-hover: rgba(12, 34, 17, 0.96);
   --bg-input: #050e07;
-  --border-color: rgba(0, 255, 102, 0.25);
-  --border-subtle: rgba(0, 255, 102, 0.08);
-  --border-hover: rgba(0, 255, 102, 0.5);
+  --border-color: rgba(0, 255, 102, 0.28);
+  --border-subtle: rgba(0, 255, 102, 0.1);
+  --border-hover: rgba(0, 255, 102, 0.55);
   --accent: #00ff66;
   --accent-secondary: #00aa44;
-  --accent-glow: rgba(0, 255, 102, 0.4);
-  --accent-subtle: rgba(0, 255, 102, 0.12);
+  --accent-glow: rgba(0, 255, 102, 0.42);
+  --accent-subtle: rgba(0, 255, 102, 0.14);
   --text-primary: #ffffff;
   --text-secondary: #bbf7d0;
   --text-muted: #86efac;
-  --shadow-color: rgba(0, 0, 0, 0.75);
-  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 255, 102, 0.12);
-  --card-bg-gradient: linear-gradient(180deg, rgba(7, 21, 10, 0.92) 0%, rgba(3, 10, 5, 0.98) 100%);
-  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 255, 102, 0.25);
-  --glass-bg: rgba(3, 10, 5, 0.8);
-  --glass-specular: rgba(0, 255, 102, 0.15);
-  --dock-bg: rgba(5, 14, 7, 0.88);
-  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 255, 102, 0.2);
-  --btn-3d-shadow: 0 4px 0 #00993d, 0 8px 16px rgba(255, 255, 255, 0.3);
-  --btn-3d-shadow-press: 0 1px 0 #00993d, 0 3px 8px rgba(255, 255, 255, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.78);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 14px rgba(0, 255, 102, 0.14);
+  --card-bg-gradient: linear-gradient(180deg, rgba(7, 21, 10, 0.94) 0%, rgba(3, 10, 5, 0.99) 100%);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.82), 0 0 24px rgba(0, 255, 102, 0.28);
+  --glass-bg: rgba(3, 10, 5, 0.84);
+  --glass-specular: rgba(0, 255, 102, 0.18);
+  --dock-bg: rgba(5, 14, 7, 0.9);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 20px rgba(0, 255, 102, 0.22);
+  --btn-3d-shadow: 0 4px 0 #00993d, 0 8px 16px rgba(0, 255, 102, 0.34);
+  --btn-3d-shadow-press: 0 1px 0 #00993d, 0 3px 8px rgba(0, 255, 102, 0.2);
 
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #39ff14;
   --tab-continue-bg: rgba(57, 255, 20, 0.12);
   --tab-continue-border: rgba(57, 255, 20, 0.45);
@@ -177,35 +215,34 @@
   --tab-offline-3d: 0 4px 0 #0369a1, 0 8px 18px rgba(0, 240, 255, 0.35);
 }
 
-[data-theme="STORM CYBERPUNK"] {
-  --bg-primary: #0f0717;
-  --bg-secondary: #190c28;
-  --bg-tertiary: #231238;
-  --bg-card: rgba(25, 12, 40, 0.88);
-  --bg-card-hover: rgba(35, 18, 56, 0.95);
-  --bg-input: #140a20;
-  --border-color: rgba(255, 0, 127, 0.3);
-  --border-subtle: rgba(255, 0, 127, 0.09);
-  --border-hover: rgba(255, 0, 127, 0.6);
+html[data-theme="STORM CYBERPUNK"] {
+  --bg-primary: #11061a;
+  --bg-secondary: #1b0a2a;
+  --bg-tertiary: #26103c;
+  --bg-card: rgba(27, 10, 42, 0.9);
+  --bg-card-hover: rgba(38, 16, 60, 0.96);
+  --bg-input: #150822;
+  --border-color: rgba(255, 0, 127, 0.32);
+  --border-subtle: rgba(255, 0, 127, 0.11);
+  --border-hover: rgba(255, 0, 127, 0.62);
   --accent: #ff007f;
   --accent-secondary: #00f0ff;
-  --accent-glow: rgba(255, 0, 127, 0.4);
-  --accent-subtle: rgba(255, 0, 127, 0.14);
+  --accent-glow: rgba(255, 0, 127, 0.44);
+  --accent-subtle: rgba(255, 0, 127, 0.15);
   --text-primary: #ffffff;
   --text-secondary: #fbcfe8;
   --text-muted: #f472b6;
-  --shadow-color: rgba(0, 0, 0, 0.75);
-  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 15px rgba(255, 0, 127, 0.15);
-  --card-bg-gradient: linear-gradient(180deg, rgba(25, 12, 40, 0.92) 0%, rgba(15, 7, 23, 0.98) 100%);
-  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 28px rgba(255, 0, 127, 0.3);
-  --glass-bg: rgba(15, 7, 23, 0.82);
-  --glass-specular: rgba(255, 0, 127, 0.2);
-  --dock-bg: rgba(20, 9, 32, 0.88);
-  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 22px rgba(255, 0, 127, 0.25);
-  --btn-3d-shadow: 0 4px 0 #a30052, 0 8px 16px rgba(255, 0, 127, 0.35);
-  --btn-3d-shadow-press: 0 1px 0 #a30052, 0 3px 8px rgba(255, 0, 127, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.78);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.75), 0 0 15px rgba(255, 0, 127, 0.16);
+  --card-bg-gradient: linear-gradient(180deg, rgba(27, 10, 42, 0.94) 0%, rgba(17, 6, 26, 0.99) 100%);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 28px rgba(255, 0, 127, 0.32);
+  --glass-bg: rgba(17, 6, 26, 0.84);
+  --glass-specular: rgba(255, 0, 127, 0.22);
+  --dock-bg: rgba(21, 8, 34, 0.9);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.82), 0 0 22px rgba(255, 0, 127, 0.26);
+  --btn-3d-shadow: 0 4px 0 #a30052, 0 8px 16px rgba(255, 0, 127, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #a30052, 0 3px 8px rgba(255, 0, 127, 0.22);
 
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #00f0ff;
   --tab-continue-bg: rgba(0, 240, 255, 0.12);
   --tab-continue-border: rgba(0, 240, 255, 0.45);
@@ -228,8 +265,7 @@
   --tab-offline-3d: 0 4px 0 #d46b08, 0 8px 18px rgba(255, 183, 3, 0.4);
 }
 
-:root,
-[data-theme="STORM MIDNIGHT"] {
+html[data-theme="STORM MIDNIGHT"] {
   --bg-primary: #0f0c1f;
   --bg-secondary: #17132e;
   --bg-tertiary: #201a3e;
@@ -237,7 +273,7 @@
   --bg-card-hover: rgba(32, 26, 62, 0.95);
   --bg-input: #131026;
   --border-color: rgba(168, 85, 247, 0.28);
-  --border-subtle: rgba(168, 85, 247, 0.08);
+  --border-subtle: rgba(168, 85, 247, 0.1);
   --border-hover: rgba(168, 85, 247, 0.55);
   --accent: #a855f7;
   --accent-secondary: #6366f1;
@@ -256,25 +292,7 @@
   --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(168, 85, 247, 0.22);
   --btn-3d-shadow: 0 4px 0 #6b21a8, 0 8px 16px rgba(168, 85, 247, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #6b21a8, 0 3px 8px rgba(168, 85, 247, 0.2);
-  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-fluid: cubic-bezier(0.2, 0, 0, 1);
 
-  /* Адаптивные метрики масштабирования (Fluid Typography & Scalable Layout Metrics) */
-  --font-hero-title: clamp(20px, 1.4rem + 1vw, 32px);
-  --font-modal-title: clamp(14px, 0.95rem + 0.35vw, 18px);
-  --font-section-title: clamp(15px, 1rem + 0.4vw, 20px);
-  --font-card-title: clamp(12px, 0.8rem + 0.2vw, 14.5px);
-  --font-body: clamp(12px, 0.78rem + 0.2vw, 14px);
-  --font-meta: clamp(10.5px, 0.7rem + 0.15vw, 12px);
-
-  --touch-target-min: 44px;
-  --touch-target-compact: 38px;
-  --radius-card: clamp(10px, 0.9vw, 14px);
-  --radius-control: clamp(6px, 0.6vw, 10px);
-  --gap-grid: clamp(10px, 1.1vw, 20px);
-  --padding-section: clamp(12px, 1.4vw, 24px);
-
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #38bdf8;
   --tab-continue-bg: rgba(56, 189, 248, 0.12);
   --tab-continue-border: rgba(56, 189, 248, 0.4);
@@ -297,35 +315,34 @@
   --tab-offline-3d: 0 4px 0 #be123c, 0 8px 18px rgba(251, 113, 133, 0.35);
 }
 
-[data-theme="STORM FANTASY"] {
-  --bg-primary: #0e1017;
-  --bg-secondary: #171b26;
-  --bg-tertiary: #202534;
-  --bg-card: rgba(23, 27, 38, 0.88);
-  --bg-card-hover: rgba(32, 37, 52, 0.95);
-  --bg-input: #12151e;
-  --border-color: rgba(245, 158, 11, 0.28);
-  --border-subtle: rgba(245, 158, 11, 0.08);
-  --border-hover: rgba(245, 158, 11, 0.55);
+html[data-theme="STORM FANTASY"] {
+  --bg-primary: #110e16;
+  --bg-secondary: #1b1622;
+  --bg-tertiary: #261f30;
+  --bg-card: rgba(27, 22, 34, 0.9);
+  --bg-card-hover: rgba(38, 31, 48, 0.96);
+  --bg-input: #14101a;
+  --border-color: rgba(245, 158, 11, 0.3);
+  --border-subtle: rgba(245, 158, 11, 0.1);
+  --border-hover: rgba(245, 158, 11, 0.58);
   --accent: #f59e0b;
   --accent-secondary: #d97706;
-  --accent-glow: rgba(245, 158, 11, 0.4);
-  --accent-subtle: rgba(245, 158, 11, 0.14);
+  --accent-glow: rgba(245, 158, 11, 0.42);
+  --accent-subtle: rgba(245, 158, 11, 0.15);
   --text-primary: #ffffff;
   --text-secondary: #fef3c7;
   --text-muted: #fde68a;
-  --shadow-color: rgba(0, 0, 0, 0.65);
-  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.65), 0 0 14px rgba(245, 158, 11, 0.12);
-  --card-bg-gradient: linear-gradient(180deg, rgba(23, 27, 38, 0.92) 0%, rgba(14, 16, 23, 0.98) 100%);
-  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 24px rgba(245, 158, 11, 0.25);
-  --glass-bg: rgba(14, 16, 23, 0.82);
-  --glass-specular: rgba(245, 158, 11, 0.18);
-  --dock-bg: rgba(18, 21, 30, 0.88);
-  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(245, 158, 11, 0.22);
+  --shadow-color: rgba(0, 0, 0, 0.72);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 14px rgba(245, 158, 11, 0.14);
+  --card-bg-gradient: linear-gradient(180deg, rgba(27, 22, 34, 0.94) 0%, rgba(17, 14, 22, 0.99) 100%);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.82), 0 0 24px rgba(245, 158, 11, 0.26);
+  --glass-bg: rgba(17, 14, 22, 0.84);
+  --glass-specular: rgba(245, 158, 11, 0.2);
+  --dock-bg: rgba(20, 16, 26, 0.9);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 20px rgba(245, 158, 11, 0.22);
   --btn-3d-shadow: 0 4px 0 #b45309, 0 8px 16px rgba(245, 158, 11, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #b45309, 0 3px 8px rgba(245, 158, 11, 0.2);
 
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #10b981;
   --tab-continue-bg: rgba(16, 185, 129, 0.12);
   --tab-continue-border: rgba(16, 185, 129, 0.4);
@@ -348,35 +365,34 @@
   --tab-offline-3d: 0 4px 0 #b45309, 0 8px 18px rgba(245, 158, 11, 0.35);
 }
 
-[data-theme="STORM WARHAMMER 40K"] {
-  --bg-primary: #0c0d10;
-  --bg-secondary: #15171c;
-  --bg-tertiary: #1e2027;
-  --bg-card: rgba(21, 23, 28, 0.9);
-  --bg-card-hover: rgba(30, 32, 39, 0.96);
-  --bg-input: #111215;
-  --border-color: rgba(212, 175, 55, 0.3);
-  --border-subtle: rgba(212, 175, 55, 0.09);
-  --border-hover: rgba(212, 175, 55, 0.6);
+html[data-theme="STORM WARHAMMER 40K"] {
+  --bg-primary: #0c0b0b;
+  --bg-secondary: #161414;
+  --bg-tertiary: #211d1d;
+  --bg-card: rgba(22, 20, 20, 0.92);
+  --bg-card-hover: rgba(33, 29, 29, 0.97);
+  --bg-input: #110f0f;
+  --border-color: rgba(212, 175, 55, 0.32);
+  --border-subtle: rgba(212, 175, 55, 0.11);
+  --border-hover: rgba(212, 175, 55, 0.62);
   --accent: #d4af37;
   --accent-secondary: #997b1e;
-  --accent-glow: rgba(212, 175, 55, 0.4);
-  --accent-subtle: rgba(212, 175, 55, 0.14);
+  --accent-glow: rgba(212, 175, 55, 0.42);
+  --accent-subtle: rgba(212, 175, 55, 0.15);
   --text-primary: #ffffff;
   --text-secondary: #fef9c3;
-  --text-muted: #fef08a;
-  --shadow-color: rgba(0, 0, 0, 0.8);
-  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 14px rgba(212, 175, 55, 0.15);
-  --card-bg-gradient: linear-gradient(180deg, rgba(21, 23, 28, 0.92) 0%, rgba(12, 13, 16, 0.98) 100%);
-  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 24px rgba(212, 175, 55, 0.25);
-  --glass-bg: rgba(12, 13, 16, 0.82);
-  --glass-specular: rgba(212, 175, 55, 0.18);
-  --dock-bg: rgba(18, 20, 25, 0.88);
-  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 20px rgba(212, 175, 55, 0.22);
+  --text-muted: #fde047;
+  --shadow-color: rgba(0, 0, 0, 0.82);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.82), 0 0 14px rgba(212, 175, 55, 0.15);
+  --card-bg-gradient: linear-gradient(180deg, rgba(22, 20, 20, 0.94) 0%, rgba(12, 11, 11, 0.99) 100%);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.88), 0 0 24px rgba(212, 175, 55, 0.26);
+  --glass-bg: rgba(12, 11, 11, 0.85);
+  --glass-specular: rgba(212, 175, 55, 0.2);
+  --dock-bg: rgba(17, 15, 15, 0.9);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.82), 0 0 20px rgba(212, 175, 55, 0.22);
   --btn-3d-shadow: 0 4px 0 #856a16, 0 8px 16px rgba(212, 175, 55, 0.35);
   --btn-3d-shadow-press: 0 1px 0 #856a16, 0 3px 8px rgba(212, 175, 55, 0.2);
 
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #4ade80;
   --tab-continue-bg: rgba(74, 222, 128, 0.12);
   --tab-continue-border: rgba(74, 222, 128, 0.4);
@@ -399,35 +415,34 @@
   --tab-offline-3d: 0 4px 0 #856a16, 0 8px 18px rgba(212, 175, 55, 0.35);
 }
 
-[data-theme="STORM DAY"] {
+html[data-theme="STORM DAY"] {
   --bg-primary: #f1f5f9;
   --bg-secondary: #ffffff;
   --bg-tertiary: #e2e8f0;
-  --bg-card: rgba(255, 255, 255, 0.95);
+  --bg-card: rgba(255, 255, 255, 0.96);
   --bg-card-hover: #ffffff;
   --bg-input: #f8fafc;
-  --border-color: rgba(2, 132, 199, 0.25);
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-hover: rgba(2, 132, 199, 0.5);
+  --border-color: rgba(2, 132, 199, 0.28);
+  --border-subtle: rgba(15, 23, 42, 0.1);
+  --border-hover: rgba(2, 132, 199, 0.55);
   --accent: #0284c7;
   --accent-secondary: #0369a1;
-  --accent-glow: rgba(2, 132, 199, 0.25);
-  --accent-subtle: rgba(2, 132, 199, 0.08);
+  --accent-glow: rgba(2, 132, 199, 0.28);
+  --accent-subtle: rgba(2, 132, 199, 0.1);
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --shadow-color: rgba(0, 0, 0, 0.08);
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --shadow-color: rgba(0, 0, 0, 0.1);
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
   --card-bg-gradient: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  --card-hover-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.12), 0 0 20px rgba(2, 132, 199, 0.15);
-  --glass-bg: rgba(255, 255, 255, 0.88);
+  --card-hover-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.12), 0 0 20px rgba(2, 132, 199, 0.16);
+  --glass-bg: rgba(255, 255, 255, 0.9);
   --glass-specular: rgba(2, 132, 199, 0.15);
-  --dock-bg: rgba(255, 255, 255, 0.94);
+  --dock-bg: rgba(255, 255, 255, 0.95);
   --dock-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 0 18px rgba(2, 132, 199, 0.15);
   --btn-3d-shadow: 0 4px 0 #0369a1, 0 8px 16px rgba(2, 132, 199, 0.25);
   --btn-3d-shadow-press: 0 1px 0 #0369a1, 0 3px 8px rgba(2, 132, 199, 0.15);
 
-  /* Индивидуальные стили вкладок */
   --tab-continue-color: #059669;
   --tab-continue-bg: rgba(5, 150, 105, 0.1);
   --tab-continue-border: rgba(5, 150, 105, 0.35);
@@ -450,15 +465,15 @@
   --tab-offline-3d: 0 4px 0 #92400e, 0 8px 16px rgba(217, 119, 6, 0.25);
 }
 
-[data-theme="STORM ELEMENTAL"] {
+html[data-theme="STORM ELEMENTAL"] {
   --bg-primary: #061419;
   --bg-secondary: #0b2128;
   --bg-tertiary: #112f38;
-  --bg-card: rgba(11, 33, 40, 0.88);
+  --bg-card: rgba(11, 33, 40, 0.9);
   --bg-card-hover: rgba(17, 47, 56, 0.96);
   --bg-input: #08191f;
   --border-color: rgba(20, 184, 166, 0.32);
-  --border-subtle: rgba(20, 184, 166, 0.1);
+  --border-subtle: rgba(20, 184, 166, 0.11);
   --border-hover: rgba(20, 184, 166, 0.6);
   --accent: #14b8a6;
   --accent-secondary: #f97316;
@@ -467,9 +482,9 @@
   --text-primary: #ffffff;
   --text-secondary: #ccfbf1;
   --text-muted: #5eead4;
-  --shadow-color: rgba(0, 0, 0, 0.72);
+  --shadow-color: rgba(0, 0, 0, 0.74);
   --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(20, 184, 166, 0.14);
-  --card-bg-gradient: linear-gradient(180deg, rgba(11, 33, 40, 0.92) 0%, rgba(6, 20, 25, 0.98) 100%);
+  --card-bg-gradient: linear-gradient(180deg, rgba(11, 33, 40, 0.94) 0%, rgba(6, 20, 25, 0.99) 100%);
   --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(20, 184, 166, 0.28);
   --glass-bg: rgba(6, 20, 25, 0.84);
   --glass-specular: rgba(20, 184, 166, 0.2);
@@ -500,33 +515,33 @@
   --tab-offline-3d: 0 4px 0 #0369a1, 0 8px 18px rgba(56, 189, 248, 0.35);
 }
 
-[data-theme="STORM"] {
-  --bg-primary: #070514;
-  --bg-secondary: #100c29;
-  --bg-tertiary: #19133d;
-  --bg-card: rgba(16, 12, 41, 0.9);
-  --bg-card-hover: rgba(25, 19, 61, 0.97);
-  --bg-input: #0b081f;
-  --border-color: rgba(139, 92, 246, 0.38);
-  --border-subtle: rgba(0, 240, 255, 0.12);
-  --border-hover: rgba(0, 240, 255, 0.65);
-  --accent: #8b5cf6;
-  --accent-secondary: #00f0ff;
-  --accent-glow: rgba(139, 92, 246, 0.5);
-  --accent-subtle: rgba(139, 92, 246, 0.16);
+html[data-theme="STORM"] {
+  --bg-primary: #12060c;
+  --bg-secondary: #1d0a14;
+  --bg-tertiary: #2a101e;
+  --bg-card: rgba(29, 10, 20, 0.9);
+  --bg-card-hover: rgba(42, 16, 30, 0.97);
+  --bg-input: #16070f;
+  --border-color: rgba(225, 29, 72, 0.34);
+  --border-subtle: rgba(225, 29, 72, 0.12);
+  --border-hover: rgba(251, 113, 133, 0.65);
+  --accent: #e11d48;
+  --accent-secondary: #fb7185;
+  --accent-glow: rgba(225, 29, 72, 0.46);
+  --accent-subtle: rgba(225, 29, 72, 0.16);
   --text-primary: #ffffff;
-  --text-secondary: #ede9fe;
-  --text-muted: #c4b5fd;
+  --text-secondary: #ffe4e6;
+  --text-muted: #fda4af;
   --shadow-color: rgba(0, 0, 0, 0.82);
-  --card-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.8), 0 0 18px rgba(139, 92, 246, 0.2);
-  --card-bg-gradient: linear-gradient(145deg, rgba(16, 12, 41, 0.94) 0%, rgba(7, 5, 20, 0.98) 100%);
-  --card-hover-shadow: 0 22px 45px -10px rgba(0, 0, 0, 0.9), 0 0 28px rgba(0, 240, 255, 0.32);
-  --glass-bg: rgba(7, 5, 20, 0.86);
-  --glass-specular: rgba(0, 240, 255, 0.22);
-  --dock-bg: rgba(11, 8, 31, 0.92);
-  --dock-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(139, 92, 246, 0.3);
-  --btn-3d-shadow: 0 4px 0 #5b21b6, 0 8px 18px rgba(139, 92, 246, 0.42);
-  --btn-3d-shadow-press: 0 1px 0 #5b21b6, 0 3px 8px rgba(139, 92, 246, 0.25);
+  --card-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.8), 0 0 18px rgba(225, 29, 72, 0.2);
+  --card-bg-gradient: linear-gradient(145deg, rgba(29, 10, 20, 0.94) 0%, rgba(18, 6, 12, 0.99) 100%);
+  --card-hover-shadow: 0 22px 45px -10px rgba(0, 0, 0, 0.9), 0 0 28px rgba(225, 29, 72, 0.32);
+  --glass-bg: rgba(18, 6, 12, 0.86);
+  --glass-specular: rgba(225, 29, 72, 0.22);
+  --dock-bg: rgba(22, 7, 15, 0.92);
+  --dock-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(225, 29, 72, 0.28);
+  --btn-3d-shadow: 0 4px 0 #9f1239, 0 8px 18px rgba(225, 29, 72, 0.42);
+  --btn-3d-shadow-press: 0 1px 0 #9f1239, 0 3px 8px rgba(225, 29, 72, 0.25);
 
   --tab-continue-color: #00f0ff;
   --tab-continue-bg: rgba(0, 240, 255, 0.14);
@@ -535,12 +550,12 @@
   --tab-continue-gradient: linear-gradient(135deg, #00f0ff 0%, #3b82f6 100%);
   --tab-continue-3d: 0 4px 0 #1d4ed8, 0 8px 18px rgba(0, 240, 255, 0.4);
 
-  --tab-bookmarks-color: #ec4899;
-  --tab-bookmarks-bg: rgba(236, 72, 153, 0.14);
-  --tab-bookmarks-border: rgba(236, 72, 153, 0.48);
-  --tab-bookmarks-glow: rgba(236, 72, 153, 0.45);
-  --tab-bookmarks-gradient: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  --tab-bookmarks-3d: 0 4px 0 #6d28d9, 0 8px 18px rgba(236, 72, 153, 0.4);
+  --tab-bookmarks-color: #fb7185;
+  --tab-bookmarks-bg: rgba(251, 113, 133, 0.14);
+  --tab-bookmarks-border: rgba(251, 113, 133, 0.48);
+  --tab-bookmarks-glow: rgba(251, 113, 133, 0.45);
+  --tab-bookmarks-gradient: linear-gradient(135deg, #fb7185 0%, #e11d48 100%);
+  --tab-bookmarks-3d: 0 4px 0 #9f1239, 0 8px 18px rgba(251, 113, 133, 0.4);
 
   --tab-offline-color: #f59e0b;
   --tab-offline-bg: rgba(245, 158, 11, 0.14);
@@ -552,56 +567,255 @@
 
 /* ==========================================================================
    13 ДИНАМИЧЕСКИХ АКЦЕНТНЫХ ЦВЕТОВ (STORM AURORA FLUID ACCENTS)
+   Полное перекрытие акцентных границ, свечения, карточек и 3D-кнопок
    ========================================================================== */
-[data-accent="violet"]   { --accent: #8b5cf6; --accent-secondary: #6d28d9; --accent-glow: rgba(139, 92, 246, 0.42); --accent-subtle: rgba(139, 92, 246, 0.14); --border-hover: rgba(139, 92, 246, 0.6); --btn-3d-shadow: 0 4px 0 #5b21b6, 0 8px 16px rgba(139, 92, 246, 0.35); }
-[data-accent="cyan"]     { --accent: #06b6d4; --accent-secondary: #0284c7; --accent-glow: rgba(6, 182, 212, 0.42); --accent-subtle: rgba(6, 182, 212, 0.14); --border-hover: rgba(6, 182, 212, 0.6); --btn-3d-shadow: 0 4px 0 #0e7490, 0 8px 16px rgba(6, 182, 212, 0.35); }
-[data-accent="blue"]     { --accent: #3b82f6; --accent-secondary: #1d4ed8; --accent-glow: rgba(59, 130, 246, 0.42); --accent-subtle: rgba(59, 130, 246, 0.14); --border-hover: rgba(59, 130, 246, 0.6); --btn-3d-shadow: 0 4px 0 #1e40af, 0 8px 16px rgba(59, 130, 246, 0.35); }
-[data-accent="indigo"]   { --accent: #6366f1; --accent-secondary: #4338ca; --accent-glow: rgba(99, 102, 241, 0.42); --accent-subtle: rgba(99, 102, 241, 0.14); --border-hover: rgba(99, 102, 241, 0.6); --btn-3d-shadow: 0 4px 0 #3730a3, 0 8px 16px rgba(99, 102, 241, 0.35); }
-[data-accent="teal"]     { --accent: #14b8a6; --accent-secondary: #0f766e; --accent-glow: rgba(20, 184, 166, 0.42); --accent-subtle: rgba(20, 184, 166, 0.14); --border-hover: rgba(20, 184, 166, 0.6); --btn-3d-shadow: 0 4px 0 #115e59, 0 8px 16px rgba(20, 184, 166, 0.35); }
-[data-accent="emerald"]  { --accent: #10b981; --accent-secondary: #059669; --accent-glow: rgba(16, 185, 129, 0.42); --accent-subtle: rgba(16, 185, 129, 0.14); --border-hover: rgba(16, 185, 129, 0.6); --btn-3d-shadow: 0 4px 0 #047857, 0 8px 16px rgba(16, 185, 129, 0.35); }
-[data-accent="lime"]     { --accent: #84cc16; --accent-secondary: #65a30d; --accent-glow: rgba(132, 204, 22, 0.42); --accent-subtle: rgba(132, 204, 22, 0.14); --border-hover: rgba(132, 204, 22, 0.6); --btn-3d-shadow: 0 4px 0 #4d7c0f, 0 8px 16px rgba(132, 204, 22, 0.35); }
-[data-accent="amber"]    { --accent: #f59e0b; --accent-secondary: #d97706; --accent-glow: rgba(245, 158, 11, 0.42); --accent-subtle: rgba(245, 158, 11, 0.14); --border-hover: rgba(245, 158, 11, 0.6); --btn-3d-shadow: 0 4px 0 #b45309, 0 8px 16px rgba(245, 158, 11, 0.35); }
-[data-accent="orange"]   { --accent: #f97316; --accent-secondary: #ea580c; --accent-glow: rgba(249, 115, 22, 0.42); --accent-subtle: rgba(249, 115, 22, 0.14); --border-hover: rgba(249, 115, 22, 0.6); --btn-3d-shadow: 0 4px 0 #c2410c, 0 8px 16px rgba(249, 115, 22, 0.35); }
-[data-accent="crimson"]  { --accent: #ef4444; --accent-secondary: #dc2626; --accent-glow: rgba(239, 68, 68, 0.42); --accent-subtle: rgba(239, 68, 68, 0.14); --border-hover: rgba(239, 68, 68, 0.6); --btn-3d-shadow: 0 4px 0 #b91c1c, 0 8px 16px rgba(239, 68, 68, 0.35); }
-[data-accent="rose"]     { --accent: #f43f5e; --accent-secondary: #e11d48; --accent-glow: rgba(244, 63, 94, 0.42); --accent-subtle: rgba(244, 63, 94, 0.14); --border-hover: rgba(244, 63, 94, 0.6); --btn-3d-shadow: 0 4px 0 #be123c, 0 8px 16px rgba(244, 63, 94, 0.35); }
-[data-accent="magenta"]  { --accent: #ec4899; --accent-secondary: #db2777; --accent-glow: rgba(236, 72, 153, 0.42); --accent-subtle: rgba(236, 72, 153, 0.14); --border-hover: rgba(236, 72, 153, 0.6); --btn-3d-shadow: 0 4px 0 #be185d, 0 8px 16px rgba(236, 72, 153, 0.35); }
-[data-accent="platinum"] { --accent: #e2e8f0; --accent-secondary: #94a3b8; --accent-glow: rgba(226, 232, 240, 0.38); --accent-subtle: rgba(226, 232, 240, 0.14); --border-hover: rgba(226, 232, 240, 0.6); --btn-3d-shadow: 0 4px 0 #475569, 0 8px 16px rgba(226, 232, 240, 0.3); }
+html[data-accent="violet"] {
+  --accent: #8b5cf6;
+  --accent-secondary: #6d28d9;
+  --accent-glow: rgba(139, 92, 246, 0.45);
+  --accent-subtle: rgba(139, 92, 246, 0.16);
+  --border-color: rgba(139, 92, 246, 0.34);
+  --border-subtle: rgba(139, 92, 246, 0.12);
+  --border-hover: rgba(139, 92, 246, 0.65);
+  --glass-specular: rgba(139, 92, 246, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(139, 92, 246, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(139, 92, 246, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(139, 92, 246, 0.26);
+  --btn-3d-shadow: 0 4px 0 #5b21b6, 0 8px 16px rgba(139, 92, 246, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #5b21b6, 0 3px 8px rgba(139, 92, 246, 0.22);
+}
+
+html[data-accent="cyan"] {
+  --accent: #06b6d4;
+  --accent-secondary: #0284c7;
+  --accent-glow: rgba(6, 182, 212, 0.45);
+  --accent-subtle: rgba(6, 182, 212, 0.16);
+  --border-color: rgba(6, 182, 212, 0.34);
+  --border-subtle: rgba(6, 182, 212, 0.12);
+  --border-hover: rgba(6, 182, 212, 0.65);
+  --glass-specular: rgba(6, 182, 212, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(6, 182, 212, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(6, 182, 212, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(6, 182, 212, 0.26);
+  --btn-3d-shadow: 0 4px 0 #0e7490, 0 8px 16px rgba(6, 182, 212, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #0e7490, 0 3px 8px rgba(6, 182, 212, 0.22);
+}
+
+html[data-accent="blue"] {
+  --accent: #3b82f6;
+  --accent-secondary: #1d4ed8;
+  --accent-glow: rgba(59, 130, 246, 0.45);
+  --accent-subtle: rgba(59, 130, 246, 0.16);
+  --border-color: rgba(59, 130, 246, 0.34);
+  --border-subtle: rgba(59, 130, 246, 0.12);
+  --border-hover: rgba(59, 130, 246, 0.65);
+  --glass-specular: rgba(59, 130, 246, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(59, 130, 246, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(59, 130, 246, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(59, 130, 246, 0.26);
+  --btn-3d-shadow: 0 4px 0 #1e40af, 0 8px 16px rgba(59, 130, 246, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #1e40af, 0 3px 8px rgba(59, 130, 246, 0.22);
+}
+
+html[data-accent="indigo"] {
+  --accent: #6366f1;
+  --accent-secondary: #4338ca;
+  --accent-glow: rgba(99, 102, 241, 0.45);
+  --accent-subtle: rgba(99, 102, 241, 0.16);
+  --border-color: rgba(99, 102, 241, 0.34);
+  --border-subtle: rgba(99, 102, 241, 0.12);
+  --border-hover: rgba(99, 102, 241, 0.65);
+  --glass-specular: rgba(99, 102, 241, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(99, 102, 241, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(99, 102, 241, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(99, 102, 241, 0.26);
+  --btn-3d-shadow: 0 4px 0 #3730a3, 0 8px 16px rgba(99, 102, 241, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #3730a3, 0 3px 8px rgba(99, 102, 241, 0.22);
+}
+
+html[data-accent="teal"] {
+  --accent: #14b8a6;
+  --accent-secondary: #0f766e;
+  --accent-glow: rgba(20, 184, 166, 0.45);
+  --accent-subtle: rgba(20, 184, 166, 0.16);
+  --border-color: rgba(20, 184, 166, 0.34);
+  --border-subtle: rgba(20, 184, 166, 0.12);
+  --border-hover: rgba(20, 184, 166, 0.65);
+  --glass-specular: rgba(20, 184, 166, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(20, 184, 166, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(20, 184, 166, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(20, 184, 166, 0.26);
+  --btn-3d-shadow: 0 4px 0 #115e59, 0 8px 16px rgba(20, 184, 166, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #115e59, 0 3px 8px rgba(20, 184, 166, 0.22);
+}
+
+html[data-accent="emerald"] {
+  --accent: #10b981;
+  --accent-secondary: #059669;
+  --accent-glow: rgba(16, 185, 129, 0.45);
+  --accent-subtle: rgba(16, 185, 129, 0.16);
+  --border-color: rgba(16, 185, 129, 0.34);
+  --border-subtle: rgba(16, 185, 129, 0.12);
+  --border-hover: rgba(16, 185, 129, 0.65);
+  --glass-specular: rgba(16, 185, 129, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(16, 185, 129, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(16, 185, 129, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(16, 185, 129, 0.26);
+  --btn-3d-shadow: 0 4px 0 #047857, 0 8px 16px rgba(16, 185, 129, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #047857, 0 3px 8px rgba(16, 185, 129, 0.22);
+}
+
+html[data-accent="lime"] {
+  --accent: #84cc16;
+  --accent-secondary: #65a30d;
+  --accent-glow: rgba(132, 204, 22, 0.45);
+  --accent-subtle: rgba(132, 204, 22, 0.16);
+  --border-color: rgba(132, 204, 22, 0.34);
+  --border-subtle: rgba(132, 204, 22, 0.12);
+  --border-hover: rgba(132, 204, 22, 0.65);
+  --glass-specular: rgba(132, 204, 22, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(132, 204, 22, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(132, 204, 22, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(132, 204, 22, 0.26);
+  --btn-3d-shadow: 0 4px 0 #4d7c0f, 0 8px 16px rgba(132, 204, 22, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #4d7c0f, 0 3px 8px rgba(132, 204, 22, 0.22);
+}
+
+html[data-accent="amber"] {
+  --accent: #f59e0b;
+  --accent-secondary: #d97706;
+  --accent-glow: rgba(245, 158, 11, 0.45);
+  --accent-subtle: rgba(245, 158, 11, 0.16);
+  --border-color: rgba(245, 158, 11, 0.34);
+  --border-subtle: rgba(245, 158, 11, 0.12);
+  --border-hover: rgba(245, 158, 11, 0.65);
+  --glass-specular: rgba(245, 158, 11, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(245, 158, 11, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(245, 158, 11, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(245, 158, 11, 0.26);
+  --btn-3d-shadow: 0 4px 0 #b45309, 0 8px 16px rgba(245, 158, 11, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #b45309, 0 3px 8px rgba(245, 158, 11, 0.22);
+}
+
+html[data-accent="orange"] {
+  --accent: #f97316;
+  --accent-secondary: #ea580c;
+  --accent-glow: rgba(249, 115, 22, 0.45);
+  --accent-subtle: rgba(249, 115, 22, 0.16);
+  --border-color: rgba(249, 115, 22, 0.34);
+  --border-subtle: rgba(249, 115, 22, 0.12);
+  --border-hover: rgba(249, 115, 22, 0.65);
+  --glass-specular: rgba(249, 115, 22, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(249, 115, 22, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(249, 115, 22, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(249, 115, 22, 0.26);
+  --btn-3d-shadow: 0 4px 0 #c2410c, 0 8px 16px rgba(249, 115, 22, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #c2410c, 0 3px 8px rgba(249, 115, 22, 0.22);
+}
+
+html[data-accent="crimson"] {
+  --accent: #ef4444;
+  --accent-secondary: #dc2626;
+  --accent-glow: rgba(239, 68, 68, 0.45);
+  --accent-subtle: rgba(239, 68, 68, 0.16);
+  --border-color: rgba(239, 68, 68, 0.34);
+  --border-subtle: rgba(239, 68, 68, 0.12);
+  --border-hover: rgba(239, 68, 68, 0.65);
+  --glass-specular: rgba(239, 68, 68, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(239, 68, 68, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(239, 68, 68, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(239, 68, 68, 0.26);
+  --btn-3d-shadow: 0 4px 0 #b91c1c, 0 8px 16px rgba(239, 68, 68, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #b91c1c, 0 3px 8px rgba(239, 68, 68, 0.22);
+}
+
+html[data-accent="rose"] {
+  --accent: #f43f5e;
+  --accent-secondary: #e11d48;
+  --accent-glow: rgba(244, 63, 94, 0.45);
+  --accent-subtle: rgba(244, 63, 94, 0.16);
+  --border-color: rgba(244, 63, 94, 0.34);
+  --border-subtle: rgba(244, 63, 94, 0.12);
+  --border-hover: rgba(244, 63, 94, 0.65);
+  --glass-specular: rgba(244, 63, 94, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(244, 63, 94, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(244, 63, 94, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(244, 63, 94, 0.26);
+  --btn-3d-shadow: 0 4px 0 #be123c, 0 8px 16px rgba(244, 63, 94, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #be123c, 0 3px 8px rgba(244, 63, 94, 0.22);
+}
+
+html[data-accent="magenta"] {
+  --accent: #ec4899;
+  --accent-secondary: #db2777;
+  --accent-glow: rgba(236, 72, 153, 0.45);
+  --accent-subtle: rgba(236, 72, 153, 0.16);
+  --border-color: rgba(236, 72, 153, 0.34);
+  --border-subtle: rgba(236, 72, 153, 0.12);
+  --border-hover: rgba(236, 72, 153, 0.65);
+  --glass-specular: rgba(236, 72, 153, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(236, 72, 153, 0.16);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(236, 72, 153, 0.32);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(236, 72, 153, 0.26);
+  --btn-3d-shadow: 0 4px 0 #be185d, 0 8px 16px rgba(236, 72, 153, 0.38);
+  --btn-3d-shadow-press: 0 1px 0 #be185d, 0 3px 8px rgba(236, 72, 153, 0.22);
+}
+
+html[data-accent="platinum"] {
+  --accent: #e2e8f0;
+  --accent-secondary: #94a3b8;
+  --accent-glow: rgba(226, 232, 240, 0.4);
+  --accent-subtle: rgba(226, 232, 240, 0.16);
+  --border-color: rgba(226, 232, 240, 0.34);
+  --border-subtle: rgba(226, 232, 240, 0.12);
+  --border-hover: rgba(226, 232, 240, 0.65);
+  --glass-specular: rgba(226, 232, 240, 0.22);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.72), 0 0 16px rgba(226, 232, 240, 0.14);
+  --card-hover-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 26px rgba(226, 232, 240, 0.28);
+  --dock-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 22px rgba(226, 232, 240, 0.22);
+  --btn-3d-shadow: 0 4px 0 #475569, 0 8px 16px rgba(226, 232, 240, 0.32);
+  --btn-3d-shadow-press: 0 1px 0 #475569, 0 3px 8px rgba(226, 232, 240, 0.2);
+}
+
+/* Гармонизация вторичного текста на тёмных темах при выборе кастомного акцента */
+html[data-accent]:not([data-theme="STORM DAY"]) {
+  --text-secondary: #f1f5f9;
+  --text-muted: color-mix(in srgb, var(--accent) 48%, #94a3b8);
+}
 
 /* ==========================================================================
    10 ДИНАМИЧЕСКИХ ШРИФТОВ И МАСШТАБИРОВАНИЕ ИНТЕРФЕЙСА
    ========================================================================== */
-[data-font="Inter"]          { --storm-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-[data-font="PlusJakartaSans"]{ --storm-font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; }
-[data-font="GeistSans"]      { --storm-font-family: 'Geist', 'Inter', system-ui, sans-serif; }
-[data-font="Manrope"]        { --storm-font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif; }
-[data-font="Outfit"]         { --storm-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif; }
-[data-font="Montserrat"]     { --storm-font-family: 'Montserrat', 'Inter', 'Segoe UI', sans-serif; }
-[data-font="Rubik"]          { --storm-font-family: 'Rubik', 'Inter', 'Segoe UI', sans-serif; }
-[data-font="Orbitron"]       { --storm-font-family: 'Orbitron', 'Rajdhani', 'Inter', sans-serif; }
-[data-font="JetBrainsMono"]  { --storm-font-family: 'JetBrains Mono', 'Consolas', monospace; }
-[data-font="FiraCode"]       { --storm-font-family: 'Fira Code', 'Cascadia Code', monospace; }
+html[data-font="Inter"]          { --storm-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+html[data-font="PlusJakartaSans"]{ --storm-font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; }
+html[data-font="GeistSans"]      { --storm-font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+html[data-font="Manrope"]        { --storm-font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif; }
+html[data-font="Outfit"]         { --storm-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif; }
+html[data-font="Montserrat"]     { --storm-font-family: 'Montserrat', 'Inter', 'Segoe UI', sans-serif; }
+html[data-font="Rubik"]          { --storm-font-family: 'Rubik', 'Inter', 'Segoe UI', sans-serif; }
+html[data-font="Orbitron"]       { --storm-font-family: 'Orbitron', 'Rajdhani', 'Inter', sans-serif; }
+html[data-font="JetBrainsMono"]  { --storm-font-family: 'JetBrains Mono', 'Consolas', monospace; }
+html[data-font="FiraCode"]       { --storm-font-family: 'Fira Code', 'Cascadia Code', monospace; }
 
-html, body, button, input, select, textarea {
+html, body, button, input, select, textarea,
+.storm-modal, .storm-navbar, .media-card, .profile-modal-dialog {
   font-family: var(--storm-font-family) !important;
 }
 
-body {
+html {
+  font-size: calc(16px * var(--storm-ui-scale, 1));
+}
+
+.storm-sticky-header-container,
+main,
+.storm-footer,
+.storm-mobile-bottom-nav,
+#storm-mobile-drawer {
   zoom: var(--storm-ui-scale, 1);
 }
 
-/* Статусные глобальные цвета */
-:root {
-  --color-green: #10b981;
-  --color-green-glow: rgba(16, 185, 129, 0.4);
-  --color-cyan: #06b6d4;
-  --color-cyan-glow: rgba(6, 182, 212, 0.4);
-  --color-amber: #f59e0b;
-  --color-amber-glow: rgba(245, 158, 11, 0.4);
-  --color-orange: #f97316;
-  --color-orange-glow: rgba(249, 115, 22, 0.4);
-  --color-red: #ef4444;
-  --color-red-glow: rgba(239, 68, 68, 0.4);
-  --color-purple: #8b5cf6;
-  --color-purple-glow: rgba(139, 92, 246, 0.4);
+.storm-modal-backdrop:not(#cinema-modal) > .storm-modal {
+  zoom: var(--storm-ui-scale, 1);
+  max-width: min(1040px, calc(96vw / var(--storm-ui-scale, 1))) !important;
+  max-height: calc(92dvh / var(--storm-ui-scale, 1)) !important;
 }
-

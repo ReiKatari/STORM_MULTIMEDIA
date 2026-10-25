@@ -173,7 +173,33 @@ export const translations = {
     card_menu_bookmark: "Статус закладки",
     card_menu_watch_together: "Смотреть вместе",
     card_menu_offline: "Офлайн-просмотр",
-    card_menu_details: "Подробнее"
+    card_menu_details: "Подробнее",
+    profile_tab_overview: "📊 Обзор и настройки",
+    profile_tab_edit: "🎨 Аватарка и данные",
+    profile_tab_security: "🛡️ Безопасность и бэкап",
+    profile_custom_header: "Персонализация и оформление STORM AURORA FLUID",
+    profile_theme_title: "Тема оформления",
+    profile_theme_desc: "Нажмите на карточку стиля для мгновенного переключения",
+    profile_accent_title: "Акцентный цвет подсветки",
+    profile_accent_desc: "13 динамических неоновых оттенков для кнопок и свечения",
+    profile_font_title: "Шрифт интерфейса",
+    profile_font_desc: "10 динамических гарнитур STORM AURORA FLUID",
+    profile_scale_title: "Масштаб интерфейса",
+    profile_scale_desc: "Динамическое масштабирование элементов (85% – 135%)",
+    profile_lang_desc: "11 локализаций STORM MULTIMEDIA (автоопределение языка ОС)",
+    profile_player_header: "Плеер, качество 4K UHD и защита от рекламы",
+    profile_default_player_title: "Плеер по умолчанию",
+    profile_default_player_desc: "Открывает любые фильмы и сериалы сразу в чистом мультитрековом плеере с автопропуском заставок",
+    profile_adblock_title: "Блокировка рекламы и VAST-вставок (AdShield)",
+    profile_adblock_desc: "Вырезание рекламных роликов, баннеров и ускорение вставок в 16 раз",
+    profile_cleanview_title: "Маскирование водяных знаков (CleanView)",
+    profile_cleanview_desc: "Бесшовное оптическое скрытие вшитых логотипов букмекеров",
+    profile_autoskip_title: "Автопропуск заставок и титров (Smart Skip)",
+    profile_autoskip_desc: "Автоматический переход через опенинги и показ кнопки пропуска",
+    profile_autonext_title: "Автопереключение серий и резервный плеер",
+    profile_autonext_desc: "Бесшовный переход к следующей серии и автозамена при сбое источника",
+    profile_ambilight_title: "Кинотеатральная подсветка Ambilight",
+    profile_ambilight_desc: "Динамическое фоновое свечение вокруг экрана плеера"
   },
 
   en: {
@@ -335,7 +361,33 @@ export const translations = {
     card_menu_bookmark: "Bookmark status",
     card_menu_watch_together: "Watch together",
     card_menu_offline: "Offline viewing",
-    card_menu_details: "Details"
+    card_menu_details: "Details",
+    profile_tab_overview: "📊 Overview and settings",
+    profile_tab_edit: "🎨 Avatar and profile",
+    profile_tab_security: "🛡️ Security and backup",
+    profile_custom_header: "Personalization and appearance STORM AURORA FLUID",
+    profile_theme_title: "Interface theme",
+    profile_theme_desc: "Click any style swatch for instant live switching",
+    profile_accent_title: "Accent glow color",
+    profile_accent_desc: "13 dynamic neon shades for buttons and aura",
+    profile_font_title: "Interface font",
+    profile_font_desc: "10 dynamic typefaces STORM AURORA FLUID",
+    profile_scale_title: "Interface scale",
+    profile_scale_desc: "Dynamic UI scaling (85% – 135%)",
+    profile_lang_desc: "11 localizations of STORM MULTIMEDIA (OS auto-detection)",
+    profile_player_header: "Player, 4K UHD quality and ad protection",
+    profile_default_player_title: "Default player",
+    profile_default_player_desc: "Opens movies and series directly in the clean multi-audio player",
+    profile_adblock_title: "Ad and VAST blocker (AdShield)",
+    profile_adblock_desc: "Cuts video ads, banners and speeds up ad rolls 16x",
+    profile_cleanview_title: "Watermark masking (CleanView)",
+    profile_cleanview_desc: "Seamless optical masking of embedded bookmaker logos",
+    profile_autoskip_title: "Auto-skip intros and credits (Smart Skip)",
+    profile_autoskip_desc: "Automatically jumps past openings and shows skip button",
+    profile_autonext_title: "Auto-next episode and backup player",
+    profile_autonext_desc: "Seamless transition to next episode and auto-fallback on stream error",
+    profile_ambilight_title: "Cinematic Ambilight glow",
+    profile_ambilight_desc: "Dynamic ambient halo around the player screen"
   },
 
   de: {
@@ -1469,10 +1521,38 @@ export function getLanguage() {
 
 export function setLanguage(lang) {
   if (translations[lang]) {
+    const prevLang = currentLang;
     currentLang = lang;
     localStorage.setItem('storm_lang', lang);
     document.documentElement.lang = lang;
+
+    ['profile-lang-select', 'header-lang-select', 'mobile-drawer-lang-select'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (sel && sel.value !== lang) sel.value = lang;
+    });
+
     applyTranslations();
+
+    try {
+      const rawA = JSON.parse(localStorage.getItem('storm_lang_history') || '[]');
+      const rawB = JSON.parse(localStorage.getItem('storm_langs_history') || '[]');
+      const merged = Array.from(new Set([
+        ...(Array.isArray(rawA) ? rawA : []),
+        ...(Array.isArray(rawB) ? rawB : []),
+        prevLang,
+        lang
+      ])).filter(Boolean);
+      const jsonStr = JSON.stringify(merged);
+      localStorage.setItem('storm_lang_history', jsonStr);
+      localStorage.setItem('storm_langs_history', jsonStr);
+      import('./achievements.js?v=1.0.51').then(m => {
+        m.trackClientAction?.('switch_lang', { langs_count: merged.length, lang });
+      }).catch(() => {});
+    } catch (_) {}
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('storm:language-changed', { detail: { lang } }));
+    }
   }
 }
 

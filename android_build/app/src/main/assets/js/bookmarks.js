@@ -1,16 +1,20 @@
+import { trackClientAction } from './achievements.js?v=1.0.51';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js';
-import { t } from './i18n.js';
-import { normalizeStatus } from './status-icons.js';
+import { getToken, showToast } from './auth.js?v=1.0.51';
+import { t } from './i18n.js?v=1.0.51';
+import { normalizeStatus } from './status-icons.js?v=1.0.51';
 
 let memoryBookmarksCache = [];
 
 export function setMemoryBookmarksCache(bookmarks = []) {
   if (Array.isArray(bookmarks)) {
     memoryBookmarksCache = bookmarks;
+    if (typeof window !== 'undefined') {
+      window.__STORM_MEMORY_BOOKMARKS__ = bookmarks;
+    }
   }
 }
 
@@ -576,6 +580,11 @@ export async function saveBookmarkStatus(mediaData, status) {
       localStorage.setItem(`storm_status_title_${normTitle}`, normStatus);
     }
     syncLocalBookmarkItem(mediaData, normStatus);
+    if (normStatus && normStatus !== 'none' && normStatus !== 'not_started') {
+      const bList = getLocalBookmarksList();
+      trackClientAction('add_bookmark', { total_bookmarks: bList.length });
+      trackClientAction('update_status', { status: normStatus });
+    }
   } catch {}
 
   // Если статус завершён/брошен/не буду — немедленно удаляем из Продолжить просмотр
@@ -1364,9 +1373,33 @@ export async function createCustomCollection(title, description = '', color = '#
       throw new Error(errJson.error || 'Ошибка создания списка');
     }
     const newList = await res.json();
+    try {
+      const localLists = JSON.parse(localStorage.getItem('storm_custom_lists') || '[]');
+      if (Array.isArray(localLists)) {
+        localLists.unshift(newList);
+        localStorage.setItem('storm_custom_lists', JSON.stringify(localLists));
+        trackClientAction('create_list', { total_lists: localLists.length });
+      }
+    } catch (_) {}
     showToast(t('msg_list_created'), 'success');
     return newList;
   } catch (err) {
+    try {
+      const localLists = JSON.parse(localStorage.getItem('storm_custom_lists') || '[]');
+      const fallbackList = {
+        id: 'local_' + Date.now(),
+        title: String(title || 'Моя коллекция').trim(),
+        description,
+        color,
+        items_count: 0,
+        created_at: Date.now()
+      };
+      const nextLists = Array.isArray(localLists) ? [fallbackList, ...localLists] : [fallbackList];
+      localStorage.setItem('storm_custom_lists', JSON.stringify(nextLists));
+      trackClientAction('create_list', { total_lists: nextLists.length });
+      showToast(t('msg_list_created'), 'success');
+      return fallbackList;
+    } catch (_) {}
     showToast(err.message, 'warning');
     return null;
   }

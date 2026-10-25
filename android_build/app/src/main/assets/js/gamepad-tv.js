@@ -4,8 +4,8 @@
    Leanback HUD 2.0 с динамическим авто-затуханием и полной навигацией во всех меню
    ========================================================================== */
 
-import { showToast } from './auth.js';
-import { trackClientAction } from './achievements.js';
+import { showToast } from './auth.js?v=1.0.51';
+import { trackClientAction } from './achievements.js?v=1.0.51';
 
 let isTvModeActive = false;
 let gamepadLoopId = null;
@@ -360,7 +360,7 @@ function attachTvHudListeners(hud) {
   hud.querySelector('#tv-hud-btn-play')?.addEventListener('click', () => handlePlayerTvPlayPause());
   hud.querySelector('#tv-hud-btn-episodes')?.addEventListener('click', () => focusPlayerEpisodes());
   hud.querySelector('#tv-hud-btn-ambilight')?.addEventListener('click', () => {
-    document.getElementById('toggle-ambilight-btn')?.click();
+    (document.getElementById('studio-tab-ambilight') || document.getElementById('toggle-ambilight-btn'))?.click();
   });
 }
 
@@ -639,7 +639,7 @@ function handleGamepadInput(gp) {
 
     // Кнопка Y (Ambilight)
     if (gp.buttons[3]?.pressed && canTrigger(3, 350)) {
-      document.getElementById('toggle-ambilight-btn')?.click();
+      (document.getElementById('studio-tab-ambilight') || document.getElementById('toggle-ambilight-btn'))?.click();
       return;
     }
 
@@ -878,7 +878,7 @@ function handleSpatialKeyboard(e) {
   if (k === 'ColorF2Yellow' || c === 405) {
     e.preventDefault();
     if (isPlayerOpen) {
-      document.getElementById('toggle-ambilight-btn')?.click();
+      (document.getElementById('studio-tab-ambilight') || document.getElementById('toggle-ambilight-btn'))?.click();
     } else {
       const micBtn = document.getElementById('voice-search-btn');
       if (micBtn) micBtn.click();

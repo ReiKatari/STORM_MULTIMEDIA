@@ -610,62 +610,101 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
   }
 
   const rawTitle = String(title || '').replace(/\s*[\(\[]?\s*4[KkКк]\s*(?:Ultra\s*HD|UHD)?\s*[\)\]]?/gi, '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
-  const rawOrig = String(original_title || '').trim();
+  const rawOrig = String(original_title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
   if (!rawTitle && !rawOrig) return null;
 
-  const cacheKey = `match:${rawTitle.toLowerCase()}:${rawOrig.toLowerCase()}:${year || ''}:${Boolean(is_series)}`;
+  const cacheKey = `match_v2:${rawTitle.toLowerCase()}:${rawOrig.toLowerCase()}:${year || ''}:${Boolean(is_series)}`;
   const cached = getCached(cacheKey);
-  if (cached) return cached;
+  if (cached !== null) return cached || null;
 
-  const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+  const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').replace(/\s+/g, ' ').trim();
+  const hasAllWords = (haystack, needle) => {
+    if (!haystack || !needle) return false;
+    const hSet = new Set(haystack.split(' ').filter(Boolean));
+    const nWords = needle.split(' ').filter(w => w.length >= 2);
+    if (!nWords.length) return false;
+    return nWords.every(w => hSet.has(w));
+  };
+
   const targetTitle = norm(rawTitle);
   const targetOrig = norm(rawOrig);
   const basePart = rawTitle ? rawTitle.split(/[.:—–-]/)[0].trim() : '';
   const targetBase = (basePart && basePart.length >= 4 && basePart.toLowerCase() !== rawTitle.toLowerCase()) ? norm(basePart) : '';
   const targetYear = parseInt(year, 10) || 0;
 
-  let candidates = await searchLift(rawTitle || rawOrig, 15);
-  if (!candidates.length && rawOrig && rawOrig !== rawTitle) {
-    candidates = await searchLift(rawOrig, 15);
+  const searchPromises = [];
+  if (rawTitle) searchPromises.push(searchLift(rawTitle, 15));
+  if (rawOrig && rawOrig.toLowerCase() !== rawTitle.toLowerCase()) {
+    searchPromises.push(searchLift(rawOrig, 15));
   }
-  if (basePart && basePart.length >= 3 && basePart.toLowerCase() !== rawTitle.toLowerCase()) {
-    const baseCandidates = await searchLift(basePart, 10);
-    const seenIds = new Set(candidates.map(c => c.lift_id));
-    for (const bc of baseCandidates) {
-      if (bc && !seenIds.has(bc.lift_id)) {
-        seenIds.add(bc.lift_id);
-        candidates.push(bc);
+  if (basePart && basePart.length >= 4 && basePart.toLowerCase() !== rawTitle.toLowerCase()) {
+    searchPromises.push(searchLift(basePart, 10));
+  }
+
+  const searchBatches = await Promise.all(searchPromises);
+  const candidates = [];
+  const seenIds = new Set();
+  for (const batch of searchBatches) {
+    if (!Array.isArray(batch)) continue;
+    for (const item of batch) {
+      if (item && item.lift_id && !seenIds.has(item.lift_id)) {
+        seenIds.add(item.lift_id);
+        candidates.push(item);
       }
     }
   }
-  if (!candidates.length) return null;
+
+  if (!candidates.length) {
+    setCached(cacheKey, '', 10 * 60 * 1000);
+    return null;
+  }
 
   let bestItem = null;
   let bestScore = -999;
 
   for (const item of candidates) {
-    let score = 0;
+    let titleScore = 0;
     const cTitle = norm(item.title);
     const cOrig = norm(item.original_title);
     const cBase = norm(String(item.title || '').split(/[.:—–-]/)[0]);
     const cYear = parseInt(item.year, 10) || 0;
 
-    if (targetTitle && cTitle === targetTitle) score += 120;
-    else if (targetTitle && (cTitle.startsWith(targetTitle) || targetTitle.startsWith(cTitle))) score += 65;
-    else if (targetBase && cBase && targetBase === cBase) score += 75;
+    if (targetTitle && cTitle === targetTitle) {
+      titleScore = Math.max(titleScore, 130);
+    } else if (targetTitle && cTitle && targetTitle.split(' ').length >= 2 && (cTitle.startsWith(targetTitle + ' ') || (cBase === targetTitle && cBase.split(' ').length >= 2))) {
+      titleScore = Math.max(titleScore, 90);
+    } else if (targetBase && cBase && targetBase.split(' ').length >= 2 && targetBase === cBase) {
+      titleScore = Math.max(titleScore, 85);
+    }
 
-    if (targetOrig && cOrig && cOrig === targetOrig) score += 130;
-    else if (targetOrig && cOrig && (cOrig.includes(targetOrig) || targetOrig.includes(cOrig))) score += 70;
+    if (targetOrig && cOrig && cOrig === targetOrig) {
+      titleScore = Math.max(titleScore, 140);
+    } else if (targetOrig && cOrig && targetOrig.length >= 5 && (cOrig.startsWith(targetOrig + ' ') || (hasAllWords(cOrig, targetOrig) && Math.abs(cOrig.length - targetOrig.length) <= 12))) {
+      titleScore = Math.max(titleScore, 95);
+    }
 
+    // Строго требуем реальное совпадение названия или оригинального названия (год и тип не могут вытянуть чужой фильм)
+    if (titleScore < 85) continue;
+
+    // Для полнометражных фильмов с известным годом строго отклоняем релизы других лет (разница > 2 лет)
+    if (targetYear && cYear) {
+      const diff = Math.abs(targetYear - cYear);
+      if (!is_series && diff > 2) continue;
+      if (is_series && diff > 5 && titleScore < 130) continue;
+    }
+
+    let score = titleScore;
     if (targetYear && cYear) {
       const diff = Math.abs(targetYear - cYear);
       if (diff === 0) score += 60;
       else if (diff === 1) score += 30;
-      else if (diff > 3) score -= 50;
+      else if (diff === 2) score += 5;
+      else score -= 40;
     }
 
-    if (is_series !== undefined && Boolean(item.is_series) === Boolean(is_series)) {
-      score += 25;
+    if (is_series !== undefined) {
+      if (Boolean(item.is_series) === Boolean(is_series)) score += 25;
+      else score -= 35;
     }
 
     if (score > bestScore) {
@@ -674,9 +713,10 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
     }
   }
 
-  if (bestItem && bestScore >= 60) {
+  if (bestItem && bestScore >= 115) {
     return setCached(cacheKey, bestItem.lift_id, 30 * 60 * 1000);
   }
+  setCached(cacheKey, '', 10 * 60 * 1000);
   return null;
 }
 

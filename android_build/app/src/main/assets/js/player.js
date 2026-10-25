@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.45';
-import { getUser, showToast } from './auth.js?v=1.0.45';
-import { t } from './i18n.js?v=1.0.45';
-import { trackClientAction } from './achievements.js?v=1.0.45';
-import { renderReviewsSection } from './reviews.js?v=1.0.45';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.0.45';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.45';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.45';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.45';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.45';
-import { saveMediaForOffline } from './offline-storage.js?v=1.0.45';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.45';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.45';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.45';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.45';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.45';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.51';
+import { getUser, showToast } from './auth.js?v=1.0.51';
+import { t } from './i18n.js?v=1.0.51';
+import { trackClientAction } from './achievements.js?v=1.0.51';
+import { renderReviewsSection } from './reviews.js?v=1.0.51';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.0.51';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.51';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.51';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.51';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.51';
+import { saveMediaForOffline } from './offline-storage.js?v=1.0.51';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.51';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.51';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.51';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.51';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.51';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -40,6 +40,27 @@ let currentEpisodeIndex = 1;
 let currentProgressPercent = 0;
 let iframeWatchInterval = null;
 let currentWatchTimeSeconds = 0;
+let hasCinemaHistoryEntry = false;
+let isClosingCinemaViaHistoryBack = false;
+
+function replaceIframeSrcNoHistory(iframe, newUrl) {
+  if (!iframe || !newUrl) return;
+  try {
+    const parent = iframe.parentNode;
+    if (parent) {
+      const fresh = iframe.cloneNode(false);
+      fresh.src = newUrl;
+      parent.replaceChild(fresh, iframe);
+      return fresh;
+    }
+    if (iframe.contentWindow && iframe.contentWindow.location) {
+      iframe.contentWindow.location.replace(newUrl);
+      return iframe;
+    }
+  } catch (_) {}
+  iframe.src = newUrl;
+  return iframe;
+}
 
 // Ночной звук (Web Audio Compressor)
 let audioCtx = null;
@@ -63,7 +84,41 @@ console.error = function(...args) {
 };
 
 // Ambilight конфигурация и пресеты
-let ambilightEnabled = false;
+let ambilightEnabled = localStorage.getItem('storm_ambilight') !== 'false';
+
+export function isAmbilightEnabled() {
+  ambilightEnabled = localStorage.getItem('storm_ambilight') !== 'false';
+  return ambilightEnabled;
+}
+
+export function setAmbilightEnabled(val) {
+  ambilightEnabled = Boolean(val);
+  try {
+    localStorage.setItem('storm_ambilight', ambilightEnabled ? 'true' : 'false');
+  } catch (_) {}
+  const profileToggle = document.getElementById('profile-ambilight-toggle');
+  if (profileToggle && profileToggle.checked !== ambilightEnabled) {
+    profileToggle.checked = ambilightEnabled;
+  }
+  const btn = document.getElementById('toggle-ambilight-btn');
+  if (btn) btn.classList.toggle('active', ambilightEnabled);
+  const studioTab = document.getElementById('studio-tab-ambilight');
+  if (studioTab) studioTab.classList.toggle('active-glow', ambilightEnabled);
+
+  const aura = document.getElementById('player-ambilight-aura');
+  if (ambilightEnabled) {
+    trackClientAction('use_ambilight');
+    const video = document.getElementById('storm-video-player');
+    startAmbilightLoop(video);
+  } else {
+    stopAmbilight();
+    if (aura) {
+      aura.classList.remove('active');
+      aura.style.opacity = '0';
+      aura.style.boxShadow = 'none';
+    }
+  }
+}
 let ambilightCanvas = null;
 let ambilightCtx = null;
 let ambilightRaf = null;
@@ -110,8 +165,17 @@ export function setAdblockEnabled(val) {
     const rawClean = localStorage.getItem('storm_cleanview_settings');
     const cleanObj = rawClean ? JSON.parse(rawClean) : {};
     cleanObj.adblockEnabled = adblockEnabled;
+    cleanObj.adSkipperEnabled = adblockEnabled;
     localStorage.setItem('storm_cleanview_settings', JSON.stringify(cleanObj));
   } catch (_) {}
+  const profileAdToggle = document.getElementById('profile-adblock-toggle');
+  if (profileAdToggle && profileAdToggle.checked !== adblockEnabled) {
+    profileAdToggle.checked = adblockEnabled;
+  }
+  const cinemaModal = document.getElementById('cinema-modal');
+  if (cinemaModal && cinemaModal.classList.contains('is-open') && currentActivePlayer?.url && !currentActivePlayer.url.includes('.m3u8')) {
+    playStreamUrl(currentActivePlayer.url);
+  }
 }
 
 // Однократная миграция плеера по умолчанию на «Lift 4K и FHD (Без рекламы • Все озвучки)» (lift_adfree)
@@ -122,14 +186,55 @@ try {
   }
 } catch (_) {}
 
+export function isAutoNextEnabled() {
+  return localStorage.getItem('storm_autonext_enabled') !== 'false';
+}
+
+export function setAutoNextEnabled(val) {
+  const enabled = Boolean(val);
+  try {
+    localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
+  } catch (_) {}
+  const toggleEl = document.getElementById('profile-autonext-toggle');
+  if (toggleEl && toggleEl.checked !== enabled) {
+    toggleEl.checked = enabled;
+  }
+}
+
 export function getPreferredDefaultPlayerId() {
   return localStorage.getItem('storm_default_player') || 'lift_adfree';
+}
+
+export function matchesPreferredPlayer(player, preferredId = getPreferredDefaultPlayerId()) {
+  if (!player || !preferredId) return false;
+  const pid = String(player.id || '').toLowerCase();
+  const pref = String(preferredId || '').toLowerCase();
+  if (pid === pref) return true;
+  if (pref === 'lift_adfree') return pid === 'lift' || pid.includes('lift');
+  if (pref === 'fanfilm4k_uhd') return pid === 'fanfilm_4k' || pid === 'fanfilm4k' || pid.includes('fanfilm');
+  if (pref === 'kinobox_universal') return pid === 'kinobox' || pid.includes('kinobox');
+  if (pref === 'kodik_direct') return pid === 'kodik_player' || pid === 'kodik' || pid.includes('kodik');
+  if (pref === 'vk_video_stream') return pid === 'vk_video' || pid.includes('vk_video');
+  if (pref === 'rutube_direct_hls') return pid === 'rutube_stream' || pid === 'rutube' || pid.includes('rutube');
+  return false;
 }
 
 export function setPreferredDefaultPlayerId(playerId) {
   const cleanId = String(playerId || 'lift_adfree').trim();
   localStorage.setItem('storm_default_player', cleanId);
   localStorage.setItem('storm_default_player_v42_migrated', '1');
+  const sel = document.getElementById('profile-default-player-select');
+  if (sel && sel.value !== cleanId) sel.value = cleanId;
+
+  const cinemaModal = document.getElementById('cinema-modal');
+  if (cinemaModal && cinemaModal.classList.contains('is-open') && Array.isArray(currentPlayers) && currentPlayers.length > 0) {
+    renderPlayerSources(currentPlayers);
+    const target = currentPlayers.find(p => matchesPreferredPlayer(p, cleanId) && p.status !== 'broken' && p.url);
+    if (target && (!currentActivePlayer || currentActivePlayer.id !== target.id)) {
+      selectPlayer(target);
+      updatePlayerTriggerInfo(target);
+    }
+  }
 }
 
 export function getSafePersonPhotoUrl(photo) {
@@ -416,6 +521,40 @@ function initFullscreenControls() {
           console.warn('[Player] Получен сигнал переключения на резервный плеер:', data.reason);
           switchToNextSource(true);
         }
+        if (data.type === 'STORM_SELECT_PLAYER_ID' && data.playerId) {
+          const targetP = Array.isArray(currentPlayers)
+            ? currentPlayers.find(p => p.id === data.playerId || p.type === data.playerId)
+            : null;
+          if (targetP) {
+            selectPlayer(targetP, true);
+          } else {
+            showToast('ℹ️ Выбранный источник недоступен для данного релиза', 'info');
+          }
+        }
+        if (data.type === 'STORM_IFRAME_ACTIVITY') {
+          showInPlayerControls();
+        }
+        if (data.type === 'STORM_IFRAME_TIME' && typeof data.currentTime === 'number') {
+          currentWatchTimeSeconds = Math.round(data.currentTime);
+          window.currentWatchProgressSec = data.currentTime;
+        }
+        if (data.type === 'STORM_LIFT_AUDIO_TRACKS' && Array.isArray(data.tracks) && data.tracks.length > 0) {
+          if (currentMedia) {
+            currentMedia.realAudioTracks = data.tracks.map((name, idx) => ({ id: String(idx), name: String(name) }));
+          }
+        }
+        if (data.type === 'STORM_PREMIERE_PLACEHOLDER_LOADED') {
+          const fbBanner = document.getElementById('player-fallback-banner');
+          if (fbBanner) fbBanner.style.display = 'none';
+        }
+        if (data.type === 'STORM_BOOKMARK_PLANNED' && currentMedia) {
+          currentMedia.user_status = 'planned';
+          try { localStorage.setItem(`storm_status_${currentMedia.id}`, 'planned'); } catch (_) {}
+          renderStatusButtons('planned');
+          saveBookmarkStatus(currentMedia, 'planned')
+            .then(() => showToast('📌 Добавлено в список «В планах»', 'success'))
+            .catch(() => showToast('📌 Сохранено локально в список «В планах»', 'info'));
+        }
         if (data.type === 'STORM_SPEED_CHANGED') {
           const sp = parseFloat(data.speed);
           if (sp && !isNaN(sp)) {
@@ -467,7 +606,7 @@ function initFullscreenControls() {
           (data?.key === 'kodik_player_api' && (data.value?.event === 'video_ended' || data.value?.action === 'ended' || data.value?.event === 'ended'));
 
         if (isEndedAction) {
-          if (checkIfMediaIsSeries(currentMedia) && !window._lastEndedAutoSwitchTime) {
+          if (isAutoNextEnabled() && checkIfMediaIsSeries(currentMedia) && !window._lastEndedAutoSwitchTime) {
             window._lastEndedAutoSwitchTime = Date.now();
             setTimeout(() => { window._lastEndedAutoSwitchTime = 0; }, 6000);
             showToast('Серия завершена. Запуск следующей серии...', 'info');
@@ -492,7 +631,7 @@ function initFullscreenControls() {
 
         const curTime = data.time ?? data.position ?? data.value?.time ?? data.data?.time;
         if (curTime && streamDuration && typeof curTime === 'number' && typeof streamDuration === 'number') {
-          if (streamDuration > 60 && curTime >= streamDuration - 1.5 && !window._lastEndedAutoSwitchTime) {
+          if (isAutoNextEnabled() && streamDuration > 60 && curTime >= streamDuration - 1.5 && !window._lastEndedAutoSwitchTime) {
             if (checkIfMediaIsSeries(currentMedia)) {
               window._lastEndedAutoSwitchTime = Date.now();
               setTimeout(() => { window._lastEndedAutoSwitchTime = 0; }, 6000);
@@ -824,6 +963,7 @@ export function sendSeekDelta(secondsDelta) {
   }
 
   const seekMsgs = [
+    { type: 'STORM_SEEK_DELTA', delta: secondsDelta, val: secondsDelta },
     { event: 'seek', val: secondsDelta, delta: secondsDelta, value: secondsDelta > 0 ? '+10' : '-10' },
     { api: 'seek', val: secondsDelta },
     { api: 'seekDelta', val: secondsDelta },
@@ -1165,6 +1305,7 @@ export function isDomesticContent(item = {}, cleanTitle = '') {
 export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const title = cleanTitle || cleanVideoTitle(mediaItem.title || 'Видео');
   const safeTitle = encodeURIComponent(title);
+  const origTitleParam = mediaItem.original_title ? `&original_title=${encodeURIComponent(mediaItem.original_title)}` : '';
   const year = mediaItem.year ? String(mediaItem.year).trim() : '';
   const yearQuery = year ? `&year=${encodeURIComponent(year)}` : '';
   const kpId = mediaItem.kp_id || '';
@@ -1248,7 +1389,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Универсальный мультиплеер: автоподбор рабочего балансера',
       speed: '⚡ Мульти-CDN',
-      url: `/api/player/kinobox-embed?balancer=kinobox&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=kinobox&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     // 3. HDRezka Studio
@@ -1262,7 +1403,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Фирменный дубляж HDRezka Studio, RHS, TVShows, Jaskier',
       speed: '⚡ Скоростной CDN',
-      url: `/api/player/kinobox-embed?balancer=hdrezka&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=hdrezka&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     // 4. Collaps и AllPlay
@@ -1276,7 +1417,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Лицензионный дубляж СНГ и многоголосые переводы',
       speed: '⚡ Быстрый поток',
-      url: `/api/player/kinobox-embed?balancer=collaps&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=collaps&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     // 5. Alloha Плеер
@@ -1290,7 +1431,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Премьерные релизы 2025–2026 и студийный звук',
       speed: '⚡ Премиум поток',
-      url: `/api/player/kinobox-embed?balancer=alloha&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=alloha&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     // 6. Kodik Плеер (через серверный шлюз с автоподбором)
@@ -1304,7 +1445,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Большой выбор студийных и авторских озвучек',
       speed: '⚡ Быстрый поток',
-      url: `/api/player/kinobox-embed?balancer=kodik&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`,
+      url: `/api/player/kinobox-embed?balancer=kodik&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`,
       is_recommended: isAnime && !effective4kUrl && mediaItem?.source !== 'anixart' && mediaItem?.source !== 'anilibria'
     });
 
@@ -1319,7 +1460,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'База кинопроката, сериалов и классики в Full HD',
       speed: '⚡ Мульти-поток',
-      url: `/api/player/kinobox-embed?balancer=videocdn&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=videocdn&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     // 8. Red Head Sound и LostFilm
@@ -1333,7 +1474,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Голоса официального дубляжа Red Head Sound и LostFilm',
       speed: '⚡ Студийный CDN',
-      url: `/api/player/kinobox-embed?balancer=rhs&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=rhs&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     // 9. Bazon и CDNMovies
@@ -1347,14 +1488,14 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Высокая отказоустойчивость для новинок и сериалов',
       speed: '⚡ Резервный CDN',
-      url: `/api/player/kinobox-embed?balancer=bazon&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=bazon&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
   }
 
   // 10. VK Видео (Официальный плеер / Автопоиск реального потока)
   let vkEmbed = '';
   if (isLandyshiItem) {
-    vkEmbed = `/api/player/vk-search-embed?title=${safeTitle}${yearQuery}${episodeParam}`;
+    vkEmbed = `/api/player/vk-search-embed?title=${safeTitle}${origTitleParam}${yearQuery}${episodeParam}`;
   } else if (mediaItem.vk_embed_url && !mediaItem.vk_embed_url.includes('456244337')) {
     vkEmbed = mediaItem.vk_embed_url;
   } else if (mediaItem.owner_id && mediaItem.video_id) {
@@ -1372,7 +1513,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   } else if (mediaItem.embed_url && (mediaItem.embed_url.includes('oid=') || mediaItem.embed_url.includes('video-'))) {
     vkEmbed = mediaItem.embed_url;
   } else if (safeTitle) {
-    vkEmbed = `/api/player/vk-search-embed?title=${safeTitle}${yearQuery}${episodeParam}`;
+    vkEmbed = `/api/player/vk-search-embed?title=${safeTitle}${origTitleParam}${yearQuery}${episodeParam}`;
   }
 
   if (vkEmbed && (vkEmbed.includes('vkvideo.ru') || vkEmbed.includes('vk.com'))) {
@@ -1430,7 +1571,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
     const mId = mediaItem.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
     rutubeEmbed = mId ? `/api/player/rutube-embed/${mId[1]}` : mediaItem.embed_url;
   } else if (safeTitle) {
-    rutubeEmbed = `/api/player/rutube-search-embed?title=${safeTitle}${yearQuery}${episodeParam}`;
+    rutubeEmbed = `/api/player/rutube-search-embed?title=${safeTitle}${origTitleParam}${yearQuery}${episodeParam}`;
   }
 
   if (rutubeEmbed) {
@@ -1461,7 +1602,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Международный поток в оригинале и с субтитрами',
       speed: '⚡ Международный CDN',
-      url: `/api/player/kinobox-embed?balancer=vidsrc&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=vidsrc&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
   }
 
@@ -1477,7 +1618,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'AniLibria, StudioBand, AniDub, SHIZA, Jam, DreamCast',
       speed: '⚡ Скоростной поток',
-      url: `/api/player/kinobox-embed?balancer=kodik&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=kodik&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
 
     suite.push({
@@ -1490,7 +1631,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
       status_label: '🟢 Онлайн',
       audio_info: 'Оригинальные субтитры и студийный дубляж',
       speed: '⚡ Быстрый поток',
-      url: `/api/player/kinobox-embed?balancer=kodik&title=${safeTitle}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
+      url: `/api/player/kinobox-embed?balancer=kodik&title=${safeTitle}${origTitleParam}${yearQuery}${kpParam}${imdbParam}${episodeParam}`
     });
   }
 
@@ -1663,12 +1804,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
   }
 
-  // Обновляем URL для глубокого связывания (Deep Linking)
-  updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode);
+  const wasAlreadyOpen = modal.classList.contains('is-open') || document.body.classList.contains('cinema-open');
 
   // Открываем модальное окно
   modal.classList.add('is-open');
   document.body.classList.add('cinema-open');
+
+  // Обновляем URL и стек истории браузера (pushState при открытии, чтобы кнопка «Назад» закрывала плеер, а не сайт)
+  updatePlayerUrl(mediaItem, options.initialSeason, options.initialEpisode, null, { isOpeningModal: !wasAlreadyOpen });
+
   if (typeof window.updateTvHudContext === 'function') {
     window.updateTvHudContext('player');
   }
@@ -1744,7 +1888,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const preferredId = getPreferredDefaultPlayerId();
   let initialChoice = options.initialPlayer ? currentPlayers.find(p => p.id === options.initialPlayer) : null;
   if (!initialChoice && preferredId) {
-    initialChoice = currentPlayers.find(p => p.id === preferredId && isStable(p)) || null;
+    initialChoice = currentPlayers.find(p => matchesPreferredPlayer(p, preferredId) && isStable(p)) || null;
   }
   if (!initialChoice) {
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K и FHD (Без рекламы • Все озвучки) -> 4K Ultra HD (FanFilm4K)
@@ -1824,6 +1968,21 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
 
     currentMedia = { ...mediaItem, ...details, title: cleanVideoTitle(details?.title || mediaItem?.title || '') };
+    const modalTitleEl = document.getElementById('cinema-modal-title');
+    if (modalTitleEl && currentMedia.title) {
+      modalTitleEl.textContent = currentMedia.title;
+    }
+    const inplayerNameEl = document.getElementById('inplayer-series-name');
+    if (inplayerNameEl && currentMedia.title) {
+      inplayerNameEl.textContent = currentMedia.title;
+    }
+    try {
+      const urlObj = new URL(window.location.href);
+      if (urlObj.searchParams.has('media') && currentMedia.title) {
+        urlObj.searchParams.set('title', currentMedia.title);
+        window.history.replaceState(window.history.state, '', urlObj.pathname + urlObj.search);
+      }
+    } catch (_) {}
     try {
       sessionStorage.setItem('storm_active_cinema_media', JSON.stringify(currentMedia));
     } catch (e) {}
@@ -1869,6 +2028,16 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
     // Отображаем подробную информацию в боковой колонке (даты, рейтинги, режиссеры, актеры)
     renderDetailedMediaInfo(currentMedia);
+    try {
+      const genresArr = Array.isArray(currentMedia.genres) ? currentMedia.genres : [];
+      genresArr.forEach(g => {
+        const gName = typeof g === 'string' ? g : (g?.name || '');
+        if (gName) trackClientAction('watch_genre', { genre: gName });
+      });
+      if (currentMedia.source === 'anilibria') {
+        trackClientAction('anime_anilibria');
+      }
+    } catch (_) {}
 
     // Порядок просмотра и хронология франшизы (фильмы, сериалы, аниме)
     renderFranchiseOrder(currentMedia);
@@ -1910,7 +2079,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
           if (!defaultPlayer) {
             const prefPlayerId = getPreferredDefaultPlayerId();
             if (prefPlayerId) {
-              defaultPlayer = currentPlayers.find(p => p.id === prefPlayerId && isStable(p)) || null;
+              defaultPlayer = currentPlayers.find(p => matchesPreferredPlayer(p, prefPlayerId) && isStable(p)) || null;
             }
           }
           if (!defaultPlayer) {
@@ -1985,10 +2154,22 @@ export async function openPlayerModal(mediaItem, options = {}) {
   }
 }
 
-export function closePlayerModal() {
+export function closePlayerModal(options = {}) {
+  const fromPopState = Boolean(options && options.fromPopState);
   const modal = document.getElementById('cinema-modal');
   if (modal) {
-    modal.classList.remove('is-open', 'is-mini-pip', 'is-focus-mode', 'has-series-bar');
+    const wasOpen = modal.classList.contains('is-open') || document.body.classList.contains('cinema-open');
+    if (!wasOpen && !hasCinemaHistoryEntry && !fromPopState) {
+      if (window.location.search.includes('media=')) {
+        clearPlayerUrl();
+      }
+      return;
+    }
+
+    if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+      document.exitFullscreen().catch(() => {});
+    }
+    modal.classList.remove('is-open', 'is-fullscreen', 'is-mini-pip', 'is-focus-mode', 'has-series-bar');
     document.documentElement.classList.remove('cinema-focus-active');
     document.body.classList.remove('cinema-focus-active', 'cinema-open');
     if (typeof window.updateTvHudContext === 'function') {
@@ -1998,7 +2179,31 @@ export function closePlayerModal() {
     if (fBtn) fBtn.classList.remove('active');
     stopAmbilight();
     releaseScreenWakeLock();
-    clearPlayerUrl();
+
+    if (fromPopState) {
+      hasCinemaHistoryEntry = false;
+      clearPlayerUrl();
+    } else if (hasCinemaHistoryEntry && window.history.state && window.history.state.stormModal === 'cinema') {
+      hasCinemaHistoryEntry = false;
+      isClosingCinemaViaHistoryBack = true;
+      try {
+        window.history.back();
+      } catch (_) {
+        isClosingCinemaViaHistoryBack = false;
+        clearPlayerUrl();
+      }
+      setTimeout(() => {
+        if (isClosingCinemaViaHistoryBack) {
+          isClosingCinemaViaHistoryBack = false;
+        }
+        if (window.location.search.includes('media=')) {
+          clearPlayerUrl();
+        }
+      }, 180);
+    } else {
+      hasCinemaHistoryEntry = false;
+      clearPlayerUrl();
+    }
     try {
       sessionStorage.removeItem('storm_active_cinema_media');
     } catch (e) {}
@@ -2107,8 +2312,8 @@ function renderPlayerSources(players) {
     const bWork = isWorking(b);
     if (aWork && !bWork) return -1;
     if (!aWork && bWork) return 1;
-    const aPref = aWork && a.id === prefPlayerId;
-    const bPref = bWork && b.id === prefPlayerId;
+    const aPref = aWork && matchesPreferredPlayer(a, prefPlayerId);
+    const bPref = bWork && matchesPreferredPlayer(b, prefPlayerId);
     if (aPref && !bPref) return -1;
     if (!aPref && bPref) return 1;
     const aLift = isLiftAdFree(a);
@@ -2489,11 +2694,13 @@ if (typeof window !== 'undefined') {
   };
 
   window.addMediaToWatchlist = function(id) {
-    const targetId = id || currentMedia?.id;
-    if (typeof window.toggleBookmark === 'function') {
-      window.toggleBookmark(targetId, 'planned');
+    if (currentMedia) {
+      currentMedia.user_status = 'planned';
+      try { localStorage.setItem(`storm_status_${currentMedia.id}`, 'planned'); } catch (_) {}
+      renderStatusButtons('planned');
+      saveBookmarkStatus(currentMedia, 'planned').catch(() => {});
     }
-    showToast('Добавлено в список «Буду смотреть»', 'success');
+    showToast('📌 Добавлено в список «В планах»', 'success');
   };
 
   window.retryPlayerSources = function() {
@@ -3872,13 +4079,16 @@ async function updateQuickIframeSrc() {
   const isUsingNativeAnimePlayer = !activePlayerId || activePlayerId === 'anilibria_hls' || (activePlayerId.startsWith('anixart_') && activePlayerId !== 'anixart_stream');
   if (quickBarSeriesData?.isAnime && isUsingNativeAnimePlayer) {
     if (quickBarSeriesData.animeSource === 'anilibria') {
-      const eps = currentMedia?.episodes || [];
-      const epObj = eps.find(e => (e.ordinal || 1) === quickBarActiveEpisode) || eps[quickBarActiveEpisode - 1];
+      const seasonObj = (currentMedia?.seasons || []).find(s => Number(s.season_number) === Number(quickBarActiveSeason));
+      const eps = (seasonObj && Array.isArray(seasonObj.episodes) && seasonObj.episodes.length > 0)
+        ? seasonObj.episodes
+        : (currentMedia?.episodes || []);
+      const epObj = eps.find(e => Number(e.ordinal || e.episode_number || 1) === Number(quickBarActiveEpisode)) || eps[quickBarActiveEpisode - 1];
       if (epObj) {
         currentEpisodeIndex = quickBarActiveEpisode;
         const streamUrl = epObj.hls_1080 || epObj.hls_720 || epObj.hls_480;
         if (streamUrl) playStreamUrl(streamUrl);
-        loadSkipTimes(currentMedia?.id, quickBarActiveEpisode);
+        loadSkipTimes(seasonObj?.release_id || currentMedia?.id, quickBarActiveEpisode);
       }
     } else if (quickBarSeriesData.animeSource === 'anixart') {
       const epObj = (currentEpisodes || []).find(e => (e.position || 1) === quickBarActiveEpisode) || currentEpisodes?.[quickBarActiveEpisode - 1];
@@ -3933,7 +4143,7 @@ async function updateQuickIframeSrc() {
         const epRutubeId = curEpObj?.rutube_id || '';
         const epEmbedUrl = curEpObj?.embed_url || '';
         if (epEmbedUrl) {
-          iframe.src = epEmbedUrl;
+          replaceIframeSrcNoHistory(iframe, epEmbedUrl);
           showToast(`🎬 RuTube: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
           updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
           highlightActiveEpisodeInGrid(quickBarActiveEpisode);
@@ -3944,7 +4154,7 @@ async function updateQuickIframeSrc() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.embed_url) {
-            iframe.src = data.embed_url;
+            replaceIframeSrcNoHistory(iframe, data.embed_url);
             showToast(`🎬 RuTube: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
             updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
             highlightActiveEpisodeInGrid(quickBarActiveEpisode);
@@ -3965,7 +4175,7 @@ async function updateQuickIframeSrc() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.embed_url) {
-            iframe.src = data.embed_url;
+            replaceIframeSrcNoHistory(iframe, data.embed_url);
             showToast(`🎬 VK Видео: Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
             updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
             highlightActiveEpisodeInGrid(quickBarActiveEpisode);
@@ -4006,7 +4216,7 @@ async function updateQuickIframeSrc() {
             newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
           }
           if (newUrl !== curSrc) {
-            iframe.src = newUrl;
+            replaceIframeSrcNoHistory(iframe, newUrl);
           }
         }
       }
@@ -4017,7 +4227,7 @@ async function updateQuickIframeSrc() {
       if (quickBarSeriesData?.type !== 'movie') {
         url += `&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
       }
-      iframe.src = url;
+      replaceIframeSrcNoHistory(iframe, url);
     } else {
       let curSrc = iframe.src || (currentActivePlayer?.url || '');
       if (curSrc) {
@@ -4028,7 +4238,7 @@ async function updateQuickIframeSrc() {
         } else {
           newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
         }
-        iframe.src = newUrl;
+        replaceIframeSrcNoHistory(iframe, newUrl);
       }
     }
     showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
@@ -4083,10 +4293,6 @@ function selectQuickEpisode(episodeNum) {
   }
 
   showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${ep}`, 'info');
-  if (typeof broadcastEpisodeSync === 'function') {
-    const voiceVal = document.getElementById('quick-voiceover-val')?.textContent || '';
-    broadcastEpisodeSync(quickBarActiveSeason, ep, quickBarActiveTranslationId || '', voiceVal);
-  }
   if (typeof broadcastEpisodeSync === 'function') {
     const voiceVal = document.getElementById('quick-voiceover-val')?.textContent || '';
     broadcastEpisodeSync(quickBarActiveSeason, ep, quickBarActiveTranslationId || '', voiceVal);
@@ -4546,6 +4752,9 @@ function playStreamUrl(url) {
     iframeEl.onerror = () => {
       console.warn('[Player] Ошибка загрузки фрейма источника:', streamUrl);
       updateFallbackButton(currentActivePlayer);
+      if (isAutoNextEnabled()) {
+        switchToNextSource(false);
+      }
     };
   }
 
@@ -5210,6 +5419,13 @@ function initAmbilight(video) {
 
 export function toggleAmbilight() {
   ambilightEnabled = !ambilightEnabled;
+  try {
+    localStorage.setItem('storm_ambilight', ambilightEnabled ? 'true' : 'false');
+  } catch (_) {}
+  const profileToggle = document.getElementById('profile-ambilight-toggle');
+  if (profileToggle && profileToggle.checked !== ambilightEnabled) {
+    profileToggle.checked = ambilightEnabled;
+  }
   const aura = document.getElementById('player-ambilight-aura');
   const btn = document.getElementById('toggle-ambilight-btn');
 
@@ -5671,9 +5887,16 @@ function setupSkipLogic(video) {
 
     if (!skipIntervals) return;
 
-    // Отображение кнопки ручного пропуска заставки
+    // Автопропуск или отображение кнопки ручного пропуска заставки
     if (skipIntervals.op && time >= skipIntervals.op.start && time <= skipIntervals.op.end) {
-      if (skipIntroBtn) skipIntroBtn.style.display = 'block';
+      if (localStorage.getItem('storm_autoskip_intro') !== 'false') {
+        video.currentTime = skipIntervals.op.end;
+        trackClientAction('use_skip');
+        showToast('⏩ Заставка автоматически пропущена', 'info');
+        if (skipIntroBtn) skipIntroBtn.style.display = 'none';
+      } else if (skipIntroBtn) {
+        skipIntroBtn.style.display = 'block';
+      }
     } else if (skipIntroBtn) {
       skipIntroBtn.style.display = 'none';
     }
@@ -5687,6 +5910,7 @@ function setupSkipLogic(video) {
   };
 
   video.addEventListener('ended', () => {
+    if (!isAutoNextEnabled()) return;
     showToast('Воспроизведение завершено. Переход к следующей серии...', 'info');
     setTimeout(() => {
       playInPlayerNextEpisode();
@@ -6152,7 +6376,7 @@ export function renderInPlayerVoiceSheet(sheet) {
         sheet.style.display = 'none';
         const voiceBtn = document.getElementById('inplayer-voice-btn');
         if (voiceBtn) voiceBtn.classList.remove('active');
-        try { document.querySelector('.cinema-player-iframe')?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName }, '*'); } catch (_) {}
+        try { document.querySelector('.cinema-player-iframe')?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName, index: parseInt(vId, 10) || 0 }, '*'); } catch (_) {}
         syncInPlayerDrawerState();
         showToast(`🎙️ Выбрана аудиодорожка: ${vName}`, 'info');
       };
@@ -6188,7 +6412,7 @@ export function renderInPlayerVoiceSheet(sheet) {
       sheet.style.display = 'none';
       const voiceBtn = document.getElementById('inplayer-voice-btn');
       if (voiceBtn) voiceBtn.classList.remove('active');
-      try { document.querySelector('.cinema-player-iframe')?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName }, '*'); } catch (_) {}
+      try { document.querySelector('.cinema-player-iframe')?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName, index: parseInt(vId, 10) || 0 }, '*'); } catch (_) {}
       syncInPlayerDrawerState();
       showToast(`🎙️ Озвучка: ${vName}`, 'info');
     };
@@ -6381,16 +6605,20 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
     return true;
   }
 
-  // 2. AniLibria
-  if (currentMedia?.source === 'anilibria' && currentMedia.episodes && currentMedia.episodes.length > 0) {
-    const rawEp = (currentMedia.episodes || []).find(e => Number(e.ordinal || 1) === ep) || currentMedia.episodes[ep - 1];
+  // 2. AniLibria (Многосезонная поддержка)
+  if (currentMedia?.source === 'anilibria') {
+    const seasonObj = (currentMedia.seasons || []).find(s => Number(s.season_number) === Number(sNum));
+    const epsPool = (seasonObj && Array.isArray(seasonObj.episodes) && seasonObj.episodes.length > 0)
+      ? seasonObj.episodes
+      : (currentMedia.episodes || []);
+    const rawEp = epsPool.find(e => Number(e.ordinal || e.episode_number || 1) === ep) || epsPool[ep - 1];
     if (rawEp) {
       const streamUrl = rawEp.hls_1080 || rawEp.hls_720 || rawEp.hls_480;
       if (streamUrl) playStreamUrl(streamUrl);
-      loadSkipTimes(currentMedia.id, ep);
+      loadSkipTimes(seasonObj?.release_id || currentMedia.id, ep);
       updateInPlayerEpisodeInfo();
       highlightActiveEpisodeInGrid(ep);
-      showToast(`🎬 Серия ${ep}`, 'info');
+      showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
       return true;
     }
   }
@@ -6439,7 +6667,7 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
         const epData = allEps.find(e => Number(e.episode_number || e.ordinal || e.episode) === ep);
         if (epData && epData.embed_url) {
           const ruIdMatch = epData.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
-          iframe.src = (adblockEnabled && ruIdMatch) ? `/api/player/rutube-embed/${ruIdMatch[1]}` : epData.embed_url;
+          replaceIframeSrcNoHistory(iframe, (adblockEnabled && ruIdMatch) ? `/api/player/rutube-embed/${ruIdMatch[1]}` : epData.embed_url);
           showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
           updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
           highlightActiveEpisodeInGrid(ep);
@@ -6453,7 +6681,7 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
           .then(d => {
             if (d && d.embed_url) {
               const ruIdMatch = d.embed_url.match(/\/embed\/([a-f0-9]{32})/i);
-              iframe.src = (adblockEnabled && ruIdMatch) ? `/api/player/rutube-embed/${ruIdMatch[1]}` : d.embed_url;
+              replaceIframeSrcNoHistory(iframe, (adblockEnabled && ruIdMatch) ? `/api/player/rutube-embed/${ruIdMatch[1]}` : d.embed_url);
             }
           })
           .catch(() => {});
@@ -6471,7 +6699,7 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
           .then(r => r.json())
           .then(d => {
             if (d && d.embed_url) {
-              iframe.src = d.embed_url;
+              replaceIframeSrcNoHistory(iframe, d.embed_url);
             }
           })
           .catch(() => {});
@@ -6492,7 +6720,7 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
         } else {
           newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${sNum}&episode=${ep}`;
         }
-        iframe.src = newUrl;
+        replaceIframeSrcNoHistory(iframe, newUrl);
         showToast(`🎬 Сезон ${sNum} • Серия ${ep}`, 'info');
         updatePlayerUrl(currentMedia, sNum, ep, currentActivePlayer);
         highlightActiveEpisodeInGrid(ep);
@@ -7069,6 +7297,8 @@ export function mountInPlayerOverlay(videoBox) {
         jogTimeDisplay.textContent = formatMediaTime(v.currentTime);
       } else if (jogSessionDelta !== 0) {
         jogTimeDisplay.textContent = `${jogSessionDelta > 0 ? '+' : ''}${jogSessionDelta}с`;
+      } else if (currentWatchTimeSeconds > 0) {
+        jogTimeDisplay.textContent = formatMediaTime(currentWatchTimeSeconds);
       } else {
         jogTimeDisplay.textContent = '00:00';
       }
@@ -9860,20 +10090,42 @@ function renderAniLibriaControls(details, options = {}) {
   currentActivePlayer = playerObj;
   updatePlayerTriggerInfo(playerObj);
 
-  const episodes = (details.episodes || []).slice().sort((a, b) => (a.ordinal || 0) - (b.ordinal || 0));
+  const rawSeasons = Array.isArray(details.seasons) && details.seasons.length > 0
+    ? details.seasons
+    : [{
+        season_number: 1,
+        name: 'Сезон 1',
+        release_id: String(details.id || ''),
+        episode_count: (details.episodes || []).length,
+        overview: currentMedia.description || 'Официальный Full HD релиз AniLibria.',
+        episodes: (details.episodes || []).slice().sort((a, b) => (a.ordinal || 0) - (b.ordinal || 0))
+      }];
+
+  currentMedia.seasons = rawSeasons.map((s, idx) => {
+    const sNum = Number(s.season_number) || (idx + 1);
+    const sEps = (s.episodes || details.episodes || []).slice().sort((a, b) => (a.ordinal || a.episode_number || 0) - (b.ordinal || b.episode_number || 0));
+    return {
+      ...s,
+      season_number: sNum,
+      name: s.name || `Сезон ${sNum}`,
+      episode_count: sEps.length || s.episode_count || 12,
+      overview: s.overview || currentMedia.description || `Сезон ${sNum} • Официальный Full HD релиз AniLibria.`,
+      episodes: sEps
+    };
+  });
+
+  const targetSeasonNum = options.initialSeason
+    ? parseInt(options.initialSeason, 10)
+    : (currentMedia.seasons[0]?.season_number || 1);
+  const activeSeasonObj = currentMedia.seasons.find(s => Number(s.season_number) === Number(targetSeasonNum)) || currentMedia.seasons[0];
+  const episodes = activeSeasonObj?.episodes || [];
   if (episodes.length === 0) return;
 
   currentMedia.episodes = episodes;
-  currentMedia.seasons = [{
-    season_number: 1,
-    name: currentMedia.title_ru || currentMedia.title || '1 сезон',
-    episode_count: episodes.length,
-    overview: currentMedia.description || 'Официальный Full HD релиз AniLibria.'
-  }];
   currentMedia.media_type = 'anime-series';
 
   const targetEpNum = options.initialEpisode ? parseInt(options.initialEpisode, 10) : (episodes[0]?.ordinal || 1);
-  quickBarActiveSeason = 1;
+  quickBarActiveSeason = activeSeasonObj.season_number || 1;
   quickBarActiveEpisode = targetEpNum;
   quickBarActiveTranslationId = 'anilibria';
 
@@ -9881,18 +10133,19 @@ function renderAniLibriaControls(details, options = {}) {
     type: 'serial',
     isAnime: true,
     animeSource: 'anilibria',
-    seasons: [{
-      season: 1,
-      name: currentMedia.title_ru || currentMedia.title || '1 сезон',
-      episodes_count: episodes.length,
-      episodes: episodes.map(ep => ({
-        episode: ep.ordinal || 1,
-        name: formatCleanEpisodeTitle(ep.ordinal || 1, ep.name),
+    seasons: currentMedia.seasons.map(s => ({
+      season: s.season_number,
+      name: s.name || `Сезон ${s.season_number}`,
+      releaseId: s.release_id || String(currentMedia.id || ''),
+      episodes_count: (s.episodes || []).length || s.episode_count || 12,
+      episodes: (s.episodes || []).map(ep => ({
+        episode: ep.ordinal || ep.episode_number || 1,
+        name: formatCleanEpisodeTitle(ep.ordinal || ep.episode_number || 1, ep.name),
         translations: [{ id: 'anilibria', name: 'Официальный дубляж AniLibria (1080p FHD)' }]
       }))
-    }],
+    })),
     active: {
-      season: 1,
+      season: quickBarActiveSeason,
       episode: targetEpNum,
       id_translation: 'anilibria'
     }
@@ -9903,14 +10156,14 @@ function renderAniLibriaControls(details, options = {}) {
   renderQuickBarDropdowns();
   setupQuickBarOutsideListeners();
 
-  renderSeriesSeasons(currentMedia, 1, targetEpNum);
+  renderSeriesSeasons(currentMedia, quickBarActiveSeason, targetEpNum);
 
-  const initialEp = episodes.find(e => (e.ordinal || 1) === targetEpNum) || episodes[0];
+  const initialEp = episodes.find(e => Number(e.ordinal || e.episode_number || 1) === Number(targetEpNum)) || episodes[0];
   if (initialEp) {
     currentEpisodeIndex = targetEpNum;
     const streamUrl = initialEp.hls_1080 || initialEp.hls_720 || initialEp.hls_480;
     if (streamUrl) playStreamUrl(streamUrl);
-    loadSkipTimes(currentMedia.id, targetEpNum);
+    loadSkipTimes(activeSeasonObj.release_id || currentMedia.id, targetEpNum);
   }
 }
 
@@ -10461,6 +10714,20 @@ function initProgressSlider() {
 // ==========================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОЧИСТКИ НАЗВАНИЙ И ЖАНРОВ
 // ==========================================
+const PROTECTED_FRANCHISE_NUM_TITLES = [
+  'кайдзю номер 8', 'кайдзю №8', 'кайдзю № 8', 'kaiju no. 8', 'kaiju no 8',
+  'моб психо 100', 'mob psycho 100',
+  '86', 'восемьдесят шесть', 'eighty six', 'eighty-six',
+  'зона 88', 'area 88', 'токио 24-й район', 'гандам 00', 'вавилон 5',
+  '1984', '2012', '1917', '9', '300', '24', 'бегущий по лезвию 2049',
+  'гладиатор 2', 'дюна: часть вторая', 'дюна 2', 'аватар 2', 'аватар 3',
+  'головоломка 2', 'зверополис 2', 'моана 2', 'шрек 2', 'шрек 3', 'шрек 4',
+  'кунг-фу панда 2', 'кунг-фу панда 3', 'кунг-фу панда 4',
+  'гадкий я 2', 'гадкий я 3', 'гадкий я 4', 'история игрушек 2', 'история игрушек 3', 'история игрушек 4', 'история игрушек 5',
+  'терминатор 2', 'терминатор 3', 'чужой 3', 'иллюзия обмана 2', 'иллюзия обмана 3',
+  'холоп 2', 'бэтмен 2', 'соник 2', 'соник 3', 'ужасающий 2', 'ужасающий 3', 'микки 17'
+];
+
 export function cleanVideoTitle(str) {
   if (!str) return '';
   let s = String(str).trim();
@@ -10475,11 +10742,20 @@ export function cleanVideoTitle(str) {
   s = s.replace(/(?:^|\s+)(?:Ultra\s*HD|UHD|HDR10\+?|HDR|Dolby\s*Vision|BDRip|DVDRip|WEB-DL|Remux)(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
   // фильм / сериал в скобках
   s = s.replace(/\s*[\(\[]\s*(?:фильм|сериал)\s*[\)\]]/gi, '');
-  // Сезон в скобках (1 сезон), [2 сезон], (3-й сезон) и т.д.
-  s = s.replace(/\s*[\(\[]\s*\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон\s*[\)\]]/gi, '');
-  s = s.replace(/\s*[\(\[]\s*season\s*\d+\s*[\)\]]/gi, '');
+  // Сезон / ТВ / Часть в скобках и без скобок: (1 сезон), [2 сезон], [ТВ-2], Season 2, 2nd Season
+  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
+  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+  // Хвостовой номер сезона у аниме и сериалов (например: "Киберпанк: Бегущие по краю 2" -> "Киберпанк: Бегущие по краю")
+  const lowerFull = s.toLowerCase().replace(/ё/g, 'е').trim();
+  const isProtectedMovieSeq = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
+  if (!isProtectedMovieSeq) {
+    const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*(?:часть|part|сезон|season|арка|битва).*)?$/i);
+    if (mTrail && mTrail[1].trim().length >= 3) {
+      s = mTrail[1].trim();
+    }
+  }
   // Хвостовые разделители
-  s = s.replace(/[-–—/|•]\s*$/, '').trim();
+  s = s.replace(/[-–—/|•:]\s*$/, '').trim();
   return s.replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -10814,9 +11090,23 @@ export function parseFormattedGenres(rawGenres, mediaContext = null) {
   return unique;
 }
 
-export function updatePlayerUrl(mediaItem, season = null, episode = null, player = null) {
+function buildCleanNonPlayerUrl() {
+  const cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete('media');
+  cleanUrl.searchParams.delete('source');
+  cleanUrl.searchParams.delete('title');
+  cleanUrl.searchParams.delete('year');
+  cleanUrl.searchParams.delete('season');
+  cleanUrl.searchParams.delete('episode');
+  cleanUrl.searchParams.delete('player');
+  const qs = cleanUrl.searchParams.toString();
+  return cleanUrl.pathname + (qs ? '?' + qs : '') + (cleanUrl.hash || '');
+}
+
+export function updatePlayerUrl(mediaItem, season = null, episode = null, player = null, opts = {}) {
   if (!mediaItem) return;
   try {
+    const isOpeningModal = Boolean(opts && opts.isOpeningModal);
     const url = new URL(window.location.href);
     url.searchParams.set('media', mediaItem.id);
     url.searchParams.set('source', mediaItem.source || 'fanfilm4k');
@@ -10829,7 +11119,26 @@ export function updatePlayerUrl(mediaItem, season = null, episode = null, player
     if (episode !== null && episode !== undefined) url.searchParams.set('episode', episode);
     else url.searchParams.delete('episode');
     if (player && player.id) url.searchParams.set('player', player.id);
-    window.history.replaceState({ mediaId: mediaItem.id, season, episode }, '', url.toString());
+
+    const nextState = {
+      stormModal: 'cinema',
+      mediaId: mediaItem.id,
+      season,
+      episode
+    };
+
+    if (isOpeningModal && !hasCinemaHistoryEntry) {
+      // Гарантируем базовую запись каталога под модальным окном (даже если сайт был открыт сразу по прямой ссылке ?media=...)
+      const cleanBase = buildCleanNonPlayerUrl();
+      window.history.replaceState({ ...(window.history.state || {}), stormRoot: true, stormModal: null }, '', cleanBase);
+      window.history.pushState(nextState, '', url.toString());
+      hasCinemaHistoryEntry = true;
+    } else {
+      window.history.replaceState(nextState, '', url.toString());
+      if (document.getElementById('cinema-modal')?.classList.contains('is-open')) {
+        hasCinemaHistoryEntry = Boolean(hasCinemaHistoryEntry || (window.history.state && window.history.state.stormModal === 'cinema'));
+      }
+    }
   } catch (e) {
     console.warn('Could not update player URL:', e);
   }
@@ -10837,18 +11146,39 @@ export function updatePlayerUrl(mediaItem, season = null, episode = null, player
 
 export function clearPlayerUrl() {
   try {
-    const url = new URL(window.location.href);
-    url.searchParams.delete('media');
-    url.searchParams.delete('source');
-    url.searchParams.delete('title');
-    url.searchParams.delete('year');
-    url.searchParams.delete('season');
-    url.searchParams.delete('episode');
-    url.searchParams.delete('player');
-    window.history.replaceState({}, '', url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : ''));
+    const cleanBase = buildCleanNonPlayerUrl();
+    window.history.replaceState({ ...(window.history.state || {}), stormRoot: true, stormModal: null }, '', cleanBase);
   } catch (e) {
     console.warn('Could not clear player URL:', e);
   }
+}
+
+if (typeof window !== 'undefined' && !window.__STORM_CINEMA_POPSTATE_BOUND__) {
+  window.__STORM_CINEMA_POPSTATE_BOUND__ = true;
+  window.addEventListener('popstate', (event) => {
+    if (isClosingCinemaViaHistoryBack) {
+      isClosingCinemaViaHistoryBack = false;
+      if (window.location.search.includes('media=')) {
+        clearPlayerUrl();
+      }
+      return;
+    }
+
+    const cinemaModal = document.getElementById('cinema-modal');
+    const isCinemaOpen = Boolean(
+      cinemaModal && (cinemaModal.classList.contains('is-open') || document.body.classList.contains('cinema-open'))
+    );
+
+    if (isCinemaOpen) {
+      // Если поверх видеоплеера открыта карточка актёра — закрываем сначала её и восстанавливаем запись плеера
+      const personModal = document.getElementById('person-modal');
+      if (personModal && personModal.classList.contains('is-open') && event.state && event.state.stormModal === 'cinema') {
+        personModal.classList.remove('is-open');
+        return;
+      }
+      closePlayerModal({ fromPopState: true });
+    }
+  });
 }
 
 export function copyMediaShareLink() {
@@ -11978,16 +12308,20 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
       let episodes = [];
       let seasonOverview = '';
 
-      if (mediaDetails.source === 'anilibria' && mediaDetails.episodes && mediaDetails.episodes.length > 0) {
-        episodes = mediaDetails.episodes.map(ep => ({
-          episode_number: ep.ordinal || 1,
-          name: formatCleanEpisodeTitle(ep.ordinal || 1, ep.name),
+      if (mediaDetails.source === 'anilibria' && ((season && Array.isArray(season.episodes) && season.episodes.length > 0) || (mediaDetails.episodes && mediaDetails.episodes.length > 0))) {
+        const rawSeasonEps = (season && Array.isArray(season.episodes) && season.episodes.length > 0)
+          ? season.episodes
+          : mediaDetails.episodes;
+        mediaDetails.episodes = rawSeasonEps;
+        episodes = rawSeasonEps.map(ep => ({
+          episode_number: ep.ordinal || ep.episode_number || 1,
+          name: formatCleanEpisodeTitle(ep.ordinal || ep.episode_number || 1, ep.name),
           still: ep.still || ep.preview || mediaDetails.poster,
           duration: ep.duration || '24 мин.',
           air_date: ep.air_date || '',
           overview: (ep.overview && ep.overview !== mediaDetails.description) ? ep.overview : ''
         }));
-        seasonOverview = `Официальный релиз AniLibria • ${episodes.length} серий в Full HD качестве.`;
+        seasonOverview = season?.overview || `Официальный релиз AniLibria • ${episodes.length} серий в Full HD качестве.`;
       } else if (mediaDetails.source === 'anixart' && currentEpisodes && currentEpisodes.length > 0) {
         const vName = currentMedia?.voiceovers?.find(v => String(v.id) === String(currentVoiceoverId))?.name || 'AniXart';
         episodes = currentEpisodes.map(ep => ({

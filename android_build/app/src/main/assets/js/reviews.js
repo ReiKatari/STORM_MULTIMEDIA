@@ -4,8 +4,8 @@
    сортировка, спойлер-блоки и верифицированные рецензии кинокритиков
    ========================================================================== */
 
-import { getUser, showToast } from './auth.js';
-import { trackClientAction } from './achievements.js';
+import { getUser, showToast } from './auth.js?v=1.0.51';
+import { trackClientAction } from './achievements.js?v=1.0.51';
 
 // Форматирование даты строго по стандарту dd.MM.yyyy (Правило 5.2)
 function formatStormDate(timestamp) {
@@ -339,10 +339,13 @@ export async function renderReviewsSection(containerElement, mediaItem) {
             Все (${allReviews.length})
           </button>
           <button type="button" class="reviews-chip" data-filter="positive">
-            Положительные 👍 (${allReviews.filter(r => Number(r.rating) >= 8).length})
+            Положительные 👍 (${allReviews.filter(r => r.tone === 'positive' || (!r.tone && Number(r.rating) >= 7)).length})
           </button>
           <button type="button" class="reviews-chip" data-filter="neutral">
-            Нейтральные ⚖️ (${allReviews.filter(r => Number(r.rating) >= 5 && Number(r.rating) <= 7).length})
+            Нейтральные ⚖️ (${allReviews.filter(r => r.tone === 'neutral' || (!r.tone && Number(r.rating) >= 5 && Number(r.rating) < 7)).length})
+          </button>
+          <button type="button" class="reviews-chip" data-filter="negative">
+            Отрицательные 👎 (${allReviews.filter(r => r.tone === 'negative' || (!r.tone && Number(r.rating) < 5)).length})
           </button>
           <button type="button" class="reviews-chip" data-filter="critics">
             Критики 🏆 (${allReviews.filter(r => r.role === 'critic').length})
@@ -487,7 +490,7 @@ export async function renderReviewsSection(containerElement, mediaItem) {
               `}
               <div class="review-author-meta">
                 <div class="review-author-name-row">
-                  <span class="review-author-name">${rev.username || 'Пользователь'}</span>
+                  <span class="review-author-name">${escapeHtml(rev.username || 'Пользователь')}</span>
                   <span class="review-role-badge ${roleBadgeClass}">${roleLabel}</span>
                 </div>
                 <div class="review-date">${dateFormatted}</div>
@@ -500,7 +503,7 @@ export async function renderReviewsSection(containerElement, mediaItem) {
             </div>
           </div>
 
-          ${rev.title ? `<h5 class="review-item-title">${rev.title}</h5>` : ''}
+          ${rev.title ? `<h5 class="review-item-title">${escapeHtml(rev.title)}</h5>` : ''}
 
           <div class="review-item-content">
             ${parseReviewMarkdown(rev.content)}

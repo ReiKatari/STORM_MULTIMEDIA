@@ -1,6 +1,6 @@
 import { Anixart, FilterSortType, ReleaseCategory } from 'anixapi';
 import { getCache, setCache } from '../db.js';
-import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType, normalizeAnimeFranchiseTitle, extractSeasonNumberFromTitle } from './canonical-media-intel.js';
 
 const client = new Anixart();
 
@@ -40,8 +40,10 @@ function formatAnimeRelease(rel) {
     rawPoster = rel.screenshot_images[0];
   }
 
-  const cleanTitle = title.trim();
-  const cleanOrig = origTitle.trim();
+  const isMov = rel.category?.name === 'Фильм';
+  const cleanTitle = isMov ? title.trim() : (normalizeAnimeFranchiseTitle(title.trim(), true) || title.trim());
+  const cleanOrig = isMov ? origTitle.trim() : (normalizeAnimeFranchiseTitle(origTitle.trim(), true) || origTitle.trim());
+  const detectedSeason = isMov ? 1 : extractSeasonNumberFromTitle(title);
   const poster = rawPoster
     ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`
     : 'assets/favicon.svg';
@@ -56,7 +58,9 @@ function formatAnimeRelease(rel) {
     id: String(rel.id),
     source: 'anixart',
     title: cleanTitle,
-    original_title: origTitle.trim(),
+    raw_release_title: title.trim(),
+    detected_season: detectedSeason,
+    original_title: cleanOrig,
     poster,
     year: resolvedYear,
     rating: typeof rel.grade === 'number' ? Math.round(rel.grade * 10) / 10 : (typeof rel.rating === 'number' ? Math.round(rel.rating / 1000) / 10 : 0),
@@ -224,10 +228,40 @@ export async function getAnixartReleaseDetails(releaseId) {
       return s.url || s.image || '';
     }).filter(Boolean);
 
+    let seasons = [];
+    let seasonIdsMap = {};
+    if (baseFormatted.media_type !== 'anime-movie' && baseFormatted.title) {
+      try {
+        const searchSibs = await searchAnixart(baseFormatted.title, 0);
+        const normTarget = baseFormatted.title.toLowerCase().replace(/ё/g, 'е').trim();
+        const siblings = (searchSibs?.items || []).filter(it => {
+          if (!it || it.media_type === 'anime-movie') return false;
+          const itNorm = normalizeAnimeFranchiseTitle(it.title || '', true).toLowerCase().replace(/ё/g, 'е').trim();
+          return itNorm === normTarget;
+        });
+        if (siblings.length > 1) {
+          siblings.sort((a, b) => (Number(a.year || 9999) - Number(b.year || 9999)) || (Number(a.id) - Number(b.id)));
+          seasons = siblings.map((sib, idx) => {
+            const sNum = idx + 1;
+            seasonIdsMap[sNum] = String(sib.id);
+            return {
+              season_number: sNum,
+              name: `Сезон ${sNum}`,
+              release_id: String(sib.id),
+              year: String(sib.year || ''),
+              episode_count: Number(sib.episodes_released || sib.episodes_total || 12),
+              overview: sib.description || baseFormatted.description
+            };
+          });
+        }
+      } catch (_) {}
+    }
+
     const result = {
       ...baseFormatted,
       screenshots,
       voiceovers,
+      ...(seasons.length > 1 ? { seasons, anixart_season_ids: seasonIdsMap } : {}),
       kinobox_query: `${baseFormatted.title} ${baseFormatted.year}`.trim()
     };
 

@@ -3,8 +3,8 @@
    Предзагрузка серий и фильмов для просмотра без интернета
    ========================================================================== */
 
-import { showToast } from './auth.js';
-import { openPlayerModal } from './player.js';
+import { showToast } from './auth.js?v=1.0.51';
+import { openPlayerModal } from './player.js?v=1.0.51';
 
 const DB_NAME = 'storm_offline_media_db';
 const DB_VERSION = 1;
