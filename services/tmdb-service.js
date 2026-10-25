@@ -5,6 +5,8 @@
 
 import { getCache, setCache } from '../db.js';
 import { resolveMediaYear, isAnimeLinkOrTitle } from './fanfilm-service.js';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js';
+import { isMediaUpcomingOrUnreleased } from './canonical-media-intel.js';
 
 import { Agent } from 'undici';
 import dns from 'node:dns';
@@ -147,18 +149,32 @@ function formatTmdbItem(item, mediaTypeHint = null) {
     mappedGenres.unshift('Аниме');
   }
 
+  const knownFfUrl = resolveFanFilmUrl(title.trim());
+  const resolvedYr = verifiedYear || year || '2025';
+  const isUpcomingRel = !knownFfUrl && isMediaUpcomingOrUnreleased({
+    id: String(item.id),
+    source: 'tmdb',
+    title: title.trim(),
+    original_title: originalTitle.trim(),
+    year: resolvedYr,
+    release_date: dateStr,
+    vote_count: item.vote_count || 0
+  });
+
   return {
     id: String(item.id),
     source: 'tmdb',
     title: title.trim(),
     original_title: originalTitle.trim(),
     poster,
-    year: verifiedYear || year || '2025',
+    year: resolvedYr,
+    release_date: dateStr || '',
     rating: item.vote_average ? Math.round(item.vote_average * 10) / 10 : 0,
     media_type: mediaType,
     genres: mappedGenres,
-    quality: '4K Ultra HD',
-    is4K: true,
+    quality: isUpcomingRel ? 'Ожидается' : '4K Ultra HD',
+    is4K: !isUpcomingRel,
+    is_upcoming: isUpcomingRel,
     description: item.overview || 'Мировой кинематографический релиз в сверхвысоком качестве.',
     popularity: item.popularity || 0,
     vote_count: item.vote_count || 0
@@ -170,7 +186,7 @@ function formatTmdbItem(item, mediaTypeHint = null) {
  */
 export async function getTmdbCatalog(category = 'popular', page = 1) {
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `catalog_v3_${category}_page_${pageNum}`;
+  const cacheKey = `catalog_v4_${category}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
@@ -235,7 +251,7 @@ export async function searchTmdb(query, page = 1) {
   if (!query || !query.trim()) return { items: [] };
 
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `search_v2_${query.trim().toLowerCase()}_page_${pageNum}`;
+  const cacheKey = `search_v3_${query.trim().toLowerCase()}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
@@ -316,7 +332,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
   }
 
   if (!cleanId) return null;
-  const cacheKey = `details_v2_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
+  const cacheKey = `details_v3_${cleanId}_${mediaTypeHint || 'any'}_${titleHint ? encodeURIComponent(titleHint.toLowerCase()) : ''}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached) return cached;
 
@@ -578,7 +594,30 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
         vote_count: data.vote_count || 0,
         imdb_id: data.external_ids?.imdb_id || '',
         media_type: isTv ? 'series' : 'movie',
-        is4K: true,
+        is4K: !isMediaUpcomingOrUnreleased({
+          id: `tmdb_${data.id}`,
+          tmdb_id: data.id,
+          source: 'tmdb',
+          title: title.trim(),
+          original_title: originalTitle.trim(),
+          year,
+          release_date: formattedDate || rawDate,
+          status: data.status,
+          vote_count: data.vote_count || 0,
+          fanfilm_4k_url: resolveFanFilmUrl(title.trim())
+        }),
+        quality: isMediaUpcomingOrUnreleased({
+          id: `tmdb_${data.id}`,
+          tmdb_id: data.id,
+          source: 'tmdb',
+          title: title.trim(),
+          original_title: originalTitle.trim(),
+          year,
+          release_date: formattedDate || rawDate,
+          status: data.status,
+          vote_count: data.vote_count || 0,
+          fanfilm_4k_url: resolveFanFilmUrl(title.trim())
+        }) ? 'Ожидается' : '4K Ultra HD',
         genres: (data.genres || []).map(g => g.name),
         countries: (data.production_countries || []).map(c => c.name),
         description: data.overview || 'Мировой кинематографический релиз в сверхвысоком качестве.',
@@ -593,7 +632,18 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
         trivia,
         cast,
         trailer_url: '',
-        is_upcoming: false,
+        is_upcoming: isMediaUpcomingOrUnreleased({
+          id: `tmdb_${data.id}`,
+          tmdb_id: data.id,
+          source: 'tmdb',
+          title: title.trim(),
+          original_title: originalTitle.trim(),
+          year,
+          release_date: formattedDate || rawDate,
+          status: data.status,
+          vote_count: data.vote_count || 0,
+          fanfilm_4k_url: resolveFanFilmUrl(title.trim())
+        }),
         seasons,
         players: []
       };
@@ -991,7 +1041,7 @@ export async function findTmdbTvId(title) {
  * Получение кинопремьер из TMDB
  */
 export async function getTmdbUpcoming(page = 1) {
-  const cacheKey = `tmdb_upcoming_p${page}`;
+  const cacheKey = `tmdb_upcoming_v2_p${page}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -1018,8 +1068,9 @@ export async function getTmdbUpcoming(page = 1) {
         day_of_week: dayOfWeek,
         air_time: '19:00 МСК',
         studio: 'Red Head Sound',
-        quality: '4K UHD',
-        is4K: true,
+        quality: 'Ожидается',
+        is4K: false,
+        is_upcoming: true,
         rating: m.vote_average ? Math.round(m.vote_average * 10) / 10 : 8.0,
         genres: (m.genre_ids || []).map(id => TMDB_GENRES_RU[id]).filter(Boolean).join(', ') || 'Фильм',
         media_type: 'movie',

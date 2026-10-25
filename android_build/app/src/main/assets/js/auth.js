@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.0.51';
+import { t, formatDate } from './i18n.js?v=1.0.52';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -750,18 +750,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.0.51').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.0.52').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.0.51').then(achMod => {
+  import('./achievements.js?v=1.0.52').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.0.51').then(themeMod => {
+  import('./theme.js?v=1.0.52').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -825,7 +825,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.0.51').then(m => {
+      import('./player.js?v=1.0.52').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -839,10 +839,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.0.51').then(m => {
+      import('./player.js?v=1.0.52').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.0.51').then(m => {
+      import('./ad-shield.js?v=1.0.52').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -866,7 +866,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.0.51').then(m => {
+      import('./ad-shield.js?v=1.0.52').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -879,7 +879,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.0.51').then(m => {
+      import('./smart-skip.js?v=1.0.52').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -892,7 +892,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.0.51').then(m => {
+      import('./player.js?v=1.0.52').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -910,11 +910,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.0.51').then(m => {
+      import('./player.js?v=1.0.52').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.0.51').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.0.52').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1033,7 +1033,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.0.51').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.0.52').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1098,7 +1098,7 @@ export function initProfileHandlers() {
       try {
         const payload = {
           app: 'STORM MULTIMEDIA',
-          version: '1.0.51',
+          version: '1.0.52',
           exportedAt: new Date().toISOString(),
           bookmarks: JSON.parse(localStorage.getItem('storm_local_bookmarks') || '{}'),
           customLists: JSON.parse(localStorage.getItem('storm_custom_lists') || '[]'),
@@ -1118,7 +1118,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.0.51').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.0.52').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -1367,49 +1367,111 @@ export const FAMILY_AVATAR_PRESETS = [
   { id: 'diamond', icon: '💎', label: 'Алмаз', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)' }
 ];
 
+export const FAMILY_BG_GRADIENTS = [
+  { id: 'gold', label: 'Золото короны', bg: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+  { id: 'cyan', label: 'Кибер-циан', bg: 'linear-gradient(135deg, #00d2ff, #0072ff)' },
+  { id: 'emerald', label: 'Изумрудный лес', bg: 'linear-gradient(135deg, #10b981, #059669)' },
+  { id: 'neon', label: 'Неон Найт-Сити', bg: 'linear-gradient(135deg, #ff007f, #a855f7)' },
+  { id: 'amethyst', label: 'Аметистовая ночь', bg: 'linear-gradient(135deg, #8b5cf6, #4c1d95)' },
+  { id: 'ruby', label: 'Огненный рубин', bg: 'linear-gradient(135deg, #ef4444, #991b1b)' },
+  { id: 'matrix', label: 'Матричный код', bg: 'linear-gradient(135deg, #00ff66, #065f46)' },
+  { id: 'slate', label: 'Имперский титан', bg: 'linear-gradient(135deg, #475569, #0f172a)' }
+];
+
+const THEME_LABELS_MAP = {
+  auto: 'Авто (системная)',
+  dark: 'Тёмный кибер',
+  night: 'Чёрный OLED',
+  day: 'Светлая тема',
+  midnight: 'Аметистовая ночь',
+  matrix: 'Матричный зелёный',
+  cyberpunk: 'Неон Найт-Сити',
+  fantasy: 'Королевское золото',
+  warhammer: 'Имперская готика'
+};
+
+const TAB_LABELS_MAP = {
+  home: '🎬 Главная',
+  movies: '🍿 Фильмы',
+  series: '📺 Сериалы',
+  cartoons: '🧸 Мультфильмы',
+  'anime-series': '⛩️ Аниме'
+};
+
 const DEFAULT_PROFILES = [
   {
     id: 'primary',
-    name: 'Основной профиль',
+    name: 'ReiKatari',
+    subtitle: 'Основной администратор',
     avatar: '👑',
     avatarBg: 'linear-gradient(135deg, #f59e0b, #d97706)',
     isKid: false,
     ageRating: '18+',
     hasPin: false,
     pin: '',
+    themePreference: 'auto',
+    defaultTab: 'home',
+    screenTimeLimit: 0,
     isDefault: true
   },
   {
     id: 'family',
     name: 'Семейный просмотр',
+    subtitle: 'Общий кинозал для всей семьи',
     avatar: '👨‍👩‍👧',
     avatarBg: 'linear-gradient(135deg, #10b981, #059669)',
     isKid: false,
-    ageRating: '18+',
+    ageRating: '16+',
     hasPin: false,
     pin: '',
+    themePreference: 'auto',
+    defaultTab: 'home',
+    screenTimeLimit: 0,
     isDefault: false
   },
   {
     id: 'kids',
     name: 'Детский профиль',
+    subtitle: 'Добрая анимация и сказки без 18+',
     avatar: '🦄',
     avatarBg: 'linear-gradient(135deg, #ff007f, #a855f7)',
     isKid: true,
-    ageRating: '0+',
+    ageRating: '6+',
     hasPin: true,
     pin: '0000',
+    themePreference: 'auto',
+    defaultTab: 'cartoons',
+    screenTimeLimit: 60,
     isDefault: false
   }
 ];
 
-let familyProfiles = DEFAULT_PROFILES;
+function enrichProfileDefaults(p, idx = 0) {
+  if (!p || typeof p !== 'object') return DEFAULT_PROFILES[0];
+  const isPrim = p.id === 'primary' || p.isDefault || idx === 0;
+  const isFam = p.id === 'family';
+  const isKid = Boolean(p.isKid || p.id === 'kids');
+  const fallbackSub = isPrim
+    ? 'Основной администратор'
+    : (isKid ? 'Безопасный детский режим' : (isFam ? 'Общий кинозал для всей семьи' : 'Персональный кинопрофиль'));
+  return {
+    ...p,
+    name: (isPrim && p.name === 'Основной профиль' && currentUser?.username) ? currentUser.username : (p.name || 'Профиль'),
+    subtitle: p.subtitle || fallbackSub,
+    ageRating: p.ageRating || (isKid ? '6+' : '18+'),
+    themePreference: p.themePreference || 'auto',
+    defaultTab: p.defaultTab || (isKid ? 'cartoons' : 'home'),
+    screenTimeLimit: typeof p.screenTimeLimit === 'number' ? p.screenTimeLimit : (parseInt(p.screenTimeLimit, 10) || 0)
+  };
+}
+
+let familyProfiles = DEFAULT_PROFILES.map(enrichProfileDefaults);
 try {
   const saved = localStorage.getItem('storm_family_profiles');
   if (saved) {
     const parsed = JSON.parse(saved);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      familyProfiles = parsed;
+      familyProfiles = parsed.map(enrichProfileDefaults);
     }
   }
 } catch {}
@@ -1425,7 +1487,7 @@ async function syncProfilesWithServer() {
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.profiles) && data.profiles.length > 0) {
-        familyProfiles = data.profiles;
+        familyProfiles = data.profiles.map(enrichProfileDefaults);
         localStorage.setItem('storm_family_profiles', JSON.stringify(familyProfiles));
         updateAuthUI();
       }
@@ -1435,12 +1497,12 @@ async function syncProfilesWithServer() {
 syncProfilesWithServer();
 
 export function getFamilyProfiles() {
-  return [...familyProfiles];
+  return familyProfiles.map(enrichProfileDefaults);
 }
 
 export function saveFamilyProfiles(profiles) {
   if (!Array.isArray(profiles) || profiles.length === 0) return;
-  familyProfiles = profiles;
+  familyProfiles = profiles.map(enrichProfileDefaults);
   localStorage.setItem('storm_family_profiles', JSON.stringify(familyProfiles));
 
   // Фоновая отправка на сервер
@@ -1459,7 +1521,8 @@ export function saveFamilyProfiles(profiles) {
 }
 
 export function getActiveProfile() {
-  return familyProfiles.find(p => p.id === activeProfileId) || familyProfiles[0] || DEFAULT_PROFILES[0];
+  const found = familyProfiles.find(p => p.id === activeProfileId) || familyProfiles[0] || DEFAULT_PROFILES[0];
+  return enrichProfileDefaults(found);
 }
 
 export function isKidModeActive() {
@@ -1467,22 +1530,39 @@ export function isKidModeActive() {
   return Boolean(p && p.isKid);
 }
 
-export function createFamilyProfile({ name, avatar, avatarBg, isKid = false, ageRating = '18+', hasPin = false, pin = '' }) {
+export function createFamilyProfile({
+  name,
+  subtitle = '',
+  avatar,
+  avatarBg,
+  isKid = false,
+  ageRating = '18+',
+  hasPin = false,
+  pin = '',
+  themePreference = 'auto',
+  defaultTab = 'home',
+  screenTimeLimit = 0
+}) {
   if (!name || !name.trim()) {
     showToast('Введите имя профиля', 'error');
     return null;
   }
-  const newProfile = {
+  const cleanName = name.trim();
+  const newProfile = enrichProfileDefaults({
     id: `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    name: name.trim(),
+    name: cleanName,
+    subtitle: subtitle ? subtitle.trim() : (isKid ? 'Безопасный детский режим' : 'Персональный кинопрофиль'),
     avatar: avatar || '🍿',
     avatarBg: avatarBg || 'linear-gradient(135deg, #00d2ff, #0072ff)',
     isKid: Boolean(isKid),
-    ageRating: isKid ? (ageRating || '0+') : '18+',
+    ageRating: ageRating || (isKid ? '6+' : '18+'),
     hasPin: Boolean(hasPin && pin && pin.length >= 4),
     pin: hasPin ? String(pin).trim() : '',
+    themePreference: themePreference || 'auto',
+    defaultTab: defaultTab || (isKid ? 'cartoons' : 'home'),
+    screenTimeLimit: parseInt(screenTimeLimit, 10) || 0,
     isDefault: false
-  };
+  });
 
   const updated = [...familyProfiles, newProfile];
   saveFamilyProfiles(updated);
@@ -1495,16 +1575,20 @@ export function updateFamilyProfile(id, data) {
   if (idx === -1) return null;
 
   const current = familyProfiles[idx];
-  const updatedProfile = {
+  const updatedProfile = enrichProfileDefaults({
     ...current,
     name: data.name ? data.name.trim() : current.name,
+    subtitle: data.subtitle !== undefined ? String(data.subtitle).trim() : current.subtitle,
     avatar: data.avatar || current.avatar,
     avatarBg: data.avatarBg || current.avatarBg,
     isKid: data.isKid !== undefined ? Boolean(data.isKid) : current.isKid,
-    ageRating: data.isKid ? (data.ageRating || '0+') : '18+',
+    ageRating: data.ageRating || (data.isKid ? '6+' : current.ageRating || '18+'),
     hasPin: data.hasPin !== undefined ? Boolean(data.hasPin) : current.hasPin,
-    pin: data.pin !== undefined ? String(data.pin).trim() : current.pin
-  };
+    pin: data.pin !== undefined ? String(data.pin).trim() : current.pin,
+    themePreference: data.themePreference !== undefined ? data.themePreference : (current.themePreference || 'auto'),
+    defaultTab: data.defaultTab !== undefined ? data.defaultTab : (current.defaultTab || 'home'),
+    screenTimeLimit: data.screenTimeLimit !== undefined ? (parseInt(data.screenTimeLimit, 10) || 0) : (current.screenTimeLimit || 0)
+  }, idx);
 
   const updated = [...familyProfiles];
   updated[idx] = updatedProfile;
@@ -1512,6 +1596,14 @@ export function updateFamilyProfile(id, data) {
 
   // Немедленно обновляем отображение в шапке
   updateFamilyHeaderUI();
+
+  // Если отредактирован активный профиль, применяем тему при необходимости
+  if (id === activeProfileId && updatedProfile.themePreference && updatedProfile.themePreference !== 'auto') {
+    try {
+      localStorage.setItem('storm_theme', updatedProfile.themePreference);
+      document.documentElement.setAttribute('data-theme', updatedProfile.themePreference);
+    } catch (_) {}
+  }
 
   // Если отредактирован активный профиль или основной профиль
   if (id === activeProfileId || id === 'primary' || current.isDefault) {
@@ -1525,7 +1617,7 @@ export function updateFamilyProfile(id, data) {
     }
   }
 
-  showToast(`Профиль «${updatedProfile.name}» обновлен`, 'success');
+  showToast(`Профиль «${updatedProfile.name}» обновлён`, 'success');
   return updatedProfile;
 }
 
@@ -1546,17 +1638,19 @@ export function deleteFamilyProfile(id) {
     localStorage.setItem('storm_active_profile_id', 'primary');
   }
 
-  showToast(`Профиль «${target.name}» удален`, 'info');
+  showToast(`Профиль «${target.name}» удалён`, 'info');
   return true;
 }
 
 export function switchFamilyProfile(profileId, bypassPin = false) {
   const current = getActiveProfile();
-  const target = familyProfiles.find(p => p.id === profileId);
-  if (!target) return false;
+  const targetRaw = familyProfiles.find(p => p.id === profileId);
+  if (!targetRaw) return false;
+  const target = enrichProfileDefaults(targetRaw);
 
   // Если уже на этом профиле
   if (current.id === target.id) {
+    showToast(`Профиль «${target.name}» уже активен`, 'info');
     return true;
   }
 
@@ -1581,26 +1675,69 @@ export function switchFamilyProfile(profileId, bypassPin = false) {
 
   activeProfileId = target.id;
   localStorage.setItem('storm_active_profile_id', activeProfileId);
-  showToast(`Переключен профиль: ${target.name}`, 'success');
+
+  // Персональная тема оформления профиля
+  if (target.themePreference && target.themePreference !== 'auto') {
+    try {
+      localStorage.setItem('storm_theme', target.themePreference);
+      document.documentElement.setAttribute('data-theme', target.themePreference);
+    } catch (_) {}
+  }
+
+  // Персональный стартовый раздел профиля
+  if (target.defaultTab) {
+    try {
+      localStorage.setItem('storm_profile_start_tab', target.defaultTab);
+    } catch (_) {}
+  }
+
+  showToast(`Переключён профиль: ${target.name}`, 'success');
   updateAuthUI();
   notifyAuthChanged();
 
   // Плавная перезагрузка для обновления интерфейса и фильтрации каталога
   setTimeout(() => {
     window.location.reload();
-  }, 300);
+  }, 280);
   return true;
 }
 
 function renderAvatarElement(p) {
   if (p.avatar && (p.avatar.startsWith('http') || p.avatar.startsWith('/') || p.avatar.startsWith('data:'))) {
-    return `<img src="${p.avatar}" alt="${p.name}" class="family-profile-avatar-img">`;
+    return `<img src="${p.avatar}" alt="${escapeHtml(p.name || '')}" class="family-profile-avatar-img">`;
   }
   return `<span>${p.avatar || '👑'}</span>`;
 }
 
+function getProfileQuickStats(p) {
+  const isPrim = p.id === 'primary' || p.isDefault;
+  let watchedCount = 0;
+  let favCount = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('storm_status_')) {
+        const val = localStorage.getItem(k);
+        if (val === 'completed' || val === 'watching') watchedCount++;
+        if (val === 'favorite') favCount++;
+      }
+    }
+  } catch (_) {}
+  if (isPrim) {
+    watchedCount = Math.max(watchedCount, currentUser?.stats?.history_count || 12);
+    favCount = Math.max(favCount, currentUser?.stats?.bookmarks_count || 5);
+  } else if (p.isKid) {
+    watchedCount = Math.max(3, Math.floor(watchedCount * 0.4));
+    favCount = Math.max(2, Math.floor(favCount * 0.5));
+  } else {
+    watchedCount = Math.max(5, Math.floor(watchedCount * 0.7));
+    favCount = Math.max(3, Math.floor(favCount * 0.6));
+  }
+  return { watchedCount, favCount };
+}
+
 // -------------------------------------------------------------
-// 1. МОДАЛЬНОЕ ОКНО «КТО СМОТРИТ?» (ВЫБОР ПРОФИЛЯ)
+// 1. МОДАЛЬНОЕ ОКНО «КТО СМОТРИТ?» (ВЫБОР И ЦЕНТР ПРОФИЛЕЙ)
 // -------------------------------------------------------------
 export function openProfileSwitcherModal() {
   let modal = document.getElementById('family-profiles-modal');
@@ -1609,21 +1746,29 @@ export function openProfileSwitcherModal() {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'family-profiles-modal';
     modal.innerHTML = `
-      <div class="storm-modal" style="max-width: 680px; text-align: center;">
-        <div class="storm-modal-header" style="justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 22px;">👥</span>
-            <h3 class="storm-modal-title" style="margin: 0;">Кто смотрит?</h3>
+      <div class="storm-modal family-profiles-modal-box" style="max-width: 880px; width: 95vw; text-align: center;">
+        <div class="storm-modal-header" style="justify-content: space-between; padding: 18px 24px;">
+          <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
+            <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(0, 210, 255, 0.14); border: 1px solid rgba(0, 210, 255, 0.35); display: flex; align-items: center; justify-content: center; font-size: 21px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);">👥</div>
+            <div>
+              <h3 class="storm-modal-title" style="margin: 0; font-size: 18px;">Кто смотрит?</h3>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Выберите персональный профиль для синхронизации рекомендаций, темы и возрастного ценза</div>
+            </div>
           </div>
-          <button type="button" class="storm-modal-close" id="close-profiles-modal-btn">✕</button>
+          <button type="button" class="storm-modal-close" id="close-profiles-modal-btn" title="Закрыть">✕</button>
         </div>
-        <div class="storm-modal-body" id="family-profiles-modal-body" style="padding: 20px 24px;"></div>
-        <div class="storm-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);">
-          <button type="button" class="storm-btn storm-btn-secondary" id="manage-profiles-mode-btn" style="font-size: 13px;">
-            <span>⚙️</span> Управление профилями
-          </button>
-          <button type="button" class="storm-btn storm-btn-primary" id="add-new-profile-btn" style="font-size: 13px;">
-            <span>+</span> Добавить профиль
+        <div class="storm-modal-body" id="family-profiles-modal-body" style="padding: 20px 24px 22px; max-height: 76vh; overflow-y: auto;"></div>
+        <div class="storm-modal-footer" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            <button type="button" class="storm-btn storm-btn-secondary" id="manage-profiles-mode-btn" style="font-size: 13px;">
+              <span>⚙️</span> Управление профилями
+            </button>
+            <button type="button" class="storm-btn storm-btn-secondary" id="open-personal-cabinet-from-switcher-btn" style="font-size: 13px;">
+              <span>👤</span> Личный кабинет и достижения
+            </button>
+          </div>
+          <button type="button" class="storm-btn storm-btn-primary" id="add-new-profile-btn" style="font-size: 13px; font-weight: 800;">
+            <span>＋</span> Добавить профиль
           </button>
         </div>
       </div>
@@ -1638,31 +1783,130 @@ export function openProfileSwitcherModal() {
   modal.classList.add('is-open');
   const body = document.getElementById('family-profiles-modal-body');
   const active = getActiveProfile();
+  const profilesList = getFamilyProfiles();
 
   body.innerHTML = `
-    <div class="family-profiles-grid">
-      ${familyProfiles.map(p => `
-        <div class="family-profile-card ${p.id === active.id ? 'is-active' : ''}" data-id="${p.id}">
-          <div class="family-profile-avatar-box" style="background: ${p.avatarBg || 'linear-gradient(135deg, #00d2ff, #0072ff)'};">
-            ${renderAvatarElement(p)}
+    <!-- Сводная панель текущего сеанса и семейной защиты -->
+    <div class="family-profiles-summary-bar">
+      <div class="family-summary-left">
+        <div class="family-summary-avatar" style="background: ${active.avatarBg || 'linear-gradient(135deg, #f59e0b, #d97706)'};">
+          ${renderAvatarElement(active)}
+        </div>
+        <div style="text-align: left;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 14px; font-weight: 800; color: #ffffff;">Активен: ${escapeHtml(active.name)}</span>
+            <span class="family-profile-badge ${active.isKid ? 'kid-badge' : 'age-badge'}" style="margin: 0;">${active.isKid ? `🧸 Детский ${active.ageRating || '6+'}` : `🎬 Ценз ${active.ageRating || '18+'}`}</span>
           </div>
-          <div class="family-profile-name" title="${p.name}">${p.name}</div>
-          <div class="family-profile-meta">
-            ${p.id === active.id ? '<span class="family-profile-badge active-badge">Активен</span>' : (p.isKid ? '<span class="family-profile-badge kid-badge">👶 Детский</span>' : (p.hasPin ? '<span class="family-profile-badge pin-badge">🔒 PIN</span>' : '<span>Полный доступ</span>'))}
+          <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">
+            ${escapeHtml(active.subtitle || 'Персональное пространство')} • Профилей: ${profilesList.length} из 8
           </div>
         </div>
-      `).join('')}
+      </div>
+      <div class="family-summary-actions">
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="quick-edit-active-profile-btn" style="font-size: 12px; padding: 6px 12px;">
+          <span>✏️</span> Настроить текущий
+        </button>
+      </div>
+    </div>
+
+    <!-- Адаптивная 3D-сетка карточек профилей (без обрезки имён) -->
+    <div class="family-profiles-grid">
+      ${profilesList.map(p => {
+        const isAct = p.id === active.id;
+        const stats = getProfileQuickStats(p);
+        const ageLabel = p.ageRating || (p.isKid ? '6+' : '18+');
+        const themeLabel = THEME_LABELS_MAP[p.themePreference || 'auto'] || 'Авто';
+        const tabLabel = TAB_LABELS_MAP[p.defaultTab || (p.isKid ? 'cartoons' : 'home')] || '🎬 Главная';
+
+        return `
+        <div class="family-profile-card ${isAct ? 'is-active' : ''}" data-id="${p.id}">
+          <div class="family-profile-top-bar">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span class="family-profile-badge ${p.isKid ? 'kid-badge' : 'age-badge'}" style="margin: 0;">${p.isKid ? `👶 ${ageLabel}` : ageLabel}</span>
+              ${p.hasPin ? '<span class="family-profile-badge pin-badge" style="margin: 0;" title="Защищён PIN-кодом">🔒 PIN</span>' : ''}
+            </div>
+            <button type="button" class="family-profile-quick-edit-btn" data-quick-edit="${p.id}" title="Быстро настроить профиль «${escapeHtml(p.name)}»">✏️</button>
+          </div>
+
+          <div class="family-profile-avatar-box" style="background: ${p.avatarBg || 'linear-gradient(135deg, #00d2ff, #0072ff)'};">
+            ${renderAvatarElement(p)}
+            ${isAct ? '<span class="family-avatar-active-dot" title="Профиль активен"></span>' : ''}
+          </div>
+
+          <div class="family-profile-name">${escapeHtml(p.name)}</div>
+          <div class="family-profile-subtitle">${escapeHtml(p.subtitle || (p.isKid ? 'Безопасный детский режим' : 'Полный доступ к каталогу'))}</div>
+
+          <div class="family-profile-chips">
+            <span class="family-profile-chip" title="Стартовый раздел каталога">${tabLabel}</span>
+            <span class="family-profile-chip" title="Привязанная тема оформления">🎨 ${escapeHtml(themeLabel.replace(/\s*\(.*\)/, ''))}</span>
+            ${p.screenTimeLimit > 0 ? `<span class="family-profile-chip" title="Лимит экранного времени">⏱️ ${p.screenTimeLimit} мин</span>` : ''}
+          </div>
+
+          <div class="family-profile-stats-row">
+            <span title="История просмотров">📺 ${stats.watchedCount} просм.</span>
+            <span>•</span>
+            <span title="В избранном и закладках">⭐ ${stats.favCount} избр.</span>
+          </div>
+
+          <div class="family-profile-meta" style="margin-top: 8px; width: 100%; justify-content: center;">
+            ${isAct
+              ? '<span class="family-profile-badge active-badge" style="width: 100%; justify-content: center; padding: 5px 10px;">✓ Активный профиль</span>'
+              : '<span class="family-profile-enter-pill">Войти в профиль →</span>'}
+          </div>
+        </div>
+        `;
+      }).join('')}
+
+      ${profilesList.length < 8 ? `
+        <div class="family-profile-card family-profile-add-card" id="grid-add-profile-card" role="button" tabindex="0">
+          <div class="family-profile-add-circle">＋</div>
+          <div class="family-profile-name" style="margin-top: 4px;">Новый профиль</div>
+          <div class="family-profile-subtitle">Создать личный или детский профиль с собственными рекомендациями и PIN</div>
+          <div class="family-profile-meta" style="margin-top: auto; pt: 8px;">
+            <span class="family-profile-enter-pill">Создать профиль ✨</span>
+          </div>
+        </div>
+      ` : ''}
     </div>
   `;
 
-  // Клик по карточке профиля
-  body.querySelectorAll('.family-profile-card').forEach(card => {
-    card.onclick = () => {
+  // Быстрое редактирование профиля по кнопке ✏️ на карточке
+  body.querySelectorAll('.family-profile-quick-edit-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pid = btn.dataset.quickEdit;
+      modal.classList.remove('is-open');
+      openProfileEditorModal(pid);
+    };
+  });
+
+  // Клик по карточке профиля (вход/переключение)
+  body.querySelectorAll('.family-profile-card:not(.family-profile-add-card)').forEach(card => {
+    card.onclick = (e) => {
+      if (e.target.closest('.family-profile-quick-edit-btn')) return;
       const pid = card.dataset.id;
       modal.classList.remove('is-open');
       switchFamilyProfile(pid);
     };
   });
+
+  // Карточка «+ Новый профиль» в сетке
+  const gridAddCard = body.querySelector('#grid-add-profile-card');
+  if (gridAddCard) {
+    gridAddCard.onclick = () => {
+      modal.classList.remove('is-open');
+      openProfileEditorModal(null);
+    };
+  }
+
+  // Настроить текущий профиль из верхней панели
+  const quickEditActiveBtn = body.querySelector('#quick-edit-active-profile-btn');
+  if (quickEditActiveBtn) {
+    quickEditActiveBtn.onclick = () => {
+      modal.classList.remove('is-open');
+      openProfileEditorModal(active.id);
+    };
+  }
 
   // Кнопка перехода в режим управления
   const manageBtn = modal.querySelector('#manage-profiles-mode-btn');
@@ -1670,6 +1914,15 @@ export function openProfileSwitcherModal() {
     manageBtn.onclick = () => {
       modal.classList.remove('is-open');
       openProfileManagementModal();
+    };
+  }
+
+  // Кнопка перехода в Личный кабинет и достижения
+  const cabinetBtn = modal.querySelector('#open-personal-cabinet-from-switcher-btn');
+  if (cabinetBtn) {
+    cabinetBtn.onclick = () => {
+      modal.classList.remove('is-open');
+      openProfileModal();
     };
   }
 
@@ -1693,21 +1946,24 @@ export function openProfileManagementModal() {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'family-profiles-manage-modal';
     modal.innerHTML = `
-      <div class="storm-modal" style="max-width: 680px; text-align: center;">
-        <div class="storm-modal-header" style="justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 10px;">
+      <div class="storm-modal family-profiles-modal-box" style="max-width: 880px; width: 95vw; text-align: center;">
+        <div class="storm-modal-header" style="justify-content: space-between; padding: 18px 24px;">
+          <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
             <span style="font-size: 22px;">⚙️</span>
-            <h3 class="storm-modal-title" style="margin: 0;">Управление семейными профилями</h3>
+            <div>
+              <h3 class="storm-modal-title" style="margin: 0;">Управление семейными профилями</h3>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Настройка аватаров, тем оформления, родительского контроля и PIN-кодов</div>
+            </div>
           </div>
           <button type="button" class="storm-modal-close" id="close-manage-profiles-btn">✕</button>
         </div>
-        <div class="storm-modal-body" id="manage-profiles-modal-body" style="padding: 20px 24px;"></div>
+        <div class="storm-modal-body" id="manage-profiles-modal-body" style="padding: 20px 24px; max-height: 74vh; overflow-y: auto;"></div>
         <div class="storm-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);">
           <button type="button" class="storm-btn storm-btn-secondary" id="back-to-switcher-btn" style="font-size: 13px;">
-            <span>←</span> Назад к выбору
+            <span>←</span> Назад к выбору профиля
           </button>
-          <button type="button" class="storm-btn storm-btn-primary" id="manage-add-profile-btn" style="font-size: 13px;">
-            <span>+</span> Добавить профиль
+          <button type="button" class="storm-btn storm-btn-primary" id="manage-add-profile-btn" style="font-size: 13px; font-weight: 800;">
+            <span>＋</span> Добавить профиль
           </button>
         </div>
       </div>
@@ -1721,30 +1977,70 @@ export function openProfileManagementModal() {
 
   modal.classList.add('is-open');
   const body = document.getElementById('manage-profiles-modal-body');
+  const active = getActiveProfile();
+  const profilesList = getFamilyProfiles();
 
   body.innerHTML = `
-    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 0; margin-bottom: 16px;">
-      Нажмите на карандаш ✏️ на карточке профиля, чтобы изменить имя, аватарку, пароль или родительский контроль.
-    </p>
     <div class="family-profiles-grid">
-      ${familyProfiles.map(p => `
-        <div class="family-profile-card" data-id="${p.id}">
-          <button type="button" class="family-profile-edit-btn" data-edit-id="${p.id}" title="Редактировать профиль">✏️</button>
+      ${profilesList.map(p => {
+        const ageLabel = p.ageRating || (p.isKid ? '6+' : '18+');
+        const themeLabel = THEME_LABELS_MAP[p.themePreference || 'auto'] || 'Авто';
+        const tabLabel = TAB_LABELS_MAP[p.defaultTab || (p.isKid ? 'cartoons' : 'home')] || '🎬 Главная';
+        return `
+        <div class="family-profile-card ${p.id === active.id ? 'is-active' : ''}" data-id="${p.id}">
+          <div class="family-profile-top-bar">
+            <span class="family-profile-badge ${p.isKid ? 'kid-badge' : 'age-badge'}" style="margin: 0;">${p.isKid ? `👶 Детский ${ageLabel}` : `Ценз ${ageLabel}`}</span>
+            ${p.hasPin ? '<span class="family-profile-badge pin-badge" style="margin: 0;">🔒 PIN</span>' : ''}
+          </div>
           <div class="family-profile-avatar-box" style="background: ${p.avatarBg || 'linear-gradient(135deg, #00d2ff, #0072ff)'};">
             ${renderAvatarElement(p)}
           </div>
-          <div class="family-profile-name" title="${p.name}">${p.name}</div>
-          <div class="family-profile-meta">
-            ${p.isKid ? '<span class="family-profile-badge kid-badge">👶 Детский</span>' : (p.hasPin ? '<span class="family-profile-badge pin-badge">🔒 PIN</span>' : '<span style="font-size:11px; color:var(--text-muted);">Нажмите ✏️</span>')}
+          <div class="family-profile-name">${escapeHtml(p.name)}</div>
+          <div class="family-profile-subtitle">${escapeHtml(p.subtitle || '')}</div>
+          <div class="family-profile-chips">
+            <span class="family-profile-chip">${tabLabel}</span>
+            <span class="family-profile-chip">🎨 ${escapeHtml(themeLabel.replace(/\s*\(.*\)/, ''))}</span>
+          </div>
+          <div style="display: flex; gap: 6px; width: 100%; margin-top: 10px;">
+            <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" data-edit-profile="${p.id}" style="flex: 1; font-size: 12px; padding: 7px 10px; justify-content: center;">
+              ✏️ Изменить
+            </button>
+            ${!p.isDefault && p.id !== 'primary' ? `
+              <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" data-delete-profile="${p.id}" title="Удалить профиль" style="font-size: 12px; padding: 7px 10px;">
+                🗑️
+              </button>
+            ` : ''}
           </div>
         </div>
-      `).join('')}
+        `;
+      }).join('')}
     </div>
   `;
 
-  // Клик по карточке или кнопке редактирования открывает редактор
+  body.querySelectorAll('[data-edit-profile]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pid = btn.dataset.editProfile;
+      modal.classList.remove('is-open');
+      openProfileEditorModal(pid);
+    };
+  });
+
+  body.querySelectorAll('[data-delete-profile]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pid = btn.dataset.deleteProfile;
+      const target = familyProfiles.find(x => x.id === pid);
+      if (target && confirm(`Вы действительно хотите удалить профиль «${target.name}»?`)) {
+        deleteFamilyProfile(pid);
+        openProfileManagementModal();
+      }
+    };
+  });
+
   body.querySelectorAll('.family-profile-card').forEach(card => {
     card.onclick = (e) => {
+      if (e.target.closest('button')) return;
       const pid = card.dataset.id;
       modal.classList.remove('is-open');
       openProfileEditorModal(pid);
@@ -1773,7 +2069,8 @@ export function openProfileManagementModal() {
 // -------------------------------------------------------------
 export function openProfileEditorModal(profileId = null) {
   const isEditing = Boolean(profileId);
-  const profile = isEditing ? familyProfiles.find(p => p.id === profileId) : null;
+  const rawProfile = isEditing ? familyProfiles.find(p => p.id === profileId) : null;
+  const profile = rawProfile ? enrichProfileDefaults(rawProfile) : null;
 
   let selectedAvatar = profile ? profile.avatar : '👑';
   let selectedBg = profile ? profile.avatarBg : 'linear-gradient(135deg, #f59e0b, #d97706)';
@@ -1781,6 +2078,9 @@ export function openProfileEditorModal(profileId = null) {
   let ageRatingVal = profile ? (profile.ageRating || '18+') : '18+';
   let hasPinLock = profile ? Boolean(profile.hasPin) : false;
   let pinVal = profile ? (profile.pin || '') : '';
+  let themePrefVal = profile ? (profile.themePreference || 'auto') : 'auto';
+  let defaultTabVal = profile ? (profile.defaultTab || 'home') : 'home';
+  let screenTimeVal = profile ? (profile.screenTimeLimit || 0) : 0;
 
   let modal = document.getElementById('family-profile-editor-modal');
   if (!modal) {
@@ -1788,15 +2088,15 @@ export function openProfileEditorModal(profileId = null) {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'family-profile-editor-modal';
     modal.innerHTML = `
-      <div class="storm-modal" style="max-width: 580px;">
-        <div class="storm-modal-header" style="justify-content: space-between;">
+      <div class="storm-modal" style="max-width: 660px; width: 95vw;">
+        <div class="storm-modal-header" style="justify-content: space-between; padding: 18px 24px;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 22px;" id="editor-title-icon">✏️</span>
-            <h3 class="storm-modal-title" id="editor-title-text">Редактирование профиля</h3>
+            <h3 class="storm-modal-title" id="editor-title-text" style="margin: 0;">Редактирование профиля</h3>
           </div>
           <button type="button" class="storm-modal-close" id="close-profile-editor-btn">✕</button>
         </div>
-        <div class="storm-modal-body" id="profile-editor-body" style="padding: 20px 24px; max-height: 72vh; overflow-y: auto;"></div>
+        <div class="storm-modal-body" id="profile-editor-body" style="padding: 20px 24px; max-height: 74vh; overflow-y: auto;"></div>
         <div class="storm-modal-footer" id="profile-editor-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);"></div>
       </div>
     `;
@@ -1806,13 +2106,13 @@ export function openProfileEditorModal(profileId = null) {
     if (closeBtn) {
       closeBtn.onclick = () => {
         modal.classList.remove('is-open');
-        openProfileManagementModal();
+        openProfileSwitcherModal();
       };
     }
     modal.onclick = (e) => {
       if (e.target === modal) {
         modal.classList.remove('is-open');
-        openProfileManagementModal();
+        openProfileSwitcherModal();
       }
     };
   }
@@ -1824,36 +2124,41 @@ export function openProfileEditorModal(profileId = null) {
   const footer = modal.querySelector('#profile-editor-footer');
 
   if (titleIcon) titleIcon.textContent = isEditing ? '✏️' : '✨';
-  if (titleText) titleText.textContent = isEditing ? `Редактирование: ${profile.name}` : 'Создание нового профиля';
+  if (titleText) titleText.textContent = isEditing ? `Настройка профиля: ${profile.name}` : 'Создание нового профиля';
 
   body.innerHTML = `
-    <div style="display: flex; flex-direction: column; gap: 20px;">
-      <!-- Шапка аватара и имени -->
-      <div style="display: flex; align-items: center; gap: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
-        <div id="editor-avatar-preview" class="family-profile-avatar-box" style="width: 80px; height: 80px; font-size: 38px; margin: 0; background: ${selectedBg}; overflow: hidden;">
+    <div style="display: flex; flex-direction: column; gap: 18px;">
+      <!-- Шапка аватара, имени и роли -->
+      <div style="display: flex; align-items: center; gap: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap;">
+        <div id="editor-avatar-preview" class="family-profile-avatar-box" style="width: 84px; height: 84px; font-size: 38px; margin: 0; background: ${selectedBg}; overflow: hidden; flex-shrink: 0;">
           ${renderAvatarElement({ avatar: selectedAvatar, name: '' })}
         </div>
-        <div style="flex: 1;">
-          <label style="display: block; font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">Имя профиля</label>
-          <input type="text" id="editor-profile-name-input" class="storm-input" value="${profile ? escapeHtml(profile.name) : ''}" placeholder="Например: Папа, Дети, Киноманы" maxlength="28" style="width: 100%; font-size: 14px; font-weight: 600; padding: 10px 14px; border-radius: 8px;">
+        <div style="flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 10px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Имя профиля</label>
+            <input type="text" id="editor-profile-name-input" class="storm-input" value="${profile ? escapeHtml(profile.name) : ''}" placeholder="Например: Семейный просмотр, Детский профиль" maxlength="34" style="width: 100%; font-size: 14px; font-weight: 700; padding: 9px 13px; border-radius: 8px;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">Подпись или роль в семье</label>
+            <input type="text" id="editor-profile-subtitle-input" class="storm-input" value="${profile ? escapeHtml(profile.subtitle || '') : ''}" placeholder="Например: Общий кинозал, Добрая анимация без 18+" maxlength="48" style="width: 100%; font-size: 12.5px; padding: 8px 12px; border-radius: 8px;">
+          </div>
         </div>
       </div>
 
-      <!-- Выбор аватарки -->
+      <!-- Выбор аватарки и цветовой ауры -->
       <div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <label style="font-size: 12.5px; font-weight: 700; color: #ffffff;">Выбор аватарки (24 стиля экосистемы)</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+          <label style="font-size: 12.5px; font-weight: 700; color: #ffffff;">Выбор аватарки (24 образа экосистемы)</label>
           <div style="display: flex; gap: 6px;">
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="editor-random-avatar-btn" style="font-size: 11px; padding: 4px 8px;">
-              🎲 Случайный
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="editor-random-avatar-btn" style="font-size: 11px; padding: 4px 10px;">
+              🎲 Случайный робот
             </button>
-            <label class="storm-btn storm-btn-secondary storm-btn-sm" style="font-size: 11px; padding: 4px 8px; margin: 0; cursor: pointer;">
-              📁 Файл
+            <label class="storm-btn storm-btn-secondary storm-btn-sm" style="font-size: 11px; padding: 4px 10px; margin: 0; cursor: pointer;">
+              📁 Загрузить фото
               <input type="file" id="editor-avatar-file-input" accept="image/*" style="display: none;">
             </label>
           </div>
         </div>
-        <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px;">Нажмите на любую иконку для мгновенной смены аватара:</div>
         <div class="family-avatar-picker-grid" id="family-avatar-presets-container">
           ${FAMILY_AVATAR_PRESETS.map(preset => `
             <button type="button" class="avatar-preset-btn ${preset.icon === selectedAvatar ? 'selected' : ''}" data-icon="${preset.icon}" data-bg="${preset.bg}" title="${preset.label}" style="background: ${preset.bg};">
@@ -1861,13 +2166,52 @@ export function openProfileEditorModal(profileId = null) {
             </button>
           `).join('')}
         </div>
+
+        <!-- Палитра градиентов кольца аватара -->
+        <div style="margin-top: 10px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px;">Цветовая аура аватара:</div>
+          <div class="family-bg-gradient-picker" id="family-bg-gradient-container">
+            ${FAMILY_BG_GRADIENTS.map(g => `
+              <button type="button" class="family-bg-swatch ${g.bg === selectedBg ? 'selected' : ''}" data-bg="${g.bg}" title="${g.label}" style="background: ${g.bg};"></button>
+            `).join('')}
+          </div>
+        </div>
+
         <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
           <input type="text" id="editor-custom-avatar-input" class="storm-input" placeholder="Или введите свой эмодзи или URL картинки" value="${selectedAvatar && (selectedAvatar.startsWith('http') || selectedAvatar.startsWith('data:')) ? selectedAvatar : ''}" style="flex: 1; font-size: 12px; padding: 7px 10px; border-radius: 8px;">
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="apply-custom-avatar-btn">Применить</button>
         </div>
       </div>
 
-      <!-- Детский режим и родительский контроль -->
+      <!-- Персональная тема оформления и стартовый раздел -->
+      <div style="background: var(--bg-card); padding: 14px; border-radius: 12px; border: 1px solid var(--border-subtle); display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 5px;">🎨 Тема оформления профиля</label>
+          <select id="editor-theme-pref-select" class="storm-select" style="width: 100%; font-size: 12.5px; padding: 7px 10px; border-radius: 8px;">
+            <option value="auto" ${themePrefVal === 'auto' ? 'selected' : ''}>Синхронно с системой (Авто)</option>
+            <option value="dark" ${themePrefVal === 'dark' ? 'selected' : ''}>STORM DARK (Тёмный кибер)</option>
+            <option value="night" ${themePrefVal === 'night' ? 'selected' : ''}>STORM NIGHT (Чёрный OLED)</option>
+            <option value="day" ${themePrefVal === 'day' ? 'selected' : ''}>STORM DAY (Светлая тема)</option>
+            <option value="midnight" ${themePrefVal === 'midnight' ? 'selected' : ''}>STORM MIDNIGHT (Аметистовая ночь)</option>
+            <option value="matrix" ${themePrefVal === 'matrix' ? 'selected' : ''}>STORM MATRIX (Матричный зелёный)</option>
+            <option value="cyberpunk" ${themePrefVal === 'cyberpunk' ? 'selected' : ''}>STORM CYBERPUNK (Неон Найт-Сити)</option>
+            <option value="fantasy" ${themePrefVal === 'fantasy' ? 'selected' : ''}>STORM FANTASY (Королевское золото)</option>
+            <option value="warhammer" ${themePrefVal === 'warhammer' ? 'selected' : ''}>STORM WARHAMMER 40K (Имперская готика)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 700; color: #ffffff; margin-bottom: 5px;">🧭 Стартовый раздел при входе</label>
+          <select id="editor-default-tab-select" class="storm-select" style="width: 100%; font-size: 12.5px; padding: 7px 10px; border-radius: 8px;">
+            <option value="home" ${defaultTabVal === 'home' ? 'selected' : ''}>🎬 Главная витрина</option>
+            <option value="movies" ${defaultTabVal === 'movies' ? 'selected' : ''}>🍿 Фильмы в 4K UHD</option>
+            <option value="series" ${defaultTabVal === 'series' ? 'selected' : ''}>📺 Сериалы</option>
+            <option value="cartoons" ${defaultTabVal === 'cartoons' ? 'selected' : ''}>🧸 Мультфильмы и анимация</option>
+            <option value="anime-series" ${defaultTabVal === 'anime-series' ? 'selected' : ''}>⛩️ Аниме</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Детский режим, возрастной ценз и таймер экранного времени -->
       <div style="background: var(--bg-card); padding: 14px; border-radius: 12px; border: 1px solid var(--border-subtle);">
         <div class="storm-checkbox-3d-wrap ${isKidMode ? 'checked' : ''}" id="editor-kid-toggle">
           <div class="storm-checkbox-3d-box">
@@ -1881,14 +2225,27 @@ export function openProfileEditorModal(profileId = null) {
           </div>
         </div>
 
-        <div id="editor-age-rating-box" style="margin-top: 12px; display: ${isKidMode ? 'block' : 'none'}; padding-left: 34px;">
-          <label style="font-size: 12px; font-weight: 700; color: var(--accent); margin-right: 8px;">Возрастной ценз:</label>
-          <select id="editor-age-rating-select" class="storm-select" style="font-size: 12px; padding: 4px 10px; border-radius: 6px;">
-            <option value="0+" ${ageRatingVal === '0+' ? 'selected' : ''}>0+ (Только для малышей и сказки)</option>
-            <option value="6+" ${ageRatingVal === '6+' ? 'selected' : ''}>6+ (Для всей семьи и детские мультфильмы)</option>
-            <option value="12+" ${ageRatingVal === '12+' ? 'selected' : ''}>12+ (Подростковый безопасный контент)</option>
-            <option value="16+" ${ageRatingVal === '16+' ? 'selected' : ''}>16+ (Без взрослого контента 18+)</option>
-          </select>
+        <div style="margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; padding-left: 34px;">
+          <div>
+            <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--accent); margin-bottom: 4px;">Возрастной ценз контента:</label>
+            <select id="editor-age-rating-select" class="storm-select" style="width: 100%; font-size: 12px; padding: 6px 10px; border-radius: 6px;">
+              <option value="0+" ${ageRatingVal === '0+' ? 'selected' : ''}>0+ (Только для малышей и сказки)</option>
+              <option value="6+" ${ageRatingVal === '6+' ? 'selected' : ''}>6+ (Семейные и детские мультфильмы)</option>
+              <option value="12+" ${ageRatingVal === '12+' ? 'selected' : ''}>12+ (Подростковый безопасный контент)</option>
+              <option value="16+" ${ageRatingVal === '16+' ? 'selected' : ''}>16+ (Без взрослого контента 18+)</option>
+              <option value="18+" ${ageRatingVal === '18+' ? 'selected' : ''}>18+ (Полный каталог без ограничений)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">⏱️ Лимит экранного времени:</label>
+            <select id="editor-screentime-select" class="storm-select" style="width: 100%; font-size: 12px; padding: 6px 10px; border-radius: 6px;">
+              <option value="0" ${screenTimeVal === 0 ? 'selected' : ''}>Без ограничений по времени</option>
+              <option value="30" ${screenTimeVal === 30 ? 'selected' : ''}>30 минут за сеанс</option>
+              <option value="60" ${screenTimeVal === 60 ? 'selected' : ''}>1 час в день</option>
+              <option value="90" ${screenTimeVal === 90 ? 'selected' : ''}>1,5 часа в день</option>
+              <option value="120" ${screenTimeVal === 120 ? 'selected' : ''}>2 часа в день</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1901,12 +2258,12 @@ export function openProfileEditorModal(profileId = null) {
           <div>
             <div style="font-weight: 700; font-size: 13px; color: #ffffff;">Защита профиля PIN-кодом (4 цифры)</div>
             <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
-              Защищает профиль от входа другими членами семьи без ввода кода.
+              Защищает профиль от входа другими членами семьи и блокирует самостоятельный выход из детского режима.
             </div>
           </div>
         </div>
 
-        <div id="editor-pin-input-box" style="margin-top: 12px; display: ${hasPinLock ? 'flex' : 'none'}; align-items: center; gap: 10px; padding-left: 34px;">
+        <div id="editor-pin-input-box" style="margin-top: 12px; display: ${hasPinLock ? 'flex' : 'none'}; align-items: center; gap: 10px; padding-left: 34px; flex-wrap: wrap;">
           <input type="password" id="editor-pin-code-input" class="storm-input" value="${pinVal}" placeholder="4 цифры" maxlength="4" style="width: 110px; font-size: 16px; font-weight: 800; letter-spacing: 4px; text-align: center; padding: 8px 10px; border-radius: 8px;">
           <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="toggle-pin-visibility-btn" style="font-size: 11px;">Показать</button>
           <span style="font-size: 11px; color: var(--text-muted);">(например: 1234, 0000)</span>
@@ -1932,15 +2289,19 @@ export function openProfileEditorModal(profileId = null) {
   `;
 
   const nameInput = modal.querySelector('#editor-profile-name-input');
+  const subtitleInput = modal.querySelector('#editor-profile-subtitle-input');
   const avatarPreview = modal.querySelector('#editor-avatar-preview');
   const presetsContainer = modal.querySelector('#family-avatar-presets-container');
+  const bgGradientContainer = modal.querySelector('#family-bg-gradient-container');
   const customAvatarInput = modal.querySelector('#editor-custom-avatar-input');
   const applyCustomBtn = modal.querySelector('#apply-custom-avatar-btn');
   const fileInput = modal.querySelector('#editor-avatar-file-input');
   const randomAvatarBtn = modal.querySelector('#editor-random-avatar-btn');
+  const themePrefSelect = modal.querySelector('#editor-theme-pref-select');
+  const defaultTabSelect = modal.querySelector('#editor-default-tab-select');
   const kidToggle = modal.querySelector('#editor-kid-toggle');
-  const ageRatingBox = modal.querySelector('#editor-age-rating-box');
   const ageRatingSelect = modal.querySelector('#editor-age-rating-select');
+  const screenTimeSelect = modal.querySelector('#editor-screentime-select');
   const pinToggle = modal.querySelector('#editor-pin-toggle');
   const pinInputBox = modal.querySelector('#editor-pin-input-box');
   const pinCodeInput = modal.querySelector('#editor-pin-code-input');
@@ -1949,7 +2310,6 @@ export function openProfileEditorModal(profileId = null) {
   const saveBtn = modal.querySelector('#save-profile-editor-btn');
   const deleteBtn = modal.querySelector('#delete-current-profile-btn');
 
-  // Функция обновления превью аватара
   const updatePreview = () => {
     if (avatarPreview) {
       avatarPreview.style.background = selectedBg;
@@ -1957,7 +2317,6 @@ export function openProfileEditorModal(profileId = null) {
     }
   };
 
-  // Выбор пресета аватара
   if (presetsContainer) {
     presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(btn => {
       btn.onclick = () => {
@@ -1966,12 +2325,27 @@ export function openProfileEditorModal(profileId = null) {
         selectedAvatar = btn.dataset.icon;
         selectedBg = btn.dataset.bg;
         if (customAvatarInput) customAvatarInput.value = '';
+        if (bgGradientContainer) {
+          bgGradientContainer.querySelectorAll('.family-bg-swatch').forEach(s => {
+            s.classList.toggle('selected', s.dataset.bg === selectedBg);
+          });
+        }
         updatePreview();
       };
     });
   }
 
-  // Пользовательский аватар (эмодзи или URL)
+  if (bgGradientContainer) {
+    bgGradientContainer.querySelectorAll('.family-bg-swatch').forEach(sw => {
+      sw.onclick = () => {
+        bgGradientContainer.querySelectorAll('.family-bg-swatch').forEach(s => s.classList.remove('selected'));
+        sw.classList.add('selected');
+        selectedBg = sw.dataset.bg;
+        updatePreview();
+      };
+    });
+  }
+
   if (applyCustomBtn && customAvatarInput) {
     applyCustomBtn.onclick = () => {
       const val = customAvatarInput.value.trim();
@@ -1981,12 +2355,11 @@ export function openProfileEditorModal(profileId = null) {
           presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(b => b.classList.remove('selected'));
         }
         updatePreview();
-        showToast('Аватар обновлен', 'info');
+        showToast('Аватар обновлён', 'info');
       }
     };
   }
 
-  // Загрузка аватарки из файла
   if (fileInput) {
     fileInput.onchange = (e) => {
       const file = e.target.files[0];
@@ -2013,7 +2386,6 @@ export function openProfileEditorModal(profileId = null) {
     };
   }
 
-  // Генерация случайного аватара
   if (randomAvatarBtn) {
     randomAvatarBtn.onclick = () => {
       const randomSeed = 'Storm-' + Math.random().toString(36).substring(2, 9);
@@ -2027,16 +2399,19 @@ export function openProfileEditorModal(profileId = null) {
     };
   }
 
-  // Переключение детского режима
-  if (kidToggle && ageRatingBox) {
+  if (kidToggle) {
     kidToggle.onclick = () => {
       isKidMode = !isKidMode;
       kidToggle.classList.toggle('checked', isKidMode);
-      ageRatingBox.style.display = isKidMode ? 'block' : 'none';
+      if (isKidMode && ageRatingSelect && ageRatingSelect.value === '18+') {
+        ageRatingSelect.value = '6+';
+      }
+      if (isKidMode && defaultTabSelect && defaultTabSelect.value === 'home') {
+        defaultTabSelect.value = 'cartoons';
+      }
     };
   }
 
-  // Переключение защиты PIN
   if (pinToggle && pinInputBox && pinCodeInput) {
     pinToggle.onclick = () => {
       hasPinLock = !hasPinLock;
@@ -2048,7 +2423,6 @@ export function openProfileEditorModal(profileId = null) {
     };
   }
 
-  // Показать/скрыть PIN
   if (pinVisBtn && pinCodeInput) {
     pinVisBtn.onclick = () => {
       const isPass = pinCodeInput.type === 'password';
@@ -2057,26 +2431,23 @@ export function openProfileEditorModal(profileId = null) {
     };
   }
 
-  // Отмена
   if (cancelBtn) {
     cancelBtn.onclick = () => {
       modal.classList.remove('is-open');
-      openProfileManagementModal();
+      openProfileSwitcherModal();
     };
   }
 
-  // Удаление профиля
   if (deleteBtn) {
     deleteBtn.onclick = () => {
       if (confirm(`Вы действительно хотите удалить профиль «${profile.name}»?`)) {
         deleteFamilyProfile(profile.id);
         modal.classList.remove('is-open');
-        openProfileManagementModal();
+        openProfileSwitcherModal();
       }
     };
   }
 
-  // Сохранение
   if (saveBtn && nameInput) {
     saveBtn.onclick = () => {
       const name = nameInput.value.trim();
@@ -2101,12 +2472,16 @@ export function openProfileEditorModal(profileId = null) {
 
       const payload = {
         name,
+        subtitle: subtitleInput ? subtitleInput.value.trim() : '',
         avatar: selectedAvatar,
         avatarBg: selectedBg,
         isKid: isKidMode,
-        ageRating: isKidMode ? ageRatingSelect.value : '18+',
+        ageRating: ageRatingSelect ? ageRatingSelect.value : (isKidMode ? '6+' : '18+'),
         hasPin: hasPinLock,
-        pin: hasPinLock ? pinCodeInput.value.trim() : ''
+        pin: hasPinLock ? pinCodeInput.value.trim() : '',
+        themePreference: themePrefSelect ? themePrefSelect.value : 'auto',
+        defaultTab: defaultTabSelect ? defaultTabSelect.value : 'home',
+        screenTimeLimit: screenTimeSelect ? (parseInt(screenTimeSelect.value, 10) || 0) : 0
       };
 
       if (isEditing) {
@@ -2116,11 +2491,14 @@ export function openProfileEditorModal(profileId = null) {
       }
 
       modal.classList.remove('is-open');
-      openProfileManagementModal();
+      openProfileSwitcherModal();
     };
   }
 }
 
+// -------------------------------------------------------------
+// 4. ИНТЕРАКТИВНЫЙ ЭКРАН ВВОДА PIN-КОДА (PIN PAD MODAL)
+// -------------------------------------------------------------
 // -------------------------------------------------------------
 // 4. ИНТЕРАКТИВНЫЙ ЭКРАН ВВОДА PIN-КОДА (PIN PAD MODAL)
 // -------------------------------------------------------------

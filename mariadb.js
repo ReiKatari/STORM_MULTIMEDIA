@@ -318,8 +318,8 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     const [mAchievements] = await pool.query('SELECT * FROM user_achievements');
     if (mAchievements) {
       const upsertAch = sqliteDb.prepare(`
-        INSERT INTO user_achievements (id, user_id, achievement_id, progress, target, unlocked, unlocked_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO user_achievements (user_id, achievement_id, progress, target, unlocked, unlocked_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, achievement_id) DO UPDATE SET
           progress = excluded.progress,
           target = excluded.target,
@@ -328,7 +328,6 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       `);
       for (const a of mAchievements) {
         upsertAch.run(
-          a.id,
           a.user_id,
           a.achievement_id,
           a.progress || 0,

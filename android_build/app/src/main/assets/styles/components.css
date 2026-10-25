@@ -6550,69 +6550,160 @@ body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .
 }
 
 /* ==========================================================================
-   СЕМЕЙНЫЕ ПРОФИЛИ (FAMILY PROFILES SYSTEM)
+   СЕМЕЙНЫЕ ПРОФИЛИ (FAMILY PROFILES SYSTEM — VOLUMETRIC 3D EDITION)
    ========================================================================== */
 
-.family-profiles-grid {
+.storm-badge-upcoming {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.92) 0%, rgba(217, 119, 6, 0.95) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(254, 243, 199, 0.55) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.65), 0 0 12px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.55px !important;
+  font-weight: 800 !important;
+}
+
+.family-profiles-summary-bar {
   display: flex;
-  gap: 18px;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   flex-wrap: wrap;
-  padding: 10px 0 20px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.65));
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.family-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.family-summary-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.family-profiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+  gap: 16px;
+  padding: 4px 0 8px;
+  align-items: stretch;
 }
 
 .family-profile-card {
   position: relative;
-  width: 150px;
-  padding: 20px 12px 16px;
+  width: 100%;
+  padding: 16px 14px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   cursor: pointer;
   border-radius: 16px;
-  border: 2px solid var(--border-subtle);
-  background: var(--bg-card);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+  border: 1.5px solid var(--border-subtle);
+  background: linear-gradient(165deg, rgba(30, 41, 59, 0.78), rgba(15, 23, 42, 0.92));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.22s ease, border-color 0.22s ease;
   user-select: none;
 }
 
 .family-profile-card:hover {
   transform: translateY(-4px);
   border-color: var(--accent);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-glow);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.6), 0 0 18px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .family-profile-card:active {
-  transform: translateY(1.5px) scale(0.98);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(1.5px) scale(0.985);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
 }
 
 .family-profile-card.is-active {
   border-color: var(--accent);
-  background: rgba(0, 210, 255, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 14px var(--accent-glow);
+  background: linear-gradient(165deg, rgba(0, 210, 255, 0.13), rgba(15, 23, 42, 0.95));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55), 0 0 16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.family-profile-top-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-height: 26px;
+}
+
+.family-profile-quick-edit-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+.family-profile-quick-edit-btn:hover {
+  background: var(--accent);
+  color: #05070a;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  transform: scale(1.08);
 }
 
 .family-profile-avatar-box {
-  width: 76px;
-  height: 76px;
+  width: 82px;
+  height: 82px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 34px;
+  font-size: 36px;
   margin-bottom: 12px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-  border: 2.5px solid rgba(255, 255, 255, 0.2);
-  transition: transform 0.2s ease;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  border: 2.5px solid rgba(255, 255, 255, 0.28);
+  transition: transform 0.22s ease, border-color 0.22s ease;
   overflow: hidden;
   position: relative;
+  flex-shrink: 0;
 }
 
 .family-profile-card:hover .family-profile-avatar-box {
   transform: scale(1.06);
-  border-color: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.family-avatar-active-dot {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 2px solid #0b0f19;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
 }
 
 .family-profile-avatar-img {
@@ -6622,15 +6713,61 @@ body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .
 }
 
 .family-profile-name {
-  font-size: 14px;
+  font-size: 15.5px;
   font-weight: 800;
   color: #ffffff;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   text-align: center;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 100%;
+  line-height: 1.28;
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.family-profile-subtitle {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.35;
+  margin-bottom: 10px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.family-profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.family-profile-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.family-profile-stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .family-profile-meta {
@@ -6641,34 +6778,118 @@ body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .
   gap: 4px;
 }
 
+.family-profile-enter-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.18s ease;
+}
+
+.family-profile-card:hover .family-profile-enter-pill {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 .family-profile-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 3px 8px;
   border-radius: 6px;
   font-size: 10.5px;
-  font-weight: 700;
-  margin-top: 4px;
+  font-weight: 800;
   letter-spacing: 0.2px;
 }
 
 .family-profile-badge.active-badge {
   background: rgba(16, 185, 129, 0.18);
   color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.family-profile-badge.age-badge {
+  background: rgba(0, 210, 255, 0.14);
+  color: #38bdf8;
+  border: 1px solid rgba(0, 210, 255, 0.35);
 }
 
 .family-profile-badge.pin-badge {
   background: rgba(245, 158, 11, 0.16);
   color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  border: 1px solid rgba(245, 158, 11, 0.38);
 }
 
 .family-profile-badge.kid-badge {
   background: rgba(255, 0, 127, 0.16);
-  color: #ff007f;
-  border: 1px solid rgba(255, 0, 127, 0.35);
+  color: #ff4da6;
+  border: 1px solid rgba(255, 0, 127, 0.4);
+}
+
+.family-profile-add-card {
+  border-style: dashed;
+  border-width: 2px;
+  background: rgba(15, 23, 42, 0.45);
+  justify-content: center;
+}
+
+.family-profile-add-circle {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: rgba(0, 210, 255, 0.1);
+  border: 2px dashed rgba(0, 210, 255, 0.45);
+  color: var(--accent);
+  font-size: 32px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+}
+
+.family-profile-add-card:hover .family-profile-add-circle {
+  background: var(--accent);
+  color: #05070a;
+  border-style: solid;
+  box-shadow: 0 0 18px var(--accent-glow);
+  transform: scale(1.06);
+}
+
+.family-bg-gradient-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.family-bg-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.family-bg-swatch:hover {
+  transform: scale(1.12);
+  border-color: #ffffff;
+}
+
+.family-bg-swatch.selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(0, 0, 0, 0.5);
+  transform: scale(1.1);
 }
 
 /* Оверлей управления на карточке */

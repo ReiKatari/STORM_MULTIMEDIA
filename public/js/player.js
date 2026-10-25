@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.51';
-import { getUser, showToast } from './auth.js?v=1.0.51';
-import { t } from './i18n.js?v=1.0.51';
-import { trackClientAction } from './achievements.js?v=1.0.51';
-import { renderReviewsSection } from './reviews.js?v=1.0.51';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.0.51';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.51';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.51';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.51';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.51';
-import { saveMediaForOffline } from './offline-storage.js?v=1.0.51';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.51';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.51';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.51';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.51';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.51';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.0.52';
+import { getUser, showToast } from './auth.js?v=1.0.52';
+import { t } from './i18n.js?v=1.0.52';
+import { trackClientAction } from './achievements.js?v=1.0.52';
+import { renderReviewsSection } from './reviews.js?v=1.0.52';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.0.52';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.0.52';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.0.52';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.0.52';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.0.52';
+import { saveMediaForOffline } from './offline-storage.js?v=1.0.52';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.0.52';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.0.52';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.0.52';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.0.52';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.0.52';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -546,6 +546,28 @@ function initFullscreenControls() {
         if (data.type === 'STORM_PREMIERE_PLACEHOLDER_LOADED') {
           const fbBanner = document.getElementById('player-fallback-banner');
           if (fbBanner) fbBanner.style.display = 'none';
+          if (currentMedia) {
+            currentMedia.is_upcoming = true;
+            currentMedia.is4K = false;
+            currentMedia.quality = 'ОЖИДАЕТСЯ';
+            if (typeof window.markMediaIdAsUpcoming === 'function') {
+              window.markMediaIdAsUpcoming(currentMedia.id || currentMedia.tmdb_id);
+            }
+          }
+          const sideBadge = document.getElementById('cinema-side-quality-badge');
+          if (sideBadge) {
+            sideBadge.className = 'storm-badge storm-badge-upcoming';
+            sideBadge.setAttribute('style', 'background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;');
+            sideBadge.textContent = 'ОЖИДАЕТСЯ';
+          }
+          const inpBadge = document.getElementById('inplayer-badge');
+          if (inpBadge) {
+            inpBadge.textContent = '🕒 ОЖИДАЕТСЯ';
+          }
+          const telText = document.getElementById('telemetry-text');
+          if (telText) {
+            telText.textContent = 'Ожидается цифровой релиз';
+          }
         }
         if (data.type === 'STORM_BOOKMARK_PLANNED' && currentMedia) {
           currentMedia.user_status = 'planned';
@@ -2075,7 +2097,14 @@ export async function openPlayerModal(mediaItem, options = {}) {
         const hasOnlineStream = currentPlayers.some(isStable);
 
         if (true) {
-          currentMedia.is_upcoming = false;
+          const detectedUpcoming = typeof window.isUpcomingMediaItem === 'function'
+            ? window.isUpcomingMediaItem(currentMedia)
+            : Boolean(currentMedia?.is_upcoming);
+          currentMedia.is_upcoming = detectedUpcoming;
+          if (detectedUpcoming) {
+            currentMedia.is4K = false;
+            currentMedia.quality = 'ОЖИДАЕТСЯ';
+          }
           if (!defaultPlayer) {
             const prefPlayerId = getPreferredDefaultPlayerId();
             if (prefPlayerId) {
@@ -7086,11 +7115,11 @@ export function mountInPlayerOverlay(videoBox) {
     <!-- Верхняя полоса управления Progressive Disclosure HUD -->
     <div class="inplayer-top-bar">
       <div class="inplayer-title-info">
-        <span class="inplayer-badge" id="inplayer-badge">${isSeries ? '📺 Серия 1' : (currentMedia?.quality || '🎬 Фильм')}</span>
+        <span class="inplayer-badge" id="inplayer-badge">${isSeries ? '📺 Серия 1' : ((currentMedia?.is_upcoming || (typeof window.isUpcomingMediaItem === 'function' && window.isUpcomingMediaItem(currentMedia))) ? '🕒 ОЖИДАЕТСЯ' : (currentMedia?.quality || '🎬 Фильм'))}</span>
         <span class="inplayer-series-name" id="inplayer-series-name">${escapeHtml(currentMedia?.title || '')}</span>
         <div class="inplayer-telemetry-pill" id="inplayer-telemetry-pill" title="Телеметрия потока и статистика буфера">
           <span class="telemetry-dot"></span>
-          <span id="telemetry-text">${escapeHtml((currentActivePlayer?.quality || currentMedia?.quality || '1080p FHD').replace(/\s*\/.*$/, ''))} • Поток активен</span>
+          <span id="telemetry-text">${(currentMedia?.is_upcoming || (typeof window.isUpcomingMediaItem === 'function' && window.isUpcomingMediaItem(currentMedia))) ? 'Ожидается цифровой релиз' : `${escapeHtml((currentActivePlayer?.quality || currentMedia?.quality || '1080p FHD').replace(/\s*\/.*$/, ''))} • Поток активен`}</span>
         </div>
       </div>
       <div class="inplayer-top-actions">
@@ -11373,7 +11402,9 @@ function renderDetailedMediaInfo(mediaDetails) {
       <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" style="max-height: var(--cinema-poster-max-h, 175px) !important;" onerror="this.src='assets/favicon.svg'">
       <div class="cinema-side-poster-glow"></div>
       <div class="cinema-side-badges">
-        <span class="storm-badge storm-badge-4k">4K UHD</span>
+        ${(media?.is_upcoming || (typeof window.isUpcomingMediaItem === 'function' && window.isUpcomingMediaItem(media)))
+          ? '<span class="storm-badge storm-badge-upcoming" id="cinema-side-quality-badge" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
+          : '<span class="storm-badge storm-badge-4k" id="cinema-side-quality-badge">4K UHD</span>'}
         <span class="storm-badge storm-badge-rating">★ ${ratingKp}</span>
       </div>
     </div>

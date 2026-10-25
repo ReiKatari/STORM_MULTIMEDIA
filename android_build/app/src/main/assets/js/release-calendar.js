@@ -4,9 +4,9 @@
    с переключением недель, фильтрами, реальными обложками и студиями
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.0.51';
-import { openPlayerModal } from './player.js?v=1.0.51';
-import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.0.51';
+import { showToast } from './auth.js?v=1.0.52';
+import { openPlayerModal } from './player.js?v=1.0.52';
+import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.0.52';
 
 let selectedWeek = 'current'; // 'current' | 'next'
 let selectedDay = new Date().getDay(); // 0=ВС, 1=ПН, 2=ВТ...
@@ -596,7 +596,9 @@ function renderDayGrid(grid, items, dayId, week) {
         <div class="cal-poster-wrap">
           <img src="${posterUrl}" class="cal-poster-img" alt="${escapeHtml(it.title)}" loading="lazy" onerror="if(!this.dataset.triedFallback){ this.dataset.triedFallback='1'; this.src='/api/media/image-proxy?title=' + encodeURIComponent('${escapeHtml(it.title)}') + '&orig=' + encodeURIComponent('${escapeHtml(it.original_title || '')}'); } else { this.onerror=null; this.src='${POSTER_FALLBACK_SVG}'; }">
           <span class="cal-poster-ep-badge">${epBadge}</span>
-          ${is4K ? '<span class="cal-poster-4k-badge">4K UHD</span>' : ''}
+          ${(it.is_upcoming || String(it.id || '').startsWith('tmdb_up_') || /ожидается/i.test(it.quality || ''))
+            ? '<span class="cal-poster-4k-badge" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#ffffff;">ОЖИДАЕТСЯ</span>'
+            : (is4K ? '<span class="cal-poster-4k-badge">4K UHD</span>' : '')}
         </div>
 
         <!-- Информация об эпизоде -->

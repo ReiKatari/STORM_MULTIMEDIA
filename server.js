@@ -137,7 +137,8 @@ import {
   normalizeAnimeFranchiseTitle,
   resolveCanonicalGenres,
   resolveCanonicalSeriesSeasonsCount,
-  isTrailerMedia
+  isTrailerMedia,
+  isMediaUpcomingOrUnreleased
 } from './services/canonical-media-intel.js';
 
 import {
@@ -1046,7 +1047,7 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     memory: process.memoryUsage(),
     pid: process.pid,
-    version: '1.0.51',
+    version: '1.0.52',
     database: {
       driver: 'mariadb',
       connected: isMariaDbActive(),
@@ -2210,26 +2211,31 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       if (!item || !item.title) continue;
       const k = normCatalogKey(item.title) || normCatalogKey(item.original_title) || `id_${item.id}`;
       const resolved4k = item.fanfilm_4k_url || (item.source === 'fanfilm4k' ? (item.link || item.url) : '') || resolveFanFilmUrl(item.title) || '';
+      const isItemUpcoming = !resolved4k && !item.lift_id && Boolean(item.is_upcoming || isMediaUpcomingOrUnreleased(item));
       if (!catalogDedupMap.has(k)) {
         catalogDedupMap.set(k, {
           ...item,
           fanfilm_4k_url: resolved4k || item.fanfilm_4k_url || null,
-          is4K: Boolean(item.is4K || resolved4k),
-          quality: (item.is4K || resolved4k) ? '4K Ultra HD' : (item.quality || '1080p FHD')
+          is_upcoming: isItemUpcoming,
+          is4K: isItemUpcoming ? false : Boolean(item.is4K || resolved4k),
+          quality: isItemUpcoming ? 'Ожидается' : ((item.is4K || resolved4k) ? '4K Ultra HD' : (item.quality || '1080p FHD'))
         });
       } else {
         const prev = catalogDedupMap.get(k);
         const combined4k = prev.fanfilm_4k_url || resolved4k || null;
-        const has4K = Boolean(prev.is4K || item.is4K || combined4k);
+        const combinedLift = prev.lift_id || item.lift_id || null;
         const preferNew = (item.source === 'tmdb' && prev.source !== 'tmdb') || (!prev.poster && item.poster);
         const merged = preferNew ? { ...prev, ...item } : { ...item, ...prev };
         merged.fanfilm_4k_url = combined4k;
-        merged.lift_id = prev.lift_id || item.lift_id || null;
+        merged.lift_id = combinedLift;
         merged.rating_kp = prev.rating_kp || item.rating_kp;
         merged.rating_imdb = prev.rating_imdb || item.rating_imdb;
         merged.countries = (prev.countries && prev.countries.length > 0) ? prev.countries : item.countries;
+        const isMergedUpcoming = !combined4k && !combinedLift && Boolean((prev.is_upcoming && item.is_upcoming) || isMediaUpcomingOrUnreleased(merged));
+        const has4K = !isMergedUpcoming && Boolean(prev.is4K || item.is4K || combined4k);
+        merged.is_upcoming = isMergedUpcoming;
         merged.is4K = has4K;
-        merged.quality = has4K ? '4K Ultra HD' : (merged.quality || '1080p FHD');
+        merged.quality = isMergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (merged.quality || '1080p FHD'));
         merged.poster = prev.poster || item.poster;
         merged.rating = Math.max(parseFloat(prev.rating) || 0, parseFloat(item.rating) || 0) || prev.rating || item.rating;
         catalogDedupMap.set(k, merged);
@@ -4136,6 +4142,7 @@ app.get('/api/media/item', async (req, res) => {
       isKnownUnreleased ||
       mediaDetails.is_upcoming ||
       isReleaseUpcoming ||
+      isMediaUpcomingOrUnreleased(mediaDetails) ||
       String(id || '').startsWith('tmdb_up_') ||
       isFutureDateCheck(mediaDetails.release_date) ||
       isFutureDateCheck(mediaDetails.premiere) ||
@@ -4144,11 +4151,10 @@ app.get('/api/media/item', async (req, res) => {
       (mediaDetails.year && parseInt(mediaDetails.year, 10) > new Date().getFullYear() && !mediaDetails.fanfilm_4k_url)
     );
 
-    mediaDetails.is_upcoming = false;
     mediaDetails.trailer_url = '';
 
     // Быстрое обогащение через Lift (api.liftw.ws): lift_id, студийные озвучки, рейтинги КП/IMDb, русские роли актеров и части франшизы
-    if (!mediaDetails.is_upcoming && !mediaDetails.lift_id && mediaDetails.title) {
+    if (!isKnownUnreleased && !mediaDetails.lift_id && mediaDetails.title) {
       try {
         const matchedLiftId = await Promise.race([
           resolveLiftMatch({
@@ -4237,7 +4243,23 @@ app.get('/api/media/item', async (req, res) => {
     // 100% исключение любых промо-трейлеров и тизеров из списка плееров
     allPlayers = allPlayers.filter(p => p && !p.is_trailer && p.id !== 'official_trailer' && p.id !== 'official_trailer_fallback' && !/трейлер|тизер|trailer|teaser/i.test(p.name || '') && !/трейлер|тизер|trailer|teaser/i.test(p.badge || ''));
     const isWorkingStream = p => p && p.status === 'working' && !p.status_label?.includes('Недоступен') && p.url && !p.is_trailer && p.id !== 'webtorrent';
-    mediaDetails.is_upcoming = false;
+    const hasVerifiedOnlineStream = Boolean(
+      (mediaDetails.fanfilm_4k_url && !String(mediaDetails.fanfilm_4k_url).includes('do=search')) ||
+      mediaDetails.fanfilm_hd_url ||
+      mediaDetails.lift_id ||
+      mediaDetails.vk_embed_url ||
+      (mediaDetails.rutube_id && String(mediaDetails.rutube_id).length > 15) ||
+      (Array.isArray(mediaDetails.seasons) && mediaDetails.seasons.length > 0)
+    );
+    const finalUpcomingState = Boolean(
+      isKnownUnreleased ||
+      (!hasVerifiedOnlineStream && (isFutureRelease || isMediaUpcomingOrUnreleased(mediaDetails)))
+    );
+    mediaDetails.is_upcoming = finalUpcomingState;
+    if (finalUpcomingState) {
+      mediaDetails.is4K = false;
+      mediaDetails.quality = 'Ожидается';
+    }
 
     // 🌟 СТРОГИЙ ПРИОРИТЕТ #1: Lift 4K Ad-Free и 4K Ultra HD Плеер (FanFilm4K) по умолчанию на первом месте везде СРЕДИ РАБОЧИХ ПЛЕЕРОВ (кроме прямых аниме-источников)!
     const isAnimeDirect = p => p && isWorkingStream(p) && p.id === 'anilibria_hls' && String(p.url || '').includes('.m3u8');
@@ -9623,7 +9645,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.0.51';
+  let currentAppVersion = '1.0.52';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -9715,7 +9737,7 @@ app.get('/api/updates/check', async (req, res) => {
 });
 
 // ==========================================
-// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.0.51)
+// 13. ФЛАГМАНСКИЕ РАСШИРЕНИЯ STORM PRO SUITE (1.0.52)
 // ==========================================
 
 // 13.1. Мультидорожечный загрузчик STORM Direct Downloader 2.0 (Встроенный HLS-муксер с аудио + субтитрами и прямой поток)

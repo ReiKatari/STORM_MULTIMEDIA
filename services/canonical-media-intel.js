@@ -899,9 +899,8 @@ export function resolveCanonicalGenres(title = '', category = '', description = 
 export function isTrailerMedia(item) {
   if (!item) return false;
   if (typeof item === 'object') {
-    if (item.is_trailer || item.is_upcoming || item.isUpcoming) return true;
-    if (String(item.id || '').startsWith('tmdb_up_')) return true;
-    if (item.quality && /ожидается|скоро|трейлер/i.test(String(item.quality))) return true;
+    if (item.is_trailer) return true;
+    if (item.quality && /трейлер/i.test(String(item.quality))) return true;
     if (/клэйфейс|clayface/i.test(String(item.title || '') + ' ' + String(item.original_title || ''))) return true;
   }
 
@@ -1097,3 +1096,118 @@ export function normalizeAnimeFranchiseTitle(rawTitle = '', isAnimeOrSeries = tr
   return s.replace(/\s{2,}/g, ' ').trim();
 }
 
+
+// ==========================================
+// КАНОНИЧЕСКИЙ ДЕТЕКТОР ОЖИДАЕМЫХ РЕЛИЗОВ (UPCOMING / AWAITING DIGITAL RELEASE)
+// ==========================================
+const KNOWN_UNRELEASED_TMDB_IDS = new Set([
+  '791523', '1477104', '1465063', '1153576', '1742441', '1236045', '1400837',
+  '1101412', '1148365', '1423191', '1281331', '1302904', '1248832', '1232569',
+  '1255833', '1561726', '1765072', '1288069', '1802674', '947493', '1788735',
+  '1777750', '1599191', '1750432', '1764166', '1760194', '1666700', '1572116',
+  '1729723', '1187326', '1732625', '1630030', '1679730', '1748007', '1418998',
+  '1623256', '1438966', '1241803', '1234139', '848700', '1790935', '1487317',
+  '1412795', '1429592', '1381078', '1058424', '1228834', '1514026', '1377237',
+  '1284186', '1503762', '1757506', '1283515', '1556321', '1388805', '1769556',
+  '1244523', '1763332', '1768117', '1763619', '1650896', '1767731', '1269325',
+  '1596303', '1766421', '1640396', '1618090', '1634905', '1768911', '1559680',
+  '1447963', '1590909', '1336068', '1375156', '718833', '1496785', '1754879',
+  '1443151', '1767115', '1768359', '1768029'
+]);
+
+const KNOWN_UNRELEASED_TITLE_PATTERNS = [
+  /ведьмин\s+лес|\bwildwood\b/i,
+  /барашек\s+шон\s+и\s+чудище|beast\s+of\s+mossy\s+bottom/i,
+  /остров\s+забвения|\bforgotten\s+island\b/i,
+  /кэрри.*2026|\bcarrie\b.*flanagan/i,
+  /одиссея.*2026|\bthe\s+odyssey\b/i,
+  /история\s+игрушек\s*5|\btoy\s+story\s*5\b/i,
+  /мстители\s*:\s*судный\s+день|\bavengers\s*:\s*doomsday\b/i,
+  /человек[- ]паук\s*:\s*новый\s+день|\bspider[- ]man\s*:\s*brand\s+new\s+day\b/i,
+  /шрек\s*5|\bshrek\s*5\b/i,
+  /ледниковый\s+период\s*6|\bice\s+age\s*6\b/i,
+  /бэтмен\s*:\s*часть\s*2|\bthe\s+batman\s+part\s+ii\b/i,
+  /мандалорец\s+и\s+грогу|\bmandalorian\s+and\s+grogu\b/i,
+  /чужая\s+мама|\bother\s+mommy\b/i,
+  /вышка\s*2|\bfall\s*2\s*:\s*deadpoint\b/i,
+  /matchbox\s*:\s*фильм|\bmatchbox\s+the\s+movie\b/i,
+  /социальная\s+расплата|\bthe\s+social\s+reckoning\b/i,
+  /практическая\s+магия\s*2|\bpractical\s+magic\s*2\b/i,
+  /пиноккио\s*:\s*раскрепощ[её]нный|\bpinocchio\s*:\s*unstrung\b/i,
+  /кит\s*:\s*во\s+тьме\s+глубин|\bwhalefall\b/i,
+  /з\/л\/о\s*:\s*сборник|\bv\/h\/s\/mixtape\b/i
+];
+
+export function isMediaUpcomingOrUnreleased(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (item.is_upcoming === true || item.isUpcoming === true) return true;
+
+  const rawId = String(item.id || item.tmdb_id || '').trim();
+  if (rawId.startsWith('tmdb_up_')) return true;
+
+  const cleanTmdbId = rawId.replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '');
+  if (cleanTmdbId && KNOWN_UNRELEASED_TMDB_IDS.has(cleanTmdbId)) {
+    return true;
+  }
+
+  const titleCombo = `${item.title || ''} ${item.original_title || ''} ${item.name || ''}`.trim();
+  if (titleCombo && KNOWN_UNRELEASED_TITLE_PATTERNS.some(rx => rx.test(titleCombo))) {
+    return true;
+  }
+
+  if (item.status && ['planned', 'in production', 'post production', 'rumored', 'upcoming'].includes(String(item.status).toLowerCase())) {
+    return true;
+  }
+  if (item.quality && /ожидается|скоро|анонс/i.test(String(item.quality))) {
+    return true;
+  }
+  if (item.premiere && /ожидается|скоро|в кино|анонс/i.test(String(item.premiere))) {
+    return true;
+  }
+
+  const hasVerifiedDirectStream = Boolean(
+    (item.fanfilm_4k_url && !String(item.fanfilm_4k_url).includes('do=search')) ||
+    item.fanfilm_hd_url ||
+    item.lift_id ||
+    item.vk_embed_url ||
+    (item.rutube_id && String(item.rutube_id).length > 15) ||
+    item.source === 'fanfilm4k' ||
+    item.source === 'lift' ||
+    item.source === 'anilibria' ||
+    item.source === 'anixart'
+  );
+
+  const yr = parseInt(item.year, 10) || 0;
+  if (yr > 2026 && !hasVerifiedDirectStream) {
+    return true;
+  }
+
+  const dateCandidates = [item.release_date, item.premiere, item.digital_release, item.world_premier].filter(Boolean);
+  for (const rawD of dateCandidates) {
+    const s = String(rawD).trim();
+    let parsedDate = null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      if (s !== `${yr}-01-01`) {
+        parsedDate = new Date(s.substring(0, 10));
+      }
+    } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+      const [dd, mm, yyyy] = s.split('.');
+      parsedDate = new Date(`${yyyy}-${mm}-${dd}`);
+    }
+    if (parsedDate && !isNaN(parsedDate.getTime())) {
+      if (parsedDate > new Date()) return true;
+      if (!hasVerifiedDirectStream && parsedDate >= new Date('2026-04-15')) {
+        return true;
+      }
+    }
+  }
+
+  if (!hasVerifiedDirectStream && (item.source === 'tmdb' || rawId.startsWith('tmdb_')) && yr >= 2026) {
+    const votes = parseInt(item.vote_count, 10) || 0;
+    if (votes > 0 && votes < 180) {
+      return true;
+    }
+  }
+
+  return false;
+}
