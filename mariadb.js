@@ -16,7 +16,10 @@ const DB_CONFIG = {
   password: process.env.DB_PASS || '',
   database: process.env.DB_NAME || 'stormmultimedia',
   waitForConnections: true,
-  connectionLimit: 15,
+  connectionLimit: 25,
+  maxIdle: 15,
+  idleTimeout: 60000,
+  queueLimit: 0,
   connectTimeout: 2500,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000
@@ -65,8 +68,27 @@ export async function initMariaDb(force = false) {
               await candidatePool.query("ALTER TABLE bookmarks ADD COLUMN watched_episodes_json LONGTEXT NULL");
               console.log('[MariaDB 10] Добавлена колонка bookmarks.watched_episodes_json');
             }
+            await candidatePool.query(`
+              CREATE TABLE IF NOT EXISTS release_subscriptions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                media_id VARCHAR(128) NOT NULL,
+                source VARCHAR(64) NOT NULL DEFAULT 'tmdb',
+                title VARCHAR(255) NOT NULL,
+                poster_url TEXT NULL,
+                media_type VARCHAR(32) DEFAULT 'movie',
+                notify_web TINYINT(1) DEFAULT 1,
+                notify_telegram TINYINT(1) DEFAULT 1,
+                telegram_chat_id VARCHAR(128) NULL,
+                last_notified_state VARCHAR(64) DEFAULT 'pending',
+                notification_message TEXT NULL,
+                created_at BIGINT NOT NULL,
+                updated_at BIGINT NOT NULL,
+                UNIQUE KEY uniq_user_media_sub (user_id, media_id, source)
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
           } catch (migErr) {
-            console.warn('[MariaDB 10] Проверка миграции watched_episodes_json:', migErr.message);
+            console.warn('[MariaDB 10] Проверка миграции таблиц:', migErr.message);
           }
           try {
             await candidatePool.query("DELETE FROM media_cache WHERE cache_key LIKE 'catalog_v4_%' OR cache_key LIKE 'tmdb_upcoming_v2_%'");
@@ -127,7 +149,7 @@ export async function queryMariaDb(sql, params = []) {
 
   try {
     const cleanParams = params.map(p => (p === undefined ? null : p));
-    const [result] = await pool.query(sql, cleanParams);
+    const [result] = await (pool || activePool).query(sql, cleanParams);
     return result;
   } catch (err) {
     console.error(`[MariaDB Error] Ошибка запроса (${err.code || err.message}):`, err.sqlMessage || err.message);
@@ -157,10 +179,12 @@ export function enqueueMariaDbWrite(sql, params = []) {
 export async function syncFromMariaDbToSqlite(sqliteDb) {
   if (!pool || !isConnected || syncInProgress) return;
   syncInProgress = true;
+  const activePool = pool;
 
   try {
+    try { sqliteDb.pragma('foreign_keys = OFF'); } catch (_) {}
     // 1. Синхронизация пользователей
-    const [mUsers] = await pool.query('SELECT * FROM users');
+    const [mUsers] = await (pool || activePool).query('SELECT * FROM users');
     const validUserIds = new Set((mUsers || []).map(u => Number(u.id)));
     if (mUsers && mUsers.length > 0) {
       const upsertUser = sqliteDb.prepare(`
@@ -191,17 +215,17 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     // 2. Синхронизация сессий (с очисткой истёкших и ранее утёкших сессий)
     const now = Date.now();
     try {
-      await pool.query('DELETE FROM sessions WHERE expires_at <= ?', [now]);
+      await (pool || activePool).query('DELETE FROM sessions WHERE expires_at <= ?', [now]);
       sqliteDb.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
-      const [secCheck] = await pool.query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v4'");
+      const [secCheck] = await (pool || activePool).query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'security_session_purge_v4'");
       if (!secCheck || secCheck.length === 0) {
-        await pool.query("DELETE FROM sessions");
-        await pool.query(
+        await (pool || activePool).query("DELETE FROM sessions");
+        await (pool || activePool).query(
           "DELETE FROM watch_history WHERE user_id = 2 AND (id IN (597, 625, 628, 630, 631, 634, 709) OR title IN ('Посвященный', 'Пасть', 'Её личный ад', 'Меченая', 'Мортал Комбат', 'Одинокий рейнджер', 'Крикуны'))"
         );
-        await pool.query("UPDATE watch_history SET media_type = 'movie', season = 1, episode = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
-        await pool.query("UPDATE bookmarks SET media_type = 'movie', total_episodes = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
-        await pool.query(
+        await (pool || activePool).query("UPDATE watch_history SET media_type = 'movie', season = 1, episode = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
+        await (pool || activePool).query("UPDATE bookmarks SET media_type = 'movie', total_episodes = 1 WHERE LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%'");
+        await (pool || activePool).query(
           "INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'security_session_purge_v4', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)",
           [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]
         );
@@ -212,17 +236,17 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
         sqliteDb.prepare(`DELETE FROM bookmarks WHERE user_id NOT IN (${idList})`).run();
         sqliteDb.prepare(`DELETE FROM watch_history WHERE user_id NOT IN (${idList})`).run();
       }
-      const [upCacheCheck] = await pool.query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'upcoming_stream_probe_v7'");
+      const [upCacheCheck] = await (pool || activePool).query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'upcoming_stream_probe_v7'");
       if (!upCacheCheck || upCacheCheck.length === 0) {
-        await pool.query("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'");
+        await (pool || activePool).query("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'");
         sqliteDb.prepare("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'").run();
-        await pool.query(
+        await (pool || activePool).query(
           "INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'upcoming_stream_probe_v7', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)",
           [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]
         );
       }
     } catch (_) {}
-    const [mSessions] = await pool.query('SELECT * FROM sessions WHERE expires_at > ?', [now]);
+    const [mSessions] = await (pool || activePool).query('SELECT * FROM sessions WHERE expires_at > ?', [now]);
     if (mSessions && mSessions.length > 0) {
       const upsertSession = sqliteDb.prepare(`
         INSERT INTO sessions (token, user_id, expires_at)
@@ -236,7 +260,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     }
 
     // 3. Синхронизация закладок (с пометками просмотренных серий и защитой от перезаписи более свежих данных)
-    const [mBookmarks] = await pool.query('SELECT * FROM bookmarks');
+    const [mBookmarks] = await (pool || activePool).query('SELECT * FROM bookmarks');
     if (mBookmarks) {
       const upsertBookmark = sqliteDb.prepare(`
         INSERT INTO bookmarks (
@@ -302,7 +326,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     }
 
     // 4. Синхронизация кастомных списков и элементов
-    const [mLists] = await pool.query('SELECT * FROM custom_lists');
+    const [mLists] = await (pool || activePool).query('SELECT * FROM custom_lists');
     if (mLists) {
       const upsertList = sqliteDb.prepare(`
         INSERT INTO custom_lists (id, user_id, title, description, color, is_public, created_at)
@@ -317,7 +341,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
         upsertList.run(l.id, l.user_id, l.title, l.description || '', l.color || '#00d2ff', l.is_public ? 1 : 0, Number(l.created_at));
       }
 
-      const [mItems] = await pool.query('SELECT * FROM custom_list_items');
+      const [mItems] = await (pool || activePool).query('SELECT * FROM custom_list_items');
       if (mItems) {
         const upsertItem = sqliteDb.prepare(`
           INSERT INTO custom_list_items (id, list_id, media_id, source, title, poster_url, media_type, year, rating, added_at)
@@ -336,7 +360,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     }
 
     // 5. Синхронизация истории просмотров
-    const [mHistory] = await pool.query('SELECT * FROM watch_history');
+    const [mHistory] = await (pool || activePool).query('SELECT * FROM watch_history');
     if (mHistory) {
       const upsertHist = sqliteDb.prepare(`
         INSERT INTO watch_history (
@@ -389,7 +413,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     }
 
     // 6. Синхронизация достижений
-    const [mAchievements] = await pool.query('SELECT * FROM user_achievements');
+    const [mAchievements] = await (pool || activePool).query('SELECT * FROM user_achievements');
     if (mAchievements) {
       const upsertAch = sqliteDb.prepare(`
         INSERT INTO user_achievements (user_id, achievement_id, progress, target, unlocked, unlocked_at)
@@ -413,7 +437,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     }
 
     // 7. Синхронизация комнат совместного просмотра
-    const [mRooms] = await pool.query('SELECT * FROM watch_rooms');
+    const [mRooms] = await (pool || activePool).query('SELECT * FROM watch_rooms');
     if (mRooms) {
       const upsertRoom = sqliteDb.prepare(`
         INSERT INTO watch_rooms (room_id, name, host_id, host_name, current_media_json, is_playing, current_time, created_at, updated_at)
@@ -443,7 +467,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     }
 
     // 8. Синхронизация рецензий и лайков
-    const [mReviews] = await pool.query('SELECT * FROM reviews');
+    const [mReviews] = await (pool || activePool).query('SELECT * FROM reviews');
     if (mReviews) {
       const upsertReview = sqliteDb.prepare(`
         INSERT INTO reviews (id, user_id, media_id, source, title, rating, content, tone, created_at, updated_at)
@@ -469,7 +493,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
         );
       }
 
-      const [mLikes] = await pool.query('SELECT * FROM review_likes');
+      const [mLikes] = await (pool || activePool).query('SELECT * FROM review_likes');
       if (mLikes) {
         const upsertLike = sqliteDb.prepare(`
           INSERT INTO review_likes (id, review_id, user_id, is_like, created_at)
@@ -487,6 +511,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
   } catch (err) {
     console.error('[MariaDB 10] Ошибка фоновой синхронизации данных:', err.message);
   } finally {
+    try { sqliteDb.pragma('foreign_keys = ON'); } catch (_) {}
     syncInProgress = false;
   }
 }
@@ -838,4 +863,134 @@ export function mariaSaveCache(source, cacheKey, dataJson, expiresAt) {
 
 export function mariaDeleteCache(source, cacheKey) {
   queryMariaDb('DELETE FROM media_cache WHERE source = ? AND cache_key = ?', [source, cacheKey]);
+}
+
+
+// ==========================================
+// ОТКАЗОУСТОЙЧИВАЯ ОЧЕРЕДЬ (WRITE-AHEAD QUEUE) И GRACEFUL SHUTDOWN
+// ==========================================
+let sqliteFallbackQueuePersister = null;
+
+export function registerSqliteQueuePersister(fn) {
+  sqliteFallbackQueuePersister = fn;
+}
+
+export async function replayPendingMariaDbQueue(sqliteDb) {
+  if (!pool || !isConnected || !sqliteDb) return 0;
+  try {
+    const rows = sqliteDb.prepare('SELECT id, sql_query, params_json, attempts FROM mariadb_sync_queue ORDER BY id ASC LIMIT 200').all();
+    if (!rows || rows.length === 0) return 0;
+    let replayed = 0;
+    const delStmt = sqliteDb.prepare('DELETE FROM mariadb_sync_queue WHERE id = ?');
+    const incStmt = sqliteDb.prepare('UPDATE mariadb_sync_queue SET attempts = attempts + 1 WHERE id = ?');
+    for (const r of rows) {
+      try {
+        const params = JSON.parse(r.params_json || '[]');
+        const cleanParams = params.map(p => (p === undefined ? null : p));
+        await (pool || activePool).query(r.sql_query, cleanParams);
+        delStmt.run(r.id);
+        replayed++;
+      } catch (err) {
+        if (r.attempts >= 10) {
+          delStmt.run(r.id);
+        } else {
+          incStmt.run(r.id);
+        }
+      }
+    }
+    return replayed;
+  } catch (_) {
+    return 0;
+  }
+}
+
+export function enqueueResilientMariaDbWrite(sql, params = []) {
+  return enqueueMariaDbWrite(sql, params).then(res => {
+    if (res === null && typeof sqliteFallbackQueuePersister === 'function') {
+      try { sqliteFallbackQueuePersister(sql, params); } catch (_) {}
+    }
+    return res;
+  });
+}
+
+export function mariaSaveSessionExtended(s) {
+  return enqueueResilientMariaDbWrite(
+    `INSERT INTO sessions (token, user_id, expires_at, ip_address, user_agent, device_name, last_active_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       expires_at = VALUES(expires_at),
+       ip_address = COALESCE(VALUES(ip_address), sessions.ip_address),
+       user_agent = COALESCE(VALUES(user_agent), sessions.user_agent),
+       device_name = COALESCE(VALUES(device_name), sessions.device_name),
+       last_active_at = VALUES(last_active_at)`,
+    [
+      s.token,
+      s.user_id,
+      s.expires_at,
+      s.ip_address || null,
+      s.user_agent || null,
+      s.device_name || null,
+      s.last_active_at || Date.now(),
+      s.created_at || Date.now()
+    ]
+  );
+}
+
+export function mariaSaveWatchHistoryBatch(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return Promise.resolve();
+  for (const h of items) {
+    mariaSaveWatchHistory(h);
+  }
+  return mariaWriteQueue;
+}
+
+export function mariaSaveReleaseSubscription(sub) {
+  return enqueueResilientMariaDbWrite(
+    `INSERT INTO release_subscriptions (
+       user_id, media_id, source, title, poster_url, media_type,
+       notify_web, notify_telegram, telegram_chat_id, last_notified_state, notification_message, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       title = VALUES(title),
+       poster_url = VALUES(poster_url),
+       notify_web = VALUES(notify_web),
+       notify_telegram = VALUES(notify_telegram),
+       telegram_chat_id = VALUES(telegram_chat_id),
+       last_notified_state = VALUES(last_notified_state),
+       notification_message = VALUES(notification_message),
+       updated_at = VALUES(updated_at)`,
+    [
+      sub.user_id,
+      String(sub.media_id),
+      sub.source || 'tmdb',
+      sub.title,
+      sub.poster_url || '',
+      sub.media_type || 'movie',
+      sub.notify_web ? 1 : 0,
+      sub.notify_telegram ? 1 : 0,
+      sub.telegram_chat_id || null,
+      sub.last_notified_state || 'pending',
+      sub.notification_message || null,
+      sub.created_at || Date.now(),
+      sub.updated_at || Date.now()
+    ]
+  );
+}
+
+export function mariaDeleteReleaseSubscription(userId, mediaId, source) {
+  return enqueueResilientMariaDbWrite(
+    'DELETE FROM release_subscriptions WHERE user_id = ? AND media_id = ? AND source = ?',
+    [userId, String(mediaId), source || 'tmdb']
+  );
+}
+
+export async function closeMariaDbPool() {
+  try {
+    await mariaWriteQueue.catch(() => {});
+    if (pool) {
+      await pool.end();
+      pool = null;
+      isConnected = false;
+    }
+  } catch (_) {}
 }

@@ -2,7 +2,8 @@ import { getCache, setCache } from '../db.js';
 import { KNOWN_RELEASE_YEARS, resolveMediaYear } from './fanfilm-service.js';
 
 const TVDB_BASE = 'https://api4.thetvdb.com/v4';
-const TVDB_API_KEY = process.env.TVDB_API_KEY || 'bb350c33-4cfd-4a1b-9449-74f76ccb5437';
+import '../env-loader.js';
+const TVDB_API_KEY = process.env.TVDB_API_KEY || '';
 const TVDB_PIN = process.env.TVDB_PIN || '';
 
 let cachedTvdbToken = null;

@@ -69,8 +69,33 @@ import {
   purgeUserData,
   isMariaDbActive,
   getMariaDbHost,
-  syncFromMariaDbToSqlite
+  syncFromMariaDbToSqlite,
+  touchSessionActivity,
+  flushWatchProgressBatch,
+  getUserTotpConfig,
+  closeMariaDbPool
 } from './db.js';
+import { l1Cache } from './services/lru-cache.js';
+import { logger, requestTracingMiddleware } from './services/logger.js';
+import {
+  startBalancerDaemons,
+  stopBalancerDaemons,
+  getBalancerHealthSnapshot
+} from './services/balancer-health.js';
+import { verifyTotpCode } from './services/totp-service.js';
+import {
+  helmetSecurityHeadersMiddleware,
+  setSecureSessionCookie,
+  clearSecureSessionCookie,
+  parseDeviceNameFromUserAgent
+} from './middlewares/security.middleware.js';
+import { createAuthRouter } from './routes/auth.routes.js';
+import { createUserMediaRouter } from './routes/user-media.routes.js';
+import { createAdminRouter } from './routes/admin.routes.js';
+import {
+  handleWatchTogether2SocketEvent,
+  notifyAllSocketsServerRestarting
+} from './sockets/watch-room.socket.js';
 
 import {
   getFanFilmCatalog,
@@ -562,6 +587,7 @@ wss.on('connection', (ws, req) => {
         }
 
         default:
+          handleWatchTogether2SocketEvent({ ws, data, currentRoomCode, currentUser, watchRooms });
           break;
       }
     } catch (err) {
@@ -661,6 +687,9 @@ function isSafeExternalHttpUrl(rawUrl) {
   }
   return true;
 }
+
+app.use(requestTracingMiddleware);
+app.use(helmetSecurityHeadersMiddleware);
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -913,11 +942,13 @@ function authMiddleware(req, res, next) {
     if (validUser) {
       req.user = validUser;
       req.token = token;
+      const ua = String(req.headers['user-agent'] || '');
+      touchSessionActivity(token, req.ip || '', parseDeviceNameFromUserAgent(ua));
     } else {
       req.user = null;
       req.token = null;
       if (fromCookie) {
-        res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+        clearSecureSessionCookie(res);
       }
     }
   } else {
@@ -960,9 +991,9 @@ app.use(authMiddleware);
 // ==========================================
 // КРИПТОГРАФИЧЕСКАЯ ЗАЩИТА СЕССИЙ И COOKIES
 // ==========================================
-function setSessionCookie(res, token) {
+function setSessionCookie(res, token, req = null) {
   if (!token) return;
-  res.setHeader('Set-Cookie', `storm_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 24 * 3600}`);
+  setSecureSessionCookie(res, token, req);
 }
 
 // ==========================================
@@ -1046,8 +1077,13 @@ app.post('/api/auth/register', loginRateLimiter, (req, res) => {
       return res.status(400).json({ error: 'Пароль должен содержать не менее 6 символов' });
     }
 
-    const session = registerUser(username, email, password, avatar);
-    setSessionCookie(res, session.token);
+    const ua = String(req.headers['user-agent'] || '');
+    const session = registerUser(username, email, password, avatar, {
+      ipAddress: req.ip || '',
+      userAgent: ua,
+      deviceName: parseDeviceNameFromUserAgent(ua)
+    });
+    setSessionCookie(res, session.token, req);
     res.json(session);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1056,13 +1092,36 @@ app.post('/api/auth/register', loginRateLimiter, (req, res) => {
 
 app.post('/api/auth/login', loginRateLimiter, (req, res) => {
   try {
-    const { login, password } = req.body;
+    const { login, password, totpCode } = req.body;
     if (!login || !password) {
       return res.status(400).json({ error: 'Укажите логин и пароль' });
     }
 
-    const session = loginUser(login, password);
-    setSessionCookie(res, session.token);
+    const ua = String(req.headers['user-agent'] || '');
+    const session = loginUser(login, password, {
+      ipAddress: req.ip || '',
+      userAgent: ua,
+      deviceName: parseDeviceNameFromUserAgent(ua)
+    });
+
+    const totpCfg = getUserTotpConfig(session.user.id);
+    if (totpCfg.enabled && totpCfg.secret) {
+      if (!totpCode) {
+        logoutUser(session.token);
+        return res.status(200).json({
+          requires2FA: true,
+          message: 'Введите 6-значный код двухфакторной аутентификации (2FA TOTP)'
+        });
+      }
+      const codeStr = String(totpCode).trim();
+      const valid2FA = verifyTotpCode(totpCfg.secret, codeStr, 1) || (totpCfg.backupCodes || []).includes(codeStr.toUpperCase());
+      if (!valid2FA) {
+        logoutUser(session.token);
+        return res.status(403).json({ error: 'Неверный код двухфакторной аутентификации (2FA)' });
+      }
+    }
+
+    setSessionCookie(res, session.token, req);
     res.json(session);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1185,7 +1244,7 @@ app.get('/api/player/health', (req, res) => {
   res.json({
     success: true,
     timestamp: Date.now(),
-    sources: sourceHealthStatus
+    sources: { ...sourceHealthStatus, ...getBalancerHealthSnapshot() }
   });
 });
 
@@ -1194,7 +1253,8 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    version: '1.1.2',
+    version: '1.2.0',
+    l1Cache: l1Cache.getStats(),
     database: {
       connected: isMariaDbActive()
     }
@@ -1391,6 +1451,11 @@ app.post('/api/profiles/save', requireAuth, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Подключение модульных роутеров архитектуры 1.2.0 (Пункт 6.1)
+app.use(createAuthRouter({ requireAuth }));
+app.use(createUserMediaRouter({ requireAuth }));
+app.use(createAdminRouter({ requireAdmin }));
 
 // ==========================================
 // 2. ПРОКСИ ИЗОБРАЖЕНИЙ (100% ГАРАНТИЯ ЗАГРУЗКИ ОБЛОЖЕК)
@@ -1886,7 +1951,45 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
   return await resolveAnimePosterBuffer(title, orig);
 }
 
-app.get('/api/media/image-proxy', async (req, res) => {
+async function transformImageWithSharp(imgObj, req) {
+  if (!imgObj || !imgObj.buffer) return imgObj;
+  if (!sharp || String(imgObj.contentType || '').includes('svg')) return imgObj;
+
+  const reqWidth = Math.min(Math.max(parseInt(req.query.w || '0', 10) || 0, 0), 1920);
+  const reqQuality = Math.min(Math.max(parseInt(req.query.q || '82', 10) || 82, 40), 95);
+  const accept = String(req.headers['accept'] || '');
+  const wantsWebp = accept.includes('image/webp') || req.query.fmt === 'webp';
+  const wantsAvif = accept.includes('image/avif') && req.query.fmt === 'avif';
+
+  if (!reqWidth && !wantsWebp && !wantsAvif) return imgObj;
+
+  const cacheKey = `sharp_img:${req.query.url || req.query.title || ''}:w${reqWidth}:q${reqQuality}:${wantsAvif ? 'avif' : (wantsWebp ? 'webp' : 'orig')}`;
+  const cached = l1Cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    let pipeline = sharp(imgObj.buffer, { failOnError: false });
+    if (reqWidth > 0) {
+      pipeline = pipeline.resize({ width: reqWidth, withoutEnlargement: true });
+    }
+    let contentType = imgObj.contentType;
+    if (wantsAvif) {
+      pipeline = pipeline.avif({ quality: Math.min(reqQuality, 75) });
+      contentType = 'image/avif';
+    } else if (wantsWebp) {
+      pipeline = pipeline.webp({ quality: reqQuality });
+      contentType = 'image/webp';
+    }
+    const outBuffer = await pipeline.toBuffer();
+    const outObj = { buffer: outBuffer, contentType };
+    l1Cache.set(cacheKey, outObj, 1000 * 60 * 60 * 6);
+    return outObj;
+  } catch (_) {
+    return imgObj;
+  }
+}
+
+app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
   try {
     const rawUrl = req.query.url || '';
     const title = req.query.title || '';
@@ -1895,13 +1998,14 @@ app.get('/api/media/image-proxy', async (req, res) => {
     const normalizedUrl = normalizeImageUrl(rawUrl);
 
     // 1. Если передана прямая ссылка (включая static.anixart.tv / tmdb / kinopoisk / shikimori):
-    // Сервер загружает бинарный буфер и отдаёт браузеру напрямую с долгосрочным кэшем (без опасных 302 редиректов к заблокированным доменам)
+    // Сервер загружает бинарный буфер, оптимизирует через Sharp (WebP/AVIF) и отдаёт браузеру напрямую
     if (normalizedUrl && !isPlaceholderImage(normalizedUrl) && isSafeExternalHttpUrl(normalizedUrl)) {
       const img = await fetchImageBuffer(normalizedUrl, 5000);
       if (img) {
-        res.set('Content-Type', img.contentType);
+        const optimized = await transformImageWithSharp(img, req);
+        res.set('Content-Type', optimized.contentType);
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.send(img.buffer);
+        return res.send(optimized.buffer);
       }
     }
 
@@ -1909,9 +2013,10 @@ app.get('/api/media/image-proxy', async (req, res) => {
     if (title || orig) {
       const resolvedImg = await resolveUniversalMediaPosterBuffer(title, orig);
       if (resolvedImg) {
-        res.set('Content-Type', resolvedImg.contentType);
+        const optimized = await transformImageWithSharp(resolvedImg, req);
+        res.set('Content-Type', optimized.contentType);
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.send(resolvedImg.buffer);
+        return res.send(optimized.buffer);
       }
     }
 
@@ -11311,41 +11416,49 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Запуск сервера с поддержкой WebSockets
+// Запуск сервера с поддержкой WebSockets и фоновых демонов балансеров
 server.listen(PORT, () => {
+  logger.info('STORM MULTIMEDIA 1.2.0 Server started', { port: PORT });
   console.log(`====================================================`);
-  console.log(`🚀 STORM MULTIMEDIA Сервер запущен на порту ${PORT}`);
+  console.log(`🚀 STORM MULTIMEDIA 1.2.0 Сервер запущен на порту ${PORT}`);
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);
+
+  startBalancerDaemons(async () => {
+    try {
+      await executeCatalogFetch('popular', 1, 'all', {});
+    } catch (_) {}
+  });
 });
 
 // ==========================================
-// САМОВОССТАНОВЛЕНИЕ И БЕЗОПАСНОСТЬ ПРОЦЕССА
+// САМОВОССТАНОВЛЕНИЕ И GRACEFUL SHUTDOWN (Пункт 6.10)
 // ==========================================
 process.on('uncaughtException', (err) => {
-  console.error('[STORM SERVER CRITICAL] Неперехваченное исключение:', err?.stack || err);
+  logger.error('Uncaught exception', { error: err?.message, stack: err?.stack });
+  try { flushWatchProgressBatch(); } catch (_) {}
   try { checkpointWal(); } catch (_) {}
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.warn('[STORM SERVER WARNING] Необработанное отклонение промиса:', reason);
+  logger.warn('Unhandled promise rejection', { reason: String(reason) });
 });
 
-process.on('SIGTERM', () => {
-  console.log('[STORM SERVER] Получен сигнал SIGTERM. Фиксация базы данных и остановка...');
+async function handleGracefulShutdown(signal) {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  try { stopBalancerDaemons(); } catch (_) {}
+  try { flushWatchProgressBatch(); } catch (_) {}
   try { checkpointWal(); } catch (_) {}
+  try { notifyAllSocketsServerRestarting(wss); } catch (_) {}
+  try { await closeMariaDbPool(); } catch (_) {}
   server.close(() => {
     process.exit(0);
   });
-});
+  setTimeout(() => process.exit(0), 4000).unref();
+}
 
-process.on('SIGINT', () => {
-  console.log('[STORM SERVER] Получен сигнал SIGINT. Фиксация базы данных и остановка...');
-  try { checkpointWal(); } catch (_) {}
-  server.close(() => {
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', () => { handleGracefulShutdown('SIGTERM'); });
+process.on('SIGINT', () => { handleGracefulShutdown('SIGINT'); });
 
 // STORM_AUTO_RELOAD_WATCHER: автоматический перезапуск через watchdog при обновлении server.js на диске
 try {

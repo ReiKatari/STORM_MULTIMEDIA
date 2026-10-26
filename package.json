@@ -1,6 +1,6 @@
 {
   "name": "storm-multimedia",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "STORM MULTIMEDIA - Премиальный мультимедийный кинотеатр, агрегатор и медиакомбайн",
   "main": "server.js",
   "type": "module",
@@ -8,7 +8,8 @@
     "start": "node watchdog.js",
     "server": "node server.js",
     "watchdog": "node watchdog.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test tests/storm-suite.test.js"
   },
   "keywords": [
     "storm",

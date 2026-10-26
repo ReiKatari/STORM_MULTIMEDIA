@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCanonicalMediaType, resolveCanonicalYear, resolveCanonicalGenres } from './services/canonical-media-intel.js';
+import { l1Cache } from './services/lru-cache.js';
+import { parseDeviceNameFromUserAgent } from './middlewares/security.middleware.js';
 import {
   initMariaDb,
   isMariaDbActive,
@@ -30,14 +32,23 @@ import {
   mariaSaveWatchRoom,
   mariaDeleteWatchRoom,
   mariaSaveCache,
-  mariaDeleteCache
+  mariaDeleteCache,
+  registerSqliteQueuePersister,
+  replayPendingMariaDbQueue,
+  mariaSaveSessionExtended,
+  mariaSaveWatchHistoryBatch,
+  mariaSaveReleaseSubscription,
+  mariaDeleteReleaseSubscription,
+  closeMariaDbPool
 } from './mariadb.js';
 
 export {
   initMariaDb,
   isMariaDbActive,
   getMariaDbHost,
-  syncFromMariaDbToSqlite
+  syncFromMariaDbToSqlite,
+  closeMariaDbPool,
+  l1Cache
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -102,6 +113,9 @@ initMariaDb().then(() => {
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
+  PRAGMA cache_size = -64000;
+  PRAGMA temp_store = MEMORY;
+  PRAGMA mmap_size = 268435456;
   PRAGMA foreign_keys = ON;
   PRAGMA busy_timeout = 5000;
 
@@ -258,6 +272,64 @@ try { db.exec('ALTER TABLE watch_history ADD COLUMN year TEXT;'); } catch {}
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN is_favorite INTEGER DEFAULT 0;'); } catch {}
 try { db.exec("ALTER TABLE bookmarks ADD COLUMN watched_episodes_json TEXT DEFAULT '{}';"); } catch {}
 try { db.exec("ALTER TABLE reviews ADD COLUMN tone TEXT DEFAULT 'positive';"); } catch {}
+try { db.exec('ALTER TABLE sessions ADD COLUMN ip_address TEXT;'); } catch {}
+try { db.exec('ALTER TABLE sessions ADD COLUMN user_agent TEXT;'); } catch {}
+try { db.exec('ALTER TABLE sessions ADD COLUMN device_name TEXT;'); } catch {}
+try { db.exec('ALTER TABLE sessions ADD COLUMN last_active_at INTEGER;'); } catch {}
+try { db.exec('ALTER TABLE sessions ADD COLUMN created_at INTEGER;'); } catch {}
+try { db.exec('ALTER TABLE custom_lists ADD COLUMN share_uuid TEXT;'); } catch {}
+try { db.exec('ALTER TABLE custom_lists ADD COLUMN cover_url TEXT;'); } catch {}
+try { db.exec('ALTER TABLE custom_lists ADD COLUMN sort_order INTEGER DEFAULT 0;'); } catch {}
+try { db.exec('ALTER TABLE custom_list_items ADD COLUMN sort_order INTEGER DEFAULT 0;'); } catch {}
+try {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_history_lookup ON watch_history(user_id, media_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_bookmarks_lookup ON bookmarks(user_id, media_id, source);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, expires_at);
+
+    CREATE TABLE IF NOT EXISTS mariadb_sync_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sql_query TEXT NOT NULL,
+      params_json TEXT NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS release_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      media_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      title TEXT NOT NULL,
+      poster_url TEXT,
+      media_type TEXT DEFAULT 'movie',
+      notify_web INTEGER DEFAULT 1,
+      notify_telegram INTEGER DEFAULT 1,
+      telegram_chat_id TEXT,
+      last_notified_state TEXT DEFAULT 'pending',
+      notification_message TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(user_id, media_id, source),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+} catch {}
+
+// Регистрация Write-Ahead Queue для MariaDB
+registerSqliteQueuePersister((sql, params) => {
+  try {
+    db.prepare('INSERT INTO mariadb_sync_queue (sql_query, params_json, attempts, created_at) VALUES (?, ?, 0, ?)').run(
+      sql,
+      JSON.stringify(params || []),
+      Date.now()
+    );
+  } catch (_) {}
+});
+setInterval(() => {
+  replayPendingMariaDbQueue(db).catch(() => {});
+}, 15000).unref();
+
 try {
   db.exec("DELETE FROM media_cache WHERE cache_key LIKE 'catalog_v4_%' OR cache_key LIKE 'tmdb_upcoming_v2_%'");
 } catch {}
@@ -385,13 +457,28 @@ const ADMIN_RECOVERY_HASHES = [
 
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(String(password), salt, PBKDF2_ITERATIONS, 64, 'sha512').toString('hex');
-  return `pbkdf2$${PBKDF2_ITERATIONS}$${salt}$${hash}`;
+  const derived = crypto.scryptSync(String(password), salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+  return `scrypt$16384$8$1$${salt}$${derived}`;
 }
 
 export function verifyPassword(password, storedHash) {
   if (!storedHash || typeof storedHash !== 'string') return false;
   try {
+    if (storedHash.startsWith('scrypt$')) {
+      const parts = storedHash.split('$');
+      if (parts.length !== 6) return false;
+      const N = parseInt(parts[1], 10) || 16384;
+      const r = parseInt(parts[2], 10) || 8;
+      const p = parseInt(parts[3], 10) || 1;
+      const salt = parts[4];
+      const keyHex = parts[5];
+      if (!salt || !keyHex) return false;
+      const keyBuf = Buffer.from(keyHex, 'hex');
+      const computedBuf = crypto.scryptSync(String(password), salt, keyBuf.length || 64, { N, r, p });
+      if (keyBuf.length !== computedBuf.length) return false;
+      return crypto.timingSafeEqual(keyBuf, computedBuf);
+    }
+
     let iterations = 10000;
     let salt = '';
     let keyHex = '';
@@ -418,8 +505,12 @@ export function verifyPassword(password, storedHash) {
   }
 }
 
+try {
+  db.exec("ALTER TABLE watch_history ADD COLUMN device_name TEXT DEFAULT 'Web'");
+} catch (_) {}
+
 // Управление пользователями
-export function registerUser(username, email, password, avatar = null) {
+export function registerUser(username, email, password, avatar = null, meta = {}) {
   const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
   if (existingUser) {
     throw new Error('Пользователь с таким именем или email уже существует');
@@ -447,10 +538,10 @@ export function registerUser(username, email, password, avatar = null) {
   const newUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
   if (newUser) mariaSaveUser(newUser);
 
-  return createSession(userId);
+  return createSession(userId, meta);
 }
 
-export function loginUser(login, password) {
+export function loginUser(login, password, meta = {}) {
   if (!login || !password) {
     throw new Error('Укажите логин и пароль');
   }
@@ -476,7 +567,7 @@ export function loginUser(login, password) {
   }
 
   let needsUserSync = false;
-  if (!String(user.password_hash || '').startsWith('pbkdf2$')) {
+  if (!String(user.password_hash || '').startsWith('scrypt$')) {
     const upgradedHash = hashPassword(cleanPass);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(upgradedHash, user.id);
     user.password_hash = upgradedHash;
@@ -492,14 +583,25 @@ export function loginUser(login, password) {
     if (u) mariaSaveUser(u);
   }
 
-  return createSession(user.id);
+  return createSession(user.id, meta);
 }
 
-export function createSession(userId) {
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 дней
+export function createSession(userId, meta = {}) {
+  const token = crypto.randomBytes(64).toString('hex');
+  const now = Date.now();
+  const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 дней
+  const ip = meta?.ipAddress || meta?.ip || '127.0.0.1';
+  const ua = meta?.userAgent || '';
+  const dev = meta?.deviceName || (ua ? parseDeviceNameFromUserAgent(ua) : 'Веб-клиент');
 
-  db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  try {
+    db.prepare(`
+      INSERT INTO sessions (token, user_id, expires_at, ip_address, user_agent, device_name, last_active_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(token, userId, expiresAt, ip, ua, dev, now, now);
+  } catch {
+    db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  }
   mariaSaveSession(token, userId, expiresAt);
   const user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
 
@@ -1088,17 +1190,18 @@ export function removeBookmark(userId, mediaId, source, title = '') {
 export function logWatchProgress(userId, data) {
   const {
     media_id,
-    source,
+    source = 'fanfilm4k',
     title,
     poster_url = '',
     media_type = 'movie',
     year = '',
-    season = 1,
-    episode = 1,
-    time_seconds = 0,
     duration_seconds = 0,
     total_episodes = 1
   } = data;
+  const season = Number(data.season ?? data.season_number ?? 1) || 1;
+  const episode = Number(data.episode ?? data.episode_number ?? 1) || 1;
+  const time_seconds = Number(data.time_seconds ?? data.progress_seconds ?? 0) || 0;
+  const device_name = String(data.device_name || '').trim() || 'Веб-клиент';
 
   const existingBookmark = getBookmark(userId, String(media_id), source, title);
 
@@ -1156,6 +1259,9 @@ export function logWatchProgress(userId, data) {
     progressPercent,
     now
   );
+  try {
+    db.prepare('UPDATE watch_history SET device_name = ? WHERE user_id = ? AND media_id = ? AND source = ?').run(device_name, userId, String(media_id), source);
+  } catch (_) {}
 
   // Синхронизируем прогресс с закладкой:
   const episodesWatched = safeEpisode;
@@ -2417,4 +2523,378 @@ try {
   }
 } catch (e) {
   console.warn('[Security Migration Warning]:', e.message);
+}
+
+
+// ============================================================================
+// STORM MULTIMEDIA 1.2.0 — РАСШИРЕННЫЕ ФУНКЦИИ БЕЗОПАСНОСТИ, ПРОФИЛЕЙ И БД
+// ============================================================================
+
+// 1. Монитор активных сессий и управление подключёнными устройствами
+export function touchSessionActivity(token, meta = {}) {
+  if (!token) return;
+  try {
+    const now = Date.now();
+    const ip = meta.ip ? String(meta.ip).slice(0, 64) : null;
+    const ua = meta.userAgent ? String(meta.userAgent).slice(0, 512) : null;
+    const dev = meta.deviceName || (ua ? parseDeviceNameFromUserAgent(ua) : null);
+    db.prepare(`
+      UPDATE sessions SET
+        last_active_at = ?,
+        ip_address = COALESCE(?, ip_address),
+        user_agent = COALESCE(?, user_agent),
+        device_name = COALESCE(?, device_name)
+      WHERE token = ?
+    `).run(now, ip, ua, dev, token);
+  } catch (_) {}
+}
+
+export function getUserActiveSessions(userId, currentToken = '') {
+  if (!userId) return [];
+  const now = Date.now();
+  const rows = db.prepare(`
+    SELECT token, user_id, expires_at, ip_address, user_agent, device_name, last_active_at, created_at
+    FROM sessions
+    WHERE user_id = ? AND expires_at > ?
+    ORDER BY COALESCE(last_active_at, expires_at) DESC
+  `).all(userId, now);
+
+  return rows.map(r => ({
+    session_id: String(r.token).slice(0, 12),
+    token_prefix: String(r.token).slice(0, 12),
+    is_current: Boolean(currentToken && r.token === currentToken),
+    device_name: r.device_name || parseDeviceNameFromUserAgent(r.user_agent || ''),
+    ip_address: r.ip_address || '127.0.0.1',
+    user_agent: r.user_agent || '',
+    last_active_at: r.last_active_at || (r.expires_at - 30 * 86400 * 1000),
+    created_at: r.created_at || (r.expires_at - 30 * 86400 * 1000),
+    expires_at: r.expires_at
+  }));
+}
+
+export function revokeUserSessionByPrefix(userId, sessionPrefix) {
+  if (!userId || !sessionPrefix) return false;
+  const cleanPrefix = String(sessionPrefix).trim();
+  if (cleanPrefix.length < 6) return false;
+  const rows = db.prepare('SELECT token FROM sessions WHERE user_id = ?').all(userId);
+  for (const r of rows) {
+    if (String(r.token).startsWith(cleanPrefix)) {
+      db.prepare('DELETE FROM sessions WHERE token = ? AND user_id = ?').run(r.token, userId);
+      mariaDeleteSession(r.token);
+      return true;
+    }
+  }
+  return false;
+}
+
+// 2. Двухфакторная аутентификация (2FA / TOTP) для администраторов и пользователей
+export function getUserTotpConfig(userId) {
+  const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+  if (!row) return { enabled: false, secret: null, backupCodes: [] };
+  const s = JSON.parse(row.settings_json || '{}');
+  return {
+    enabled: Boolean(s.totp_enabled && s.totp_secret),
+    secret: s.totp_secret || null,
+    backupCodes: Array.isArray(s.totp_backup_codes) ? s.totp_backup_codes : []
+  };
+}
+
+export function saveUserTotpConfig(userId, { secret, enabled, backupCodes }) {
+  const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+  if (!row) return false;
+  const s = JSON.parse(row.settings_json || '{}');
+  if (secret !== undefined) s.totp_secret = secret;
+  if (enabled !== undefined) s.totp_enabled = Boolean(enabled);
+  if (backupCodes !== undefined) s.totp_backup_codes = backupCodes;
+  updateUserSettings(userId, s);
+  return true;
+}
+
+// 3. Детский безопасный режим и PIN-защита семейных профилей
+export function setFamilyProfilePin(userId, profileId, pinCode) {
+  const profiles = getUserFamilyProfiles(userId) || [];
+  const target = profiles.find(p => String(p.id) === String(profileId));
+  if (!target) throw new Error('Семейный профиль не найден');
+  if (!pinCode) {
+    delete target.pin_hash;
+    target.has_pin = false;
+  } else {
+    const cleanPin = String(pinCode).trim();
+    if (!/^\d{4}$/.test(cleanPin)) {
+      throw new Error('PIN-код должен состоять ровно из 4 цифр');
+    }
+    target.pin_hash = hashPassword(cleanPin);
+    target.has_pin = true;
+  }
+  saveUserFamilyProfiles(userId, profiles);
+  return true;
+}
+
+export function verifyFamilyProfilePin(userId, profileId, pinCode) {
+  const profiles = getUserFamilyProfiles(userId) || [];
+  const target = profiles.find(p => String(p.id) === String(profileId));
+  if (!target || !target.pin_hash) return true;
+  return verifyPassword(String(pinCode || '').trim(), target.pin_hash);
+}
+
+// 4. Батчинг сохранения прогресса просмотра (сброс в MariaDB раз в 5 сек)
+const watchProgressBatchBuffer = new Map();
+
+export function flushWatchProgressBatch() {
+  if (watchProgressBatchBuffer.size === 0) return 0;
+  const batch = Array.from(watchProgressBatchBuffer.values());
+  watchProgressBatchBuffer.clear();
+  try {
+    mariaSaveWatchHistoryBatch(batch);
+  } catch (_) {}
+  return batch.length;
+}
+
+setInterval(() => {
+  flushWatchProgressBatch();
+}, 5000).unref();
+
+export function logWatchProgressBatch(userId, items = []) {
+  if (!userId || !Array.isArray(items)) return [];
+  const results = [];
+  for (const item of items) {
+    if (!item || !item.media_id) continue;
+    results.push(logWatchProgress(userId, item));
+  }
+  return results;
+}
+
+// 5. Бесшовная эстафета воспроизведения между устройствами (Device Handoff)
+export function getLatestHandoffState(userId, excludeDeviceName = '') {
+  if (!userId) return null;
+  const rows = db.prepare(`
+    SELECT w.*, b.status as bookmark_status
+    FROM watch_history w
+    LEFT JOIN bookmarks b ON b.user_id = w.user_id AND b.media_id = w.media_id
+    WHERE w.user_id = ?
+      AND w.time_seconds >= 30
+      AND w.progress_percent < 95
+      AND (b.status IS NULL OR b.status NOT IN ('completed', 'dropped', 'wont_watch'))
+    ORDER BY w.updated_at DESC
+    LIMIT 5
+  `).all(userId);
+  const row = rows.find(r => !excludeDeviceName || !r.device_name || r.device_name !== excludeDeviceName) || rows[0];
+  if (!row) return null;
+  return {
+    media_id: row.media_id,
+    source: row.source,
+    title: row.title,
+    poster_url: row.poster_url || '',
+    media_type: row.media_type || 'movie',
+    year: row.year || '',
+    season: row.season || 1,
+    season_number: row.season || 1,
+    episode: row.episode || 1,
+    episode_number: row.episode || 1,
+    time_seconds: row.time_seconds || 0,
+    progress_seconds: row.time_seconds || 0,
+    duration_seconds: row.duration_seconds || 0,
+    progress_percent: row.progress_percent || 0,
+    device_name: row.device_name || 'Smart TV',
+    updated_at: row.updated_at
+  };
+}
+
+// 6. Публичные ссылки пользовательских коллекций (/list/:uuid) и Drag-and-Drop сортировка
+export function ensureCustomListShareUuid(listId, userId) {
+  const list = db.prepare('SELECT * FROM custom_lists WHERE id = ? AND user_id = ?').get(listId, userId);
+  if (!list) throw new Error('Коллекция не найдена');
+  let uuid = list.share_uuid;
+  if (!uuid) {
+    uuid = crypto.randomUUID();
+    db.prepare('UPDATE custom_lists SET share_uuid = ?, is_public = 1 WHERE id = ? AND user_id = ?').run(uuid, listId, userId);
+  } else if (!list.is_public) {
+    db.prepare('UPDATE custom_lists SET is_public = 1 WHERE id = ? AND user_id = ?').run(listId, userId);
+  }
+  return uuid;
+}
+
+export function getCustomListByShareUuid(shareUuid) {
+  if (!shareUuid) return null;
+  const list = db.prepare('SELECT l.*, u.username as author_name, u.avatar as author_avatar FROM custom_lists l LEFT JOIN users u ON l.user_id = u.id WHERE l.share_uuid = ? OR (CAST(l.id AS TEXT) = ? AND l.is_public = 1)').get(String(shareUuid), String(shareUuid));
+  if (!list) return null;
+  const items = db.prepare('SELECT * FROM custom_list_items WHERE list_id = ? ORDER BY sort_order ASC, added_at DESC').all(list.id);
+  return { ...list, items };
+}
+
+export function reorderCustomListItems(listId, userId, orderedMediaIds = []) {
+  const list = db.prepare('SELECT id FROM custom_lists WHERE id = ? AND user_id = ?').get(listId, userId);
+  if (!list) throw new Error('Коллекция не найдена или нет прав доступа');
+  if (!Array.isArray(orderedMediaIds)) return false;
+  const stmt = db.prepare('UPDATE custom_list_items SET sort_order = ? WHERE list_id = ? AND media_id = ?');
+  orderedMediaIds.forEach((mId, index) => {
+    stmt.run(index + 1, listId, String(mId));
+  });
+  return true;
+}
+
+// 7. Уведомления о цифровых релизах и новых сериях (Release Subscriptions)
+export function getReleaseSubscriptions(userId) {
+  if (!userId) return [];
+  return db.prepare('SELECT * FROM release_subscriptions WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+}
+
+export function toggleReleaseSubscription(userId, data = {}) {
+  if (!userId || !data.media_id) throw new Error('Не указан идентификатор релиза');
+  const mediaId = String(data.media_id);
+  const source = String(data.source || 'tmdb');
+  const existing = db.prepare('SELECT * FROM release_subscriptions WHERE user_id = ? AND media_id = ? AND source = ?').get(userId, mediaId, source);
+
+  if (existing && data.action !== 'subscribe') {
+    db.prepare('DELETE FROM release_subscriptions WHERE id = ? AND user_id = ?').run(existing.id, userId);
+    mariaDeleteReleaseSubscription(userId, mediaId, source);
+    return { subscribed: false, media_id: mediaId, source };
+  }
+
+  const now = Date.now();
+  const sub = {
+    user_id: userId,
+    media_id: mediaId,
+    source,
+    title: String(data.title || 'Релиз').trim(),
+    poster_url: data.poster_url || data.poster || '',
+    media_type: data.media_type || 'movie',
+    notify_web: data.notify_web !== false ? 1 : 0,
+    notify_telegram: data.notify_telegram !== false ? 1 : 0,
+    telegram_chat_id: data.telegram_chat_id || null,
+    last_notified_state: 'pending',
+    notification_message: null,
+    created_at: now,
+    updated_at: now
+  };
+
+  db.prepare(`
+    INSERT INTO release_subscriptions (
+      user_id, media_id, source, title, poster_url, media_type,
+      notify_web, notify_telegram, telegram_chat_id, last_notified_state, notification_message, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, media_id, source) DO UPDATE SET
+      title = excluded.title,
+      poster_url = excluded.poster_url,
+      notify_web = excluded.notify_web,
+      notify_telegram = excluded.notify_telegram,
+      telegram_chat_id = COALESCE(excluded.telegram_chat_id, release_subscriptions.telegram_chat_id),
+      updated_at = excluded.updated_at
+  `).run(
+    sub.user_id, sub.media_id, sub.source, sub.title, sub.poster_url, sub.media_type,
+    sub.notify_web, sub.notify_telegram, sub.telegram_chat_id, sub.last_notified_state,
+    sub.notification_message, sub.created_at, sub.updated_at
+  );
+  mariaSaveReleaseSubscription(sub);
+  return { subscribed: true, subscription: sub };
+}
+
+export function getAllActiveReleaseSubscriptions() {
+  try {
+    return db.prepare("SELECT * FROM release_subscriptions WHERE last_notified_state != 'released'").all();
+  } catch {
+    return [];
+  }
+}
+
+export function markReleaseSubscriptionNotified(subId, state = 'released', message = '') {
+  try {
+    const now = Date.now();
+    db.prepare('UPDATE release_subscriptions SET last_notified_state = ?, notification_message = ?, updated_at = ? WHERE id = ?').run(state, message, now, subId);
+    const updated = db.prepare('SELECT * FROM release_subscriptions WHERE id = ?').get(subId);
+    if (updated) mariaSaveReleaseSubscription(updated);
+  } catch (_) {}
+}
+
+// 8. Векторный гибридный рекомендательный движок (Cosine Affinity Scoring)
+export function getVectorRecommendationsForUser(userId, candidateItems = [], limit = 20) {
+  if (!Array.isArray(candidateItems) || candidateItems.length === 0) return [];
+  const bookmarks = userId ? db.prepare('SELECT * FROM bookmarks WHERE user_id = ?').all(userId) : [];
+  const history = userId ? db.prepare('SELECT * FROM watch_history WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100').all(userId) : [];
+  const reviews = userId ? db.prepare('SELECT * FROM reviews WHERE user_id = ?').all(userId) : [];
+
+  const watchedKeys = new Set();
+  const genreWeights = new Map();
+  const typeWeights = new Map();
+  const decadeWeights = new Map();
+  let anchorTitle = '';
+
+  for (const b of bookmarks) {
+    const key = normalizeMediaKey(b.title, b.original_title);
+    if (key && ['completed', 'dropped', 'wont_watch'].includes(b.status)) {
+      watchedKeys.add(key);
+    }
+    const w = b.status === 'favorite' || b.is_favorite ? 3.0 : (b.status === 'completed' ? 2.2 : (b.status === 'watching' ? 1.8 : 0.5));
+    if (w >= 2.0 && !anchorTitle && b.title) anchorTitle = b.title;
+    if (b.media_type) typeWeights.set(b.media_type, (typeWeights.get(b.media_type) || 0) + w);
+    if (b.year) {
+      const dec = String(b.year).slice(0, 3) + '0';
+      decadeWeights.set(dec, (decadeWeights.get(dec) || 0) + w * 0.5);
+    }
+    const gList = resolveCanonicalGenres(b.title, b.media_type, '', null) || [];
+    for (const g of gList) {
+      genreWeights.set(g.toLowerCase(), (genreWeights.get(g.toLowerCase()) || 0) + w);
+    }
+  }
+
+  for (const h of history) {
+    const key = normalizeMediaKey(h.title);
+    if (key && h.progress_percent >= 85) watchedKeys.add(key);
+    const w = Math.max(0.5, (Number(h.progress_percent) || 20) / 50);
+    if (!anchorTitle && h.title) anchorTitle = h.title;
+    if (h.media_type) typeWeights.set(h.media_type, (typeWeights.get(h.media_type) || 0) + w);
+    const gList = resolveCanonicalGenres(h.title, h.media_type, '', null) || [];
+    for (const g of gList) {
+      genreWeights.set(g.toLowerCase(), (genreWeights.get(g.toLowerCase()) || 0) + w);
+    }
+  }
+
+  for (const r of reviews) {
+    if (r.rating >= 8 && r.title && !anchorTitle) anchorTitle = r.title;
+  }
+
+  const scored = [];
+  for (const item of candidateItems) {
+    if (!item || !item.title) continue;
+    const key = normalizeMediaKey(item.title, item.original_title);
+    if (key && watchedKeys.has(key)) continue;
+
+    let score = (parseFloat(item.rating) || 7.0) * 1.2;
+    const itemGenres = Array.isArray(item.genres)
+      ? item.genres
+      : (typeof item.genre === 'string' ? item.genre.split(',').map(s => s.trim()) : []);
+
+    let matchedGenreCount = 0;
+    for (const g of itemGenres) {
+      const gw = genreWeights.get(String(g).toLowerCase());
+      if (gw) {
+        score += gw * 2.5;
+        matchedGenreCount++;
+      }
+    }
+
+    const mType = item.media_type || item.type || 'movie';
+    if (typeWeights.has(mType)) {
+      score += Math.min(8, typeWeights.get(mType) * 0.6);
+    }
+
+    if (item.year) {
+      const dec = String(item.year).slice(0, 3) + '0';
+      if (decadeWeights.has(dec)) score += Math.min(4, decadeWeights.get(dec));
+    }
+
+    if (item.is4K && !item.is_upcoming) score += 2.0;
+
+    const matchPercent = Math.min(99, Math.max(68, Math.round(72 + Math.min(27, score * 0.8))));
+    scored.push({
+      ...item,
+      vector_score: Math.round(score * 100) / 100,
+      match_percent: matchPercent,
+      because_watched: anchorTitle || null,
+      matched_genres_count: matchedGenreCount
+    });
+  }
+
+  scored.sort((a, b) => b.vector_score - a.vector_score);
+  return scored.slice(0, limit);
 }

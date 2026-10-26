@@ -11,7 +11,8 @@ import { isMediaUpcomingOrUnreleased } from './canonical-media-intel.js';
 import { Agent } from 'undici';
 import dns from 'node:dns';
 
-export const TMDB_API_KEY = '4e44d9029b1270a757cddc766a1bcb63';
+import '../env-loader.js';
+export const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 export const TMDB_BASE = 'https://api.tmdb.org/3';
 export const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 

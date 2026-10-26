@@ -7536,3 +7536,51 @@ body.tv-mode .custom-list-card:focus {
   will-change: transform;
   backface-visibility: hidden;
 }
+
+
+/* =========================================================================
+   STORM MULTIMEDIA 1.2.0 — 120Hz PROMOTION, GPU COMPOSITING & CLS=0 ENGINE
+   ========================================================================= */
+.media-card {
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  contain: layout paint;
+  backface-visibility: hidden;
+}
+
+.media-card-poster,
+.poster-wrapper {
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(110deg, rgba(15, 23, 42, 0.85) 8%, rgba(30, 41, 59, 0.95) 18%, rgba(15, 23, 42, 0.85) 33%);
+  background-size: 200% 100%;
+}
+
+.storm-media-rail-track,
+.carousel-track {
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.storm-tv-focus-aura {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 9998;
+  border: 2.5px solid var(--accent-primary, #00d2ff);
+  border-radius: 16px;
+  box-shadow: 0 0 24px rgba(0, 210, 255, 0.55), inset 0 0 12px rgba(0, 210, 255, 0.2);
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.16s ease;
+  opacity: 0;
+  will-change: transform, width, height;
+}
+
+body.storm-tab-hidden *,
+body.storm-player-open .ambient-canvas {
+  animation-play-state: paused !important;
+}

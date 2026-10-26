@@ -1,0 +1,32 @@
+name: STORM MULTIMEDIA Release Verification
+
+on:
+  push:
+    tags:
+      - '1.*'
+      - '2.*'
+  workflow_dispatch:
+
+jobs:
+  verify-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify syntax and run automated test suite
+        run: |
+          node --check server.js
+          node --check db.js
+          node --check mariadb.js
+          npm test

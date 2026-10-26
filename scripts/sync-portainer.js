@@ -129,10 +129,35 @@ export async function syncToPortainer(options = {}) {
 
   console.log(`[Portainer Sync] Найден контейнер: ${stormContainer.Id.slice(0, 12)} (${stormContainer.State})`);
 
-  const rootFiles = ['package.json', 'env-loader.js', 'server.js', 'db.js', 'mariadb.js', '.env'];
+  // Создаём новые директории модульной архитектуры 1.2.0 в контейнере перед распаковкой архива
+  try {
+    const mkdirExec = await fetch(`http://${host}:${port}/api/endpoints/${epId}/docker/containers/${stormContainer.Id}/exec`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        AttachStdout: true,
+        AttachStderr: true,
+        Cmd: ['sh', '-c', 'mkdir -p /app/routes /app/middlewares /app/sockets /app/types /app/services /app/public/js /app/public/styles']
+      })
+    });
+    if (mkdirExec.ok) {
+      const { Id } = await mkdirExec.json();
+      await fetch(`http://${host}:${port}/api/endpoints/${epId}/docker/exec/${Id}/start`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Detach: false, Tty: true })
+      });
+    }
+  } catch (_) {}
+
+  const rootFiles = ['package.json', 'env-loader.js', 'server.js', 'db.js', 'mariadb.js', 'tsconfig.json', '.env'];
   const filePaths = Array.from(new Set([
     ...rootFiles,
     ...collectDirFiles('services'),
+    ...collectDirFiles('routes'),
+    ...collectDirFiles('middlewares'),
+    ...collectDirFiles('sockets'),
+    ...collectDirFiles('types'),
     ...collectDirFiles('public')
   ]));
 

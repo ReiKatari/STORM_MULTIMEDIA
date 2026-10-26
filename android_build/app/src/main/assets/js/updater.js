@@ -4,7 +4,7 @@
    https://github.com/ReiKatari/STORM_MULTIMEDIA/releases
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.1.2-s3';
+import { showToast } from './auth.js?v=1.2.0';
 
 export const CURRENT_APP_VERSION = '1.1.2';
 
