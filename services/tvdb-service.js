@@ -171,7 +171,7 @@ export async function resolveMediaPremiereAndYear({
 
   // 1. Быстрое извлечение из базы проверенных релизов KNOWN_RELEASE_YEARS и ссылки
   const dictYear = resolveMediaYear(title, link, poster, '');
-  if (dictYear) {
+  if (dictYear && !resYear) {
     resYear = dictYear;
   }
 
@@ -234,8 +234,10 @@ export async function resolveMediaPremiereAndYear({
         if (tmdbRes.ok) {
           const data = await tmdbRes.json();
           if (data.results && data.results.length > 0) {
-            const first = data.results[0];
-            const dateStr = first.release_date || first.first_air_date || '';
+            const first = (resYear
+              ? data.results.find(r => String(r.release_date || r.first_air_date || '').startsWith(resYear))
+              : data.results[0]) || null;
+            const dateStr = first ? (first.release_date || first.first_air_date || '') : '';
             if (dateStr) {
               if (!resReleaseDate) resReleaseDate = dateStr;
               if (!resPremiere || resPremiere === 'Не указана') resPremiere = formatRussianDate(dateStr);

@@ -4582,7 +4582,7 @@ const itemDetailsCache = new Map();
 app.get('/api/media/item', async (req, res) => {
   try {
     const { id, source, url } = req.query;
-    const cacheKey = `v5_${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}_${req.query.media_type || ''}`;
+    const cacheKey = `v7_${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}_${req.query.media_type || ''}`;
     const cached = itemDetailsCache.get(cacheKey);
     if (cached && (Date.now() - cached.time < 30 * 60 * 1000)) {
       let userBookmark = null;
@@ -4608,8 +4608,11 @@ app.get('/api/media/item', async (req, res) => {
       let cleanLiftId = String(req.query.lift_id || id || '').replace(/^lift_/i, '');
       if (req.query.title) {
         const preCheck = await getLiftDetails(cleanLiftId);
-        if (preCheck && preCheck.title && Math.max(scoreMediaCandidate(preCheck.title || '', '', req.query.title, req.query.year || '', '', ''), scoreMediaCandidate(preCheck.original_title || '', '', req.query.title, req.query.year || '', '', '')) < 100) {
-          const matchedLift = await resolveLiftMatch({ title: req.query.title, year: req.query.year });
+        const reqYrNum = parseInt(req.query.year || '', 10);
+        const preYrNum = parseInt(preCheck?.year || '', 10);
+        const isYearMismatch = Boolean(reqYrNum && preYrNum && !preCheck?.is_series && Math.abs(reqYrNum - preYrNum) > 1);
+        if (preCheck && preCheck.title && (isYearMismatch || Math.max(scoreMediaCandidate(preCheck.title || '', '', req.query.title, req.query.year || '', '', ''), scoreMediaCandidate(preCheck.original_title || '', '', req.query.title, req.query.year || '', '', '')) < 100)) {
+          const matchedLift = await resolveLiftMatch({ title: req.query.title, original_title: req.query.original_title || '', year: req.query.year, is_series: Boolean(preCheck?.is_series) });
           if (matchedLift) cleanLiftId = String(matchedLift.lift_id || matchedLift);
         }
       }
@@ -4917,9 +4920,14 @@ app.get('/api/media/item', async (req, res) => {
       // Динамическая проверка, является ли релиз ещё не вышедшим в прокат
       const isKnownUnreleased = false;
       const isCarrieUnreleased = false;
+      const isStrictUnreleasedStatus = ['planned', 'in production', 'post production', 'rumored', 'anons', 'анонс'].includes(String(mediaDetails.status || '').toLowerCase().trim());
+      if (!isStrictUnreleasedStatus && req.query.fanfilm_4k_url && !String(req.query.fanfilm_4k_url).includes('do=search')) {
+        mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url;
+        mediaDetails.is_upcoming = false;
+      }
       let isReleaseUpcoming = Boolean(
         String(id || '').startsWith('tmdb_up_') ||
-        isMediaUpcomingOrUnreleased(mediaDetails) ||
+        isStrictUnreleasedStatus ||
         (mediaDetails.release_date && (() => {
           const s = String(mediaDetails.release_date).trim();
           if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
@@ -5011,7 +5019,12 @@ app.get('/api/media/item', async (req, res) => {
       if (targetLookup && targetLookup !== 'undefined' && targetLookup !== 'null') {
         try {
           mediaDetails = await getFanFilmDetails(targetLookup);
-          // Защита от открытия чужого фильма по числовому ID (например если передан ID из другой базы без слага)
+          const reqYrCheck = parseInt(req.query.year || '', 10);
+          const ffYrCheck = parseInt(mediaDetails?.year || '', 10);
+          const isSeriesReqCheck = req.query.media_type === 'series' || req.query.media_type === 'anime-series' || mediaDetails?.media_type === 'series';
+          if (mediaDetails && !isSeriesReqCheck && reqYrCheck >= 1920 && ffYrCheck >= 1920 && Math.abs(reqYrCheck - ffYrCheck) > 1) {
+            mediaDetails = null;
+          }
           if (mediaDetails && mediaDetails.title && req.query.title && /^\d+$/.test(targetLookup)) {
             const scTitle = Math.max(
               scoreMediaCandidate(mediaDetails.title || '', '', req.query.title, req.query.year || '', '', ''),
@@ -5025,13 +5038,18 @@ app.get('/api/media/item', async (req, res) => {
             const knownDirect = resolveFanFilmUrl(req.query.title, req.query.year || '');
             if (knownDirect && knownDirect !== targetLookup) {
               const retryDetails = await getFanFilmDetails(knownDirect);
-              if (retryDetails && retryDetails.title) {
+              const retryYr = parseInt(retryDetails?.year || '', 10);
+              if (retryDetails && retryDetails.title && (!reqYrCheck || !retryYr || isSeriesReqCheck || Math.abs(reqYrCheck - retryYr) <= 1)) {
                 mediaDetails = retryDetails;
               }
             }
             if (!mediaDetails || !mediaDetails.title) {
               const ffFound = await searchFanFilm(req.query.title);
-              const bestFf = (ffFound || []).find(f => scoreMediaCandidate(f.title || '', '', req.query.title, req.query.year || '', '', '') >= 200);
+              const bestFf = (ffFound || []).find(f => {
+                const candYr = parseInt(f.year || '', 10);
+                if (!isSeriesReqCheck && reqYrCheck >= 1920 && candYr >= 1920 && Math.abs(reqYrCheck - candYr) > 1) return false;
+                return scoreMediaCandidate(f.title || '', '', req.query.title, req.query.year || '', '', '') >= 200;
+              });
               if (bestFf && (bestFf.link || bestFf.url)) {
                 mediaDetails = await getFanFilmDetails(bestFf.link || bestFf.url);
               }
@@ -5130,7 +5148,7 @@ app.get('/api/media/item', async (req, res) => {
     }
 
     const resolvedKnownYr = resolveMediaYear(mediaDetails.title, mediaDetails.fanfilm_4k_url || '', mediaDetails.poster || '');
-    if (resolvedKnownYr) {
+    if (resolvedKnownYr && !mediaDetails.year) {
       mediaDetails.year = resolvedKnownYr;
     }
 
@@ -5205,16 +5223,17 @@ app.get('/api/media/item', async (req, res) => {
       }
     }
           const isExplicitAnimeMovie = mediaDetails.media_type === 'anime-movie';
+          const targetMovieYr = parseInt(mediaDetails.year || req.query.year || '', 10);
           const validItems = tmdbSearch.items.filter(it => {
-            if (isExplicitAnimeMovie) {
+            if (isExplicitAnimeMovie || !isSeries) {
               if (it.media_type === 'series' || it.media_type === 'tv' || it.media_type === 'anime-series') return false;
-              if (mediaDetails.year && it.year && Math.abs(Number(mediaDetails.year) - Number(it.year)) > 1) return false;
+              if (targetMovieYr >= 1920 && it.year && Math.abs(targetMovieYr - Number(it.year)) > 1) return false;
             }
-            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || '', isSeries ? '1' : '', '');
+            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || req.query.year || '', isSeries ? '1' : '', '');
             return sc >= 200;
           });
           const pool = validItems;
-          const matchByYear = mediaDetails.year ? pool.find(it => String(it.year) === String(mediaDetails.year)) : null;
+          const matchByYear = targetMovieYr ? (pool.find(it => Number(it.year) === targetMovieYr) || pool.find(it => it.year && Math.abs(Number(it.year) - targetMovieYr) <= 1)) : null;
           let matchByType = isSeries ? pool.find(it => it.media_type === 'series' || it.media_type === 'tv') : null;
           if (isSeries && !matchByType && cleanSearchTitle.toLowerCase().includes('ричер')) {
             const reacherTv = await Promise.race([searchTmdb('Ричер', 1), new Promise(r => setTimeout(() => r({ items: [] }), 1800))]);
@@ -5512,7 +5531,7 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.trailer_url = '';
 
     // Быстрое обогащение через Lift (api.liftw.ws): lift_id, студийные озвучки, рейтинги КП/IMDb, русские роли актеров и части франшизы
-    if (!isKnownUnreleased && !mediaDetails.is_upcoming && mediaDetails.status !== 'Анонс' && !mediaDetails.lift_id && mediaDetails.title) {
+    if (!isKnownUnreleased && !isFutureDateCheck(mediaDetails.release_date) && mediaDetails.status !== 'Анонс' && !mediaDetails.lift_id && mediaDetails.title) {
       try {
         const matchedLiftId = await Promise.race([
           resolveLiftMatch({
@@ -5525,12 +5544,18 @@ app.get('/api/media/item', async (req, res) => {
           new Promise(r => setTimeout(() => r(null), 2200))
         ]);
         if (matchedLiftId) {
-          mediaDetails.lift_id = matchedLiftId;
           const liftInfo = await Promise.race([
             getLiftDetails(matchedLiftId),
             new Promise(r => setTimeout(() => r(null), 2200))
           ]);
-          if (liftInfo) {
+          const targetYrForLift = parseInt(mediaDetails.year || req.query.year || '', 10);
+          const liftCandYr = parseInt(liftInfo?.year || '', 10);
+          const isLiftYearValid = isSeries || !targetYrForLift || !liftCandYr || Math.abs(targetYrForLift - liftCandYr) <= 1;
+          if (isLiftYearValid) {
+            mediaDetails.lift_id = matchedLiftId;
+            mediaDetails.is_upcoming = false;
+          }
+          if (liftInfo && isLiftYearValid) {
             if (isSeries && !isExplicitMovieReq && liftInfo.seasons?.length && (!mediaDetails.seasons || mediaDetails.seasons.length === 0)) {
               mediaDetails.seasons = liftInfo.seasons;
             }
@@ -6989,7 +7014,7 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
       const sequelRe = new RegExp(`\\b${escapedTarget}\\s+[2-9]\\b`, 'i');
       if (sequelRe.test(normCand)) return -1;
     }
-    if (normTarget === 'обитель зла' && /\b(?:возмездие|вырождение|проклятие|вендетта|остров\s+смерти|раккун|жизнь\s+после\s+смерти|истребление|апокалипсис|последняя\s+глава|мутация)\b/i.test(normCand)) {
+    if (normTarget === 'обитель зла' && /\b(?:возмездие|вырождение|проклятие|вендетта|остров\s+смерти|раккун|жизнь\s+после\s+смерти|истребление|апокалипсис|последняя\s+глава|мутация|синистер|паранормальн|логово|ромеро|бесконечн|инкубаци|вымирани|палач|театр)\b/i.test(normCand)) {
       return -1;
     }
   } else {
@@ -9700,12 +9725,24 @@ app.get('/api/player/lift-embed', async (req, res) => {
   const fallbackKinoboxUrl = `/api/player/kinobox-embed?balancer=kinobox&no_lift=1&title=${encodeURIComponent(title || '')}${original_title ? `&original_title=${encodeURIComponent(original_title)}` : ''}${year ? `&year=${encodeURIComponent(year)}` : ''}${kp_id ? `&kp_id=${encodeURIComponent(kp_id)}` : ''}${imdb_id ? `&imdb_id=${encodeURIComponent(imdb_id)}` : ''}${season ? `&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}` : ''}`;
 
   try {
+    const isSeriesEmbed = is_series === '1' || is_series === 'true';
+    let verifiedLiftId = String(lift_id || '').replace(/^lift_/i, '').trim();
+    if (verifiedLiftId && year && !isSeriesEmbed) {
+      try {
+        const preLiftMeta = await getLiftDetails(verifiedLiftId);
+        const reqYr = parseInt(year, 10);
+        const liftYr = parseInt(preLiftMeta?.year || '', 10);
+        if (reqYr >= 1920 && liftYr >= 1920 && Math.abs(reqYr - liftYr) > 1) {
+          verifiedLiftId = '';
+        }
+      } catch (_) {}
+    }
     const matchedLiftId = await resolveLiftMatch({
-      lift_id: lift_id || '',
+      lift_id: verifiedLiftId,
       title: title || '',
       original_title: original_title || '',
       year: year || '',
-      is_series: is_series === '1' || is_series === 'true'
+      is_series: isSeriesEmbed
     });
 
     if (!matchedLiftId) {
@@ -10200,17 +10237,34 @@ app.get('/api/player/series-options', async (req, res) => {
     if (targetUrl.includes('/api/player/lift-embed') || targetUrl.includes('liftw.ws') || String(mediaId || '').startsWith('lift_')) {
       try {
         let liftIdParam = '';
+        let yearParam = req.query.year || '';
+        let isSeriesParam = true;
         try {
           const parsedUrl = new URL(targetUrl, 'http://localhost');
           liftIdParam = parsedUrl.searchParams.get('lift_id') || '';
+          yearParam = yearParam || parsedUrl.searchParams.get('year') || '';
+          if (parsedUrl.searchParams.has('is_series')) {
+            isSeriesParam = parsedUrl.searchParams.get('is_series') === '1' || parsedUrl.searchParams.get('is_series') === 'true';
+          }
         } catch (_) {}
         if (!liftIdParam && String(mediaId || '').startsWith('lift_')) {
           liftIdParam = String(mediaId).replace(/^lift_/i, '');
         }
+        if (liftIdParam && yearParam && !isSeriesParam) {
+          try {
+            const preMeta = await getLiftDetails(liftIdParam);
+            const ry = parseInt(yearParam, 10);
+            const ly = parseInt(preMeta?.year || '', 10);
+            if (ry >= 1920 && ly >= 1920 && Math.abs(ry - ly) > 1) {
+              liftIdParam = '';
+            }
+          } catch (_) {}
+        }
         const matchedLiftId = await resolveLiftMatch({
           lift_id: liftIdParam,
           title: mediaTitle || '',
-          is_series: true
+          year: yearParam,
+          is_series: isSeriesParam
         });
         if (matchedLiftId) {
           const liftStream = await extractLiftStreamData(matchedLiftId, { season: 1, episode: 1, userAgent: req.headers['user-agent'] || '' });

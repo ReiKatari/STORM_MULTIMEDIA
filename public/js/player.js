@@ -2002,7 +2002,7 @@ export function buildUniversalPlayerSuite(mediaItem = {}, cleanTitle = '') {
   const title = cleanTitle || cleanVideoTitle(mediaItem.title || 'Видео');
   const safeTitle = encodeURIComponent(title);
   const origTitleParam = mediaItem.original_title ? `&original_title=${encodeURIComponent(mediaItem.original_title)}` : '';
-  const year = mediaItem.year ? String(mediaItem.year).trim() : '';
+  const year = String(mediaItem.year || detectClientYear(mediaItem) || '').trim();
   const yearQuery = year ? `&year=${encodeURIComponent(year)}` : '';
   const kpId = mediaItem.kp_id || '';
   const imdbId = mediaItem.imdb_id || '';
@@ -2588,7 +2588,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   // 🛡️ ГАРАНТИЯ ИСТОЧНИКОВ: Создаем полный универсальный набор онлайн-плееров сразу!
   // Никакой источник никогда не пропадает, даже при задержке сети или таймауте
-  const fallbackSuite = buildUniversalPlayerSuite(mediaItem, cleanTitle);
+  const fallbackSuite = buildUniversalPlayerSuite(currentMedia, cleanTitle);
   currentPlayers = [...fallbackSuite];
   renderPlayerSources(currentPlayers);
 
@@ -2756,7 +2756,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
       });
     }
     if (!isDetailsStrictlyUpcoming) {
-      fallbackSuite.forEach(fp => {
+      const enrichedFallbackSuite = buildUniversalPlayerSuite(currentMedia, currentMedia.title);
+      enrichedFallbackSuite.forEach(fp => {
         if (!fp || !fp.url) return;
         if (isDomestic && (fp.id === 'lostfilm_player' || fp.id === 'rhs_player')) return;
         if (!mergedPlayers.some(mp => mp.id === fp.id)) {

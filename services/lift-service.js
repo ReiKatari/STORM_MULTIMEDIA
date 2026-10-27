@@ -614,7 +614,7 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
   const rawOrig = String(original_title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
   if (!rawTitle && !rawOrig) return null;
 
-  const cacheKey = `match_v5:${rawTitle.toLowerCase()}:${rawOrig.toLowerCase()}:${year || ''}:${Boolean(is_series)}`;
+  const cacheKey = `match_v7:${rawTitle.toLowerCase()}:${rawOrig.toLowerCase()}:${year || ''}:${Boolean(is_series)}`;
   const cached = getCached(cacheKey);
   if (cached !== null) return cached || null;
 
@@ -669,6 +669,13 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
   let bestItem = null;
   let bestScore = -999;
 
+  const hasExactYearAndTitleCandidate = targetYear > 0 && candidates.some(it => {
+    const cy = parseInt(it.year, 10) || 0;
+    const ct = norm(it.title);
+    const co = norm(it.original_title);
+    return cy === targetYear && ((targetTitle && ct === targetTitle) || (targetOrig && co === targetOrig));
+  });
+
   for (const item of candidates) {
     let titleScore = 0;
     const cTitle = norm(item.title);
@@ -676,12 +683,23 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
     const cBase = norm(String(item.title || '').split(splitSubtitleRegex)[0]);
     const cYear = parseInt(item.year, 10) || 0;
     const candidateMatchesSubtitle = subtitleWords.length === 0 || subtitleWords.every(sw => cTitle.split(' ').includes(sw));
+    const candHasSubtitle = splitSubtitleRegex.test(String(item.title || ''));
+    const extraCandWords = (targetTitle && cTitle.startsWith(targetTitle + ' '))
+      ? cTitle.slice(targetTitle.length).trim().split(' ').filter(Boolean)
+      : [];
+    const onlyGenericExtraWords = extraCandWords.length > 0 && extraCandWords.every(w => GENERIC_SUB_WORDS.has(w));
+
+    if (!is_series && !targetBase && cTitle !== targetTitle && (!targetOrig || cOrig !== targetOrig)) {
+      if (candHasSubtitle || !onlyGenericExtraWords) {
+        continue;
+      }
+    }
 
     if (targetTitle && cTitle === targetTitle) {
       titleScore = Math.max(titleScore, 135);
-    } else if (targetTitle && cTitle && hasAllWords(cTitle, targetTitle) && (cBase === targetBase || cTitle.startsWith((targetBase || targetTitle) + ' '))) {
+    } else if (targetTitle && cTitle && (Boolean(targetBase) || Boolean(is_series) || onlyGenericExtraWords) && hasAllWords(cTitle, targetTitle) && (cBase === targetBase || cTitle.startsWith((targetBase || targetTitle) + ' '))) {
       titleScore = Math.max(titleScore, 128);
-    } else if (targetTitle && cTitle && subtitleWords.length === 0 && targetTitle.split(' ').length >= 2 && (cTitle.startsWith(targetTitle + ' ') || (cBase === targetTitle && cBase.split(' ').length >= 2))) {
+    } else if (targetTitle && cTitle && Boolean(is_series) && subtitleWords.length === 0 && targetTitle.split(' ').length >= 2 && (cTitle.startsWith(targetTitle + ' ') || (cBase === targetTitle && cBase.split(' ').length >= 2))) {
       titleScore = Math.max(titleScore, 90);
     } else if (targetBase && cBase && candidateMatchesSubtitle && targetBase.split(' ').length >= 2 && targetBase === cBase) {
       titleScore = Math.max(titleScore, 85);
@@ -689,17 +707,16 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
 
     if (targetOrig && cOrig && cOrig === targetOrig) {
       titleScore = Math.max(titleScore, 140);
-    } else if (targetOrig && cOrig && targetOrig.length >= 5 && (cOrig.startsWith(targetOrig + ' ') || (hasAllWords(cOrig, targetOrig) && Math.abs(cOrig.length - targetOrig.length) <= 12))) {
+    } else if (targetOrig && cOrig && (Boolean(targetBase) || Boolean(is_series)) && targetOrig.length >= 5 && (cOrig.startsWith(targetOrig + ' ') || (hasAllWords(cOrig, targetOrig) && Math.abs(cOrig.length - targetOrig.length) <= 12))) {
       titleScore = Math.max(titleScore, 95);
     }
 
-    // Строго требуем реальное совпадение названия или оригинального названия (год и тип не могут вытянуть чужой фильм)
     if (titleScore < 85) continue;
 
-    // Для полнометражных фильмов с известным годом строго отклоняем релизы других лет (разница > 2 лет)
     if (targetYear && cYear) {
       const diff = Math.abs(targetYear - cYear);
-      if (!is_series && diff > 2) continue;
+      if (!is_series && hasExactYearAndTitleCandidate && diff > 0) continue;
+      if (!is_series && diff > 1) continue;
       if (is_series && diff > 5 && titleScore < 130) continue;
     }
 
