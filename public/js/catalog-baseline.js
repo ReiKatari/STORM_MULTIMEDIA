@@ -3713,12 +3713,20 @@ export function getBaselineCatalog(category = 'popular') {
   return [...list];
 }
 
+function stemBaselineRuWord(word) {
+  const w = String(word || '').toLowerCase().replace(/ё/g, 'е').trim();
+  if (w.length <= 3) return w;
+  const st = w.replace(/(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|иях|ием|ией|ию|ия|ие|ии|ью|ей|ой|ый|ий|ая|яя|ое|ее|ые|ам|ям|ах|ях|ом|ем|ов|ев|у|ю|а|я|о|е|и|ы|ь)$/u, '');
+  return st.length >= 3 ? st : w.slice(0, 3);
+}
+
 export function searchBaselineCatalog(query) {
   if (!query || typeof query !== 'string') return [];
-  const qNorm = query.toLowerCase().trim();
+  const qNorm = query.toLowerCase().replace(/ё/g, 'е').trim();
   if (qNorm.length < 2) return [];
 
-  const qWords = qNorm.split(/\s+/).filter(w => w.length >= 2);
+  const qWords = qNorm.split(/[^\p{L}\p{N}]+/gu).filter(w => w.length >= 2);
+  const qStems = qWords.map(stemBaselineRuWord);
   const matched = [];
   const seenIds = new Set();
 
@@ -3728,14 +3736,14 @@ export function searchBaselineCatalog(query) {
     if (!Array.isArray(list)) continue;
     for (const item of list) {
       if (!item || seenIds.has(item.id)) continue;
-      const title = String(item.title || '').toLowerCase();
-      const origTitle = String(item.original_title || '').toLowerCase();
-      const desc = String(item.description || '').toLowerCase();
-      const genres = Array.isArray(item.genres) ? item.genres.join(' ').toLowerCase() : String(item.genres || '').toLowerCase();
+      const title = String(item.title || '').toLowerCase().replace(/ё/g, 'е');
+      const origTitle = String(item.original_title || '').toLowerCase().replace(/ё/g, 'е');
+      const desc = String(item.description || '').toLowerCase().replace(/ё/g, 'е');
+      const genres = (Array.isArray(item.genres) ? item.genres.join(' ') : String(item.genres || '')).toLowerCase().replace(/ё/g, 'е');
 
       let isMatch = title.includes(qNorm) || origTitle.includes(qNorm);
-      if (!isMatch && qWords.length > 0) {
-        isMatch = qWords.every(w => title.includes(w) || origTitle.includes(w) || desc.includes(w) || genres.includes(w));
+      if (!isMatch && qStems.length > 0) {
+        isMatch = qStems.every(st => title.includes(st) || origTitle.includes(st) || desc.includes(st) || genres.includes(st));
       }
 
       if (isMatch) {

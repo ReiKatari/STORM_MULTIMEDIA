@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.3.1';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.1';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.1';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.1';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.1';
-import { getStatusIconSvg } from './status-icons.js?v=1.3.1';
-import { initFormFactorEngine } from './form-factor.js?v=1.3.1';
+import { initTheme, setTheme } from './theme.js?v=1.3.2';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.2';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.2';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.2';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.2';
+import { getStatusIconSvg } from './status-icons.js?v=1.3.2';
+import { initFormFactorEngine } from './form-factor.js?v=1.3.2';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.2.6';
+const STORM_ASSET_VER = '1.3.2';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -188,7 +188,83 @@ const checkForUpdates = (...args) => (_updaterModPromise ||= import(`./updater.j
 let _achModPromise = null;
 const trackClientAction = (action, meta) => (_achModPromise ||= import(`./achievements.js?v=${STORM_ASSET_VER}`)).then(m => m.trackClientAction?.(action, meta)).catch(() => {});
 
-let currentTab = 'home';
+const STORM_NAV_STATE_KEY = 'storm_nav_state_v1';
+const STORM_FULL_HISTORY_KEY = 'storm_full_watch_history_v1';
+
+function loadSavedNavState() {
+  try {
+    const raw = sessionStorage.getItem(STORM_NAV_STATE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (_) {}
+  return {};
+}
+
+function saveCurrentNavState() {
+  try {
+    sessionStorage.setItem(STORM_NAV_STATE_KEY, JSON.stringify({
+      tab: currentTab || 'home',
+      page: currentPage || 1,
+      bookmarkSubTab: currentBookmarkSubTab || 'all',
+      searchQuery: searchQuery || ''
+    }));
+  } catch (_) {}
+}
+
+export function getFullWatchHistoryList() {
+  try {
+    const raw = localStorage.getItem(STORM_FULL_HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+export function recordStormWatchHistoryItem(mediaItem, extra = {}) {
+  if (!mediaItem || (!mediaItem.id && !mediaItem.media_id) || !mediaItem.title) return;
+  try {
+    const list = getFullWatchHistoryList();
+    const idStr = String(mediaItem.media_id || mediaItem.id);
+    const titleStr = String(mediaItem.title || '').trim();
+    if (!titleStr || titleStr.includes('FANFILM4K')) return;
+    const normTitle = titleStr.toLowerCase().replace(/ё/g, 'е').trim();
+    const entry = {
+      id: idStr,
+      media_id: idStr,
+      source: mediaItem.source || 'tmdb',
+      title: titleStr,
+      original_title: mediaItem.original_title || '',
+      poster: mediaItem.poster || mediaItem.poster_url || '',
+      media_type: mediaItem.media_type || 'movie',
+      year: mediaItem.year || '',
+      season: extra.season || mediaItem.season || 1,
+      episode: extra.episode || mediaItem.episode || 1,
+      progress_percent: typeof extra.progress_percent === 'number' ? extra.progress_percent : (mediaItem.progress_percent || 0),
+      viewed_at: Date.now()
+    };
+    const filtered = list.filter(x => x && String(x.id || x.media_id) !== idStr && String(x.title || '').toLowerCase().replace(/ё/g, 'е').trim() !== normTitle);
+    filtered.unshift(entry);
+    localStorage.setItem(STORM_FULL_HISTORY_KEY, JSON.stringify(filtered.slice(0, 200)));
+  } catch (_) {}
+}
+
+export function clearStormWatchHistoryList() {
+  try {
+    localStorage.removeItem(STORM_FULL_HISTORY_KEY);
+  } catch (_) {}
+}
+
+if (typeof window !== 'undefined') {
+  window.recordStormWatchHistoryItem = recordStormWatchHistoryItem;
+  window.getFullWatchHistoryList = getFullWatchHistoryList;
+  window.clearStormWatchHistoryList = clearStormWatchHistoryList;
+}
+
+const _initialNavState = loadSavedNavState();
+let currentTab = _initialNavState.tab || 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
 let currentCardDensity = localStorage.getItem('storm_card_density') || 'standard';
 if (currentCardDensity === 'normal') currentCardDensity = 'standard';
@@ -202,15 +278,15 @@ let currentCountry = 'all';
 let currentYear = 'all';
 let currentRating = 0;
 let currentStatusFilter = 'all';
-let currentBookmarkSubTab = 'all';
+let currentBookmarkSubTab = _initialNavState.bookmarkSubTab || 'all';
 let cachedCustomLists = [];
 let activeViewingCustomList = null;
-let currentPage = 1;
+let currentPage = _initialNavState.page || 1;
 let totalCatalogItems = 0;
 let totalCatalogPages = 1;
 let currentItems = [];
 let rawCatalogItems = [];
-let searchQuery = '';
+let searchQuery = _initialNavState.searchQuery || '';
 let hoverPreviewTimer = null;
 let hoverCloseTimer = null;
 let cachedContinueHistory = null;
@@ -275,9 +351,23 @@ async function startStormApp() {
   try { initTheme(); } catch (e) { console.warn('initTheme error:', e); }
   try { applyTranslations(); } catch (e) { console.warn('applyTranslations error:', e); }
 
-  // 2. Мгновенная отрисовка каталога (baseline кэш или сохраненный снимок) до второстепенных модулей
+  // 2. Мгновенная отрисовка каталога (восстановление вкладки и поиска после F5 без сброса на главную)
   try {
-    loadCurrentTab();
+    document.querySelectorAll('.storm-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === currentTab);
+    });
+    document.querySelectorAll('.storm-mobile-nav-item').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === currentTab);
+    });
+    if (searchQuery && searchQuery.trim().length >= 2) {
+      const sInput = document.getElementById('global-search-input');
+      if (sInput) sInput.value = searchQuery;
+      const clearBtn = document.getElementById('search-clear-btn');
+      if (clearBtn) clearBtn.classList.add('is-visible');
+      executeSearch(searchQuery);
+    } else {
+      loadCurrentTab();
+    }
   } catch (e) {
     console.warn('Initial loadCurrentTab error:', e);
   }
@@ -429,7 +519,44 @@ async function startStormApp() {
       await refreshContinueWatchingCache();
       const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
       if (!isSearching) {
-        if (currentTab === 'continue') {
+        if (currentTab === 'history') {
+    renderSkeletonGrid();
+    const serverHistory = await fetchContinueWatching().catch(() => []);
+    const localHistory = getFullWatchHistoryList();
+    const combinedHistory = [];
+    const seenHistKeys = new Set();
+    const pushHistItem = (h) => {
+      if (!h || (!h.media_id && !h.id) || !h.title) return;
+      const tStr = String(h.title || '').trim();
+      if (!tStr || tStr.includes('FANFILM4K') || tStr.includes('ФАН4К –')) return;
+      const nKey = normalizeMediaTitle(tStr, h.original_title || '');
+      const idKey = String(h.media_id || h.id);
+      if ((nKey && seenHistKeys.has(nKey)) || seenHistKeys.has(idKey)) return;
+      if (nKey) seenHistKeys.add(nKey);
+      seenHistKeys.add(idKey);
+      combinedHistory.push({
+        id: idKey,
+        source: h.source || 'tmdb',
+        title: tStr,
+        original_title: h.original_title || '',
+        poster: getSafePosterUrl(h.poster_url || h.poster, tStr),
+        media_type: h.media_type || 'movie',
+        year: h.year || '',
+        progress_percent: Math.round(h.progress_percent || 0),
+        user_status: h.user_status || h.bookmark_status || null,
+        season: h.season || 1,
+        episode: h.episode || 1,
+        viewed_at: h.viewed_at || (h.updated_at ? new Date(h.updated_at).getTime() : 0)
+      });
+    };
+    localHistory.forEach(pushHistItem);
+    (serverHistory || []).forEach(pushHistItem);
+    rawCatalogItems = combinedHistory;
+    renderFilteredCatalog();
+    return;
+  }
+
+  if (currentTab === 'continue') {
           loadCurrentTab();
         } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
           renderFilteredCatalog();
@@ -457,7 +584,18 @@ async function initDeepLinking() {
   try {
     const params = new URLSearchParams(window.location.search);
     const mediaId = params.get('media');
-    if (!mediaId) return;
+    if (!mediaId) {
+      try {
+        const rawActive = sessionStorage.getItem('storm_active_cinema_media');
+        if (rawActive) {
+          const parsedActive = JSON.parse(rawActive);
+          if (parsedActive && (parsedActive.id || parsedActive.title)) {
+            openPlayerModal(parsedActive);
+          }
+        }
+      } catch (_) {}
+      return;
+    }
 
     const source = params.get('source') || 'tmdb';
     const season = params.get('season');
@@ -888,6 +1026,7 @@ export function switchTab(tab, options = {}) {
     const clearBtn = document.getElementById('search-clear-btn');
     if (clearBtn) clearBtn.classList.remove('is-visible');
   }
+  saveCurrentNavState();
 
   document.querySelectorAll('.storm-tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
@@ -2091,7 +2230,7 @@ export function getSafePosterUrl(url, title = '') {
       if (window.__STORM_BACKEND_ONLINE__ === false) {
         return generateSvgPosterDataUri(cleanTitle);
       }
-      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&v=2`;
+      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&v=4`;
     }
     return 'assets/favicon.svg';
   }
@@ -2109,7 +2248,7 @@ export function getSafePosterUrl(url, title = '') {
       proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + `title=${encodeURIComponent(cleanTitle)}`;
     }
     if (!proxyUrl.includes('v=')) {
-      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + 'v=2';
+      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + 'v=4';
     }
     return proxyUrl;
   }
@@ -2126,7 +2265,7 @@ export function getSafePosterUrl(url, title = '') {
       return `https://wsrv.nl/?url=${encodeURIComponent(clean)}&w=500&q=85&output=webp`;
     }
     const titleParam = cleanTitle ? `&title=${encodeURIComponent(cleanTitle)}` : '';
-    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}&v=2`;
+    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}&v=4`;
   }
   return clean;
 }
@@ -2972,11 +3111,11 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
     return 'Фильм';
   }
 
+  if (detectedType === 'anime-movie' || type === 'anime-movie' || type === 'anime-movies' || cat === 'anime-movies' || cat === 'anime-movie' || cat === 'аниме-фильм') {
+    return 'Аниме-фильм';
+  }
   if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
     return 'Аниме-сериал';
-  }
-  if (detectedType === 'anime-movie' || type === 'anime-movie' || cat === 'anime-movies') {
-    return 'Аниме-фильм';
   }
   if (type === 'anime' || source === 'anixart' || source === 'anilibria' || source === 'shikimori' || cat === 'anime' || cat === 'anime-series') {
     if (type.includes('series') || title.includes('сезон') || title.includes('сериал')) return 'Аниме-сериал';
@@ -3018,13 +3157,13 @@ function deduplicateMediaList(items) {
     }
     const itemYr = getMediaYear(item) || item.year || '';
     const baseNormKey = normalizeMediaTitle(itemTitle, origTitle, isSeriesOrAnime);
-    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle, '', isSeriesOrAnime) : '';
+    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle.replace(/\bmovie\s*\d*\s*:/gi, ' '), '', isSeriesOrAnime) : '';
     const normKey = (!isSeriesOrAnime && baseNormKey && itemYr) ? `${baseNormKey}_movie_${itemYr}` : baseNormKey;
     const origKey = (!isSeriesOrAnime && baseOrigKey && itemYr) ? `${baseOrigKey}_movie_${itemYr}` : baseOrigKey;
     const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
     const kpKey = (item.kp_id || item.kinopoisk_id) ? `kp_${item.kp_id || item.kinopoisk_id}` : '';
 
-    const candidateKeys = [normKey, origKey, tmdbKey, kpKey].filter(Boolean);
+    const candidateKeys = [normKey, baseNormKey, origKey, baseOrigKey, tmdbKey, kpKey].filter(Boolean);
     let key = '';
     for (const ck of candidateKeys) {
       if (itemMap.has(ck)) {
@@ -5588,6 +5727,7 @@ function renderCatalogPagination(shownCount) {
 function goToPage(pageNum) {
   if (pageNum === currentPage) return;
   currentPage = pageNum;
+  saveCurrentNavState();
 
   const category = currentTab === 'home' ? 'popular' : currentTab;
   const cacheKey = `${category}_${currentPage}_${currentSource}`;
@@ -5694,19 +5834,28 @@ export async function executeSearch(query = null) {
   const clearBtn = document.getElementById('search-clear-btn');
   const q = (query !== null ? query : (input ? input.value : '')).trim();
   searchQuery = q;
+  saveCurrentNavState();
 
   if (clearBtn) {
     clearBtn.classList.toggle('is-visible', q.length > 0);
   }
 
   if (q.length >= 2) {
-    // Мгновенный показ совпадений из локального кэша (0 мс задержки) до ответа сервера
+    // Мгновенный показ совпадений из локального кэша (0 мс задержки) до ответа сервера с поддержкой опечаток и падежей
+    const stemRu = (w) => {
+      const s = String(w || '').toLowerCase().replace(/ё/g, 'е').trim();
+      if (s.length <= 3) return s;
+      const st = s.replace(/(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|иях|ием|ией|ию|ия|ие|ии|ью|ей|ой|ый|ий|ая|яя|ое|ее|ые|ам|ям|ах|ях|ом|ем|ов|ев|у|ю|а|я|о|е|и|ы|ь)$/u, '');
+      return st.length >= 3 ? st : s.slice(0, 3);
+    };
+    const qWords = q.toLowerCase().replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/gu).filter(w => w.length >= 2);
     const instantMatches = typeof searchBaselineCatalog === 'function' ? [...searchBaselineCatalog(q)] : [];
     const qLower = q.toLowerCase().replace(/ё/g, 'е');
     for (const locIt of (rawCatalogItems || [])) {
       const tLow = String(locIt.title || '').toLowerCase().replace(/ё/g, 'е');
       const oLow = String(locIt.original_title || '').toLowerCase().replace(/ё/g, 'е');
-      if (tLow.includes(qLower) || oLow.includes(qLower)) {
+      const combined = `${tLow} ${oLow}`;
+      if (tLow.includes(qLower) || oLow.includes(qLower) || (qWords.length > 0 && qWords.every(w => combined.includes(stemRu(w))))) {
         instantMatches.push(locIt);
       }
     }
@@ -6444,6 +6593,7 @@ function renderBookmarksSubNav(counts) {
     { id: 'hold', icon: '⏸️', label: t('bookmarks_subtab_hold') || 'Отложено', count: counts.hold || 0 },
     { id: 'dropped', icon: '❌', label: t('bookmarks_subtab_dropped') || 'Заброшено', count: counts.dropped || 0 },
     { id: 'wont_watch', icon: '🚫', label: t('bookmarks_subtab_wont_watch') || 'Не буду смотреть', count: counts.wont_watch || 0 },
+    { id: 'history', icon: '🕒', label: 'История просмотров', count: counts.history || 0 },
     { id: 'lists', icon: '📁', label: t('bookmarks_subtab_lists') || 'Мои коллекции', count: counts.lists || 0 }
   ];
 
@@ -6460,6 +6610,11 @@ function renderBookmarksSubNav(counts) {
       if (currentBookmarkSubTab === subtab && !activeViewingCustomList) return;
       currentBookmarkSubTab = subtab;
       activeViewingCustomList = null;
+      saveCurrentNavState();
+      if (subtab === 'history') {
+        switchTab('history');
+        return;
+      }
       renderFilteredCatalog();
     };
   });
@@ -6785,6 +6940,7 @@ export function renderFilteredCatalog() {
       hold: rawCatalogItems.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold').length,
       dropped: rawCatalogItems.filter(it => it.user_status === 'dropped').length,
       wont_watch: rawCatalogItems.filter(it => it.user_status === 'wont_watch').length,
+      history: getFullWatchHistoryList().length,
       lists: cachedCustomLists.length
     };
     renderBookmarksSubNav(counts);
@@ -7069,6 +7225,7 @@ export function renderQuickCatalogBar(shownCount = 0) {
     'anime-movies': '🌸 Аниме-фильмы',
     'anime-series': '⛩️ Аниме-сериалы',
     continue: '⏯️ Продолжить просмотр',
+    history: '🕒 История просмотров',
     bookmarks: '🔖 Мои списки и закладки'
   };
   const sectionLabel = (searchQuery && searchQuery.trim().length >= 2)
@@ -7095,7 +7252,7 @@ export function renderQuickCatalogBar(shownCount = 0) {
     { id: 'приключения', label: '🧭 Приключения' }
   ];
 
-  const showGenreChips = !['bookmarks', 'continue'].includes(currentTab) && !(searchQuery && searchQuery.trim().length >= 2);
+  const showGenreChips = !['bookmarks', 'continue', 'history'].includes(currentTab) && !(searchQuery && searchQuery.trim().length >= 2);
 
   qBar.innerHTML = `
     <div class="quick-catalog-bar-top">
@@ -7109,6 +7266,7 @@ export function renderQuickCatalogBar(shownCount = 0) {
           <input type="text" id="quick-inpage-filter-input" class="quick-inpage-search-input" placeholder="Быстрый фильтр на странице..." value="${escapeHtml(inPageQuickQuery || '')}">
           ${inPageQuickQuery ? `<button type="button" class="quick-inpage-clear-btn" id="quick-inpage-clear-btn" title="Очистить">✕</button>` : ''}
         </div>
+        ${currentTab === 'history' && shownCount > 0 ? `<button type="button" class="quick-catalog-pill-btn" id="quick-clear-history-btn" style="border-color:rgba(239,68,68,0.4);color:#fca5a5;" title="Очистить историю просмотров">🗑️ Очистить историю</button>` : ''}
         <button type="button" class="quick-catalog-pill-btn ${only4KQuickFilter ? 'active' : ''}" id="quick-filter-4k-toggle" title="Показать только релизы в 4K UHD">
           ✨ 4K UHD
         </button>
@@ -7142,6 +7300,16 @@ export function renderQuickCatalogBar(shownCount = 0) {
     clearInpageBtn.onclick = () => {
       inPageQuickQuery = '';
       renderFilteredCatalog();
+    };
+  }
+
+  const clearHistBtn = qBar.querySelector('#quick-clear-history-btn');
+  if (clearHistBtn) {
+    clearHistBtn.onclick = () => {
+      clearStormWatchHistoryList();
+      rawCatalogItems = [];
+      renderFilteredCatalog();
+      if (typeof showToast === 'function') showToast('История просмотров очищена', 'info');
     };
   }
 

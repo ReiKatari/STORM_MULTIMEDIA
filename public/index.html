@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
-  <script src="/js/error-boundary.js?v=1.3.1"></script>
-  <script src="/js/db-state-engine.js?v=1.3.1"></script>
+  <script src="/js/error-boundary.js?v=1.3.2"></script>
+  <script src="/js/db-state-engine.js?v=1.3.2"></script>
   <script>
     (function() {
       var VER = '1.2.0';
@@ -103,16 +103,16 @@
   <meta name="theme-color" content="#8b5cf6">
 
   <!-- Параллельная предзагрузка критического ядра ES-модулей витрины -->
-  <link rel="modulepreload" href="/js/app.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/theme.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/i18n.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/auth.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/bookmarks.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/status-icons.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/form-factor.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.3.1">
-  <link rel="modulepreload" href="/js/achievements.js?v=1.3.1">
+  <link rel="modulepreload" href="/js/app.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/theme.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/i18n.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/auth.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/bookmarks.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/status-icons.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/form-factor.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.3.2">
+  <link rel="modulepreload" href="/js/achievements.js?v=1.3.2">
 
   <!-- Подключение 10 динамических гарнитур STORM AURORA FLUID (Cyrillic + Latin) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -120,12 +120,12 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.min.css" media="print" onload="this.media='all'">
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.3.1">
-  <link rel="stylesheet" href="/styles/components.css?v=1.3.1">
-  <link rel="stylesheet" href="/styles/main.css?v=1.3.1">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.3.1" id="storm-tv-mode-css" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.3.2">
+  <link rel="stylesheet" href="/styles/components.css?v=1.3.2">
+  <link rel="stylesheet" href="/styles/main.css?v=1.3.2">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.3.2" id="storm-tv-mode-css" media="print" onload="this.media='all'">
   <script>try{if(localStorage.getItem('storm_tv_mode')==='true')document.getElementById('storm-tv-mode-css').media='all';}catch(_){}</script>
-  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.3.1"></noscript>
+  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.3.2"></noscript>
 </head>
 <body data-active-tab="home">
 
@@ -235,6 +235,7 @@
       <button class="storm-tab-btn" data-tab="anime-movies" data-i18n="tab_anime_movies">Аниме-фильмы</button>
       <button class="storm-tab-btn" data-tab="anime-series" data-i18n="tab_anime_series">Аниме-сериалы</button>
       <button class="storm-tab-btn storm-tab-continue" data-tab="continue" data-i18n="tab_continue">Продолжить просмотр</button>
+      <button class="storm-tab-btn storm-tab-history" data-tab="history" data-i18n="tab_history">История просмотров</button>
       <button class="storm-tab-btn storm-tab-bookmarks" data-tab="bookmarks" data-i18n="tab_bookmarks">Мои списки и закладки</button>
       <button class="storm-tab-btn storm-tab-offline" data-tab="offline" data-i18n="tab_offline" title="Сохраненные релизы в IndexedDB">Офлайн-просмотр</button>
     </div>
@@ -2042,7 +2043,7 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.3.1"></script>
+  <script type="module" src="/js/app.js?v=1.3.2"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): резервное восстановление при обрыве мобильной сети -->
   <script>
@@ -2075,7 +2076,7 @@
           } else {
             var s = document.createElement('script');
             s.type = 'module';
-            s.src = '/js/app.js?v=1.3.1&retry=' + Date.now();
+            s.src = '/js/app.js?v=1.3.2&retry=' + Date.now();
             document.body.appendChild(s);
           }
         }

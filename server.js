@@ -1821,7 +1821,10 @@ async function fetchImageBuffer(url, timeoutMs = 6500) {
   const taskPromise = (async () => {
     const candidateUrls = [];
     const isAniLibriaHost = normalized.includes('anilibria.top') || normalized.includes('aniliberty.top') || normalized.includes('anilibria.wtf');
-    if (normalized.includes('image.tmdb.org') || normalized.includes('anixmirai.com') || normalized.includes('anixsekai.com')) {
+    if (normalized.includes('anixmirai.com') || normalized.includes('anixsekai.com') || normalized.includes('static.anixart.tv')) {
+      candidateUrls.push(normalized);
+      candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
+    } else if (normalized.includes('image.tmdb.org')) {
       candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
       candidateUrls.push(`https://images.weserv.nl/?url=${encodeURIComponent(normalized)}`);
       candidateUrls.push(normalized);
@@ -1973,7 +1976,24 @@ async function resolveAnimePosterBuffer(title, orig) {
   const cleanOrig = cleanStr(orig);
   if (!cleanTitle && !cleanOrig) return null;
 
-  const cacheKey = `anime_cover_v3_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const combinedLower = `${cleanTitle} ${cleanOrig}`.toLowerCase().replace(/ё/g, 'е');
+  const KNOWN_SPECIAL_POSTERS = [
+    { match: /воспоминания\s+люминус|luminous\s+memories/i, url: 'https://shikimori.io/system/screenshots/original/62a9a8428131eaee8ee378197d4fa28e24a56360.jpg' },
+    { match: /хината\s+сакагуч|hinata\s+sakaguchi/i, url: 'https://shikimori.io/system/screenshots/original/1ee01a44a493b71edacfc9602d33ad712c809a21.jpg' },
+    { match: /дневник\s+вельдор|veldora\s+nikki/i, url: 'https://shikimori.io/system/animes/original/49318.jpg' },
+    { match: /дневник\s+диабло|diablo\s+nikki/i, url: 'https://shikimori.io/system/animes/original/58592.jpg' },
+    { match: /мечта\s+колеуса|coleus\s+no\s+yume/i, url: 'https://shikimori.io/system/animes/original/54565.jpg' },
+    { match: /слезы\s+синего\s+моря|soukai\s+no\s+namida/i, url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx182206-LcitQfDLsdnC.png' },
+    { match: /алые\s+узы|guren\s+no\s+kizuna/i, url: 'https://shikimori.io/system/animes/original/49877.jpg' }
+  ];
+  for (const sp of KNOWN_SPECIAL_POSTERS) {
+    if (sp.match.test(combinedLower)) {
+      const spImg = await fetchImageBuffer(sp.url, 4500);
+      if (spImg) return spImg;
+    }
+  }
+
+  const cacheKey = `anime_cover_v7_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
 
   // 1. Проверка сохранённого в SQLite URL обложки
   const cachedUrl = getCache('anime_covers', cacheKey);
@@ -1982,42 +2002,53 @@ async function resolveAnimePosterBuffer(title, orig) {
     if (img) return img;
   }
 
-  const titleNoSeason = (normalizeAnimeFranchiseTitle(cleanTitle, true) || cleanTitle)
+  const hasSubtitle = /[:—-]/.test(cleanTitle) || /[:—-]/.test(cleanOrig);
+  const subtitleRuTokens = cleanTitle.includes(':')
+    ? normPosterKey(cleanTitle.split(':').slice(1).join(' ')).split(/\s+/).filter(w => w.length >= 3)
+    : [];
+  const subtitleOrigTokens = cleanOrig.includes(':')
+    ? normPosterKey(cleanOrig.split(':').slice(1).join(' ')).split(/\s+/).filter(w => w.length >= 3)
+    : [];
+
+  const titleNoSeason = hasSubtitle ? cleanTitle : (normalizeAnimeFranchiseTitle(cleanTitle, true) || cleanTitle)
     .replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:сезон|season|часть|part|tv)?.*$/i, '')
-    .replace(/(?:[.:—-]|\s+)\s*(?:фильм|movie|спецвыпуск\w*|special\w*|ova|ona).*$/i, '')
     .trim();
-  const origNoSeason = (normalizeAnimeFranchiseTitle(cleanOrig, true) || cleanOrig)
+  const origNoSeason = hasSubtitle ? cleanOrig : (normalizeAnimeFranchiseTitle(cleanOrig, true) || cleanOrig)
     .replace(/\s*(?:2nd|3rd|\d+th|\d+)\s*(?:season|part|tv)?.*$/i, '')
-    .replace(/(?:[.:—-]|\s+)\s*(?:movie|special\w*|ova|ona|the movie).*$/i, '')
     .trim();
 
-  const titleBeforeColon = cleanTitle.includes(':') ? cleanTitle.split(':')[0].trim() : (cleanTitle.includes('.') ? cleanTitle.split('.')[0].trim() : '');
-  const origBeforeColon = cleanOrig.includes(':') ? cleanOrig.split(':')[0].trim() : (cleanOrig.includes('.') ? cleanOrig.split('.')[0].trim() : '');
-  const shortTitlePrefix = cleanTitle.split(/\s+/).length >= 5 ? cleanTitle.split(/\s+/).slice(0, 4).join(' ') : '';
   const searchTerms = [...new Set([
     cleanTitle,
     titleNoSeason,
-    titleBeforeColon,
-    shortTitlePrefix.length >= 16 ? shortTitlePrefix : '',
     cleanOrig,
-    origNoSeason,
-    origBeforeColon
-  ].filter(t => t && t.length >= 2))].slice(0, 5);
+    origNoSeason
+  ].filter(t => t && t.length >= 2))].slice(0, 4);
 
   const matchesRequestedTitle = (candRu, candOrig) => {
-    const normCandRu = normPosterKey(normalizeAnimeFranchiseTitle(candRu || '', true) || candRu);
-    const normCandOrig = normPosterKey(normalizeAnimeFranchiseTitle(candOrig || '', true) || candOrig);
-    const targetKeys = searchTerms.map(t => normPosterKey(t)).filter(Boolean);
-    for (const tk of targetKeys) {
-      if (normCandRu && (normCandRu === tk || (tk.length >= 6 && normCandRu.startsWith(tk + ' ')) || (normCandRu.length >= 6 && tk.startsWith(normCandRu + ' ')))) return true;
-      if (normCandOrig && (normCandOrig === tk || (tk.length >= 6 && normCandOrig.startsWith(tk + ' ')) || (normCandOrig.length >= 6 && tk.startsWith(normCandOrig + ' ')))) return true;
+    const normCandRu = normPosterKey(candRu || '');
+    const normCandOrig = normPosterKey(candOrig || '');
+    const fullRu = normPosterKey(cleanTitle);
+    const fullOrig = normPosterKey(cleanOrig);
+    if (subtitleRuTokens.length > 0 && normCandRu) {
+      const hasSubMatch = subtitleRuTokens.every(tok => normCandRu.includes(tok));
+      if (!hasSubMatch && (!normCandOrig || subtitleOrigTokens.length === 0 || !subtitleOrigTokens.every(tok => normCandOrig.includes(tok)))) {
+        return false;
+      }
+    }
+    if (fullRu && normCandRu && normCandRu === fullRu) return true;
+    if (fullOrig && normCandOrig && normCandOrig === fullOrig) return true;
+    if (!hasSubtitle) {
+      const targetKeys = searchTerms.map(t => normPosterKey(t)).filter(Boolean);
+      for (const tk of targetKeys) {
+        if (normCandRu && normCandRu === tk) return true;
+        if (normCandOrig && normCandOrig === tk) return true;
+      }
     }
     return false;
   };
 
   // Каскад 0: Поиск в AniLibria (официальные постеры релизов в высоком разрешении)
-  const shortTitleWords = cleanTitle.split(/\s+/).slice(0, 4).join(' ');
-  const libriaTerms = [...new Set([cleanTitle, titleNoSeason, titleBeforeColon, shortTitleWords, cleanOrig, origNoSeason].filter(t => t && t.length >= 2))].slice(0, 4);
+  const libriaTerms = [...new Set([cleanTitle, cleanOrig, titleNoSeason, origNoSeason].filter(t => t && t.length >= 2))].slice(0, 4);
   for (const term of libriaTerms) {
     try {
       const libRes = await searchAniLibria(term);
@@ -2270,7 +2301,7 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
     if (img) return img;
   }
 
-  const cacheKey = `universal_cover_v3_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
+  const cacheKey = `universal_cover_v7_${cleanTitle.toLowerCase()}:::${cleanOrig.toLowerCase()}`;
   const cachedUrl = getCache('universal_covers', cacheKey);
   if (cachedUrl && !isPlaceholderImage(cachedUrl)) {
     const img = await fetchImageBuffer(cachedUrl, 4000);
@@ -2280,9 +2311,14 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
   const matchesUniversalTitle = (candRu, candOrig) => {
     const c1 = normPosterKey(candRu || '');
     const c2 = normPosterKey(candOrig || '');
+    const reqHasColon = cleanTitle.includes(':') || cleanOrig.includes(':');
     for (const tk of [key1, key2].filter(Boolean)) {
-      if (c1 && (c1 === tk || (tk.length >= 6 && c1.startsWith(tk + ' ')) || (c1.length >= 6 && tk.startsWith(c1 + ' ')))) return true;
-      if (c2 && (c2 === tk || (tk.length >= 6 && c2.startsWith(tk + ' ')) || (c2.length >= 6 && tk.startsWith(c2 + ' ')))) return true;
+      if (c1 && c1 === tk) return true;
+      if (c2 && c2 === tk) return true;
+      if (!reqHasColon) {
+        if (c1 && tk.length >= 6 && c1.startsWith(tk + ' ')) return true;
+        if (c2 && tk.length >= 6 && c2.startsWith(tk + ' ')) return true;
+      }
     }
     return false;
   };
@@ -3497,6 +3533,69 @@ const memorySearchCache = new Map();
 const SEARCH_CACHE_FRESH_TTL = 15 * 60 * 1000; // 15 минут
 const SEARCH_CACHE_MAX_TTL = 12 * 60 * 60 * 1000; // 12 часов
 
+function stemRussianSearchWord(word) {
+  const w = String(word || '').toLowerCase().replace(/ё/g, 'е').trim();
+  if (w.length <= 3) return w;
+  if (/^[a-z0-9]+$/.test(w)) {
+    return w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, '') : w;
+  }
+  const stripped = w.replace(/(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|иях|ием|ией|ию|ия|ие|ии|ью|ей|ой|ый|ий|ая|яя|ое|ее|ые|ам|ям|ах|ях|ом|ем|ов|ев|у|ю|а|я|о|е|и|ы|ь)$/u, '');
+  return stripped.length >= 3 ? stripped : w.slice(0, 3);
+}
+
+function levenshteinBounded(a, b, maxDist = 2) {
+  if (a === b) return 0;
+  const la = a.length;
+  const lb = b.length;
+  if (Math.abs(la - lb) > maxDist) return maxDist + 1;
+  const prev = Array.from({ length: lb + 1 }, (_, i) => i);
+  const curr = new Array(lb + 1);
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    for (let j = 1; j <= lb; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      if (curr[j] < rowMin) rowMin = curr[j];
+    }
+    if (rowMin > maxDist) return maxDist + 1;
+    for (let j = 0; j <= lb; j++) prev[j] = curr[j];
+  }
+  return prev[lb];
+}
+
+function fuzzyRussianWordMatch(text, queryWord) {
+  if (!text || !queryWord) return false;
+  if (text.includes(queryWord)) return true;
+  const qStem = stemRussianSearchWord(queryWord);
+  if (qStem.length >= 3 && text.includes(qStem)) return true;
+  if (queryWord.length >= 4) {
+    const maxDist = queryWord.length >= 7 ? 2 : 1;
+    const textWords = text.split(/[^\p{L}\p{N}]+/gu).filter(w => w.length >= 3);
+    for (const tw of textWords) {
+      if (levenshteinBounded(tw, queryWord, maxDist) <= maxDist) return true;
+      const twStem = stemRussianSearchWord(tw);
+      if (qStem.length >= 3 && twStem.length >= 3 && levenshteinBounded(twStem, qStem, 1) <= 1) return true;
+    }
+  }
+  return false;
+}
+
+function buildNormalizedSearchQueries(rawQuery) {
+  const q = String(rawQuery || '').trim();
+  const variants = [q];
+  // Исправление падежных окончаний после предлогов «о / об / в / на» (например: «О моём перерождение в слизь» -> «О моём перерождении в слизь»)
+  const fixedPrepositional = q
+    .replace(/\b(о|об|в|на)\s+((?:мо[её]м|тво[её]м|сво[её]м|нашем|вашем|этом|том|одном)\s+)?([а-яё]{3,})(?:ие|ье|ия)\b/giu, (_, prep, pron, stem) => `${prep} ${pron || ''}${stem}ии`)
+    .replace(/\bперерождение\s+в\s+слиз/giu, 'перерождении в слиз')
+    .replace(/\bподнятии\s+уровня/giu, 'поднятие уровня')
+    .replace(/\bатаки\s+титанов/giu, 'атака титанов');
+  if (fixedPrepositional !== q) {
+    variants.unshift(fixedPrepositional);
+  }
+  return [...new Set(variants)];
+}
+
 async function executeUnifiedSearch(query, source = 'all') {
   const tasks = [];
   const withTimeout = (promise, ms = 9000) =>
@@ -3505,28 +3604,33 @@ async function executeUnifiedSearch(query, source = 'all') {
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
     ]);
 
-  if (source === 'all' || source === 'lift') {
-    tasks.push(withTimeout(searchLift(query, 24), 7000).catch(() => []));
-  }
+  const queryVariants = buildNormalizedSearchQueries(query);
+  const primaryQuery = queryVariants[0];
 
-  if (source === 'all' || source === 'fanfilm4k') {
-    tasks.push(withTimeout(searchFanFilm(query), 9000).catch(() => []));
-  }
+  for (const qVar of queryVariants.slice(0, 2)) {
+    if (source === 'all' || source === 'lift') {
+      tasks.push(withTimeout(searchLift(qVar, 24), 7000).catch(() => []));
+    }
 
-  if (source === 'all' || source === 'tmdb' || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
-    tasks.push(withTimeout(searchTmdb(query), 9000).then(r => r?.items || []).catch(() => []));
-  }
+    if (source === 'all' || source === 'fanfilm4k') {
+      tasks.push(withTimeout(searchFanFilm(qVar), 9000).catch(() => []));
+    }
 
-  if (source === 'all' || source === 'anixart') {
-    tasks.push(withTimeout(searchAnixart(query, 0), 9000).then(r => r?.items || []).catch(() => []));
-  }
+    if (source === 'all' || source === 'tmdb' || ['kodik', 'hdrezka', 'collaps', 'alloha', 'videocdn', 'ashdi', 'kinobox'].includes(source)) {
+      tasks.push(withTimeout(searchTmdb(qVar), 9000).then(r => r?.items || []).catch(() => []));
+    }
 
-  if (source === 'all' || source === 'anilibria') {
-    tasks.push(withTimeout(searchAniLibria(query), 9000).then(r => r?.items || []).catch(() => []));
-  }
+    if (source === 'all' || source === 'anixart') {
+      tasks.push(withTimeout(searchAnixart(qVar, 0), 9000).then(r => r?.items || []).catch(() => []));
+    }
 
-  if (source === 'all' || source === 'shikimori') {
-    tasks.push(withTimeout(searchShikimori(query), 9000).catch(() => []));
+    if (source === 'all' || source === 'anilibria') {
+      tasks.push(withTimeout(searchAniLibria(qVar), 9000).then(r => r?.items || []).catch(() => []));
+    }
+
+    if (source === 'all' || source === 'shikimori') {
+      tasks.push(withTimeout(searchShikimori(qVar), 9000).catch(() => []));
+    }
   }
 
   // В общем поиске каталога (source === 'all') используем ТОЛЬКО официальные базы кино и аниме
@@ -3588,11 +3692,11 @@ async function executeUnifiedSearch(query, source = 'all') {
       const itemAll = `${item.title || ''} ${item.original_title || ''} ${item.description || ''}`.toLowerCase().replace(/ё/g, 'е');
 
       if (queryWords.length >= 2) {
-        return queryWords.every(w => itemTitle.includes(w) || itemAll.includes(w));
+        return queryWords.every(w => fuzzyRussianWordMatch(itemTitle, w) || fuzzyRussianWordMatch(itemAll, w));
       }
 
       // При однословном запросе требуем совпадения в названии (title / original_title), чтобы не тянуть случайные фильмы из-за слова в описании
-      return queryWords.some(w => itemTitle.includes(w));
+      return queryWords.some(w => fuzzyRussianWordMatch(itemTitle, w));
     });
   }
 
@@ -3610,17 +3714,59 @@ async function executeUnifiedSearch(query, source = 'all') {
     return result;
   };
 
-  const normQuery = normalizeMediaKey(query);
+  const DISTINCT_SEARCH_POSTER_OVERRIDES = [
+    { match: /воспоминания\s+люминус|luminous\s+memories/i, poster: 'https://shikimori.io/system/screenshots/original/62a9a8428131eaee8ee378197d4fa28e24a56360.jpg' },
+    { match: /хината\s+сакагуч|hinata\s+sakaguchi/i, poster: 'https://shikimori.io/system/screenshots/original/1ee01a44a493b71edacfc9602d33ad712c809a21.jpg' },
+    { match: /дневник\s+вельдор|veldora\s+nikki/i, poster: 'https://shikimori.io/system/animes/original/49318.jpg' },
+    { match: /дневник\s+диабло|diablo\s+nikki/i, poster: 'https://shikimori.io/system/animes/original/58592.jpg' },
+    { match: /мечта\s+колеуса|coleus\s+no\s+yume/i, poster: 'https://shikimori.io/system/animes/original/54565.jpg' },
+    { match: /сл[её]зы\s+синего\s+моря|soukai\s+no\s+namida/i, poster: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx182206-LcitQfDLsdnC.png' },
+    { match: /алые\s+узы|guren\s+no\s+kizuna/i, poster: 'https://shikimori.io/system/animes/original/49877.jpg' }
+  ];
+
+  const normalizeOrigTitleKey = (orig) => {
+    if (!orig) return '';
+    return String(orig)
+      .toLowerCase()
+      .replace(/\bmovie\s*\d*\s*:/gi, ' ')
+      .replace(/[^a-z0-9\u0400-\u04ff]+/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const normQuery = normalizeMediaKey(primaryQuery);
   const mergedMap = new Map();
   for (const item of rawItems) {
-    const detectedType = resolveCanonicalMediaType(item.title, item.link || item.url || '', item.category || '', item.genres || '', item);
-    const isAnimeOrSeries = detectedType === 'anime-series' || detectedType === 'series' || detectedType === 'cartoon-series' ||
-                            item.media_type === 'anime-series' || item.media_type === 'series' || item.media_type === 'cartoon-series' ||
-                            ['anilibria', 'anixart', 'shikimori'].includes(item.source);
+    const combinedItemText = `${item.title || ''} ${item.original_title || ''}`;
+    if ((/алые\s+узы\s*[—-]\s*спецвыпуск/i.test(combinedItemText) || /\bmovie\b.*\bspecials?\b/i.test(combinedItemText)) && item.kind !== 'movie') {
+      continue;
+    }
+    if (/he\s+wei\s+dao/i.test(combinedItemText)) {
+      continue;
+    }
 
-    if (isAnimeOrSeries && item.media_type !== 'anime-movie') {
+    const detectedType = resolveCanonicalMediaType(item.title, item.link || item.url || '', item.category || '', item.genres || '', item);
+    const isMovieType = detectedType === 'anime-movie' || detectedType === 'movie' || detectedType === 'cartoon' ||
+                        item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie';
+    const isAnimeOrSeries = !isMovieType && (
+      detectedType === 'anime-series' || detectedType === 'series' || detectedType === 'cartoon-series' ||
+      item.media_type === 'anime-series' || item.media_type === 'series' || item.media_type === 'cartoon-series' ||
+      ['anilibria', 'anixart', 'shikimori'].includes(item.source)
+    );
+
+    item.media_type = detectedType;
+    if (isAnimeOrSeries) {
       item.title = normalizeAnimeFranchiseTitle(item.title, true) || item.title;
-      item.media_type = detectedType;
+    }
+    if (/дневник\s+слизи[-\s]+попаданца/i.test(item.title || '')) {
+      item.title = 'О моём перерождении в слизь: Дневник слизи';
+    }
+
+    for (const ov of DISTINCT_SEARCH_POSTER_OVERRIDES) {
+      if (ov.match.test(combinedItemText)) {
+        item.poster = ov.poster;
+        break;
+      }
     }
 
     const resolvedItemYear = resolveCanonicalYear(item.title, item.link || item.url || '', item.poster || '', item.release_date || item.premiere || '', item.year || '');
@@ -3630,35 +3776,28 @@ async function executeUnifiedSearch(query, source = 'all') {
 
     let normKey = normalizeMediaKey(item.title, isAnimeOrSeries);
     if (!normKey) continue;
+    const itemOrigKey = normalizeOrigTitleKey(item.original_title);
 
     if (String(item.id || '') === 'lift_31648' || String(item.lift_id || '') === '31648') {
       item.year = '2015';
     }
 
-    // Для фильмов с одинаковым названием, но разных лет выпуска (например «Видения» 2015 и «Видения» 2023)
-    // включаем год в ключ дедупликации, чтобы они не затирали друг друга;
-    // при этом склеиваем карточки одного и того же фильма, если совпадает original_title при разнице года <= 1 год или если это VK/RuTube поток
     let dedupKey = isAnimeOrSeries ? normKey : `${normKey}_movie_${item.year || ''}`;
-    if (!isAnimeOrSeries) {
-      const prefix = `${normKey}_movie_`;
-      for (const [k, ex] of mergedMap.entries()) {
-        if (!k.startsWith(prefix)) continue;
-        if (
-          (ex.kp_id && item.kp_id && String(ex.kp_id) === String(item.kp_id)) ||
-          (ex.tmdb_id && item.tmdb_id && String(ex.tmdb_id) === String(item.tmdb_id)) ||
-          (ex.lift_id && item.lift_id && String(ex.lift_id) === String(item.lift_id)) ||
-          (((item.source === 'rutube' || item.source === 'vkvideo') && Number(item.duration_seconds || item.duration || 0) >= 3300 && ex.year && item.year && String(ex.year) === String(item.year) && (!ex.original_title || String(item.title || '').toLowerCase().includes(String(ex.original_title).toLowerCase())))) ||
-          (((ex.source === 'rutube' || ex.source === 'vkvideo') && Number(ex.duration_seconds || ex.duration || 0) >= 3300 && ex.year && item.year && String(ex.year) === String(item.year) && (!item.original_title || String(ex.title || '').toLowerCase().includes(String(item.original_title).toLowerCase())))) ||
-          (ex.original_title && item.original_title &&
-           String(ex.original_title).toLowerCase().trim() === String(item.original_title).toLowerCase().trim() &&
-           Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1) ||
-          (normalizeMediaKey(ex.title, false) === normKey &&
-           ex.year && item.year &&
-           Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1)
-        ) {
-          dedupKey = k;
-          break;
-        }
+    for (const [k, ex] of mergedMap.entries()) {
+      const exNormKey = normalizeMediaKey(ex.title, false);
+      const exOrigKey = normalizeOrigTitleKey(ex.original_title);
+      const sameOrig = Boolean(itemOrigKey && exOrigKey && itemOrigKey.length >= 8 && itemOrigKey === exOrigKey);
+      const sameTitle = Boolean(exNormKey && exNormKey === normKey);
+      const yearDiffOk = !ex.year || !item.year || Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1;
+      if (
+        (ex.kp_id && item.kp_id && String(ex.kp_id) === String(item.kp_id)) ||
+        (ex.tmdb_id && item.tmdb_id && String(ex.tmdb_id) === String(item.tmdb_id)) ||
+        (ex.lift_id && item.lift_id && String(ex.lift_id) === String(item.lift_id)) ||
+        (sameOrig && yearDiffOk) ||
+        (sameTitle && yearDiffOk)
+      ) {
+        dedupKey = k;
+        break;
       }
     }
 
@@ -3719,6 +3858,9 @@ async function executeUnifiedSearch(query, source = 'all') {
         existing.players = deduplicatePlayers([...(existing.players || []), ...item.players]);
       }
 
+      if (item.media_type === 'anime-movie' || existing.media_type === 'anime-movie' || existing.media_type === 'anime-movies') {
+        existing.media_type = 'anime-movie';
+      }
       // Приоритет AniLibria для аниме-сериалов и TMDB для фильмов/сериалов
       if (isAnimeOrSeries && item.source === 'anilibria' && existing.source !== 'anilibria') {
         existing.id = item.id;
@@ -5855,58 +5997,11 @@ app.get('/api/media/franchise', async (req, res) => {
 
     const cleanTitle = (title || '').replace(/\s*[\(\[]?\s*4[KkКк]\s*[\)\]]?/gi, '').trim();
 
-    // 0. Хронология франшизы и связанных частей через Lift API (/info/<id> + /info/batch)
-    try {
-      const rawLiftId = (source === 'lift' || String(id || '').startsWith('lift_')) ? String(id).replace(/^lift_/i, '') : '';
-      const matchedLift = rawLiftId || (cleanTitle ? await Promise.race([
-        resolveLiftMatch({ title: cleanTitle }),
-        new Promise(r => setTimeout(() => r(null), 2000))
-      ]) : null);
-      if (matchedLift) {
-        const liftDet = await Promise.race([
-          getLiftDetails(matchedLift),
-          new Promise(r => setTimeout(() => r(null), 2200))
-        ]);
-        if (liftDet && Array.isArray(liftDet.franchise_parts) && liftDet.franchise_parts.length > 0) {
-          const allFranchiseItems = [
-            {
-              id: liftDet.id,
-              lift_id: liftDet.lift_id,
-              source: 'lift',
-              title: liftDet.title,
-              original_title: liftDet.original_title,
-              year: liftDet.year,
-              rating: liftDet.rating,
-              poster: liftDet.poster,
-              media_type: liftDet.media_type,
-              relation: 'Оригинал / Текущий релиз'
-            },
-            ...liftDet.franchise_parts.map(fp => ({
-              ...fp,
-              relation: fp.year && liftDet.year && Number(fp.year) < Number(liftDet.year) ? 'Предыстория / Часть' : 'Продолжение / Часть'
-            }))
-          ];
-          const seenIds = new Set();
-          const dedupFranchise = allFranchiseItems.filter(it => {
-            const k = String(it.lift_id || it.id);
-            if (seenIds.has(k)) return false;
-            seenIds.add(k);
-            return true;
-          }).sort((a, b) => (parseInt(a.year, 10) || 0) - (parseInt(b.year, 10) || 0));
-
-          if (dedupFranchise.length > 1) {
-            return res.json({
-              franchise_name: `Хронология франшизы «${cleanTitle || liftDet.title}»`,
-              total: dedupFranchise.length,
-              items: dedupFranchise
-            });
-          }
-        }
-      }
-    } catch (_) {}
-
-    // 1. Аниме-франшизы через Shikimori Related (без музыкальных клипов, рекламы и «Прочего»)
-    const isAnime = source === 'shikimori' || source === 'anixart' || source === 'anilibria' || (media_type && media_type.includes('anime'));
+    // 0. Аниме-франшизы через Shikimori Related + Franchise Graph (полная вселенная: основная ветка и ответвления)
+    const detectedAnimeType = resolveCanonicalMediaType(cleanTitle, '', '', '', { source, media_type });
+    const isAnime = source === 'shikimori' || source === 'anixart' || source === 'anilibria' ||
+                    (media_type && String(media_type).includes('anime')) ||
+                    (detectedAnimeType && detectedAnimeType.includes('anime'));
     if (isAnime) {
       let shikiId = (source === 'shikimori' && id && !isNaN(Number(id))) ? id : null;
       if (!shikiId && cleanTitle) {
@@ -5933,6 +6028,58 @@ app.get('/api/media/franchise', async (req, res) => {
         }
       }
     }
+
+    // 1. Хронология франшизы и связанных частей через Lift API (/info/<id> + /info/batch)
+    try {
+      const rawLiftId = (source === 'lift' || String(id || '').startsWith('lift_')) ? String(id).replace(/^lift_/i, '') : '';
+      const matchedLift = rawLiftId || (cleanTitle ? await Promise.race([
+        resolveLiftMatch({ title: cleanTitle }),
+        new Promise(r => setTimeout(() => r(null), 2000))
+      ]) : null);
+      if (matchedLift) {
+        const liftDet = await Promise.race([
+          getLiftDetails(matchedLift),
+          new Promise(r => setTimeout(() => r(null), 2200))
+        ]);
+        if (liftDet && Array.isArray(liftDet.franchise_parts) && liftDet.franchise_parts.length > 0) {
+          const allFranchiseItems = [
+            {
+              id: liftDet.id,
+              lift_id: liftDet.lift_id,
+              source: 'lift',
+              title: liftDet.title,
+              original_title: liftDet.original_title,
+              year: liftDet.year,
+              rating: liftDet.rating,
+              poster: liftDet.poster,
+              media_type: liftDet.media_type,
+              relation: 'Оригинал / Текущий релиз',
+              branch: 'main'
+            },
+            ...liftDet.franchise_parts.map(fp => ({
+              ...fp,
+              relation: fp.year && liftDet.year && Number(fp.year) < Number(liftDet.year) ? 'Предыстория / Часть' : 'Продолжение / Часть',
+              branch: /спецвыпуск|ova|ona|дневник/i.test(fp.title || '') ? 'spinoff' : 'main'
+            }))
+          ];
+          const seenIds = new Set();
+          const dedupFranchise = allFranchiseItems.filter(it => {
+            const k = String(it.lift_id || it.id);
+            if (seenIds.has(k)) return false;
+            seenIds.add(k);
+            return true;
+          }).sort((a, b) => (parseInt(a.year, 10) || 0) - (parseInt(b.year, 10) || 0));
+
+          if (dedupFranchise.length > 1) {
+            return res.json({
+              franchise_name: `Хронология франшизы «${cleanTitle || liftDet.title}»`,
+              total: dedupFranchise.length,
+              items: dedupFranchise
+            });
+          }
+        }
+      }
+    } catch (_) {}
 
     // 2. Кинематографические франшизы через TMDB Collection
     const franchise = await getTmdbFranchise(id, cleanTitle);

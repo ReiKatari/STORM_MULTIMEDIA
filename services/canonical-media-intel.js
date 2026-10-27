@@ -616,9 +616,17 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
                   String(item.media_type || '').includes('anime') || ((Array.isArray(item.countries) ? item.countries.join(' ') : String(item.countries || '')).toLowerCase().match(/japan|япони/) && (genStr.includes('мульт') || catStr.includes('cartoon') || catStr.includes('anime'))) ||
                   KNOWN_ANIME_SERIES.some(a => norm.includes(a));
 
-  if (isAnime) {
+  const origNorm = String(item.original_title || item.original_name || '').toLowerCase().replace(/ё/g, 'е').trim();
+  const isKnownAnimeByOrig = origNorm.includes('tensei shitara slime') || origNorm.includes('tensura nikki') || origNorm.includes('kimetsu no yaiba') || origNorm.includes('jujutsu kaisen') || origNorm.includes('chainsaw man') || origNorm.includes('shingeki no kyojin') || origNorm.includes('spy x family') || origNorm.includes('boku no hero') || origNorm.includes('sword art online') || origNorm.includes('overlord') || origNorm.includes('blue lock') || origNorm.includes('haikyuu') || origNorm.includes('violet evergarden');
+  if (isAnime || isKnownAnimeByOrig || norm.includes('перерождении в слизь') || norm.includes('перерождение в слизь')) {
     const hasAnimeEps = (parseInt(item.total_episodes, 10) > 1) || (parseInt(item.episode, 10) > 1) || (parseInt(item.episodes_total, 10) > 1) || (parseInt(item.episodes_released, 10) > 1) || (Array.isArray(item.seasons) && item.seasons.length > 0);
-    if (norm.includes('фильм') || norm.includes('movie') || norm.includes('резе') || norm.includes('reze') || catStr === 'anime-movies' || catStr === 'anime-movie' || catStr === 'аниме-фильм' || item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie || (item.category && String(item.category).includes('Фильм')) || (!hasAnimeEps && item.media_type === 'movie')) {
+    const isPromoSpecial = /\bmovie\b.*\bspecials?\b/i.test(origNorm) || /спецвыпуск/i.test(norm);
+    const isAnimeMovieTitle = !isPromoSpecial && (
+      norm.includes('фильм') || norm.includes('movie') || origNorm.includes('movie') || origNorm.includes('gekijouban') ||
+      norm.includes('резе') || norm.includes('reze') || norm.includes('алые узы') || norm.includes('слезы синего моря') ||
+      origNorm.includes('guren no kizuna') || origNorm.includes('soukai no namida')
+    );
+    if (isAnimeMovieTitle || catStr === 'anime-movies' || catStr === 'anime-movie' || catStr === 'аниме-фильм' || item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie || (item.category && String(item.category).includes('Фильм')) || (!hasAnimeEps && (item.media_type === 'movie' || item.type === 'movie'))) {
       return 'anime-movie';
     }
     return 'anime-series';

@@ -1056,12 +1056,21 @@ export function detectClientMediaType(item) {
   }
 
   // Аниме
+  const origLow = String(item.original_title || item.original_name || '').toLowerCase().replace(/ё/g, 'е');
   if (src === 'anilibria' || src === 'anixart' || src === 'shikimori' ||
       cat.includes('anime') || link.includes('anime') ||
+      item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.media_type === 'anime-series' ||
+      t.includes('перерождении в слизь') || t.includes('перерождение в слизь') || origLow.includes('tensei shitara slime') || origLow.includes('tensura nikki') ||
       t.includes('перекуре за супермаркетом') || t.includes('дандадан') || t.includes('клинок, рассекающий') ||
       t.includes('атака титанов') || t.includes('аркейн') || t.includes('поднятие уровня') || t.includes('магическая битва') ||
       t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) {
-    if (t.includes('фильм') || t.includes('резе') || t.includes('reze') || cat === 'anime-movies' || cat === 'anime-movie' || cat === 'аниме-фильм' || item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie) {
+    const isPromoSpec = /\bmovie\b.*\bspecials?\b/i.test(origLow) || /спецвыпуск/i.test(t);
+    if (!isPromoSpec && (
+        t.includes('фильм') || t.includes('movie') || origLow.includes('movie') || origLow.includes('gekijouban') ||
+        t.includes('резе') || t.includes('reze') || t.includes('алые узы') || t.includes('слезы синего моря') ||
+        origLow.includes('guren no kizuna') || origLow.includes('soukai no namida') ||
+        cat === 'anime-movies' || cat === 'anime-movie' || cat === 'аниме-фильм' ||
+        item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie)) {
       return 'anime-movie';
     }
     return 'anime-series';

@@ -2451,6 +2451,9 @@ export async function openPlayerModal(mediaItem, options = {}) {
   currentMedia = { ...mediaItem, title: cleanTitle, media_type: detectedType || mediaItem?.media_type || 'movie', year: initialYr || mediaItem?.year || '' };
   try {
     sessionStorage.setItem('storm_active_cinema_media', JSON.stringify(currentMedia));
+    if (typeof window.recordStormWatchHistoryItem === 'function') {
+      window.recordStormWatchHistoryItem(currentMedia);
+    }
   } catch (e) {}
   quickBarSeriesData = null;
   currentEpisodes = [];
@@ -12678,9 +12681,26 @@ export async function renderFranchiseOrder(mediaItem) {
     } catch {}
 
     let franchiseSortMode = localStorage.getItem('storm_franchise_sort') || 'chronology';
+    let franchiseBranchFilter = 'all';
+
+    const classifyClientFranchiseBranch = (item) => {
+      if (item.branch === 'main' || item.branch === 'spinoff') return item.branch;
+      const k = String(item.kind || item.media_type || '').toLowerCase();
+      const r = String(item.relation || item.order_label || '').toLowerCase();
+      const t = String(item.title || '').toLowerCase();
+      if (k === 'movie' || k === 'anime-movie' || k === 'ova' || k === 'ona' || k.includes('special')) return 'spinoff';
+      if (r.includes('ответвление') || r.includes('spin-off') || r.includes('фильм') || r.includes('спецвыпуск') || r.includes('ova') || r.includes('ona') || r.includes('обобщение')) return 'spinoff';
+      if (/дневник\s+слизи|дневник\s+вельдор|дневник\s+диабло|воспоминания\s+люмин|хината\s+сакагуч|мечта\s+колеуса|месть\s+клейман|ova|спецвыпуск/i.test(t)) return 'spinoff';
+      return 'main';
+    };
 
     function renderFranchiseCards() {
       let itemsToRender = [...currentFranchiseItems];
+      if (franchiseBranchFilter === 'main') {
+        itemsToRender = itemsToRender.filter(it => classifyClientFranchiseBranch(it) === 'main');
+      } else if (franchiseBranchFilter === 'spinoff') {
+        itemsToRender = itemsToRender.filter(it => classifyClientFranchiseBranch(it) === 'spinoff');
+      }
       if (franchiseSortMode === 'release') {
         itemsToRender.sort((a, b) => (parseInt(a.year, 10) || 0) - (parseInt(b.year, 10) || 0));
       }
@@ -12720,23 +12740,54 @@ export async function renderFranchiseOrder(mediaItem) {
       });
     }
 
-    // Добавляем переключатель сортировки в заголовок блока
-    let sortBtn = document.getElementById('franchise-sort-toggle-btn');
-    if (!sortBtn && titleEl && titleEl.parentElement) {
-      sortBtn = document.createElement('button');
-      sortBtn.id = 'franchise-sort-toggle-btn';
-      sortBtn.type = 'button';
-      sortBtn.className = 'franchise-sort-toggle';
-      titleEl.parentElement.appendChild(sortBtn);
+    // Добавляем переключатели веток (Все / Основная ветка / Ответвления) и сортировки в заголовок блока
+    const mainCount = currentFranchiseItems.filter(it => classifyClientFranchiseBranch(it) === 'main').length;
+    const spinoffCount = currentFranchiseItems.filter(it => classifyClientFranchiseBranch(it) === 'spinoff').length;
+
+    let controlsWrap = document.getElementById('franchise-header-controls');
+    if (!controlsWrap && titleEl && titleEl.parentElement) {
+      titleEl.parentElement.style.display = 'flex';
+      titleEl.parentElement.style.flexWrap = 'wrap';
+      titleEl.parentElement.style.alignItems = 'center';
+      titleEl.parentElement.style.justifyContent = 'space-between';
+      titleEl.parentElement.style.gap = '10px';
+      controlsWrap = document.createElement('div');
+      controlsWrap.id = 'franchise-header-controls';
+      controlsWrap.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;';
+      titleEl.parentElement.appendChild(controlsWrap);
     }
-    if (sortBtn) {
-      sortBtn.textContent = franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)';
-      sortBtn.onclick = () => {
-        franchiseSortMode = franchiseSortMode === 'release' ? 'chronology' : 'release';
-        localStorage.setItem('storm_franchise_sort', franchiseSortMode);
-        sortBtn.textContent = franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)';
-        renderFranchiseCards();
+    const existingOldSortBtn = document.getElementById('franchise-sort-toggle-btn');
+    if (existingOldSortBtn && existingOldSortBtn.parentElement !== controlsWrap) {
+      existingOldSortBtn.remove();
+    }
+    if (controlsWrap) {
+      const renderHeaderControls = () => {
+        controlsWrap.innerHTML = `
+          <div class="franchise-branch-tabs" style="display:inline-flex;gap:6px;background:rgba(15,23,42,0.65);padding:3px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
+            <button type="button" class="franchise-branch-btn" data-branch="all" style="padding:5px 11px;border-radius:7px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;${franchiseBranchFilter === 'all' ? 'background:var(--accent,#00d2ff);color:#090d16;box-shadow:0 2px 8px rgba(0,210,255,0.35);' : 'background:transparent;color:var(--text-secondary,#94a3b8);'}">Все (${currentFranchiseItems.length})</button>
+            <button type="button" class="franchise-branch-btn" data-branch="main" style="padding:5px 11px;border-radius:7px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;${franchiseBranchFilter === 'main' ? 'background:var(--accent,#00d2ff);color:#090d16;box-shadow:0 2px 8px rgba(0,210,255,0.35);' : 'background:transparent;color:var(--text-secondary,#94a3b8);'}">Основная ветка (${mainCount})</button>
+            ${spinoffCount > 0 ? `<button type="button" class="franchise-branch-btn" data-branch="spinoff" style="padding:5px 11px;border-radius:7px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;${franchiseBranchFilter === 'spinoff' ? 'background:var(--accent,#00d2ff);color:#090d16;box-shadow:0 2px 8px rgba(0,210,255,0.35);' : 'background:transparent;color:var(--text-secondary,#94a3b8);'}">Ответвления и фильмы (${spinoffCount})</button>` : ''}
+          </div>
+          <button type="button" id="franchise-sort-toggle-btn" class="franchise-sort-toggle">${franchiseSortMode === 'release' ? '📅 По дате выхода' : '🧭 По сюжету (Хронология)'}</button>
+        `;
+        controlsWrap.querySelectorAll('.franchise-branch-btn').forEach(btn => {
+          btn.onclick = () => {
+            franchiseBranchFilter = btn.dataset.branch || 'all';
+            renderHeaderControls();
+            renderFranchiseCards();
+          };
+        });
+        const sBtn = controlsWrap.querySelector('#franchise-sort-toggle-btn');
+        if (sBtn) {
+          sBtn.onclick = () => {
+            franchiseSortMode = franchiseSortMode === 'release' ? 'chronology' : 'release';
+            localStorage.setItem('storm_franchise_sort', franchiseSortMode);
+            renderHeaderControls();
+            renderFranchiseCards();
+          };
+        }
       };
+      renderHeaderControls();
     }
 
     renderFranchiseCards();
