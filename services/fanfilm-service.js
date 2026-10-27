@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { getCache, setCache } from '../db.js';
-import { ensureValidDescription } from './canonical-descriptions.js';
+import { ensureValidDescription, getCanonicalDescription } from './canonical-descriptions.js';
 import {
   resolveCanonicalMediaType,
   resolveCanonicalYear,
@@ -587,19 +587,25 @@ function parseMediaList(html, { category = 'popular', page = 1 } = {}) {
     }
     if (!items.some(it => it.id === id)) {
       setCache('fanfilm4k', `item_link_${id}`, link, 86400 * 7); // Кэшируем ссылку на неделю
+      const cachedDet = getCache('fanfilm4k', `details_v4_${id}`);
+      const resolvedDesc = (cachedDet && cachedDet.description && cachedDet.description.length >= 55)
+        ? cachedDet.description
+        : (getCanonicalDescription(title, cachedDet?.original_title || '') || '');
       items.push({
         id: String(id),
         source: 'fanfilm4k',
         title,
+        original_title: cachedDet?.original_title || '',
         link,
         poster,
         quality,
         is4K,
         is_upcoming: isUpcoming,
-        year: realYear || '2026',
-        rating: parseFloat(ratingText) || 0,
+        year: realYear || cachedDet?.year || '2026',
+        rating: parseFloat(ratingText) || cachedDet?.rating || 0,
         genres,
-        media_type: mediaType
+        media_type: mediaType,
+        ...(resolvedDesc ? { description: resolvedDesc } : {})
       });
     }
   });

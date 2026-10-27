@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.3';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.3';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.3';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.3';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.3';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.3';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.3';
+import { initTheme, setTheme } from './theme.js?v=1.2.4';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.4';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.4';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.4';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.4';
+import { getStatusIconSvg } from './status-icons.js?v=1.2.4';
+import { initFormFactorEngine } from './form-factor.js?v=1.2.4';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.2.3';
+const STORM_ASSET_VER = '1.2.4';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -190,7 +190,9 @@ const trackClientAction = (action, meta) => (_achModPromise ||= import(`./achiev
 
 let currentTab = 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
-let currentCardDensity = localStorage.getItem('storm_card_density') || 'normal';
+let currentCardDensity = localStorage.getItem('storm_card_density') || 'standard';
+if (currentCardDensity === 'normal') currentCardDensity = 'standard';
+let isHomeCustomViewActive = (currentViewMode !== 'grid');
 let inPageQuickQuery = '';
 let only4KQuickFilter = false;
 let currentSource = 'all';
@@ -317,15 +319,30 @@ async function startStormApp() {
     ]).then(() => {
       lastRenderedHomeKey = '';
       syncAllRenderedCardsDynamicState();
-      if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
-      } else if (rawCatalogItems.length > 0) {
+      if (rawCatalogItems.length > 0) {
         renderFilteredCatalog();
       }
     }).catch(() => {});
   } catch (_) {}
 
   try {
+    window.addEventListener('storm:db-hydrated', () => {
+      const savedMode = localStorage.getItem('storm_view_mode');
+      if (savedMode && ['grid', 'compact-grid', 'detailed-list', 'table'].includes(savedMode) && savedMode !== currentViewMode) {
+        currentViewMode = savedMode;
+        if (savedMode !== 'grid') isHomeCustomViewActive = true;
+        document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
+        const c = document.getElementById('media-render-container');
+        if (c) c.className = `media-container view-${currentViewMode}`;
+        if (rawCatalogItems.length > 0) renderFilteredCatalog();
+      }
+      const savedDensity = localStorage.getItem('storm_card_density');
+      if (savedDensity && ['large', 'standard', 'compact'].includes(savedDensity)) {
+        currentCardDensity = savedDensity;
+        document.body.dataset.cardDensity = currentCardDensity;
+      }
+    });
+
     onAuthChanged(() => {
       try { updateFamilyProfileHeader(); } catch (_) {}
       try { updateMobileDrawerUser(); } catch (_) {}
@@ -337,8 +354,6 @@ async function startStormApp() {
         syncAllRenderedCardsDynamicState();
         if (currentTab === 'bookmarks' || currentTab === 'continue') {
           loadCurrentTab();
-        } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-          renderHomeView(rawCatalogItems);
         } else {
           renderFilteredCatalog();
         }
@@ -386,8 +401,6 @@ async function startStormApp() {
 
       if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
-      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
       } else {
         renderFilteredCatalog();
       }
@@ -407,8 +420,6 @@ async function startStormApp() {
 
       if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
-      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
       } else {
         renderFilteredCatalog();
       }
@@ -421,7 +432,7 @@ async function startStormApp() {
         if (currentTab === 'continue') {
           loadCurrentTab();
         } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-          renderHomeView(rawCatalogItems);
+          renderFilteredCatalog();
         }
       }
     });
@@ -522,12 +533,19 @@ function initViewModes() {
       document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
       currentViewMode = mode;
       localStorage.setItem('storm_view_mode', mode);
+      if (mode !== 'grid') {
+        isHomeCustomViewActive = true;
+      } else if (currentTab === 'home') {
+        const c = document.getElementById('media-render-container');
+        isHomeCustomViewActive = (c && c.dataset.renderedView === 'home') ? true : false;
+      } else {
+        isHomeCustomViewActive = false;
+      }
       if (container) {
         container.className = `media-container view-${mode}`;
       }
       try {
-        const itemsToRender = (currentItems && currentItems.length > 0) ? currentItems : (rawCatalogItems && rawCatalogItems.length > 0 ? rawCatalogItems : []);
-        renderMediaItems(itemsToRender);
+        renderFilteredCatalog();
       } catch (err) {
         console.error('Ошибка переключения вида каталога:', err);
       }
@@ -3695,7 +3713,7 @@ export async function ensureLiftHomeRailsLoaded() {
           } catch (_) {}
           if (!hadBefore && currentTab === 'home') {
             lastRenderedHomeKey = '';
-            renderHomeView(rawCatalogItems);
+            renderFilteredCatalog();
           }
         }
       })
@@ -3977,6 +3995,8 @@ let lastRenderedHomeKey = '';
 function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+  container.className = 'media-container view-grid home-rails-active';
+  document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
 
   ensureLiftHomeRailsLoaded();
   const hasLiftRails = Boolean(cachedLiftHomeRails && (cachedLiftHomeRails.foreignFilms?.length || cachedLiftHomeRails.ruFilms?.length));
@@ -5080,6 +5100,13 @@ function renderMediaItems(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
+  if (!['grid', 'compact-grid', 'detailed-list', 'table'].includes(currentViewMode)) {
+    currentViewMode = 'grid';
+  }
+  container.className = `media-container view-${currentViewMode}`;
+  document.body.dataset.cardDensity = currentCardDensity || 'standard';
+  document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
+
   container.dataset.renderedView = currentTab;
   lastRenderedHomeKey = '';
 
@@ -5694,28 +5721,12 @@ export async function executeSearch(query = null) {
         }
       }
 
-      // 2. Семантический и мультипровайдерный фолбэк поиск по RuTube и VK Видео
-      if (items.length === 0 && q.length >= 2) {
+      // 2. Семантический фолбэк поиск только по реальным кинобазам (TMDB / FanFilm4K)
+      if (items.length === 0 && q.length >= 3) {
         try {
-          const fallbackTasks = [
-            fetch(`/api/rutube/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-            fetch(`/api/vkvideo/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))
-          ];
-          if (q.length >= 3) {
-            fallbackTasks.push(
-              fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))
-            );
-          }
-
-          const fallbackResults = await Promise.all(fallbackTasks);
-          for (const resObj of fallbackResults) {
-            if (Array.isArray(resObj?.items) && resObj.items.length > 0) {
-              items.push(...resObj.items);
-            }
-          }
-
-          if (items.length > 0) {
-            showToast(`✨ Найдено в RuTube и VK Видео: ${items.length} релизов`, 'info');
+          const semRes = await fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }));
+          if (Array.isArray(semRes?.items) && semRes.items.length > 0) {
+            items.push(...semRes.items);
           }
         } catch (_) {}
       }
@@ -6903,7 +6914,7 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 4. Сортировка: по умолчанию ВЕЗДЕ по дате (от новых к старым)
+  // 4. Сортировка: при поиске сохраняем релевантность выдачи сервера (точное совпадение названия на первом месте)
   if (isSearching) {
     if (currentSort === 'rating') {
       items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
@@ -6911,8 +6922,6 @@ export function renderFilteredCatalog() {
       items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
     } else if (currentSort === 'popular') {
       items.sort((a, b) => (parseFloat(b.popularity || b.rating) || 0) - (parseFloat(a.popularity || a.rating) || 0));
-    } else {
-      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
     }
   } else if (isFiltered) {
     if (currentSort === 'rating') {
@@ -6973,8 +6982,8 @@ export function renderFilteredCatalog() {
 
   const heroContainer = document.getElementById('hero-showcase-container');
 
-  // Если мы на вкладке Главная и нет фильтрации/поиска - отображаем кинематографичный вид Emby/Plex
-  if (currentTab === 'home' && !isFiltered && (!searchQuery || !searchQuery.trim())) {
+  // Если мы на вкладке Главная, выбран режим витрины (grid без принудительного переключения) и нет фильтрации/поиска
+  if (currentTab === 'home' && currentViewMode === 'grid' && !isHomeCustomViewActive && !isFiltered && (!searchQuery || !searchQuery.trim())) {
     const qBar = document.getElementById('storm-quick-catalog-bar');
     if (qBar) {
       qBar.style.display = 'none';
@@ -7100,7 +7109,13 @@ export function renderQuickCatalogBar(shownCount = 0) {
       currentCardDensity = d;
       localStorage.setItem('storm_card_density', d);
       document.body.dataset.cardDensity = d;
+      if (currentViewMode !== 'grid') {
+        currentViewMode = 'grid';
+        localStorage.setItem('storm_view_mode', 'grid');
+        if (currentTab === 'home') isHomeCustomViewActive = true;
+      }
       qBar.querySelectorAll('.quick-density-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderFilteredCatalog();
     };
   });
 
@@ -7788,9 +7803,17 @@ function showCardHoverPreview(card, item) {
 
   const isUpcoming = isUpcomingMediaItem(item);
 
+  const isStubDesc = (txt) => {
+    if (!txt || typeof txt !== 'string') return true;
+    const s = txt.trim();
+    if (s.length < 55) return true;
+    return /просмотр (?:фильма|сериала|онлайн) в высоком качестве|превосходное качество видео|официальный лицензионный релиз|медиатека vk видео|аниме доступно для онлайн|фильм доступен для онлайн/i.test(s);
+  };
+
+  const hasRealDesc = !isStubDesc(item.description);
   const previewDesc = isUpcoming
     ? `Официальная премьера ожидается в ${previewYr || 'скоро'} году. Добавьте в «Буду смотреть», чтобы не пропустить цифровой релиз и 4K стримы.`
-    : (item.description || (previewCat.toLowerCase().includes('сериал') ? 'Просмотр сериала онлайн в высоком качестве с профессиональным русским дубляжем.' : 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.'));
+    : (hasRealDesc ? item.description : 'Загрузка описания сюжета...');
 
   preview.innerHTML = `
     <!-- Верхняя строка плашек -->
@@ -7845,6 +7868,51 @@ function showCardHoverPreview(card, item) {
   `;
 
   activeHoverPreviewEl = preview;
+
+  // Если у карточки отсутствует реальное описание сюжета — мгновенно подгружаем его с сервера и кэшируем
+  if (!isUpcoming && !hasRealDesc && item) {
+    window.__STORM_HOVER_SYNOPSIS_CACHE__ = window.__STORM_HOVER_SYNOPSIS_CACHE__ || new Map();
+    const cacheKey = `${item.source || 'all'}_${item.id || ''}_${item.title || ''}`;
+    const applyLoadedDetails = (det) => {
+      if (!det) return;
+      if (det.description && !isStubDesc(det.description)) {
+        item.description = det.description;
+      }
+      if (det.original_title && !item.original_title) item.original_title = det.original_title;
+      if (det.rating && (!item.rating || Number(item.rating) === 0)) item.rating = det.rating;
+      if (Array.isArray(det.genres) && det.genres.length > 0) item.genres = det.genres;
+      if (preview.isConnected) {
+        const descEl = preview.querySelector('.hover-preview-desc');
+        if (descEl) {
+          descEl.textContent = item.description || (previewCat.toLowerCase().includes('сериал')
+            ? 'Захватывающий многосерийный проект с проработанным сюжетом и русским дубляжем.'
+            : 'Увлекательный полнометражный фильм с профессиональным русским дубляжем.');
+        }
+      }
+    };
+
+    if (window.__STORM_HOVER_SYNOPSIS_CACHE__.has(cacheKey)) {
+      applyLoadedDetails(window.__STORM_HOVER_SYNOPSIS_CACHE__.get(cacheKey));
+    } else {
+      const qParams = new URLSearchParams({
+        id: String(item.id || ''),
+        source: String(item.source || 'fanfilm4k'),
+        title: String(item.title || ''),
+        year: String(previewYr || ''),
+        media_type: String(item.media_type || ''),
+        url: String(item.link || item.fanfilm_4k_url || '')
+      });
+      fetch(`/api/media/item?${qParams.toString()}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(det => {
+          if (det) {
+            window.__STORM_HOVER_SYNOPSIS_CACHE__.set(cacheKey, det);
+            applyLoadedDetails(det);
+          }
+        })
+        .catch(() => {});
+    }
+  }
 
   // Удерживаем попап при наведении курсора на него
   preview.onmouseenter = () => {

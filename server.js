@@ -2467,6 +2467,14 @@ async function verifyItemsDigitalStreamAvailability(items, { concurrency = 6 } =
       const it = items[idx];
       if (!it || typeof it !== 'object') continue;
       try {
+        if (!it.description || String(it.description).length < 55 || String(it.description).includes('онлайн в высоком качестве')) {
+          const cachedFfDet = it.id ? getCache('fanfilm4k', `details_v4_${String(it.id).replace(/^ff_/, '')}`) : null;
+          if (cachedFfDet && cachedFfDet.description && cachedFfDet.description.length >= 55) {
+            it.description = cachedFfDet.description;
+            if (!it.rating && cachedFfDet.rating) it.rating = cachedFfDet.rating;
+            if (!it.original_title && cachedFfDet.original_title) it.original_title = cachedFfDet.original_title;
+          }
+        }
         const probe = await probeSingleItemDigitalStream(it);
         if (probe && probe.hasStream) {
           if (probe.lift_id && !it.lift_id) it.lift_id = probe.lift_id;
@@ -3252,21 +3260,24 @@ async function executeUnifiedSearch(query, source = 'all') {
     tasks.push(withTimeout(searchShikimori(query), 9000).catch(() => []));
   }
 
-  if (source === 'all' || source === 'rutube') {
-    tasks.push(withTimeout(searchRuTube(query), 9000).catch(() => []));
-  }
-
-  if (source === 'all' || source === 'vkvideo') {
-    tasks.push(withTimeout(searchVkVideo(query), 9000).catch(() => []));
-  }
+  // В общем поиске каталога (source === 'all') используем ТОЛЬКО официальные базы кино и аниме
+  // (TMDB, Lift, FanFilm4K, AniLibria, AniXart, Shikimori), полностью исключая пользовательские видео и влоги из RuTube/VK
 
   const settled = await Promise.all(tasks);
   let rawItems = [];
   settled.forEach(arr => {
     if (Array.isArray(arr)) rawItems.push(...arr);
   });
-  // 100% исключение трейлеров, промо и фанатских концептов
-  rawItems = rawItems.filter(item => item && !isTrailerMedia(item));
+  // 100% исключение трейлеров, промо, влогов, обзоров, аудиокниг и пользовательского мусора
+  const GARBAGE_SEARCH_TITLE_RE = /(?:steelbook|распаковк|обзор\s+фильм|реакци[яи]\s+на|места\s+съ[её]мок|тогда\s+и\s+сейчас|фильмы\s+ужасов\s+и\s+их\s+ремейки|аудиокниг|читает\s+|bdrip|web-?dl|remux|hevc|korsar|все\s+части|\d{4}\s*,\s*\d{4}\s*,\s*\d{4}|_\d{8}\b|вмз-\d+|срам\s*:|королева\s+обнаж)/i;
+  const ALLOWED_SEARCH_SOURCES = new Set(['tmdb', 'lift', 'fanfilm4k', 'anilibria', 'anixart', 'shikimori']);
+  rawItems = rawItems.filter(item => {
+    if (!item || isTrailerMedia(item)) return false;
+    if (source === 'all' && item.source && !ALLOWED_SEARCH_SOURCES.has(String(item.source).toLowerCase())) return false;
+    const t = String(item.title || '').trim();
+    if (!t || GARBAGE_SEARCH_TITLE_RE.test(t)) return false;
+    return true;
+  });
 
   const normalizeMediaKey = (t, isAnimeOrSer = false) => {
     if (!t) return '';
@@ -3371,6 +3382,9 @@ async function executeUnifiedSearch(query, source = 'all') {
           (((ex.source === 'rutube' || ex.source === 'vkvideo') && Number(ex.duration_seconds || ex.duration || 0) >= 3300 && ex.year && item.year && String(ex.year) === String(item.year) && (!item.original_title || String(ex.title || '').toLowerCase().includes(String(item.original_title).toLowerCase())))) ||
           (ex.original_title && item.original_title &&
            String(ex.original_title).toLowerCase().trim() === String(item.original_title).toLowerCase().trim() &&
+           Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1) ||
+          (normalizeMediaKey(ex.title, false) === normKey &&
+           ex.year && item.year &&
            Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1)
         ) {
           dedupKey = k;

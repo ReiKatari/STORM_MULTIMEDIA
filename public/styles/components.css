@@ -11326,10 +11326,11 @@ body.cinema-focus-active::-webkit-scrollbar,
   width: 100% !important;
   box-sizing: border-box !important;
   display: flex !important;
+  flex-wrap: wrap !important;
   align-items: center !important;
   justify-content: space-between !important;
-  gap: 14px !important;
-  padding: 10px 16px !important;
+  gap: 10px 14px !important;
+  padding: 12px 16px !important;
   margin: 0 0 22px 0 !important;
   border-radius: 16px !important;
   background: linear-gradient(135deg, rgba(16, 23, 40, 0.88), rgba(10, 15, 28, 0.94)) !important;
@@ -11337,7 +11338,7 @@ body.cinema-focus-active::-webkit-scrollbar,
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  overflow: hidden;
+  overflow: visible !important;
 }
 
 .home-rails-top-label {
@@ -11352,13 +11353,11 @@ body.cinema-focus-active::-webkit-scrollbar,
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
+  flex-wrap: wrap !important;
   align-items: center;
-  gap: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding: 3px 2px;
-  cursor: grab;
+  gap: 8px 10px;
+  overflow: visible !important;
+  padding: 2px 0;
 }
 
 .home-rail-jump-pills::-webkit-scrollbar {
@@ -11414,6 +11413,7 @@ body.cinema-focus-active::-webkit-scrollbar,
 
 .home-customize-btn {
   flex-shrink: 0 !important;
+  margin-left: auto !important;
   white-space: nowrap !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -11688,13 +11688,21 @@ body.cinema-focus-active::-webkit-scrollbar,
 }
 
 /* Режимы плотности карточек (Крупно / Стандарт / Компакт) */
-body[data-card-density="large"] .media-container.view-grid:not(.home-rails-active) {
+body[data-card-density="large"] .media-container.view-grid:not(.home-rails-active),
+body[data-card-density="large"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
   grid-template-columns: repeat(auto-fill, minmax(235px, 1fr)) !important;
   gap: 20px !important;
 }
 
-body[data-card-density="compact"] .media-container.view-grid:not(.home-rails-active) {
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+body[data-card-density="standard"] .media-container.view-grid:not(.home-rails-active),
+body[data-card-density="standard"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)) !important;
+  gap: 14px !important;
+}
+
+body[data-card-density="compact"] .media-container.view-grid:not(.home-rails-active),
+body[data-card-density="compact"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
   gap: 12px !important;
 }
 
