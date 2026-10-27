@@ -3,7 +3,7 @@
  * и интерактивным живым словарем (STORM Subtitles Studio 2.0)
  */
 
-import { showToast } from './auth.js?v=1.2.5';
+import { showToast } from './auth.js?v=1.2.7';
 
 let currentVideo = null;
 let parsedCues = [];

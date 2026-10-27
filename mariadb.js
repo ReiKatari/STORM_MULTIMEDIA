@@ -188,10 +188,45 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
 
   try {
     try { sqliteDb.pragma('foreign_keys = OFF'); } catch (_) {}
+    const MOCK_WHERE = `(
+      LOWER(username) = 'stormtester'
+      OR LOWER(username) LIKE 'e2e_%'
+      OR LOWER(username) LIKE 'test_%'
+      OR LOWER(username) LIKE '%tester%'
+      OR LOWER(username) LIKE 'storm_reg_test%'
+      OR LOWER(email) LIKE '%@storm.local'
+      OR LOWER(email) LIKE '%@storm-test.local'
+      OR LOWER(email) LIKE '%@storm.test'
+      OR LOWER(email) LIKE 'tester@%'
+    ) AND LOWER(username) != 'reikatari'`;
     try {
-      await (pool || activePool).query("DELETE FROM users WHERE username = 'storm_reg_test_999'");
-      sqliteDb.prepare("DELETE FROM users WHERE username = 'storm_reg_test_999'").run();
-    } catch (_) {}
+      const [mockRows] = await (pool || activePool).query(`SELECT id FROM users WHERE ${MOCK_WHERE}`);
+      const sqliteMockRows = sqliteDb.prepare(`SELECT id FROM users WHERE ${MOCK_WHERE}`).all();
+      const mockIds = Array.from(new Set([
+        ...(mockRows || []).map(r => Number(r.id)),
+        ...(sqliteMockRows || []).map(r => Number(r.id))
+      ])).filter(id => Number.isFinite(id) && id > 0);
+      if (mockIds.length > 0) {
+        const idList = mockIds.join(',');
+        for (const tbl of ['sessions', 'bookmarks', 'watch_history']) {
+          try { await (pool || activePool).query(`DELETE FROM ${tbl} WHERE user_id IN (${idList})`); } catch (_) {}
+          try { sqliteDb.prepare(`DELETE FROM ${tbl} WHERE user_id IN (${idList})`).run(); } catch (_) {}
+        }
+        try {
+          await (pool || activePool).query(`DELETE FROM custom_list_items WHERE list_id IN (SELECT id FROM custom_lists WHERE user_id IN (${idList}))`);
+          await (pool || activePool).query(`DELETE FROM custom_lists WHERE user_id IN (${idList})`);
+        } catch (_) {}
+        try {
+          sqliteDb.prepare(`DELETE FROM custom_list_items WHERE list_id IN (SELECT id FROM custom_lists WHERE user_id IN (${idList}))`).run();
+          sqliteDb.prepare(`DELETE FROM custom_lists WHERE user_id IN (${idList})`).run();
+        } catch (_) {}
+        try { await (pool || activePool).query(`DELETE FROM users WHERE id IN (${idList})`); } catch (_) {}
+        try { sqliteDb.prepare(`DELETE FROM users WHERE id IN (${idList})`).run(); } catch (_) {}
+        console.log(`[MariaDB Sync] Удалено тестовых/моковых аккаунтов: ${mockIds.length}`);
+      }
+    } catch (e) {
+      console.warn('[MariaDB Sync] Ошибка очистки тестовых аккаунтов:', e.message);
+    }
     // 1. Синхронизация пользователей (с сохранением локальных ключей kv_store / dismissed_continue / toasted_achievements)
     const [mUsers] = await (pool || activePool).query('SELECT * FROM users');
     const validUserIds = new Set((mUsers || []).map(u => Number(u.id)));
@@ -841,6 +876,20 @@ export function mariaSaveWatchHistory(h) {
       h.updated_at || Date.now()
     ]
   );
+}
+
+export function mariaDeleteUserAccount(userId) {
+  enqueueMariaDbWrite('DELETE FROM sessions WHERE user_id = ?', [userId]);
+  enqueueMariaDbWrite('DELETE FROM bookmarks WHERE user_id = ?', [userId]);
+  enqueueMariaDbWrite('DELETE FROM watch_history WHERE user_id = ?', [userId]);
+  enqueueMariaDbWrite(
+    `DELETE FROM custom_list_items WHERE list_id IN (
+       SELECT id FROM custom_lists WHERE user_id = ?
+     )`,
+    [userId]
+  );
+  enqueueMariaDbWrite('DELETE FROM custom_lists WHERE user_id = ?', [userId]);
+  return enqueueMariaDbWrite('DELETE FROM users WHERE id = ?', [userId]);
 }
 
 export function mariaPurgeUserData(userId) {

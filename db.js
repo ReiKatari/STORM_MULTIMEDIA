@@ -20,6 +20,7 @@ import {
   mariaSaveWatchHistory,
   mariaDeleteWatchHistory,
   mariaPurgeUserData,
+  mariaDeleteUserAccount,
   mariaSaveCustomList,
   mariaDeleteCustomList,
   mariaSaveCustomListItem,
@@ -2625,8 +2626,57 @@ export function cleanupDuplicateDatabaseRecords() {
 // Запуск дедупликации при старте сервера
 cleanupDuplicateDatabaseRecords();
 
+export function isMockOrTestUserRecord(u) {
+  if (!u) return false;
+  const uname = String(u.username || '').trim().toLowerCase();
+  const email = String(u.email || '').trim().toLowerCase();
+  if (uname === 'reikatari') return false;
+  return (
+    uname === 'stormtester' ||
+    uname.startsWith('e2e_') ||
+    uname.startsWith('test_') ||
+    uname.includes('tester') ||
+    uname.startsWith('storm_reg_test') ||
+    email.endsWith('@storm.local') ||
+    email.endsWith('@storm-test.local') ||
+    email.endsWith('@storm.test') ||
+    email.startsWith('tester@')
+  );
+}
+
+export function cleanupMockAndTestUsers() {
+  try {
+    const allUsers = db.prepare('SELECT id, username, email FROM users').all();
+    const mockUsers = allUsers.filter(isMockOrTestUserRecord);
+    for (const mu of mockUsers) {
+      deleteUserAccountById(mu.id);
+    }
+    return mockUsers.length;
+  } catch (err) {
+    console.warn('[DB Cleanup] Ошибка удаления тестовых пользователей:', err.message);
+    return 0;
+  }
+}
+
+export function deleteUserAccountById(userId) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) return false;
+  const row = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(uid);
+  if (row && String(row.username || '').toLowerCase() === 'reikatari') {
+    throw new Error('Нельзя удалить аккаунт владельца ReiKatari');
+  }
+  purgeUserData(uid);
+  try { db.prepare('DELETE FROM sessions WHERE user_id = ?').run(uid); } catch (_) {}
+  try { db.prepare('DELETE FROM users WHERE id = ?').run(uid); } catch (_) {}
+  try { mariaDeleteUserAccount(uid); } catch (_) {}
+  return true;
+}
+
 export function getAdminUsersOverview() {
-  const users = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users ORDER BY id ASC').all();
+  cleanupMockAndTestUsers();
+  const users = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users ORDER BY id ASC')
+    .all()
+    .filter(u => !isMockOrTestUserRecord(u));
 
   const historyStmt = db.prepare(`
     SELECT media_id, source, title, poster_url, media_type, season, episode, time_seconds, duration_seconds, progress_percent, updated_at

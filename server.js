@@ -59,6 +59,7 @@ import {
   getUserFamilyProfiles,
   saveUserFamilyProfiles,
   getAdminUsersOverview,
+  deleteUserAccountById,
   getCache,
   setCache,
   saveWatchRoomDb,
@@ -1450,6 +1451,37 @@ app.get('/api/admin/users-overview', requireAuth, (req, res) => {
   } catch (err) {
     console.error('Ошибка получения сводки администратора:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/users/:id', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7).trim()
+      : (req.cookies?.storm_session || null);
+    const currentUser = getUserByToken(token);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Необходима авторизация администратора' });
+    }
+    const username = (currentUser.username || '').trim().toLowerCase();
+    const email = (currentUser.email || '').trim().toLowerCase();
+    const role = (currentUser.role || '').trim().toLowerCase();
+    const isReiKatari = username === 'reikatari' ||
+                        email === 'reikatari@outlook.com' ||
+                        email === '45316432+reikatari@users.noreply.github.com' ||
+                        role === 'admin';
+    if (!isReiKatari) {
+      return res.status(403).json({ error: 'Доступ разрешен только администратору ReiKatari' });
+    }
+    const targetId = Number(req.params.id);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: 'Некорректный ID пользователя' });
+    }
+    deleteUserAccountById(targetId);
+    res.json({ success: true, deletedUserId: targetId });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

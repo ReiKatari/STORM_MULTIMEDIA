@@ -7115,8 +7115,8 @@ body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .
 }
 
 .admin-dashboard-dialog {
-  max-width: 1280px !important;
-  width: 95vw !important;
+  max-width: 1620px !important;
+  width: 96vw !important;
   max-height: calc(100dvh - 56px) !important;
   height: auto !important;
   min-height: 480px !important;
@@ -7229,6 +7229,7 @@ body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .
 .admin-users-table-wrap {
   flex: 1;
   overflow-y: auto;
+  overflow-x: auto;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-secondary);

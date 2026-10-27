@@ -8,7 +8,7 @@
  * - Статистика и аналитика экосистемы
  */
 
-import { showToast } from './auth.js?v=1.2.5';
+import { showToast } from './auth.js?v=1.2.7';
 
 let adminDataCache = null;
 
@@ -495,10 +495,17 @@ function filterAndRenderUsers() {
         </td>
 
         <!-- Действия -->
-        <td style="text-align: right;">
-          <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm admin-view-details-btn" data-userid="${u.id}" style="font-size: 11.5px;">
-            <span>📋</span> Детали
-          </button>
+        <td style="text-align: right; white-space: nowrap;">
+          <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end;">
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm admin-view-details-btn" data-userid="${u.id}" style="font-size: 11.5px;">
+              <span>📋</span> Детали
+            </button>
+            ${!isReiKatari ? `
+              <button type="button" class="storm-btn storm-btn-danger storm-btn-sm admin-delete-user-btn" data-userid="${u.id}" data-username="${escapeHtml(u.username)}" title="Удалить пользователя" style="font-size: 11.5px; padding: 6px 10px;">
+                🗑️
+              </button>
+            ` : ''}
+          </div>
         </td>
       </tr>
     `;
@@ -510,6 +517,30 @@ function filterAndRenderUsers() {
       const uid = parseInt(btn.dataset.userid, 10);
       const user = adminDataCache.users.find(u => u.id === uid);
       if (user) openUserDetailsModal(user);
+    };
+  });
+
+  // Обработчики кнопок удаления пользователя
+  tbody.querySelectorAll('.admin-delete-user-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const uid = parseInt(btn.dataset.userid, 10);
+      const uname = btn.dataset.username || '';
+      if (!uid) return;
+      btn.disabled = true;
+      try {
+        const token = localStorage.getItem('storm_token') || '';
+        const res = await fetch(`/api/admin/users/${uid}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Ошибка удаления пользователя');
+        showToast(`Пользователь ${uname} удалён`, 'info');
+        await loadAdminData(false);
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, 'error');
+      }
     };
   });
 }

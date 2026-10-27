@@ -25,6 +25,7 @@ import {
   toggleReleaseSubscription,
   getReleaseSubscriptions,
   purgeUserData,
+  deleteUserAccountById,
   closeMariaDbPool,
   db
 } from '../db.js';
@@ -201,9 +202,7 @@ describe('STORM MULTIMEDIA 1.2.0 — Automated Quality & Security Suite', () => 
     assert.equal(getReleaseSubscriptions(u1.user.id).length, 1);
 
     // Очистка тестовых пользователей
-    purgeUserData(u1.user.id);
-    purgeUserData(u2.user.id);
-    db.prepare('DELETE FROM sessions WHERE user_id IN (?, ?)').run(u1.user.id, u2.user.id);
-    db.prepare('DELETE FROM users WHERE id IN (?, ?)').run(u1.user.id, u2.user.id);
+    deleteUserAccountById(u1.user.id);
+    deleteUserAccountById(u2.user.id);
   });
 });

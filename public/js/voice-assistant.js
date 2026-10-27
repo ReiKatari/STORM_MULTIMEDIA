@@ -3,8 +3,8 @@
    Мгновенное потоковое распознавание речи (interimResults) и умный поиск
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.6';
-import { trackClientAction } from './achievements.js?v=1.2.6';
+import { showToast } from './auth.js?v=1.2.7';
+import { trackClientAction } from './achievements.js?v=1.2.7';
 
 let recognition = null;
 let isListening = false;

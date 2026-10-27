@@ -814,8 +814,15 @@ main,
   zoom: var(--storm-ui-scale, 1);
 }
 
-.storm-modal-backdrop:not(#cinema-modal) > .storm-modal {
+.storm-modal-backdrop:not(#cinema-modal):not(#admin-dashboard-modal) > .storm-modal {
   zoom: var(--storm-ui-scale, 1);
   max-width: min(1040px, calc(96vw / var(--storm-ui-scale, 1))) !important;
   max-height: calc(92dvh / var(--storm-ui-scale, 1)) !important;
+}
+
+#admin-dashboard-modal > .admin-dashboard-dialog {
+  zoom: var(--storm-ui-scale, 1);
+  width: min(1620px, calc(96vw / var(--storm-ui-scale, 1))) !important;
+  max-width: min(1620px, calc(96vw / var(--storm-ui-scale, 1))) !important;
+  max-height: calc(93dvh / var(--storm-ui-scale, 1)) !important;
 }
