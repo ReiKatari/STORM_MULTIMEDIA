@@ -18,6 +18,7 @@ export const translations = {
     tab_anime_movies: "Аниме-фильмы",
     tab_anime_series: "Аниме-сериалы",
     tab_continue: "Продолжить просмотр",
+    tab_history: "История просмотров",
     tab_bookmarks: "Мои списки и закладки",
     mobile_tab_bookmarks: "Закладки",
     tab_offline: "Офлайн-просмотр",
@@ -215,6 +216,7 @@ export const translations = {
     tab_anime_movies: "Anime movies",
     tab_anime_series: "Anime series",
     tab_continue: "Continue watching",
+    tab_history: "Watch history",
     tab_bookmarks: "My lists and bookmarks",
     mobile_tab_bookmarks: "Bookmarks",
     tab_offline: "Offline viewing",
@@ -403,6 +405,7 @@ export const translations = {
     tab_anime_movies: "Anime-Filme",
     tab_anime_series: "Anime-Serien",
     tab_continue: "Weiterschauen",
+    tab_history: "Wiedergabeverlauf",
     tab_bookmarks: "Meine Listen und Lesezeichen",
     mobile_tab_bookmarks: "Lesezeichen",
     tab_offline: "Offline-Wiedergabe",
@@ -565,6 +568,7 @@ export const translations = {
     tab_anime_movies: "Films d'animation",
     tab_anime_series: "Séries d'animation",
     tab_continue: "Reprendre la lecture",
+    tab_history: "Historique de lecture",
     tab_bookmarks: "Mes listes et favoris",
     mobile_tab_bookmarks: "Favoris",
     tab_offline: "Visionnage hors-ligne",
@@ -727,6 +731,7 @@ export const translations = {
     tab_anime_movies: "动画电影",
     tab_anime_series: "日本动画剧集",
     tab_continue: "继续观看",
+    tab_history: "观看历史",
     tab_bookmarks: "我的列表与收藏",
     mobile_tab_bookmarks: "收藏",
     tab_offline: "离线播放",
@@ -889,6 +894,7 @@ export const translations = {
     tab_anime_movies: "アニメ映画",
     tab_anime_series: "アニメTVシリーズ",
     tab_continue: "続きを見る",
+    tab_history: "視聴履歴",
     tab_bookmarks: "リストとブックマーク",
     mobile_tab_bookmarks: "ブックマーク",
     tab_offline: "オフライン再生",
@@ -1051,6 +1057,7 @@ export const translations = {
     tab_anime_movies: "극장판 애니",
     tab_anime_series: "TV 애니메이션",
     tab_continue: "이어보기",
+    tab_history: "시청 기록",
     tab_bookmarks: "내 목록 및 북마크",
     mobile_tab_bookmarks: "북마크",
     tab_offline: "오프라인 시청",
@@ -1144,6 +1151,7 @@ export const translations = {
     tab_anime_movies: "Películas de anime",
     tab_anime_series: "Series de anime",
     tab_continue: "Continuar viendo",
+    tab_history: "Historial de reproducción",
     tab_bookmarks: "Mis listas y marcadores",
     mobile_tab_bookmarks: "Marcadores",
     tab_offline: "Ver sin conexión",
@@ -1237,6 +1245,7 @@ export const translations = {
     tab_anime_movies: "Film anime",
     tab_anime_series: "Serie anime",
     tab_continue: "Continua a guardare",
+    tab_history: "Cronologia visualizzazioni",
     tab_bookmarks: "Le mie liste e segnalibri",
     mobile_tab_bookmarks: "Segnalibri",
     tab_offline: "Visione offline",
@@ -1330,6 +1339,7 @@ export const translations = {
     tab_anime_movies: "Filmes de anime",
     tab_anime_series: "Séries de anime",
     tab_continue: "Continuar assistindo",
+    tab_history: "Histórico de exibição",
     tab_bookmarks: "Minhas listas e favoritos",
     mobile_tab_bookmarks: "Favoritos",
     tab_offline: "Visualização offline",
@@ -1423,6 +1433,7 @@ export const translations = {
     tab_anime_movies: "एनीमे फ़िल्में",
     tab_anime_series: "एनीमे सीरीज़",
     tab_continue: "देखना जारी रखें",
+    tab_history: "देखने का इतिहास",
     tab_bookmarks: "मेरी सूचियाँ और बुकमार्क",
     mobile_tab_bookmarks: "बुकमार्क",
     tab_offline: "ऑफ़लाइन देखें",
@@ -1582,7 +1593,8 @@ export function applyTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (key) {
-      el.textContent = t(key);
+      const tr = t(key);
+      if (tr && tr !== key) el.textContent = tr;
     }
   });
 
