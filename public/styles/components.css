@@ -13016,3 +13016,192 @@ body.tv-mode .view-mode-switcher,
 body.tv-mode #media-render-container.view-grid {
   padding-top: 8px !important;
 }
+
+
+/* Расширенная аналитика и графики Панели администратора 3.0 */
+.admin-metrics-grid-6 {
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: 12px !important;
+}
+@media (max-width: 1360px) {
+  .admin-metrics-grid-6 {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+@media (max-width: 780px) {
+  .admin-metrics-grid-6 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+.admin-metric-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-cluster-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.admin-dot-online {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+.admin-analytics-charts-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.1fr;
+  gap: 14px;
+  flex-shrink: 0;
+}
+@media (max-width: 1180px) {
+  .admin-analytics-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.admin-chart-card {
+  background: linear-gradient(145deg, rgba(22, 27, 46, 0.78), rgba(14, 18, 32, 0.88));
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.admin-chart-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+.admin-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 8px;
+}
+.admin-chart-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.admin-chart-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(0, 210, 255, 0.1);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.admin-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.admin-bar-row:last-child {
+  margin-bottom: 0;
+}
+.admin-bar-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+.admin-bar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.admin-bar-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.admin-bar-val {
+  font-weight: 700;
+  color: #fff;
+}
+.admin-bar-val small {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.admin-bar-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.admin-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.admin-idle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.admin-idle-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+}
+.admin-sort-select {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+.admin-balancers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.admin-tabs-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 10px;
+}
+.admin-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}

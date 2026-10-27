@@ -162,31 +162,134 @@ export async function searchShikimori(query) {
  */
 export async function getShikimoriRelated(animeId) {
   if (!animeId) return [];
-  const cacheKey = `shikimori_related_${animeId}`;
+  const cacheKey = `shikimori_related_v4_${animeId}`;
   const cached = getCache('shikimori', cacheKey);
   if (Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const res = await shikiFetch(`/api/animes/${animeId}/related`, 5000);
-    if (!res.ok) return [];
+    const [baseRes, relRes] = await Promise.all([
+      shikiFetch(`/api/animes/${animeId}`, 4500).catch(() => null),
+      shikiFetch(`/api/animes/${animeId}/related`, 5000).catch(() => null)
+    ]);
 
-    const data = await res.json();
-    const items = data
-      .filter(it => it.anime)
-      .map(it => ({
-        id: String(it.anime.id),
+    if (!relRes || !relRes.ok) return [];
+    const baseAnime = (baseRes && baseRes.ok) ? await baseRes.json().catch(() => null) : null;
+    const data = await relRes.json();
+
+    // Исключаем музыкальные клипы (music), рекламу (cm), промо-ролики (pv) и несюжетные записи («Прочее» / «Other» / «Персонаж» / «Адаптация»)
+    const EXCLUDED_KINDS = new Set(['music', 'cm', 'pv', 'tv_13']);
+    const EXCLUDED_RELATIONS = new Set([
+      'other', 'character', 'adaptation',
+      'прочее', 'персонаж', 'адаптация', 'клип', 'музыка', 'реклама'
+    ]);
+
+    const resolveValidPoster = (animeObj, fallbackPoster = '') => {
+      const orig = String(animeObj?.image?.original || animeObj?.image?.preview || '');
+      if (orig && !orig.includes('missing_')) {
+        return orig.startsWith('http') ? orig : `${SHIKIMORI_BASE}${orig}`;
+      }
+      if (fallbackPoster && !fallbackPoster.includes('missing_')) {
+        return fallbackPoster;
+      }
+      const t = (animeObj?.russian || animeObj?.name || '').trim();
+      const o = (animeObj?.name || '').trim();
+      return `/api/media/image-proxy?title=${encodeURIComponent(t)}&orig=${encodeURIComponent(o)}`;
+    };
+
+    const rootPoster = baseAnime ? resolveValidPoster(baseAnime, '') : '';
+    const rawItems = [];
+
+    if (baseAnime && baseAnime.id && !EXCLUDED_KINDS.has(String(baseAnime.kind || '').toLowerCase())) {
+      const bYear = baseAnime.aired_on ? baseAnime.aired_on.substring(0, 4) : (baseAnime.released_on ? baseAnime.released_on.substring(0, 4) : '');
+      rawItems.push({
+        id: String(baseAnime.id),
         source: 'shikimori',
-        title: it.anime.russian || it.anime.name,
-        original_title: it.anime.name || '',
+        title: baseAnime.russian || baseAnime.name,
+        original_title: baseAnime.name || '',
+        relation: 'Основная история',
+        kind: baseAnime.kind || 'tv',
+        aired_on: baseAnime.aired_on || `${bYear || '2000'}-01-01`,
+        year: bYear,
+        poster: rootPoster || 'assets/favicon.svg',
+        media_type: baseAnime.kind === 'movie' ? 'anime-movie' : 'anime-series',
+        rating: parseFloat(baseAnime.score) || 0,
+        status: baseAnime.status === 'released' ? 'Вышел' : (baseAnime.status === 'anons' ? 'Анонс' : 'Онгоинг')
+      });
+    }
+
+    for (const it of (Array.isArray(data) ? data : [])) {
+      const a = it?.anime;
+      if (!a || !a.id) continue;
+      const kind = String(a.kind || '').toLowerCase().trim();
+      if (EXCLUDED_KINDS.has(kind)) continue;
+
+      const relEn = String(it.relation || '').toLowerCase().trim();
+      const relRu = String(it.relation_russian || '').toLowerCase().trim();
+      if (EXCLUDED_RELATIONS.has(relEn) || EXCLUDED_RELATIONS.has(relRu)) continue;
+
+      const aYear = a.aired_on ? a.aired_on.substring(0, 4) : (a.released_on ? a.released_on.substring(0, 4) : '');
+      rawItems.push({
+        id: String(a.id),
+        source: 'shikimori',
+        title: a.russian || a.name,
+        original_title: a.name || '',
         relation: it.relation_russian || it.relation || 'Связанное',
-        year: it.anime.aired_on ? it.anime.aired_on.substring(0, 4) : '',
-        poster: it.anime.image?.original ? `${SHIKIMORI_BASE}${it.anime.image.original}` : 'assets/favicon.svg',
-        media_type: it.anime.kind === 'movie' ? 'anime-movie' : 'anime-series',
-        rating: parseFloat(it.anime.score) || 0,
-        status: it.anime.status === 'released' ? 'Вышел' : 'Онгоинг'
+        kind: kind || 'tv',
+        aired_on: a.aired_on || `${aYear || '2099'}-12-31`,
+        year: aYear,
+        poster: resolveValidPoster(a, rootPoster),
+        media_type: kind === 'movie' ? 'anime-movie' : 'anime-series',
+        rating: parseFloat(a.score) || 0,
+        status: a.status === 'released' ? 'Вышел' : (a.status === 'anons' ? 'Анонс' : 'Онгоинг')
+      });
+    }
+
+    // Дедупликация по ID и хронологическая сортировка (по дате выхода, основная история перед рекапами одного года)
+    const seenIds = new Set();
+    const kindWeight = (k, rel) => {
+      const r = String(rel || '').toLowerCase();
+      if (r.includes('предыстория') || r.includes('prequel')) return 1;
+      if (r.includes('основная')) return 2;
+      if (k === 'tv') return 3;
+      if (k === 'movie') return 4;
+      if (r.includes('продолжение') || r.includes('sequel')) return 5;
+      if (r.includes('обобщение') || r.includes('summary')) return 7;
+      return 6;
+    };
+
+    const items = rawItems
+      .filter(it => {
+        if (seenIds.has(it.id)) return false;
+        seenIds.add(it.id);
+        return true;
+      })
+      .sort((a, b) => {
+        const ya = parseInt(a.year, 10) || 9999;
+        const yb = parseInt(b.year, 10) || 9999;
+        if (ya !== yb) return ya - yb;
+        const da = String(a.aired_on || '');
+        const db = String(b.aired_on || '');
+        if (da !== db) return da.localeCompare(db);
+        return kindWeight(a.kind, a.relation) - kindWeight(b.kind, b.relation);
+      })
+      .map((it, idx) => ({
+        id: it.id,
+        source: it.source,
+        title: it.title,
+        original_title: it.original_title,
+        relation: it.relation,
+        order: idx + 1,
+        order_label: `Часть ${idx + 1} • ${it.relation}`,
+        year: it.year,
+        poster: it.poster,
+        media_type: it.media_type,
+        rating: it.rating,
+        status: it.status
       }));
 
-    setCache('shikimori', cacheKey, items, 86400); // 24 часа
+    if (items.length > 0) {
+      setCache('shikimori', cacheKey, items, 86400);
+    }
     return items;
   } catch (err) {
     console.error('[Shikimori Related] Ошибка:', err.message);

@@ -866,6 +866,202 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Информационный и командный шлюз для мобильного пульта STORM REMOTE 2.0
+
+// ============================================================================
+// ГОЛОСОВОЙ ДВИЖОК STORM: СЕРВЕРНОЕ РАСПОЗНАВАНИЕ РЕЧИ И ВЫБОР МИКРОФОНА ПК
+// ============================================================================
+app.use('/api/voice', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
+async function recognizePcm16kBufferViaGoogle(pcmBuffer, lang = 'ru-RU') {
+  if (!pcmBuffer || pcmBuffer.length < 1600) {
+    return { transcript: '', alternatives: [] };
+  }
+  const key = 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw';
+  const url = `http://www.google.com/speech-api/v2/recognize?client=chromium&lang=${encodeURIComponent(lang)}&key=${key}&pFilter=0`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'audio/l16; rate=16000',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36'
+    },
+    body: pcmBuffer,
+    signal: AbortSignal.timeout(9000)
+  });
+  if (!resp.ok) {
+    throw new Error(`Speech API HTTP ${resp.status}`);
+  }
+  const rawText = await resp.text();
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const alternatives = [];
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      if (Array.isArray(parsed.result)) {
+        for (const r of parsed.result) {
+          if (Array.isArray(r.alternative)) {
+            for (const alt of r.alternative) {
+              if (alt.transcript && !alternatives.includes(alt.transcript.trim())) {
+                alternatives.push(alt.transcript.trim());
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  return {
+    transcript: alternatives[0] || '',
+    alternatives
+  };
+}
+
+app.post('/api/voice/recognize', express.json({ limit: '12mb' }), async (req, res) => {
+  try {
+    const { pcmBase64, lang } = req.body || {};
+    if (!pcmBase64 || typeof pcmBase64 !== 'string') {
+      return res.status(400).json({ error: 'Аудиоданные не переданы' });
+    }
+    const pcmBuffer = Buffer.from(pcmBase64, 'base64');
+    const result = await recognizePcm16kBufferViaGoogle(pcmBuffer, lang || 'ru-RU');
+    res.json({
+      success: Boolean(result.transcript),
+      transcript: result.transcript,
+      alternatives: result.alternatives
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Ошибка распознавания речи' });
+  }
+});
+
+app.get('/api/voice/devices', async (req, res) => {
+  if (process.platform !== 'win32') {
+    return res.json({ platform: process.platform, devices: [] });
+  }
+  try {
+    const { execFile } = await import('child_process');
+    const pyScript = [
+      'import ctypes, json',
+      'from ctypes import wintypes',
+      'winmm = ctypes.windll.winmm',
+      'class WAVEINCAPSW(ctypes.Structure):',
+      '    _fields_ = [("wMid", wintypes.WORD), ("wPid", wintypes.WORD), ("vDriverVersion", wintypes.UINT), ("szPname", wintypes.WCHAR * 32), ("dwFormats", wintypes.DWORD), ("wChannels", wintypes.WORD), ("wReserved1", wintypes.WORD)]',
+      'devs = []',
+      'for i in range(winmm.waveInGetNumDevs()):',
+      '    c = WAVEINCAPSW()',
+      '    if winmm.waveInGetDevCapsW(i, ctypes.byref(c), ctypes.sizeof(c)) == 0:',
+      '        devs.append({"id": f"winmm:{i}", "index": i, "label": c.szPname.strip(), "channels": c.wChannels})',
+      'print(json.dumps(devs, ensure_ascii=False))'
+    ].join('\n');
+
+    execFile('python', ['-c', pyScript], { timeout: 3500, env: { ...process.env, PYTHONUTF8: '1' } }, (err, stdout) => {
+      if (err) return res.json({ platform: 'win32', devices: [] });
+      try {
+        const devices = JSON.parse(stdout.trim() || '[]');
+        res.json({ platform: 'win32', devices });
+      } catch {
+        res.json({ platform: 'win32', devices: [] });
+      }
+    });
+  } catch {
+    res.json({ platform: process.platform, devices: [] });
+  }
+});
+
+app.post('/api/voice/listen-native', express.json(), async (req, res) => {
+  if (process.platform !== 'win32') {
+    return res.status(400).json({ error: 'Локальный захват winmm поддерживается только на Windows-хосте' });
+  }
+  try {
+    const rawDev = String(req.body?.deviceId || 'winmm:0');
+    const devIndex = Math.max(0, parseInt(rawDev.replace(/^winmm:/i, ''), 10) || 0);
+    const durationSec = Math.min(Math.max(Number(req.body?.durationSec) || 3.4, 1.5), 6.0);
+    const { execFile } = await import('child_process');
+
+    const pyRecord = [
+      'import ctypes, time, math, struct, base64, json, sys',
+      'from ctypes import wintypes',
+      'winmm = ctypes.windll.winmm',
+      'dev_id = ' + devIndex,
+      'max_sec = ' + durationSec,
+      'class WAVEFORMATEX(ctypes.Structure):',
+      '    _fields_ = [("wFormatTag", wintypes.WORD), ("nChannels", wintypes.WORD), ("nSamplesPerSec", wintypes.DWORD), ("nAvgBytesPerSec", wintypes.DWORD), ("nBlockAlign", wintypes.WORD), ("wBitsPerSample", wintypes.WORD), ("cbSize", wintypes.WORD)]',
+      'class WAVEHDR(ctypes.Structure):',
+      '    _fields_ = [("lpData", ctypes.c_char_p), ("dwBufferLength", wintypes.DWORD), ("dwBytesRecorded", wintypes.DWORD), ("dwUser", ctypes.c_size_t), ("dwFlags", wintypes.DWORD), ("dwLoops", wintypes.DWORD), ("lpNext", ctypes.c_void_p), ("reserved", ctypes.c_size_t)]',
+      'wfx = WAVEFORMATEX(1, 1, 16000, 32000, 2, 16, 0)',
+      'hWaveIn = wintypes.HANDLE()',
+      'rc = winmm.waveInOpen(ctypes.byref(hWaveIn), dev_id, ctypes.byref(wfx), 0, 0, 0)',
+      'if rc != 0:',
+      '    print(json.dumps({"error": f"Не удалось открыть микрофон #{dev_id} (код {rc})"}))',
+      '    sys.exit(0)',
+      'buf_len = int(16000 * 2 * max_sec)',
+      'buf = ctypes.create_string_buffer(buf_len)',
+      'hdr = WAVEHDR(ctypes.cast(buf, ctypes.c_char_p), buf_len, 0, 0, 0, 0, None, 0)',
+      'winmm.waveInPrepareHeader(hWaveIn, ctypes.byref(hdr), ctypes.sizeof(hdr))',
+      'winmm.waveInAddBuffer(hWaveIn, ctypes.byref(hdr), ctypes.sizeof(hdr))',
+      'winmm.waveInStart(hWaveIn)',
+      'start_t = time.time()',
+      'heard_speech = False',
+      'silence_after_speech = 0.0',
+      'peak_rms = 0',
+      'last_bytes = 0',
+      'while (time.time() - start_t) < max_sec:',
+      '    time.sleep(0.15)',
+      '    cur_b = hdr.dwBytesRecorded',
+      '    if cur_b - last_bytes >= 1600:',
+      '        chunk = buf.raw[last_bytes:cur_b]',
+      '        last_bytes = cur_b',
+      '        cnt = len(chunk) // 2',
+      '        if cnt > 0:',
+      '            samps = struct.unpack(f"<{cnt}h", chunk[:cnt*2])',
+      '            rms = int(math.sqrt(sum(s*s for s in samps) / cnt))',
+      '            if rms > peak_rms: peak_rms = rms',
+      '            if rms > 380:',
+      '                heard_speech = True',
+      '                silence_after_speech = 0.0',
+      '            elif heard_speech:',
+      '                silence_after_speech += 0.15',
+      '                if silence_after_speech >= 0.95 and (time.time() - start_t) >= 1.2:',
+      '                    break',
+      'winmm.waveInStop(hWaveIn)',
+      'winmm.waveInReset(hWaveIn)',
+      'rec_bytes = hdr.dwBytesRecorded',
+      'winmm.waveInUnprepareHeader(hWaveIn, ctypes.byref(hdr), ctypes.sizeof(hdr))',
+      'winmm.waveInClose(hWaveIn)',
+      'raw_pcm = buf.raw[:rec_bytes]',
+      'print(json.dumps({"pcmBase64": base64.b64encode(raw_pcm).decode("ascii"), "bytes": rec_bytes, "peakRms": peak_rms}))'
+    ].join('\n');
+
+    execFile('python', ['-c', pyRecord], { timeout: 9000, maxBuffer: 10 * 1024 * 1024, env: { ...process.env, PYTHONUTF8: '1' } }, async (err, stdout) => {
+      if (err) {
+        return res.status(500).json({ error: 'Ошибка захвата звука с микрофона' });
+      }
+      try {
+        const parsed = JSON.parse(stdout.trim() || '{}');
+        if (parsed.error) return res.status(400).json({ error: parsed.error });
+        const pcmBuffer = Buffer.from(parsed.pcmBase64 || '', 'base64');
+        const stt = await recognizePcm16kBufferViaGoogle(pcmBuffer, 'ru-RU');
+        res.json({
+          success: Boolean(stt.transcript),
+          transcript: stt.transcript,
+          alternatives: stt.alternatives,
+          peakRms: parsed.peakRms || 0
+        });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/remote/info', (req, res) => {
   let lanIp = '192.168.1.154';
   try {
@@ -5648,7 +5844,7 @@ app.get('/api/media/franchise', async (req, res) => {
       }
     } catch (_) {}
 
-    // 1. Аниме-франшизы через Shikimori Related
+    // 1. Аниме-франшизы через Shikimori Related (без музыкальных клипов, рекламы и «Прочего»)
     const isAnime = source === 'shikimori' || source === 'anixart' || source === 'anilibria' || (media_type && media_type.includes('anime'));
     if (isAnime) {
       let shikiId = (source === 'shikimori' && id && !isNaN(Number(id))) ? id : null;
@@ -5656,14 +5852,18 @@ app.get('/api/media/franchise', async (req, res) => {
         try {
           const searchRes = await searchShikimori(cleanTitle);
           if (searchRes && searchRes.length > 0) {
-            shikiId = searchRes[0].id;
+            const normTarget = cleanTitle.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+            const exactMatch = searchRes.find(r =>
+              String(r.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim() === normTarget
+            );
+            shikiId = (exactMatch || searchRes[0]).id;
           }
         } catch {}
       }
 
       if (shikiId) {
         const related = await getShikimoriRelated(shikiId);
-        if (related && related.length > 0) {
+        if (related && related.length > 1) {
           return res.json({
             franchise_name: `Хронология вселенной «${cleanTitle}»`,
             total: related.length,

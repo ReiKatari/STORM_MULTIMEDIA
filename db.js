@@ -2674,6 +2674,10 @@ export function deleteUserAccountById(userId) {
 
 export function getAdminUsersOverview() {
   cleanupMockAndTestUsers();
+  try {
+    db.prepare("DELETE FROM media_cache WHERE cache_key LIKE 'shikimori_related_%' AND cache_key NOT LIKE 'shikimori_related_v4_%'").run();
+  } catch (_) {}
+
   const users = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users ORDER BY id ASC')
     .all()
     .filter(u => !isMockOrTestUserRecord(u));
@@ -2692,15 +2696,105 @@ export function getAdminUsersOverview() {
     ORDER BY updated_at DESC
   `);
 
+  const customListsStmt = db.prepare('SELECT id, title, created_at FROM custom_lists WHERE user_id = ?');
+  const nowMs = Date.now();
+  const activeSessionsStmt = db.prepare('SELECT token, user_id, expires_at FROM sessions WHERE user_id = ? AND expires_at > ?');
+
+  const statusBreakdown = {
+    watching: 0,
+    plan: 0,
+    completed: 0,
+    favorite: 0,
+    hold: 0,
+    dropped: 0
+  };
+
+  const typeBreakdown = {
+    anime: 0,
+    movie: 0,
+    series: 0,
+    cartoon: 0
+  };
+
+  const titlePopMap = new Map();
+  const activeSessionsList = [];
+  let totalCustomLists = 0;
+  let totalSecondsAllUsers = 0;
+
   const resultUsers = users.map(u => {
     const history = historyStmt.all(u.id);
     const bookmarks = bookmarksStmt.all(u.id);
+    const customLists = customListsStmt.all(u.id);
+    const userSessions = activeSessionsStmt.all(u.id, nowMs);
+    totalCustomLists += customLists.length;
+
+    let settingsObj = {};
+    try { settingsObj = JSON.parse(u.settings_json || '{}'); } catch (_) {}
+    const sessionMetaMap = settingsObj.session_meta || {};
+
+    for (const s of userSessions) {
+      const meta = sessionMetaMap[s.token.slice(0, 16)] || {};
+      activeSessionsList.push({
+        token_prefix: s.token.slice(0, 12),
+        user_id: u.id,
+        username: u.username,
+        avatar: u.avatar,
+        role: u.role || 'user',
+        device: meta.deviceName || 'Web Browser (STORM Client)',
+        ip: meta.ipAddress || '192.168.1.x',
+        created_at: meta.createdAt || u.created_at,
+        expires_at: s.expires_at
+      });
+    }
+
+    const userStatusCounts = { watching: 0, plan: 0, completed: 0, favorite: 0, hold: 0, dropped: 0 };
+    for (const b of bookmarks) {
+      const st = String(b.status || 'plan').toLowerCase();
+      if (st in statusBreakdown) statusBreakdown[st]++;
+      if (st in userStatusCounts) userStatusCounts[st]++;
+
+      const mt = String(b.media_type || '').toLowerCase();
+      const tLow = String(b.title || '').toLowerCase();
+      if (mt.includes('anime') || b.source === 'shikimori' || b.source === 'anixart' || b.source === 'anilibria') {
+        typeBreakdown.anime++;
+      } else if (mt.includes('cartoon') || tLow.includes('мульт')) {
+        typeBreakdown.cartoon++;
+      } else if (mt.includes('series') || mt.includes('tv')) {
+        typeBreakdown.series++;
+      } else {
+        typeBreakdown.movie++;
+      }
+
+      if (b.title) {
+        const key = b.title.trim().toLowerCase();
+        const prev = titlePopMap.get(key) || { title: b.title, poster_url: b.poster_url, media_type: b.media_type || 'movie', count: 0, statuses: [] };
+        prev.count++;
+        if (!prev.poster_url && b.poster_url) prev.poster_url = b.poster_url;
+        titlePopMap.set(key, prev);
+      }
+    }
+
+    for (const h of history) {
+      if (h.title) {
+        const key = h.title.trim().toLowerCase();
+        const prev = titlePopMap.get(key) || { title: h.title, poster_url: h.poster_url, media_type: h.media_type || 'movie', count: 0, statuses: [] };
+        prev.count++;
+        if (!prev.poster_url && h.poster_url) prev.poster_url = h.poster_url;
+        titlePopMap.set(key, prev);
+      }
+    }
 
     const totalSeconds = history.reduce((sum, h) => sum + (h.time_seconds || 0), 0);
+    totalSecondsAllUsers += totalSeconds;
     const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
+    const totalMinutes = Math.round(totalSeconds / 60);
 
     const latestItem = history.length > 0 ? history[0] : null;
-    const isCurrentlyWatching = latestItem && (Date.now() - latestItem.updated_at < 3600 * 1000 * 6);
+    const isCurrentlyWatching = Boolean(latestItem && (nowMs - latestItem.updated_at < 3600 * 1000 * 6));
+
+    const lastBookmarkAt = bookmarks.length > 0 ? (bookmarks[0].updated_at || 0) : 0;
+    const lastHistoryAt = latestItem ? (latestItem.updated_at || 0) : 0;
+    const lastActiveAt = Math.max(u.created_at || 0, lastBookmarkAt, lastHistoryAt, Number(settingsObj._updated_at) || 0);
 
     const watchingNow = latestItem ? {
       title: latestItem.title,
@@ -2721,12 +2815,17 @@ export function getAdminUsersOverview() {
       avatar: u.avatar,
       role: u.role || 'user',
       created_at: u.created_at,
+      last_active_at: lastActiveAt,
+      active_sessions_count: userSessions.length,
+      custom_lists_count: customLists.length,
+      status_counts: userStatusCounts,
       watching_now: watchingNow,
       history_count: history.length,
-      history: history.slice(0, 15),
+      history: history.slice(0, 25),
       bookmarks_count: bookmarks.length,
-      bookmarks: bookmarks.slice(0, 20),
-      total_hours: totalHours
+      bookmarks: bookmarks.slice(0, 30),
+      total_hours: totalHours,
+      total_minutes: totalMinutes
     };
   });
 
@@ -2734,14 +2833,25 @@ export function getAdminUsersOverview() {
   const activeNowCount = resultUsers.filter(u => u.watching_now && u.watching_now.is_active).length;
   const totalBookmarksCount = resultUsers.reduce((sum, u) => sum + u.bookmarks_count, 0);
   const totalHistoryCount = resultUsers.reduce((sum, u) => sum + u.history_count, 0);
+  const topTitles = Array.from(titlePopMap.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
 
   return {
     summary: {
       total_users: totalUsers,
       active_now: activeNowCount,
+      active_sessions: activeSessionsList.length,
       total_bookmarks: totalBookmarksCount,
-      total_history_views: totalHistoryCount
+      total_custom_lists: totalCustomLists,
+      total_history_views: totalHistoryCount,
+      total_watch_hours: Math.round((totalSecondsAllUsers / 3600) * 10) / 10,
+      total_watch_minutes: Math.round(totalSecondsAllUsers / 60),
+      status_breakdown: statusBreakdown,
+      type_breakdown: typeBreakdown,
+      top_titles: topTitles
     },
+    active_sessions_list: activeSessionsList,
     users: resultUsers
   };
 }

@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.7';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.7';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.2.7';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.7';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.7';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.7';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.7';
+import { initTheme, setTheme } from './theme.js?v=1.2.8';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.8';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.2.8';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.8';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.8';
+import { getStatusIconSvg } from './status-icons.js?v=1.2.8';
+import { initFormFactorEngine } from './form-factor.js?v=1.2.8';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.2.6';
