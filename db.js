@@ -269,6 +269,8 @@ db.exec(`
 // Безопасные миграции схемы базы данных
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN year TEXT;'); } catch {}
 try { db.exec('ALTER TABLE watch_history ADD COLUMN year TEXT;'); } catch {}
+try { db.exec('ALTER TABLE watch_history ADD COLUMN real_watched_seconds INTEGER DEFAULT 0;'); } catch {}
+try { db.exec('ALTER TABLE watch_history ADD COLUMN device_name TEXT;'); } catch {}
 try { db.exec('ALTER TABLE bookmarks ADD COLUMN is_favorite INTEGER DEFAULT 0;'); } catch {}
 try { db.exec("ALTER TABLE bookmarks ADD COLUMN watched_episodes_json TEXT DEFAULT '{}';"); } catch {}
 try { db.exec("ALTER TABLE reviews ADD COLUMN tone TEXT DEFAULT 'positive';"); } catch {}
@@ -1186,7 +1188,7 @@ export function removeBookmark(userId, mediaId, source, title = '') {
   }
 }
 
-// История и прогресс просмотра
+// История и прогресс просмотра (Правило: минимум 10 минут = 600 секунд РЕАЛЬНОГО времени просмотра без перелистывания)
 export function logWatchProgress(userId, data) {
   const {
     media_id,
@@ -1201,6 +1203,7 @@ export function logWatchProgress(userId, data) {
   const season = Number(data.season ?? data.season_number ?? 1) || 1;
   const episode = Number(data.episode ?? data.episode_number ?? 1) || 1;
   const time_seconds = Number(data.time_seconds ?? data.progress_seconds ?? 0) || 0;
+  const real_watched_seconds = Number(data.real_watched_seconds ?? 0) || 0;
   const device_name = String(data.device_name || '').trim() || 'Веб-клиент';
 
   const existingBookmark = getBookmark(userId, String(media_id), source, title);
@@ -1213,13 +1216,40 @@ export function logWatchProgress(userId, data) {
   // Защита от мусорных заголовков и фиктивных открытий без реального просмотра
   const cleanT = String(title || '').trim();
   if (!cleanT || cleanT.includes('FANFILM4K') || cleanT.includes('ФАН4К –') || cleanT.includes('4К UHD бесплатно')) {
-    return { media_id, season, episode, time_seconds, progress_percent: 0, status: null };
+    return { media_id, season, episode, time_seconds, real_watched_seconds, progress_percent: 0, status: null };
   }
 
-  // Если видео смотрелось менее 10 сек и это 1 сезон 1 серия, не добавляем в «Продолжить просмотр»
-  if (time_seconds < 10 && progressPercent < 0.5 && (!episode || episode <= 1) && (!season || season <= 1)) {
-    return { media_id, season, episode, time_seconds, progress_percent: progressPercent, status: null };
+  // Исключаем произведения со статусом «Просмотрено», «Брошено», «Не буду смотреть»
+  if (existingBookmark && ['completed', 'watched', 'dropped', 'wont_watch'].includes(String(existingBookmark.status || '').toLowerCase())) {
+    removeContinueWatchingItem(userId, media_id, source, title);
+    return { media_id, season, episode, time_seconds, real_watched_seconds, progress_percent: 100, status: existingBookmark.status };
   }
+
+  // СТРОГОЕ ПРАВИЛО: В «Продолжить просмотр» попадают ТОЛЬКО видео, просмотренные минимум 10 минут (600 сек) реального времени (не перелистыванием)
+  if (real_watched_seconds < 600 || time_seconds < 600) {
+    return { media_id, season, episode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
+  }
+
+  // Если пользователь ранее удалил запись из «Продолжить просмотр», снимаем флаг удаления при новом реальном просмотре >= 10 мин
+  try {
+    const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+    if (uRow && uRow.settings_json) {
+      const sObj = JSON.parse(uRow.settings_json || '{}');
+      if (sObj.kv_store && sObj.kv_store.storm_dismissed_continue_v1) {
+        const normT = normalizeMediaKey(cleanT);
+        const cleanIdStr = String(media_id || '').trim();
+        let dList = JSON.parse(sObj.kv_store.storm_dismissed_continue_v1 || '[]');
+        if (Array.isArray(dList)) {
+          const beforeLen = dList.length;
+          dList = dList.filter(e => e && String(e.id) !== cleanIdStr && e.tKey !== normT);
+          if (dList.length !== beforeLen) {
+            sObj.kv_store.storm_dismissed_continue_v1 = JSON.stringify(dList);
+            updateUserSettings(userId, sObj);
+          }
+        }
+      }
+    }
+  } catch (_) {}
 
   const cleanMediaType = resolveCanonicalMediaType(title, '', '', '', { season, episode, total_episodes, media_type });
   const isMovieType = cleanMediaType === 'movie' || cleanMediaType === 'anime-movie' || cleanMediaType === 'cartoon';
@@ -1228,40 +1258,6 @@ export function logWatchProgress(userId, data) {
   const safeTotalEpisodes = isMovieType ? 1 : (parseInt(total_episodes, 10) || 1);
   const cleanYear = resolveCanonicalYear(title, '', poster_url, '', year);
   const now = Date.now();
-
-  // Сохраняем в историю
-  const upsertHistory = db.prepare(`
-    INSERT INTO watch_history (
-      user_id, media_id, source, title, poster_url, media_type, year,
-      season, episode, time_seconds, duration_seconds, progress_percent, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
-      media_type = excluded.media_type,
-      year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
-      time_seconds = excluded.time_seconds,
-      duration_seconds = excluded.duration_seconds,
-      progress_percent = excluded.progress_percent,
-      updated_at = excluded.updated_at
-  `);
-
-  upsertHistory.run(
-    userId,
-    String(media_id),
-    source,
-    title,
-    poster_url,
-    cleanMediaType,
-    cleanYear,
-    safeSeason,
-    safeEpisode,
-    time_seconds,
-    duration_seconds,
-    progressPercent,
-    now
-  );
-  try {
-    db.prepare('UPDATE watch_history SET device_name = ? WHERE user_id = ? AND media_id = ? AND source = ?').run(device_name, userId, String(media_id), source);
-  } catch (_) {}
 
   // Синхронизируем прогресс с закладкой:
   const episodesWatched = safeEpisode;
@@ -1288,46 +1284,80 @@ export function logWatchProgress(userId, data) {
     }
   }
 
-  // Обновляем progress_percent в истории реальным процентом сериала
-  if (isSeries && overallPercent !== progressPercent) {
-    try {
-      db.prepare(`
-        UPDATE watch_history 
-        SET progress_percent = ? 
-        WHERE user_id = ? AND media_id = ? AND source = ? AND season = ? AND episode = ?
-      `).run(overallPercent, userId, String(media_id), source, season, episode);
-    } catch (_) {}
+  const isFullyWatched = (!isSeries && progressPercent >= 90.0) || overallPercent >= 95.0 || (total_episodes > 0 && episodesWatched >= total_episodes && progressPercent >= 90.0);
+
+  if (isFullyWatched) {
+    setBookmark(userId, {
+      media_id,
+      source,
+      title: title || existingBookmark?.title,
+      poster_url: poster_url || existingBookmark?.poster_url,
+      media_type: media_type || existingBookmark?.media_type,
+      status: 'completed',
+      episodes_watched: total_episodes || episodesWatched,
+      total_episodes: total_episodes || existingBookmark?.total_episodes || 1,
+      progress_percent: 100.0,
+      last_time_seconds: time_seconds
+    });
+    removeContinueWatchingItem(userId, media_id, source, title);
+    return {
+      media_id,
+      season,
+      episode,
+      time_seconds,
+      real_watched_seconds,
+      progress_percent: 100.0,
+      status: 'completed'
+    };
   }
 
-  const isFullyWatched = overallPercent >= 99.0 || (total_episodes > 0 && episodesWatched >= total_episodes && progressPercent >= 90.0);
+  // Сохраняем в историю
+  const upsertHistory = db.prepare(`
+    INSERT INTO watch_history (
+      user_id, media_id, source, title, poster_url, media_type, year,
+      season, episode, time_seconds, real_watched_seconds, duration_seconds, progress_percent, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
+      media_type = excluded.media_type,
+      year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
+      time_seconds = excluded.time_seconds,
+      real_watched_seconds = MAX(COALESCE(watch_history.real_watched_seconds, 0), excluded.real_watched_seconds),
+      duration_seconds = excluded.duration_seconds,
+      progress_percent = excluded.progress_percent,
+      updated_at = excluded.updated_at
+  `);
+
+  upsertHistory.run(
+    userId,
+    String(media_id),
+    source,
+    title,
+    poster_url,
+    cleanMediaType,
+    cleanYear,
+    safeSeason,
+    safeEpisode,
+    time_seconds,
+    real_watched_seconds,
+    duration_seconds,
+    overallPercent,
+    now
+  );
+  try {
+    db.prepare('UPDATE watch_history SET device_name = ? WHERE user_id = ? AND media_id = ? AND source = ?').run(device_name, userId, String(media_id), source);
+  } catch (_) {}
 
   if (existingBookmark) {
-    const finalStatus = isFullyWatched ? 'completed' : existingBookmark.status;
-    const finalPercent = isFullyWatched ? 100.0 : overallPercent;
-
     setBookmark(userId, {
       media_id,
       source,
       title: title || existingBookmark.title,
       poster_url: poster_url || existingBookmark.poster_url,
       media_type: media_type || existingBookmark.media_type,
-      status: finalStatus,
-      episodes_watched: isFullyWatched ? (total_episodes || episodesWatched) : episodesWatched,
+      status: existingBookmark.status,
+      episodes_watched: episodesWatched,
       total_episodes: total_episodes || existingBookmark.total_episodes || 1,
-      progress_percent: finalPercent,
-      last_time_seconds: time_seconds
-    });
-  } else if (isFullyWatched) {
-    setBookmark(userId, {
-      media_id,
-      source,
-      title,
-      poster_url,
-      media_type,
-      status: 'completed',
-      episodes_watched: total_episodes || episodesWatched,
-      total_episodes: total_episodes || 1,
-      progress_percent: 100.0,
+      progress_percent: overallPercent,
       last_time_seconds: time_seconds
     });
   }
@@ -1340,9 +1370,10 @@ export function logWatchProgress(userId, data) {
     poster_url,
     media_type: cleanMediaType,
     year: cleanYear,
-    season,
-    episode,
+    season: safeSeason,
+    episode: safeEpisode,
     time_seconds,
+    real_watched_seconds,
     duration_seconds,
     progress_percent: overallPercent,
     updated_at: now
@@ -1350,11 +1381,12 @@ export function logWatchProgress(userId, data) {
 
   return {
     media_id,
-    season,
-    episode,
+    season: safeSeason,
+    episode: safeEpisode,
     time_seconds,
+    real_watched_seconds,
     progress_percent: overallPercent,
-    status: isFullyWatched ? 'completed' : (existingBookmark?.status || null)
+    status: existingBookmark?.status || null
   };
 }
 
@@ -1417,61 +1449,179 @@ export function removeContinueWatchingItem(userId, mediaId, source = '', title =
   const cleanId = String(mediaId || '').trim();
   const strippedId = cleanId.replace(/^[a-z]+_/, '');
   const normTitle = String(title || '').trim().toLowerCase().replace(/ё/g, 'е');
+  const canonTitleKey = normalizeMediaKey(title);
 
-  // Всегда отправляем удаление в MariaDB 10 через FIFO-очередь
-  mariaDeleteWatchHistory(userId, cleanId, title);
-
+  // Очищаем возможные отложенные пакеты в watchProgressBatchBuffer
   try {
+    for (const [k, v] of watchProgressBatchBuffer.entries()) {
+      if (Number(v.user_id) === Number(userId)) {
+        const vId = String(v.media_id || '').trim();
+        const vTitle = String(v.title || '').trim().toLowerCase().replace(/ё/g, 'е');
+        const vCanon = normalizeMediaKey(v.title || '');
+        if ((cleanId && (vId === cleanId || vId === strippedId)) || (normTitle && vTitle === normTitle) || (canonTitleKey && vCanon === canonTitleKey)) {
+          watchProgressBatchBuffer.delete(k);
+        }
+      }
+    }
+  } catch (_) {}
+
+  // Находим все совпадающие записи в SQLite (по ID и нормализованному заголовку с поддержкой кириллицы)
+  let matchedMediaIds = [];
+  try {
+    const userRows = db.prepare('SELECT id, media_id, title FROM watch_history WHERE user_id = ?').all(userId);
+    const matchingRows = userRows.filter(r => {
+      const rId = String(r.media_id || '').trim();
+      const rStripped = rId.replace(/^[a-z]+_/, '');
+      const rTitle = String(r.title || '').trim().toLowerCase().replace(/ё/g, 'е');
+      const rCanon = normalizeMediaKey(r.title || '');
+      if (cleanId && (rId === cleanId || rStripped === strippedId || rId === strippedId)) return true;
+      if (normTitle && rTitle === normTitle) return true;
+      if (canonTitleKey && rCanon && rCanon === canonTitleKey) return true;
+      return false;
+    });
+    matchedMediaIds = Array.from(new Set(matchingRows.map(r => String(r.media_id || '').trim()).filter(Boolean)));
+    if (matchingRows.length > 0) {
+      const ids = matchingRows.map(r => r.id);
+      db.prepare(`DELETE FROM watch_history WHERE id IN (${ids.join(',')})`).run();
+    }
     if (cleanId) {
       db.prepare('DELETE FROM watch_history WHERE user_id = ? AND (media_id = ? OR media_id = ?)').run(userId, cleanId, strippedId);
     }
-    if (normTitle) {
-      const userRows = db.prepare('SELECT id, title FROM watch_history WHERE user_id = ?').all(userId);
-      const matchingIds = userRows
-        .filter(r => String(r.title || '').trim().toLowerCase().replace(/ё/g, 'е') === normTitle)
-        .map(r => r.id);
-      if (matchingIds.length > 0) {
-        db.prepare(`DELETE FROM watch_history WHERE id IN (${matchingIds.join(',')})`).run();
-      }
-    }
-    return true;
   } catch (e) {
     console.error('Ошибка удаления из watch_history:', e.message);
-    return true;
   }
+
+  // Отправляем удаление в MariaDB 10 по всем найденным media_id и title
+  mariaDeleteWatchHistory(userId, cleanId, title);
+  for (const mId of matchedMediaIds) {
+    if (mId && mId !== cleanId) {
+      mariaDeleteWatchHistory(userId, mId, title);
+    }
+  }
+
+  // Фиксируем удаление в settings_json пользователя (kv_store.storm_dismissed_continue_v1) и очищаем серверный слепок storm_continue_watching
+  try {
+    const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+    if (uRow) {
+      const sObj = JSON.parse(uRow.settings_json || '{}');
+      if (!sObj.kv_store || typeof sObj.kv_store !== 'object') sObj.kv_store = {};
+      let dList = [];
+      try {
+        dList = JSON.parse(sObj.kv_store.storm_dismissed_continue_v1 || '[]');
+        if (!Array.isArray(dList)) dList = [];
+      } catch (_) { dList = []; }
+      const tKey = canonTitleKey || normTitle;
+      dList = dList.filter(e => e && !(cleanId && String(e.id) === cleanId) && !(tKey && e.tKey === tKey));
+      dList.unshift({ id: cleanId, tKey, ts: Date.now() });
+      for (const mId of matchedMediaIds) {
+        if (mId && mId !== cleanId) {
+          dList.unshift({ id: mId, tKey, ts: Date.now() });
+        }
+      }
+      sObj.kv_store.storm_dismissed_continue_v1 = JSON.stringify(dList.slice(0, 150));
+
+      if (sObj.kv_store.storm_continue_watching) {
+        try {
+          let cwList = JSON.parse(sObj.kv_store.storm_continue_watching || '[]');
+          if (Array.isArray(cwList)) {
+            cwList = cwList.filter(it => {
+              if (!it) return false;
+              const itId = String(it.media_id || it.id || '').trim();
+              const itCanon = normalizeMediaKey(it.title || '');
+              if (cleanId && (itId === cleanId || itId === strippedId)) return false;
+              if (matchedMediaIds.includes(itId)) return false;
+              if (canonTitleKey && itCanon === canonTitleKey) return false;
+              return true;
+            });
+            sObj.kv_store.storm_continue_watching = JSON.stringify(cwList);
+          }
+        } catch (_) {}
+      }
+      if (cleanId) {
+        delete sObj.kv_store[`storm_resume_state_${cleanId}`];
+        delete sObj.kv_store[`storm_real_watchtime_${cleanId}`];
+      }
+      if (tKey) {
+        delete sObj.kv_store[`storm_resume_state_title_${tKey}`];
+      }
+      sObj._updated_at = Date.now();
+      updateUserSettings(userId, sObj);
+    }
+  } catch (_) {}
+
+  return true;
 }
 
 export function getContinueWatching(userId, limit = 12) {
   const query = `
-    SELECT w.*, b.status as bookmark_status FROM watch_history w
-    LEFT JOIN bookmarks b ON b.user_id = w.user_id AND (
-      (b.media_id = w.media_id AND b.source = w.source) OR
-      (LOWER(TRIM(b.title)) = LOWER(TRIM(w.title)))
-    )
-    WHERE w.user_id = ? 
-      AND (
-        (w.media_type IN ('series', 'anime-series', 'cartoon-series', 'tv') AND w.progress_percent < 99)
-        OR (w.media_type NOT IN ('series', 'anime-series', 'cartoon-series', 'tv') AND w.progress_percent < 95)
-      )
-      AND (
-        (w.progress_percent >= 2.0 AND w.time_seconds >= 60)
-        OR (w.progress_percent >= 5.0)
-        OR (w.episode > 1)
-        OR (w.season > 1)
-      )
+    SELECT w.* FROM watch_history w
+    WHERE w.user_id = ?
+      AND w.time_seconds >= 600
+      AND COALESCE(w.real_watched_seconds, w.time_seconds, 0) >= 600
+      AND w.progress_percent < 90
       AND (w.title NOT LIKE '%FANFILM4K%' AND w.title NOT LIKE '%ФАН4К%')
       AND (w.title NOT LIKE '%старик из деревни%' AND w.title NOT LIKE '%святым мечом%')
-      AND (b.status IS NULL OR b.status NOT IN ('completed', 'dropped', 'wont_watch'))
     ORDER BY w.updated_at DESC
   `;
   const allRows = db.prepare(query).all(userId);
 
+  // Загружаем все закладки пользователя для кириллической проверки статусов (completed, dropped, wont_watch)
+  const userBookmarks = db.prepare('SELECT media_id, source, title, original_title, status FROM bookmarks WHERE user_id = ?').all(userId);
+  const excludedById = new Set();
+  const excludedByTitleKey = new Set();
+  const bookmarkStatusByKey = new Map();
+
+  for (const b of userBookmarks) {
+    const st = normalizeBookmarkStatus(b.status);
+    const bId = String(b.media_id || '').trim();
+    const bStripped = bId.replace(/^[a-z]+_/, '');
+    const bKey = normalizeMediaKey(b.title, b.original_title);
+    if (bKey) bookmarkStatusByKey.set(bKey, st);
+    if (bId) bookmarkStatusByKey.set(`id:${bId}`, st);
+    if (['completed', 'dropped', 'wont_watch'].includes(st)) {
+      if (bId) excludedById.add(bId);
+      if (bStripped) excludedById.add(bStripped);
+      if (bKey) excludedByTitleKey.add(bKey);
+    }
+  }
+
+  // Загружаем список явно удаленных из «Продолжить просмотр» записей пользователя
+  try {
+    const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+    if (uRow && uRow.settings_json) {
+      const sObj = JSON.parse(uRow.settings_json || '{}');
+      const rawDismissed = sObj?.kv_store?.storm_dismissed_continue_v1;
+      if (rawDismissed) {
+        const dList = JSON.parse(rawDismissed);
+        if (Array.isArray(dList)) {
+          for (const d of dList) {
+            if (!d) continue;
+            if (d.id) {
+              excludedById.add(String(d.id).trim());
+              excludedById.add(String(d.id).trim().replace(/^[a-z]+_/, ''));
+            }
+            if (d.tKey) excludedByTitleKey.add(String(d.tKey).trim());
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
   const canonicalMap = new Map();
   for (const row of allRows) {
-    if (row.bookmark_status && ['completed', 'dropped', 'wont_watch'].includes(row.bookmark_status)) {
+    const rId = String(row.media_id || '').trim();
+    const rStripped = rId.replace(/^[a-z]+_/, '');
+    const key = normalizeMediaKey(row.title) || `${row.source}_${rId}`;
+
+    if ((rId && excludedById.has(rId)) || (rStripped && excludedById.has(rStripped)) || (key && excludedByTitleKey.has(key))) {
       continue;
     }
-    const key = normalizeMediaKey(row.title) || `${row.source}_${row.media_id}`;
+    const bStatus = bookmarkStatusByKey.get(key) || bookmarkStatusByKey.get(`id:${rId}`) || null;
+    if (bStatus && ['completed', 'dropped', 'wont_watch'].includes(bStatus)) {
+      continue;
+    }
+    row.bookmark_status = bStatus;
+
     if (!canonicalMap.has(key)) {
       canonicalMap.set(key, row);
     }
@@ -2667,18 +2817,8 @@ export function logWatchProgressBatch(userId, items = []) {
 // 5. Бесшовная эстафета воспроизведения между устройствами (Device Handoff)
 export function getLatestHandoffState(userId, excludeDeviceName = '') {
   if (!userId) return null;
-  const rows = db.prepare(`
-    SELECT w.*, b.status as bookmark_status
-    FROM watch_history w
-    LEFT JOIN bookmarks b ON b.user_id = w.user_id AND b.media_id = w.media_id
-    WHERE w.user_id = ?
-      AND w.time_seconds >= 30
-      AND w.progress_percent < 95
-      AND (b.status IS NULL OR b.status NOT IN ('completed', 'dropped', 'wont_watch'))
-    ORDER BY w.updated_at DESC
-    LIMIT 5
-  `).all(userId);
-  const row = rows.find(r => !excludeDeviceName || !r.device_name || r.device_name !== excludeDeviceName) || rows[0];
+  const cw = getContinueWatching(userId, 5);
+  const row = cw.find(r => !excludeDeviceName || !r.device_name || r.device_name !== excludeDeviceName) || cw[0];
   if (!row) return null;
   return {
     media_id: row.media_id,

@@ -68,6 +68,11 @@ export async function initMariaDb(force = false) {
               await candidatePool.query("ALTER TABLE bookmarks ADD COLUMN watched_episodes_json LONGTEXT NULL");
               console.log('[MariaDB 10] Добавлена колонка bookmarks.watched_episodes_json');
             }
+            const [whCols] = await candidatePool.query("SHOW COLUMNS FROM watch_history LIKE 'real_watched_seconds'");
+            if (!whCols || whCols.length === 0) {
+              await candidatePool.query("ALTER TABLE watch_history ADD COLUMN real_watched_seconds INT DEFAULT 0");
+              console.log('[MariaDB 10] Добавлена колонка watch_history.real_watched_seconds');
+            }
             await candidatePool.query(`
               CREATE TABLE IF NOT EXISTS release_subscriptions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -183,10 +188,11 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
 
   try {
     try { sqliteDb.pragma('foreign_keys = OFF'); } catch (_) {}
-    // 1. Синхронизация пользователей
+    // 1. Синхронизация пользователей (с сохранением локальных ключей kv_store / dismissed_continue / toasted_achievements)
     const [mUsers] = await (pool || activePool).query('SELECT * FROM users');
     const validUserIds = new Set((mUsers || []).map(u => Number(u.id)));
     if (mUsers && mUsers.length > 0) {
+      const getLocalUser = sqliteDb.prepare('SELECT settings_json FROM users WHERE id = ?');
       const upsertUser = sqliteDb.prepare(`
         INSERT INTO users (id, username, email, password_hash, avatar, role, created_at, settings_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -199,6 +205,48 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           settings_json = excluded.settings_json
       `);
       for (const u of mUsers) {
+        let finalSettingsJson = u.settings_json || '{}';
+        try {
+          const localRow = getLocalUser.get(u.id);
+          if (localRow && localRow.settings_json) {
+            const mSet = JSON.parse(u.settings_json || '{}');
+            const lSet = JSON.parse(localRow.settings_json || '{}');
+            const mTime = Number(mSet._updated_at) || 0;
+            const lTime = Number(lSet._updated_at) || 0;
+            const baseSet = lTime > mTime ? { ...mSet, ...lSet } : { ...lSet, ...mSet };
+            baseSet.kv_store = { ...(lSet.kv_store || {}), ...(mSet.kv_store || {}) };
+            if (lTime > mTime) {
+              baseSet.kv_store = { ...(mSet.kv_store || {}), ...(lSet.kv_store || {}) };
+            }
+            // Объединяем списки удаленных из Continue Watching и показанных достижений без потерь
+            const mergeJsonArrayByKey = (rawA, rawB, keyFn) => {
+              const arrA = (() => { try { return JSON.parse(rawA || '[]'); } catch { return []; } })();
+              const arrB = (() => { try { return JSON.parse(rawB || '[]'); } catch { return []; } })();
+              const map = new Map();
+              for (const item of [...(Array.isArray(arrA) ? arrA : []), ...(Array.isArray(arrB) ? arrB : [])]) {
+                if (!item) continue;
+                const k = keyFn(item);
+                if (k && !map.has(k)) map.set(k, item);
+              }
+              return JSON.stringify(Array.from(map.values()));
+            };
+            if (lSet.kv_store?.storm_dismissed_continue_v1 || mSet.kv_store?.storm_dismissed_continue_v1) {
+              baseSet.kv_store.storm_dismissed_continue_v1 = mergeJsonArrayByKey(
+                lSet.kv_store?.storm_dismissed_continue_v1,
+                mSet.kv_store?.storm_dismissed_continue_v1,
+                it => `${it.id || ''}_${it.tKey || ''}`
+              );
+            }
+            if (lSet.kv_store?.storm_toasted_achievements_v1 || mSet.kv_store?.storm_toasted_achievements_v1) {
+              baseSet.kv_store.storm_toasted_achievements_v1 = mergeJsonArrayByKey(
+                lSet.kv_store?.storm_toasted_achievements_v1,
+                mSet.kv_store?.storm_toasted_achievements_v1,
+                it => String(it)
+              );
+            }
+            finalSettingsJson = JSON.stringify(baseSet);
+          }
+        } catch (_) {}
         upsertUser.run(
           u.id,
           u.username,
@@ -207,7 +255,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           u.avatar,
           u.role || 'user',
           Number(u.created_at),
-          u.settings_json || '{}'
+          finalSettingsJson
         );
       }
     }
@@ -236,14 +284,27 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
         sqliteDb.prepare(`DELETE FROM bookmarks WHERE user_id NOT IN (${idList})`).run();
         sqliteDb.prepare(`DELETE FROM watch_history WHERE user_id NOT IN (${idList})`).run();
       }
-      const [upCacheCheck] = await (pool || activePool).query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'upcoming_stream_probe_v7'");
-      if (!upCacheCheck || upCacheCheck.length === 0) {
-        await (pool || activePool).query("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'");
-        sqliteDb.prepare("DELETE FROM media_cache WHERE source = 'stream_probe' OR cache_key LIKE 'catalog_v5_%' OR cache_key LIKE 'search_v3_%' OR cache_key LIKE 'details_v3_%'").run();
+      const [cwCheck] = await (pool || activePool).query("SELECT data_json FROM media_cache WHERE source = 'system' AND cache_key = 'continue_watching_10min_purge_v3'");
+      if (!cwCheck || cwCheck.length === 0) {
         await (pool || activePool).query(
-          "INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'upcoming_stream_probe_v7', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)",
+          "DELETE FROM watch_history WHERE time_seconds < 600 OR progress_percent >= 90 OR LOWER(title) LIKE '%крутой учитель онидзука%' OR LOWER(title) LIKE '%onizuka%' OR LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%' OR LOWER(title) LIKE '%обитель зла: мутация%' OR LOWER(title) LIKE '%повелитель тайн%' OR LOWER(title) LIKE '%монолог фармацевта%'"
+        );
+        await (pool || activePool).query(
+          "UPDATE watch_history SET real_watched_seconds = time_seconds WHERE time_seconds >= 600 AND COALESCE(real_watched_seconds, 0) < 600"
+        );
+        sqliteDb.prepare(
+          "DELETE FROM watch_history WHERE time_seconds < 600 OR progress_percent >= 90 OR LOWER(title) LIKE '%крутой учитель онидзука%' OR LOWER(title) LIKE '%onizuka%' OR LOWER(title) LIKE '%уличный боец%' OR LOWER(title) LIKE '%street fighter%' OR LOWER(title) LIKE '%обитель зла: мутация%' OR LOWER(title) LIKE '%повелитель тайн%' OR LOWER(title) LIKE '%монолог фармацевта%'"
+        ).run();
+        sqliteDb.prepare(
+          "UPDATE watch_history SET real_watched_seconds = time_seconds WHERE time_seconds >= 600 AND COALESCE(real_watched_seconds, 0) < 600"
+        ).run();
+        await (pool || activePool).query("DELETE FROM media_cache WHERE source = 'media_cast'");
+        sqliteDb.prepare("DELETE FROM media_cache WHERE source = 'media_cast'").run();
+        await (pool || activePool).query(
+          "INSERT INTO media_cache (source, cache_key, data_json, expires_at) VALUES ('system', 'continue_watching_10min_purge_v3', ?, ?) ON DUPLICATE KEY UPDATE data_json = VALUES(data_json)",
           [JSON.stringify({ purgedAt: now }), now + 86400000 * 3650]
         );
+        console.log('[MariaDB 10] Выполнена очистка Continue Watching (< 10 мин / завершенных / удаленных записей) и кэша актеров.');
       }
     } catch (_) {}
     const [mSessions] = await (pool || activePool).query('SELECT * FROM sessions WHERE expires_at > ?', [now]);
@@ -328,6 +389,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     // 4. Синхронизация кастомных списков и элементов
     const [mLists] = await (pool || activePool).query('SELECT * FROM custom_lists');
     if (mLists) {
+      const validListIds = new Set();
       const upsertList = sqliteDb.prepare(`
         INSERT INTO custom_lists (id, user_id, title, description, color, is_public, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -338,6 +400,8 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           is_public = excluded.is_public
       `);
       for (const l of mLists) {
+        if (validUserIds.size > 0 && !validUserIds.has(Number(l.user_id))) continue;
+        validListIds.add(Number(l.id));
         upsertList.run(l.id, l.user_id, l.title, l.description || '', l.color || '#00d2ff', l.is_public ? 1 : 0, Number(l.created_at));
       }
 
@@ -354,25 +418,94 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
             rating = excluded.rating
         `);
         for (const i of mItems) {
+          if (!validListIds.has(Number(i.list_id))) continue;
           upsertItem.run(i.id, i.list_id, String(i.media_id), i.source, i.title, i.poster_url || '', i.media_type || 'movie', i.year || '', i.rating || 0.0, Number(i.added_at));
         }
       }
     }
 
-    // 5. Синхронизация истории просмотров
+    // 5. Синхронизация истории просмотров (строго >= 600 сек реального времени, < 90%, без удаленных/просмотренных)
+    const normSyncTitle = (t) => String(t || '')
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/\s*[\(\[]?\s*(19\d\d|20\d\d|постер|4[kк]|uhd|сериал|фильм|\d+\s*сезон|сезон\s*\d+|часть\s*\d+|\d+\s*часть).*?[\)\]]?/gi, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .trim();
+
+    const excludedUserMedia = new Map(); // userId -> { ids: Set, titles: Set }
+    const getExclForUser = (uid) => {
+      const n = Number(uid);
+      if (!excludedUserMedia.has(n)) excludedUserMedia.set(n, { ids: new Set(), titles: new Set() });
+      return excludedUserMedia.get(n);
+    };
+    try {
+      const allB = sqliteDb.prepare('SELECT user_id, media_id, title, original_title, status FROM bookmarks').all();
+      for (const b of allB) {
+        const st = String(b.status || '').toLowerCase().trim();
+        if (['completed', 'watched', 'dropped', 'wont_watch', 'abandoned'].includes(st)) {
+          const ex = getExclForUser(b.user_id);
+          const idStr = String(b.media_id || '').trim();
+          if (idStr) {
+            ex.ids.add(idStr);
+            ex.ids.add(idStr.replace(/^[a-z]+_/, ''));
+          }
+          const tk = normSyncTitle(b.title) || normSyncTitle(b.original_title);
+          if (tk) ex.titles.add(tk);
+        }
+      }
+      const allU = sqliteDb.prepare('SELECT id, settings_json FROM users').all();
+      for (const u of allU) {
+        if (!u.settings_json) continue;
+        const sObj = JSON.parse(u.settings_json || '{}');
+        const rawD = sObj?.kv_store?.storm_dismissed_continue_v1;
+        if (rawD) {
+          const dArr = JSON.parse(rawD);
+          if (Array.isArray(dArr)) {
+            const ex = getExclForUser(u.id);
+            for (const d of dArr) {
+              if (!d) continue;
+              if (d.id) {
+                ex.ids.add(String(d.id).trim());
+                ex.ids.add(String(d.id).trim().replace(/^[a-z]+_/, ''));
+              }
+              if (d.tKey) ex.titles.add(String(d.tKey).trim());
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    const isHistoryRowInvalidOrDismissed = (h) => {
+      const tSec = Number(h.time_seconds) || 0;
+      const rSec = Number(h.real_watched_seconds ?? h.time_seconds) || 0;
+      const pct = Number(h.progress_percent) || 0;
+      if (tSec < 600 || rSec < 600 || pct >= 90) return true;
+      const ex = excludedUserMedia.get(Number(h.user_id));
+      if (ex) {
+        const mId = String(h.media_id || '').trim();
+        const mStripped = mId.replace(/^[a-z]+_/, '');
+        const tk = normSyncTitle(h.title);
+        if ((mId && ex.ids.has(mId)) || (mStripped && ex.ids.has(mStripped)) || (tk && ex.titles.has(tk))) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const [mHistory] = await (pool || activePool).query('SELECT * FROM watch_history');
     if (mHistory) {
       const upsertHist = sqliteDb.prepare(`
         INSERT INTO watch_history (
           user_id, media_id, source, title, poster_url, media_type, year,
-          season, episode, time_seconds, duration_seconds, progress_percent, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          season, episode, time_seconds, real_watched_seconds, duration_seconds, progress_percent, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
           title = excluded.title,
           poster_url = COALESCE(NULLIF(excluded.poster_url, ''), watch_history.poster_url),
           media_type = excluded.media_type,
           year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
           time_seconds = excluded.time_seconds,
+          real_watched_seconds = MAX(COALESCE(watch_history.real_watched_seconds, 0), excluded.real_watched_seconds),
           duration_seconds = excluded.duration_seconds,
           progress_percent = excluded.progress_percent,
           updated_at = excluded.updated_at
@@ -381,6 +514,14 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
 
       const mHistMap = new Map();
       for (const h of mHistory) {
+        if (validUserIds.size > 0 && !validUserIds.has(Number(h.user_id))) continue;
+        if (isHistoryRowInvalidOrDismissed(h)) {
+          mariaDeleteWatchHistory(h.user_id, String(h.media_id), h.title);
+          try {
+            sqliteDb.prepare('DELETE FROM watch_history WHERE user_id = ? AND media_id = ?').run(h.user_id, String(h.media_id));
+          } catch (_) {}
+          continue;
+        }
         const key = `${h.user_id}_${String(h.media_id)}_${h.source}_${h.season || 1}_${h.episode || 1}`;
         mHistMap.set(key, Number(h.updated_at) || 0);
         upsertHist.run(
@@ -394,19 +535,26 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           h.season || 1,
           h.episode || 1,
           h.time_seconds || 0,
+          Number(h.real_watched_seconds ?? h.time_seconds) || 0,
           h.duration_seconds || 0,
           h.progress_percent || 0.0,
           Number(h.updated_at)
         );
       }
 
-      // Передаем локальную историю в MariaDB, если её там ещё нет или она свежее
+      // Передаем локальную историю в MariaDB только если она валидна, не удалена и свежее
       const localHist = sqliteDb.prepare('SELECT * FROM watch_history').all();
       for (const lh of localHist) {
         if (validUserIds.size > 0 && !validUserIds.has(Number(lh.user_id))) continue;
+        if (isHistoryRowInvalidOrDismissed(lh)) {
+          try {
+            sqliteDb.prepare('DELETE FROM watch_history WHERE id = ?').run(lh.id);
+          } catch (_) {}
+          continue;
+        }
         const key = `${lh.user_id}_${String(lh.media_id)}_${lh.source}_${lh.season || 1}_${lh.episode || 1}`;
         const mUpdated = mHistMap.get(key);
-        if (mUpdated === undefined || (Number(lh.updated_at) || 0) > mUpdated) {
+        if ((mUpdated !== undefined && (Number(lh.updated_at) || 0) > mUpdated) || (mUpdated === undefined && (Number(lh.updated_at) || 0) > now - 30000)) {
           mariaSaveWatchHistory(lh);
         }
       }
@@ -662,12 +810,13 @@ export function mariaSaveWatchHistory(h) {
   return enqueueMariaDbWrite(
     `INSERT INTO watch_history (
        user_id, media_id, source, title, poster_url, media_type, year,
-       season, episode, time_seconds, duration_seconds, progress_percent, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       season, episode, time_seconds, real_watched_seconds, duration_seconds, progress_percent, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        media_type = VALUES(media_type),
        year = COALESCE(NULLIF(VALUES(year), ''), watch_history.year),
        time_seconds = VALUES(time_seconds),
+       real_watched_seconds = GREATEST(COALESCE(watch_history.real_watched_seconds, 0), VALUES(real_watched_seconds)),
        duration_seconds = VALUES(duration_seconds),
        progress_percent = VALUES(progress_percent),
        updated_at = VALUES(updated_at)`,
@@ -682,6 +831,7 @@ export function mariaSaveWatchHistory(h) {
       h.season || 1,
       h.episode || 1,
       h.time_seconds || 0,
+      Number(h.real_watched_seconds ?? h.time_seconds) || 0,
       h.duration_seconds || 0,
       h.progress_percent || 0.0,
       h.updated_at || Date.now()

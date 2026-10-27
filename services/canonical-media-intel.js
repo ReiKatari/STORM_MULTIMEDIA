@@ -1062,32 +1062,62 @@ const PROTECTED_NUMBER_TITLES = [
   'токио 24-й район', 'tokyo 24th ward',
   'гандам 00', 'gundam 00',
   'вавилон 5', 'babylon 5',
-  '1984', '2012', '1917', '9', '300', '24'
+  'ранма 1/2', 'ранма ½', 'ranma 1/2', 'ranma ½',
+  '9-1-1', '1984', '2012', '1917', '9', '300', '24'
 ];
 
-export function extractSeasonNumberFromTitle(rawTitle = '', isSeriesHint = false) {
-  if (!rawTitle) return 1;
-  const s = String(rawTitle).trim();
-  if (/(?:зв[её]здные\s+войны\s*:\s*видени[яе]|star\s+wars\s*:\s*visions).*(?:девятый\s+джедай|ninth\s+jedi)/i.test(s)) {
+export function extractSeasonNumberFromTitle(rawTitle = '', isSeriesHint = true, rawOrigTitle = '') {
+  const combined = `${rawTitle || ''} ${rawOrigTitle || ''}`.trim();
+  if (!combined) return 1;
+  if (/(?:зв[её]здные\s+войны\s*:\s*видени[яе]|star\s+wars\s*:\s*visions).*(?:девятый\s+джедай|ninth\s+jedi)/i.test(combined)) {
     return 4;
   }
-  const mExplicit = s.match(/(?:\[|\(|\b)(?:тв|tv)[\s-]*(\d{1,2})(?:\]|\)|\b)/i)
-    || s.match(/(\d{1,2})\s*(?:-?[йяе]|ый|ой)?\s*сезон/i)
-    || s.match(/сезон\s*(\d{1,2})/i)
-    || s.match(/\bseason\s*(\d{1,2})\b/i)
-    || s.match(/\bvolume\s*(\d{1,2})\b/i)
-    || s.match(/\b(\d{1,2})(?:nd|rd|th)\s+season\b/i);
-  if (mExplicit) {
-    const n = parseInt(mExplicit[1], 10);
-    if (n >= 1 && n <= 20) return n;
+
+  for (const src of [String(rawTitle || '').trim(), String(rawOrigTitle || '').trim()]) {
+    if (!src) continue;
+    const mExplicit = src.match(/(?:\[|\(|\b)(?:тв|tv)[\s-]*(\d{1,2})(?:\]|\)|\b)/i)
+      || src.match(/(\d{1,2})\s*(?:-?[йяе]|ый|ой)?\s*сезон/i)
+      || src.match(/сезон\s*(\d{1,2})/i)
+      || src.match(/\bseason\s*(\d{1,2})\b/i)
+      || src.match(/\bvolume\s*(\d{1,2})\b/i)
+      || src.match(/\b(\d{1,2})(?:nd|rd|th)\s+season\b/i)
+      || (/\bsecond\s+season\b/i.test(src) ? [null, '2'] : null)
+      || (/\bthird\s+season\b/i.test(src) ? [null, '3'] : null)
+      || (/\bfourth\s+season\b/i.test(src) ? [null, '4'] : null)
+      || (/\bfifth\s+season\b/i.test(src) ? [null, '5'] : null);
+    if (mExplicit && mExplicit[1]) {
+      const n = parseInt(mExplicit[1], 10);
+      if (n >= 1 && n <= 20) return n;
+    }
   }
+
   if (isSeriesHint) {
-    const mTrail = s.match(/^(.+?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*(?:часть|part|сезон|season|арка).*)?$/i);
-    if (mTrail) {
-      const candidateFull = s.toLowerCase().replace(/ё/g, 'е').trim();
-      if (!PROTECTED_NUMBER_TITLES.includes(candidateFull)) {
-        return parseInt(mTrail[2], 10) || 1;
+    for (const src of [String(rawTitle || '').trim(), String(rawOrigTitle || '').trim()]) {
+      if (!src) continue;
+      const noYear = src
+        .replace(/\s*[\(\[]\s*(?:19|20)\d{2}\s*[\)\]]/g, '')
+        .replace(/(?:[:.\-–—/|•]|\s+)(?:часть|part|cour)\s*\d+\s*$/i, '')
+        .trim();
+      const lowerFull = noYear.toLowerCase().replace(/ё/g, 'е').replace(/\s{2,}/g, ' ').trim();
+      if (PROTECTED_NUMBER_TITLES.includes(lowerFull)) continue;
+
+      const mNumBeforeSub = noYear.match(/^(.{2,}?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*.+)?$/i);
+      if (mNumBeforeSub) {
+        const baseCand = mNumBeforeSub[1].toLowerCase().replace(/ё/g, 'е').replace(/\s{2,}/g, ' ').trim();
+        if (!PROTECTED_NUMBER_TITLES.includes(`${baseCand} ${mNumBeforeSub[2]}`)) {
+          const n = parseInt(mNumBeforeSub[2], 10);
+          if (n >= 2 && n <= 12) return n;
+        }
       }
+
+      const mPart = src.match(/(?:[:.\-–—/|•]|\s+)(?:часть|part|cour)\s*([2-9])\b/i);
+      if (mPart) {
+        return parseInt(mPart[1], 10) || 2;
+      }
+      if (/(?:[:.\-–—/|•]|\s+)(?:акт|act)\s*(?:ii|2)\b/i.test(src)) return 2;
+      if (/(?:[:.\-–—/|•]|\s+)(?:акт|act)\s*(?:iii|3)\b/i.test(src)) return 3;
+      if (/\s+iii$/i.test(noYear)) return 3;
+      if (/\s+ii$/i.test(noYear)) return 2;
     }
   }
   return 1;
@@ -1114,33 +1144,44 @@ export function normalizeAnimeFranchiseTitle(rawTitle = '', isAnimeOrSeries = tr
     return s.replace(/\s{2,}/g, ' ').trim();
   }
 
-  // 1. Удаляем явные пометки сезона/части в скобках и без скобок: [ТВ-2], (2 сезон), Season 2, 2nd Season
-  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+|арка\s*[^\)\]]+)\s*[\)\]]/gi, '');
-  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
-  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:сезон|season|cour)\s*\d+$/gi, '');
-  s = s.replace(/\s+x([2-5])$/gi, '');
+  // Удаляем год в скобках внутри аниме-сериала (например: «Ранма 1/2 (2024) 3»)
+  s = s.replace(/\s*[\(\[]\s*(?:19|20)\d{2}\s*[\)\]]/g, '');
+
+  // 1. Удаляем явные пометки сезона/части/акта/арки в скобках и без скобок (в 2 прохода для составных суффиксов вида «2nd Season Part 2»)
+  for (let pass = 0; pass < 2; pass++) {
+    s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|(?:second|third|fourth|fifth)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+|арка\s*[^\)\]]+)\s*[\)\]]/gi, '');
+    s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season|(?:second|third|fourth|fifth)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+    s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:сезон|season|cour|часть|part)\s*\d+(?:\s*[:.\-–—/|•].*)?$/gi, '');
+    s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:акт|act)\s*(?:i{1,3}|iv|[1-5])(?:\s+\d+)?(?:\s*[:.\-–—/|•].*)?$/gi, '');
+    s = s.replace(/\s*:\s*(?:арка\s+.+|финал|the\s+final\s+season|santen\s+sensou-hen|восстаньте\s+из\s+тени)$/gi, '');
+    s = s.replace(/\s+x([2-5])$/gi, '');
+  }
 
   // 2. Проверяем защищённые названия с числом, после которых идёт ещё одна цифра сезона
-  const lowerClean = s.toLowerCase().replace(/ё/g, 'е').trim();
+  const lowerClean = s.toLowerCase().replace(/ё/g, 'е').replace(/\s{2,}/g, ' ').trim();
   for (const prot of PROTECTED_NUMBER_TITLES) {
     if (lowerClean === prot) {
       return s.replace(/\s{2,}/g, ' ').trim();
     }
-    const protRegex = new RegExp(`^(${prot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(?:[2-9]|1[0-2])(?:\\s*[:.\\-–—].*)?$`, 'i');
+    const protRegex = new RegExp(`^(${prot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(?:[2-9]|1[0-2]|ii|iii|iv)(?:\\s*[:.\\-–—].*)?$`, 'i');
     const mProt = s.match(protRegex);
     if (mProt) {
       return mProt[1].trim();
     }
   }
 
-  // 3. Удаляем хвостовой номер ТОЛЬКО если за ним явно следует маркер сезона/арки (сохраняя сиквелы вроде «Вышка 2»)
-  const mSeasonSuffix = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(?:сезон|season|арка|cour).*$/i);
-  if (mSeasonSuffix) {
-    const basePart = mSeasonSuffix[1].trim();
-    const fullLower = s.toLowerCase().replace(/ё/g, 'е').trim();
+  // 3. Аниме-сериалы идут строго по сезонам, а не по частям: удаляем хвостовой номер сезона (2..12) в конце названия или перед подзаголовком
+  const mSeasonWithSub = s.match(/^(.{2,}?)\s+([2-9]|1[0-2])(?:\s*[:.\-–—]\s*.+)?$/i);
+  if (mSeasonWithSub) {
+    const basePart = mSeasonWithSub[1].trim();
+    const fullLower = s.toLowerCase().replace(/ё/g, 'е').replace(/\s{2,}/g, ' ').trim();
     if (!PROTECTED_NUMBER_TITLES.includes(fullLower) && basePart.length >= 2) {
       s = basePart;
     }
+  }
+
+  if (/^ао\s+аси$/i.test(s)) {
+    return 'Аой Ашито';
   }
 
   s = s.replace(/[-–—/|•:]\s*$/, '').trim();

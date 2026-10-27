@@ -46,7 +46,7 @@ function formatAnimeRelease(rel) {
   const isMov = rel.category?.name === 'Фильм';
   const cleanTitle = isMov ? title.trim() : (normalizeAnimeFranchiseTitle(title.trim(), true) || title.trim());
   const cleanOrig = isMov ? origTitle.trim() : (normalizeAnimeFranchiseTitle(origTitle.trim(), true) || origTitle.trim());
-  const detectedSeason = isMov ? 1 : extractSeasonNumberFromTitle(title);
+  const detectedSeason = isMov ? 1 : extractSeasonNumberFromTitle(title, true, origTitle);
   const poster = rawPoster
     ? `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}&title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(cleanOrig)}`
     : 'assets/favicon.svg';

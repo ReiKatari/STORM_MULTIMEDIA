@@ -735,9 +735,14 @@ export function removeFromLocalContinueWatching(mediaId, title = '', source = ''
     const cleanId = String(mediaId || '').trim();
 
     setDismissedFromContinueWatching(cleanId, title, true);
-
+    if (typeof window !== 'undefined' && typeof window.cancelStormWatchProgressQueue === 'function') {
+      try { window.cancelStormWatchProgressQueue(cleanId, title); } catch {}
+    }
     if (cleanId) {
-      try { localStorage.removeItem(`storm_resume_state_${cleanId}`); } catch {}
+      try {
+        localStorage.removeItem(`storm_resume_state_${cleanId}`);
+        localStorage.removeItem(`storm_real_watchtime_${cleanId}`);
+      } catch {}
     }
     if (tKey) {
       try { localStorage.removeItem(`storm_resume_state_title_${tKey}`); } catch {}
@@ -1428,17 +1433,18 @@ export function getLocalContinueWatching() {
 
       // 3. Если прогресс 90% или более и это фильм, считается просмотренным
       const pct = typeof item.progress_percent === 'number' ? item.progress_percent : 0;
-      const cleanType = detectClientMediaType(item);
-      const isMovie = cleanType === 'movie' || cleanType === 'anime-movie' || cleanType === 'cartoon';
-      if (pct >= 90 && isMovie) {
+      if (pct >= 90) {
         hasChanges = true;
         return false;
       }
 
       const sec = typeof item.time_seconds === 'number' ? item.time_seconds : 0;
-      const ep = parseInt(item.episode, 10) || 1;
-      const sNum = parseInt(item.season, 10) || 1;
-      return (pct >= 0.5 && sec >= 10) || (sec >= 15) || (pct >= 3.0) || (ep > 1) || (sNum > 1);
+      const realSec = typeof item.real_watched_seconds === 'number' ? item.real_watched_seconds : sec;
+      if (sec < 600 || realSec < 600) {
+        hasChanges = true;
+        return false;
+      }
+      return true;
     }).map(item => {
       const cleanType = detectClientMediaType(item);
       const cleanYr = detectClientYear(item);
@@ -1544,12 +1550,11 @@ export function saveLocalWatchProgress(data) {
     }
   }
 
-  if (pct < 0.5 && sec < 10 && ep <= 1 && s <= 1) return;
+  const realSec = typeof data.real_watched_seconds === 'number' ? data.real_watched_seconds : 0;
+  if (realSec < 600 || sec < 600) return;
 
   try {
-    if (sec >= 15 || pct >= 3) {
-      setDismissedFromContinueWatching(data.media_id, cleanTitle, false);
-    }
+    setDismissedFromContinueWatching(data.media_id, cleanTitle, false);
     const list = getLocalContinueWatching();
     const now = Date.now();
     const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
@@ -1567,6 +1572,7 @@ export function saveLocalWatchProgress(data) {
       total_episodes: totalEp || 1,
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: sec,
+      real_watched_seconds: realSec,
       progress_percent: isSeries ? seriesOverallPercent : pct,
       episode_progress_percent: pct,
       series_progress_percent: seriesOverallPercent,
@@ -1597,6 +1603,10 @@ export function saveLocalWatchProgress(data) {
 
 export async function syncWatchProgress(data) {
   if (!data) return;
+  const realSec = Number(data.real_watched_seconds || 0);
+  const timeSec = Number(data.time_seconds ?? data.progress_seconds ?? 0);
+  const pct = Number(data.progress_percent || 0);
+  if ((realSec < 600 || timeSec < 600) && pct < 90) return;
   // Всегда сохраняем локально, гарантируя фиксацию для гостей и локального режима
   saveLocalWatchProgress(data);
 
@@ -1675,6 +1685,9 @@ export async function fetchContinueWatching() {
         item.bookmark_status === 'dropped' || item.user_status === 'dropped' || item.status === 'dropped' ||
         item.bookmark_status === 'wont_watch' || item.user_status === 'wont_watch' || item.status === 'wont_watch') return false;
     if (item.progress_percent && item.progress_percent >= 90) return false;
+    const sec = Number(item.time_seconds || 0);
+    const realSec = Number(item.real_watched_seconds ?? item.time_seconds ?? 0);
+    if (sec < 600 || realSec < 600) return false;
     return true;
   }).map(item => {
     const s = parseInt(item.season, 10) || 1;

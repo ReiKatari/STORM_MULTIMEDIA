@@ -168,6 +168,7 @@ import {
   resolveCanonicalMediaType,
   resolveCanonicalYear,
   normalizeAnimeFranchiseTitle,
+  extractSeasonNumberFromTitle,
   resolveCanonicalGenres,
   resolveCanonicalSeriesSeasonsCount,
   isTrailerMedia,
@@ -1473,10 +1474,18 @@ try {
   }
 } catch {}
 
+const inflightImageFetches = new Map();
+
 function isPlaceholderImage(url) {
   if (!url || typeof url !== 'string') return true;
   const lower = url.toLowerCase();
   return lower.includes('missing') || lower.includes('404') || lower.includes('placeholder') || lower.includes('default') || lower.includes('favicon.svg');
+}
+
+function hasDirectPosterUrl(url) {
+  if (!url || typeof url !== 'string' || isPlaceholderImage(url)) return false;
+  const unwrapped = normalizeImageUrl(url);
+  return Boolean(unwrapped && unwrapped.startsWith('http') && !isPlaceholderImage(unwrapped));
 }
 
 function normalizeImageUrl(url) {
@@ -1484,7 +1493,19 @@ function normalizeImageUrl(url) {
   let clean = url.trim();
 
   // Разворачиваем вложенные или экранированные ссылки прокси
-  while (clean.includes('/api/media/image-proxy')) {
+  while (clean.includes('/api/media/image-proxy') || clean.includes('/api/proxy/image')) {
+    const match = clean.match(/[?&]url=([^&]+)/);
+    if (match) {
+      try {
+        clean = decodeURIComponent(match[1]);
+      } catch {
+        clean = match[1];
+      }
+    } else {
+      return '';
+    }
+  }
+  while (clean.includes('wsrv.nl/?url=') || clean.includes('images.weserv.nl/?url=')) {
     const match = clean.match(/[?&]url=([^&]+)/);
     if (match) {
       try {
@@ -1498,6 +1519,9 @@ function normalizeImageUrl(url) {
   }
 
   if (clean.startsWith('//')) clean = `https:${clean}`;
+  if (clean.includes('shikimori.one/')) {
+    clean = clean.replace('shikimori.one/', 'shikimori.io/');
+  }
 
   // Поддержка как коротких кодов static.anixart.tv, так и UUID-постеров s3.anixmirai.com с обязательным расширением .jpg
   const anixMatch = clean.match(/(?:s\d*\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
@@ -1517,43 +1541,56 @@ function normalizeImageUrl(url) {
   return clean;
 }
 
-async function fetchImageBuffer(url, timeoutMs = 5000) {
+async function fetchImageBuffer(url, timeoutMs = 6500) {
   if (!url || isPlaceholderImage(url)) return null;
 
   const normalized = normalizeImageUrl(url);
+  if (!normalized || isPlaceholderImage(normalized)) return null;
   if (imageBinaryCache.has(normalized)) {
     return imageBinaryCache.get(normalized);
   }
+  if (inflightImageFetches.has(normalized)) {
+    return await inflightImageFetches.get(normalized);
+  }
 
-  const candidateUrls = [];
-  if (normalized.includes('image.tmdb.org') || normalized.includes('anixmirai.com') || normalized.includes('anixsekai.com')) {
-    // В РФ image.tmdb.org и s3.anixmirai.com блокируются напрямую (таймаут 5с).
-    // Высокоскоростные CDN-зеркала wsrv.nl и images.weserv.nl отдают оригинальные постеры за < 90 мс!
-    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
-    candidateUrls.push(`https://images.weserv.nl/?url=${encodeURIComponent(normalized)}`);
-    candidateUrls.push(normalized);
-  } else {
-    candidateUrls.push(normalized);
-    if (normalized.startsWith('http') && !normalized.includes('liftw.ws') && !normalized.includes('lateremb.ws')) {
+  const taskPromise = (async () => {
+    const candidateUrls = [];
+    const isAniLibriaHost = normalized.includes('anilibria.top') || normalized.includes('aniliberty.top') || normalized.includes('anilibria.wtf');
+    if (normalized.includes('image.tmdb.org') || normalized.includes('anixmirai.com') || normalized.includes('anixsekai.com')) {
       candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
+      candidateUrls.push(`https://images.weserv.nl/?url=${encodeURIComponent(normalized)}`);
+      candidateUrls.push(normalized);
+    } else if (isAniLibriaHost) {
+      candidateUrls.push(normalized);
+      if (normalized.includes('anilibria.top')) {
+        candidateUrls.push(normalized.replace('anilibria.top', 'aniliberty.top'));
+      } else if (normalized.includes('aniliberty.top')) {
+        candidateUrls.push(normalized.replace('aniliberty.top', 'anilibria.top'));
+      }
+    } else {
+      candidateUrls.push(normalized);
+      if (normalized.startsWith('http') && !normalized.includes('liftw.ws') && !normalized.includes('lateremb.ws')) {
+        candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
+      }
     }
-  }
 
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-  };
-  if (normalized.includes('anixart') || normalized.includes('anixmirai')) {
-    headers['User-Agent'] = 'AnixartApp/8.2.1';
-    headers['Referer'] = 'https://anixart.tv/';
-  } else if (normalized.includes('shikimori')) {
-    headers['User-Agent'] = 'STORM-MULTIMEDIA/1.0';
-    headers['Referer'] = 'https://shikimori.one/';
-  } else if (normalized.includes('fanfilm4k')) {
-    headers['Referer'] = 'https://v17.fanfilm4k.media/';
-    headers['Origin'] = 'https://v17.fanfilm4k.media';
-  } else if (normalized.includes('tmdb.org')) {
-    headers['Referer'] = 'https://www.themoviedb.org/';
-  }
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    };
+    if (normalized.includes('anixart') || normalized.includes('anixmirai')) {
+      headers['User-Agent'] = 'AnixartApp/8.2.1';
+      headers['Referer'] = 'https://anixart.tv/';
+    } else if (isAniLibriaHost) {
+      headers['Referer'] = 'https://anilibria.top/';
+    } else if (normalized.includes('shikimori')) {
+      headers['User-Agent'] = 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)';
+      headers['Referer'] = 'https://shikimori.io/';
+    } else if (normalized.includes('fanfilm4k')) {
+      headers['Referer'] = 'https://v17.fanfilm4k.media/';
+      headers['Origin'] = 'https://v17.fanfilm4k.media';
+    } else if (normalized.includes('tmdb.org')) {
+      headers['Referer'] = 'https://www.themoviedb.org/';
+    }
 
   for (const candidate of candidateUrls) {
     try {
@@ -1608,7 +1645,54 @@ async function fetchImageBuffer(url, timeoutMs = 5000) {
       }
     } catch {}
   }
+
+  // Если прямая ссылка на постер релиза AniLibria устарела (сменился хэш файла), запрашиваем актуальный постер по ID релиза
+  const libriaIdMatch = normalized.match(/\/releases\/posters\/(\d+)\//i);
+  if (libriaIdMatch) {
+    try {
+      const relId = libriaIdMatch[1];
+      const apiRes = await fetch(`https://anilibria.top/api/v1/anime/releases/${relId}`, {
+        headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0' },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (apiRes.ok) {
+        const relData = await apiRes.json();
+        const freshPath = relData?.poster?.optimized?.src || relData?.poster?.src || relData?.poster?.preview;
+        if (freshPath) {
+          const freshUrl = freshPath.startsWith('http') ? freshPath : `https://anilibria.top${freshPath}`;
+          if (freshUrl !== normalized) {
+            const freshRes = await fetch(freshUrl, { headers, signal: AbortSignal.timeout(4500) });
+            if (freshRes.ok) {
+              let buffer = Buffer.from(await freshRes.arrayBuffer());
+              if (buffer.length > 100) {
+                let contentType = freshRes.headers.get('content-type') || 'image/jpeg';
+                if (sharp) {
+                  try {
+                    buffer = await sharp(buffer).webp({ quality: 82, effort: 3 }).toBuffer();
+                    contentType = 'image/webp';
+                  } catch {}
+                }
+                const item = { buffer, contentType };
+                imageBinaryCache.set(normalized, item);
+                imageBinaryCache.set(freshUrl, item);
+                return item;
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
   return null;
+  })();
+
+  inflightImageFetches.set(normalized, taskPromise);
+  try {
+    return await taskPromise;
+  } finally {
+    inflightImageFetches.delete(normalized);
+  }
 }
 
 async function resolveAnimePosterBuffer(title, orig) {
@@ -1644,14 +1728,16 @@ async function resolveAnimePosterBuffer(title, orig) {
 
   const titleBeforeColon = cleanTitle.includes(':') ? cleanTitle.split(':')[0].trim() : (cleanTitle.includes('.') ? cleanTitle.split('.')[0].trim() : '');
   const origBeforeColon = cleanOrig.includes(':') ? cleanOrig.split(':')[0].trim() : (cleanOrig.includes('.') ? cleanOrig.split('.')[0].trim() : '');
+  const shortTitlePrefix = cleanTitle.split(/\s+/).length >= 5 ? cleanTitle.split(/\s+/).slice(0, 4).join(' ') : '';
   const searchTerms = [...new Set([
     cleanTitle,
     titleNoSeason,
     titleBeforeColon,
+    shortTitlePrefix.length >= 16 ? shortTitlePrefix : '',
     cleanOrig,
     origNoSeason,
     origBeforeColon
-  ].filter(t => t && t.length >= 2))].slice(0, 4);
+  ].filter(t => t && t.length >= 2))].slice(0, 5);
 
   const matchesRequestedTitle = (candRu, candOrig) => {
     const normCandRu = normPosterKey(normalizeAnimeFranchiseTitle(candRu || '', true) || candRu);
@@ -1663,6 +1749,28 @@ async function resolveAnimePosterBuffer(title, orig) {
     }
     return false;
   };
+
+  // Каскад 0: Поиск в AniLibria (официальные постеры релизов в высоком разрешении)
+  const shortTitleWords = cleanTitle.split(/\s+/).slice(0, 4).join(' ');
+  const libriaTerms = [...new Set([cleanTitle, titleNoSeason, titleBeforeColon, shortTitleWords, cleanOrig, origNoSeason].filter(t => t && t.length >= 2))].slice(0, 4);
+  for (const term of libriaTerms) {
+    try {
+      const libRes = await searchAniLibria(term);
+      if (libRes?.items?.length > 0) {
+        for (const it of libRes.items.slice(0, 5)) {
+          if (!matchesRequestedTitle(it.title, it.original_title) && !matchesRequestedTitle(it.raw_release_title || '', it.original_title)) continue;
+          const pUrl = normalizeImageUrl(it.poster);
+          if (pUrl && !isPlaceholderImage(pUrl)) {
+            const img = await fetchImageBuffer(pUrl, 5000);
+            if (img) {
+              setCache('anime_covers', cacheKey, pUrl, 86400 * 30);
+              return img;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
 
   // Каскад 1: Поиск в AniXart (прямой официальный постер релиза на static.anixart.tv)
   for (const term of [cleanTitle, cleanOrig].filter(Boolean)) {
@@ -2062,7 +2170,8 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
 
     res.status(200);
     res.set('Content-Type', 'image/svg+xml; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.set('Pragma', 'no-cache');
     return res.send(svgPoster);
   } catch {
     if (faviconBuffer) {
@@ -2669,7 +2778,9 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
     items = items.filter(i => i && !isTrailerMedia(i)).map(i => {
       const preType = resolveCanonicalMediaType(i.title, i.link || i.url || '', normCategory, i.genres || '', i);
       const isAnimeOrSer = preType === 'anime-series' || preType === 'series' || preType === 'cartoon-series';
+      const detectedSeason = isAnimeOrSer ? (i.detected_season || extractSeasonNumberFromTitle(i.raw_release_title || i.title || '', true, i.original_title || '')) : 1;
       const cleanItemTitle = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(i.title, true) || i.title) : i.title;
+      const cleanOrigTitle = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(i.original_title || '', true) || i.original_title || '') : (i.original_title || '');
       const yr = resolveCanonicalYear(cleanItemTitle, i.link || i.url || '', i.poster || '', i.premiere || i.release_date, i.year);
       const genres = resolveCanonicalGenres(cleanItemTitle, normCategory, i.description || '', i.genres);
       const mediaType = resolveCanonicalMediaType(cleanItemTitle, i.link || i.url || '', normCategory, genres, i);
@@ -2683,6 +2794,8 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       return {
         ...i,
         title: cleanItemTitle,
+        original_title: cleanOrigTitle,
+        detected_season: detectedSeason,
         year: String(yr),
         genres,
         media_type: mediaType,
@@ -2740,8 +2853,8 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         const prev = catalogDedupMap.get(k);
         const combined4k = prev.fanfilm_4k_url || resolved4k || null;
         const combinedLift = prev.lift_id || item.lift_id || null;
-        const prevHasRealPoster = Boolean(prev.poster && !isPlaceholderImage(prev.poster));
-        const itemHasRealPoster = Boolean(item.poster && !isPlaceholderImage(item.poster));
+        const prevHasRealPoster = hasDirectPosterUrl(prev.poster);
+        const itemHasRealPoster = hasDirectPosterUrl(item.poster);
         const preferNew = (item.source === 'tmdb' && prev.source !== 'tmdb' && itemHasRealPoster) || (!prevHasRealPoster && itemHasRealPoster);
         const merged = preferNew ? { ...prev, ...item } : { ...item, ...prev };
         merged.fanfilm_4k_url = combined4k;
@@ -2842,6 +2955,19 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
     calculatedTotalPages = Math.max(1, Math.ceil(totalItems / Math.max(20, items.length)));
   } else {
     calculatedTotalPages = 50;
+  }
+
+  // Неблокирующий фоновый предпрогрев обложек первой витрины в RAM (imageBinaryCache)
+  if (Array.isArray(items) && items.length > 0) {
+    setImmediate(async () => {
+      const topPosters = items
+        .slice(0, 20)
+        .map(it => normalizeImageUrl(it.poster))
+        .filter(u => u && u.startsWith('http') && !imageBinaryCache.has(u));
+      for (let idx = 0; idx < topPosters.length; idx += 4) {
+        await Promise.allSettled(topPosters.slice(idx, idx + 4).map(u => fetchImageBuffer(u, 5500)));
+      }
+    });
   }
 
   return {
@@ -5598,8 +5724,26 @@ app.get('/api/media/soundtrack', async (req, res) => {
 // 4.9 АКТЕРСКИЙ СОСТАВ И СЪЕМОЧНАЯ ГРУППА (CAST & CREW API)
 // ==========================================
 async function resolveCastForMedia(source, id, title = '', origTitle = '', year = '', mediaType = '', rawActors = '') {
-  let cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|[\d]{4}).*?[\)\]]?/gi, '').trim();
-  const cacheKey = `cast_${source || 'tmdb'}_${id || ''}_${cleanTitle.toLowerCase()}`;
+  let cleanTitle = (title || '').replace(/\s*[\(\[]?\s*(постер|4[kк]|сериал|фильм|\d+\s*сезон|сезон\s*\d+|часть\s*\d+|\d+\s*часть|[\d]{4}).*?[\)\]]?/gi, '').trim();
+  const normCastTitle = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s*[\(\[]?\s*(?:постер|4[kк]|uhd|сериал|фильм|аниме|\d+\s*сезон|сезон\s*\d+|часть\s*\d+|\d+\s*часть|19\d\d|20\d\d).*?[\)\]]?/gi, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim();
+  const targetNormRu = normCastTitle(cleanTitle);
+  const targetNormOrig = normCastTitle(origTitle);
+  const titlesMatchStrict = (candTitle, candOrig = '') => {
+    const cRu = normCastTitle(candTitle);
+    const cOrig = normCastTitle(candOrig);
+    if (targetNormRu && cRu && (cRu === targetNormRu || (cRu.length >= 5 && targetNormRu.length >= 5 && (cRu.includes(targetNormRu) || targetNormRu.includes(cRu))))) return true;
+    if (targetNormOrig && cOrig && (cOrig === targetNormOrig || (cOrig.length >= 5 && targetNormOrig.length >= 5 && (cOrig.includes(targetNormOrig) || targetNormOrig.includes(cOrig))))) return true;
+    if (targetNormRu && cOrig && cOrig === targetNormRu) return true;
+    if (targetNormOrig && cRu && cRu === targetNormOrig) return true;
+    return false;
+  };
+
+  const cacheKey = `cast_v2_${source || 'tmdb'}_${id || ''}_${cleanTitle.toLowerCase()}`;
   const cached = getCache('media_cast', cacheKey);
   if (cached && cached.cast && cached.cast.length > 0) return cached;
 
@@ -5646,16 +5790,31 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
   }
 
   // 3. Если источник аниме (shikimori, anixart, anilibria)
-  if (cast.length === 0 && (source === 'shikimori' || source === 'anixart' || source === 'anilibria' || mediaType === 'anime-series' || mediaType === 'anime-movies')) {
+  const isAnimeRequest = source === 'shikimori' || source === 'anixart' || source === 'anilibria' || String(id).startsWith('shiki_') || String(mediaType).includes('anime');
+  if (cast.length === 0 && isAnimeRequest) {
     try {
-      let shikimoriId = source === 'shikimori' ? id : null;
-      if (!shikimoriId && cleanTitle) {
-        const sRes = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(cleanTitle)}&limit=1`, {
-          headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
-        });
-        if (sRes.ok) {
-          const list = await sRes.json();
-          if (Array.isArray(list) && list[0]?.id) shikimoriId = list[0].id;
+      let shikimoriId = (source === 'shikimori' || String(id).startsWith('shiki_'))
+        ? String(id || '').replace(/^shiki_/i, '').trim()
+        : null;
+      if (shikimoriId && !/^\d+$/.test(shikimoriId)) {
+        shikimoriId = null;
+      }
+      if (!shikimoriId && (cleanTitle || origTitle)) {
+        const shikiQueries = [cleanTitle, origTitle].filter(Boolean);
+        for (const sq of shikiQueries) {
+          const sRes = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(sq)}&limit=5`, {
+            headers: { 'User-Agent': 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)' }
+          });
+          if (sRes.ok) {
+            const list = await sRes.json();
+            if (Array.isArray(list) && list.length > 0) {
+              const exact = list.find(a => titlesMatchStrict(a.russian || '', a.name || '')) || list[0];
+              if (exact?.id) {
+                shikimoriId = exact.id;
+                break;
+              }
+            }
+          }
         }
       }
 
@@ -5689,7 +5848,7 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
     } catch {}
   }
 
-  // 4. Поиск в TMDB по названию (для FanFilm4K, Kinobox, Kodik и др.)
+  // 4. Поиск в TMDB по названию (только при строгом совпадении названия, чтобы не подставлять чужой фильм)
   if (cast.length === 0 && (cleanTitle || origTitle)) {
     try {
       const searchQueries = [];
@@ -5701,15 +5860,19 @@ async function resolveCastForMedia(source, id, title = '', origTitle = '', year 
         const searchRes = await searchTmdb(query, 1);
         if (searchRes?.items?.length > 0) {
           const isWantTv = mediaType === 'series' || mediaType === 'tv' || mediaType === 'cartoon-series' || mediaType === 'anime-series';
-          let match = (searchRes.items || []).find(it => {
+          const matchingItems = (searchRes.items || []).filter(it => titlesMatchStrict(it.title || '', it.original_title || ''));
+          let match = matchingItems.find(it => {
             const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
             return isWantTv ? itIsTv : !itIsTv;
           });
-          if (!match) match = searchRes.items[0];
+          if (!match && matchingItems.length > 0) {
+            match = matchingItems[0];
+          }
 
           if (match && match.id) {
-            const details = await getTmdbItemDetails(match.id, match.media_type, cleanTitle, year);
-            if (details && details.cast?.length) {
+            const rawTmdbId = String(match.id).replace(/^tmdb_(?:up_)?/, '').trim();
+            const details = await getTmdbItemDetails(rawTmdbId, match.media_type, cleanTitle, year);
+            if (details && details.cast?.length && titlesMatchStrict(details.title || match.title || '', details.original_title || match.original_title || '')) {
               cast = details.cast || [];
               directors = details.directors || [];
               composers = details.composers || [];

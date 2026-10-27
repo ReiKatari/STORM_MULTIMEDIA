@@ -15,7 +15,8 @@ import {
   setFamilyProfilePin,
   verifyFamilyProfilePin,
   getLatestHandoffState,
-  getReleaseSubscriptions
+  getReleaseSubscriptions,
+  getUserAchievements
 } from '../db.js';
 import {
   generateTotpSecret,
@@ -216,7 +217,8 @@ export function createAuthRouter({ requireAuth }) {
           customLists: [],
           familyProfiles: [],
           handoff: null,
-          subscriptions: []
+          subscriptions: [],
+          achievements: []
         });
       }
       const userId = req.user.id;
@@ -229,6 +231,7 @@ export function createAuthRouter({ requireAuth }) {
       const handoff = getLatestHandoffState(userId, req.query.device || '');
       const subscriptions = getReleaseSubscriptions(userId);
       const sessions = getUserActiveSessions(userId);
+      const achievements = getUserAchievements(userId);
 
       res.json({
         authenticated: true,
@@ -242,6 +245,7 @@ export function createAuthRouter({ requireAuth }) {
         familyProfiles,
         handoff,
         subscriptions,
+        achievements,
         activeSessionsCount: sessions.length
       });
     } catch (err) {

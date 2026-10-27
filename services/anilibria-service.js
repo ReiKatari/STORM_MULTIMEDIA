@@ -45,7 +45,7 @@ function formatAniLibriaRelease(rel) {
 
   const normalizedTitle = isMovie ? rawTitle : (normalizeAnimeFranchiseTitle(rawTitle, true) || rawTitle);
   const normalizedOriginal = isMovie ? rawOriginalTitle : (normalizeAnimeFranchiseTitle(rawOriginalTitle, true) || rawOriginalTitle);
-  const detectedSeason = isMovie ? 1 : extractSeasonNumberFromTitle(rawTitle);
+  const detectedSeason = isMovie ? 1 : extractSeasonNumberFromTitle(rawTitle, true, rawOriginalTitle);
 
   let rawYear = String(rel.year || rel.season?.year || '').trim();
   if (rawYear === '0') rawYear = '';
@@ -118,7 +118,7 @@ function deduplicateAniLibriaFranchises(items = []) {
  */
 export async function getAniLibriaCatalog(category = 'popular', page = 1) {
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `catalog_v3_${category}_page_${pageNum}`;
+  const cacheKey = `catalog_v5_${category}_page_${pageNum}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 
@@ -214,7 +214,7 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
   }
   if (!cleanId) return null;
 
-  const cacheKey = `details_franchise_v5_${cleanId}`;
+  const cacheKey = `details_franchise_v6_${cleanId}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 
@@ -308,7 +308,7 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
       if (seasonEps.length === 0 && (seasonRel.episodes_total || 0) === 0 && fullReleases.length > 1) {
         return;
       }
-      const realNum = seasons.length + 1;
+      const realNum = (fullReleases.length === 1 && (seasonInfo?.detected_season || 1) > 1) ? seasonInfo.detected_season : (seasons.length + 1);
       seasonEps.forEach(ep => { ep.season_number = realNum; });
 
       const seasonYear = seasonRel.year || seasonRel.season?.year || '';
@@ -466,7 +466,7 @@ export async function searchAniLibria(query) {
   if (!query || !query.trim()) return { items: [] };
 
   const cleanQ = normalizeAnimeFranchiseTitle(query.trim(), true) || query.trim();
-  const cacheKey = `search_v3_${cleanQ.toLowerCase()}`;
+  const cacheKey = `search_v5_${cleanQ.toLowerCase()}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 

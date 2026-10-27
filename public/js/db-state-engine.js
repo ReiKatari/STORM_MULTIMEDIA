@@ -148,6 +148,7 @@
 
   window.queueStormWatchProgress = function queueStormWatchProgress(progressObj) {
     if (!progressObj || !progressObj.media_id) return;
+    if (Number(progressObj.real_watched_seconds || 0) < 600 || Number(progressObj.time_seconds ?? progressObj.progress_seconds ?? 0) < 600) return;
     const key = `${progressObj.source || 'fanfilm4k'}:${progressObj.media_id}:s${progressObj.season_number || 0}:e${progressObj.episode_number || 0}`;
     pendingProgressBatch.set(key, {
       ...progressObj,
@@ -158,6 +159,15 @@
         progressBatchTimer = null;
         flushClientProgressBatch();
       }, 5000);
+    }
+  };
+  window.cancelStormWatchProgressQueue = function(mediaId, title = '') {
+    const cleanId = String(mediaId || '').trim();
+    const normTitle = String(title || '').trim().toLowerCase().replace(/\u0451/g, '\u0435');
+    for (const [k, v] of pendingProgressBatch.entries()) {
+      const vId = String(v.media_id || '').trim();
+      const vTitle = String(v.title || '').trim().toLowerCase().replace(/\u0451/g, '\u0435');
+      if ((cleanId && vId === cleanId) || (normTitle && vTitle === normTitle)) pendingProgressBatch.delete(k);
     }
   };
 
@@ -194,6 +204,21 @@
         }
       }
 
+      if (Array.isArray(data.achievements)) {
+        try {
+          const localAch = JSON.parse(ramStore.get('storm_local_achievements') || '{}');
+          const toastedList = JSON.parse(ramStore.get('storm_toasted_achievements_v1') || '[]');
+          const toastedSet = new Set(Array.isArray(toastedList) ? toastedList.map(String) : []);
+          for (const a of data.achievements) {
+            if (!a || !a.id) continue;
+            const isUnl = Boolean(a.unlocked || (a.target > 0 && a.progress >= a.target));
+            localAch[a.id] = { progress: isUnl ? (a.target || 1) : (a.progress || 0), target: a.target || 1, unlocked: isUnl, unlocked_at: a.unlocked_at || (isUnl ? Date.now() : null) };
+            if (isUnl) toastedSet.add(String(a.id));
+          }
+          ramStore.set('storm_local_achievements', JSON.stringify(localAch));
+          ramStore.set('storm_toasted_achievements_v1', JSON.stringify(Array.from(toastedSet)));
+        } catch (_) {}
+      }
       const s = data.settings || {};
       const theme = ramStore.get('storm_theme') || s.theme;
       if (theme) document.documentElement.setAttribute('data-theme', theme);
@@ -206,7 +231,7 @@
         document.documentElement.style.setProperty('--storm-ui-scale', String(scale));
       }
 
-      if (data.handoff && data.handoff.media_id && data.handoff.progress_seconds > 30) {
+      if (data.handoff && data.handoff.media_id && data.handoff.progress_seconds >= 600) {
         renderSeamlessHandoffBanner(data.handoff);
       }
 

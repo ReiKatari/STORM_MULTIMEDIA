@@ -216,41 +216,32 @@ let isBottomNavInitialized = false;
 
 export const clientTabCache = new Map();
 
+const _stormSessionTabCache = new Map();
 try {
-  if (localStorage.getItem('storm_cat_cache_rev') !== 'v6') {
-    localStorage.setItem('storm_cat_cache_rev', 'v6');
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('storm_cat_cache_v5_')) {
-        localStorage.removeItem(k);
-      }
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && (k.startsWith('storm_cat_cache_') || k.startsWith('storm_cal_'))) {
+      localStorage.removeItem(k);
     }
   }
 } catch (_) {}
 
 export function getPersistentTabCache(key) {
-  try {
-    const raw = localStorage.getItem(`storm_cat_cache_v6_${key}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      return parsed;
-    }
-  } catch {}
+  const cached = _stormSessionTabCache.get(key);
+  if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
+    return cached;
+  }
   return null;
 }
 
 export function setPersistentTabCache(key, data) {
-  try {
-    if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
-    const toSave = {
-      items: data.items.slice(0, 30),
-      totalItems: data.totalItems || data.items.length,
-      totalPages: data.totalPages || 1,
-      timestamp: Date.now()
-    };
-    localStorage.setItem(`storm_cat_cache_v6_${key}`, JSON.stringify(toSave));
-  } catch {}
+  if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+  _stormSessionTabCache.set(key, {
+    items: data.items.slice(0, 30),
+    totalItems: data.totalItems || data.items.length,
+    totalPages: data.totalPages || 1,
+    timestamp: Date.now()
+  });
 }
 
 export async function refreshContinueWatchingCache() {
@@ -1878,6 +1869,7 @@ const PROTECTED_FRANCHISE_NUM_TITLES = [
   'кайдзю номер 8', 'кайдзю №8', 'кайдзю № 8', 'kaiju no. 8', 'kaiju no 8',
   'моб психо 100', 'mob psycho 100',
   '86', 'восемьдесят шесть', 'eighty six', 'eighty-six',
+  'ранма 1/2', 'ранма ½', 'ranma 1/2', 'ranma ½', '9-1-1',
   'зона 88', 'area 88', 'токио 24-й район', 'гандам 00', 'вавилон 5',
   '1984', '2012', '1917', '9', '300', '24', 'бегущий по лезвию 2049',
   'гладиатор 2', 'дюна: часть вторая', 'дюна 2', 'аватар 2', 'аватар 3',
@@ -1888,7 +1880,7 @@ const PROTECTED_FRANCHISE_NUM_TITLES = [
   'холоп 2', 'бэтмен 2', 'соник 2', 'соник 3', 'ужасающий 2', 'ужасающий 3', 'микки 17'
 ];
 
-export function cleanVideoTitle(str) {
+export function cleanVideoTitle(str, isAnimeOrSeries = false) {
   if (!str) return '';
   let s = String(str).trim();
   // Постер
@@ -1902,17 +1894,47 @@ export function cleanVideoTitle(str) {
   s = s.replace(/(?:^|\s+)(?:Ultra\s*HD|UHD|HDR10\+?|HDR|Dolby\s*Vision|BDRip|DVDRip|WEB-DL|Remux)(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
   // фильм / сериал в скобках
   s = s.replace(/\s*[\(\[]\s*(?:фильм|сериал)\s*[\)\]]/gi, '');
+  if (isAnimeOrSeries) {
+    s = s.replace(/\s*[\(\[]\s*(?:19\d\d|20\d\d)\s*[\)\]]/g, '');
+  }
   // Сезон / ТВ / Часть в скобках и без скобок: (1 сезон), [2 сезон], [ТВ-2], Season 2, 2nd Season
-  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
-  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
-  // Удаляем хвостовой номер ТОЛЬКО если за ним явно следует маркер сезона/арки (не обрезая сиквелы фильмов вроде «Вышка 2»)
+  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|(?:second|third|fourth|fifth)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
+  for (let pass = 0; pass < 2; pass++) {
+    s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season|(?:second|third|fourth|fifth)\s+season|часть\s*\d+|part\s*(?:\d+|ii|iii|iv)|cour\s*\d+|акт\s*(?:\d+|ii|iii|iv)|act\s*(?:\d+|ii|iii|iv)|продолжение|финал(?:ьный\s*сезон)?|final\s*season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+  }
+  if (isAnimeOrSeries) {
+    s = s.replace(/\s*:\s*арка\s+[^:]+$/i, '');
+  }
   const lowerFull = s.toLowerCase().replace(/ё/g, 'е').trim();
-  const isProtectedMovieSeq = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
-  if (!isProtectedMovieSeq) {
-    const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(?:сезон|season|арка|cour).*$/i);
-    if (mTrail && mTrail[1].trim().length >= 3) {
-      s = mTrail[1].trim();
+  const isProtected = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
+  if (!isProtected) {
+    if (isAnimeOrSeries) {
+      // В аниме-сериалах и сериалах сезоны не пишутся как части/номера в названии («Аой Ашито 2» -> «Аой Ашито»)
+      const mSub = s.match(/^(.{2,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(.+)$/i);
+      if (mSub && mSub[1].trim().length >= 2) {
+        const bLower = mSub[1].trim().toLowerCase().replace(/ё/g, 'е');
+        if (!PROTECTED_FRANCHISE_NUM_TITLES.includes(bLower)) {
+          s = mSub[1].trim();
+        }
+      }
+      const mEnd = s.match(/^(.{2,}?)\s+([2-9]|1[0-2])$/);
+      if (mEnd && mEnd[1].trim().length >= 2) {
+        const bLower = mEnd[1].trim().toLowerCase().replace(/ё/g, 'е');
+        if (!PROTECTED_FRANCHISE_NUM_TITLES.includes(bLower)) {
+          s = mEnd[1].trim();
+        }
+      }
+    } else {
+      // Для фильмов удаляем хвостовой номер ТОЛЬКО если за ним явно следует маркер сезона/арки (сохраняя «Вышка 2», «Гладиатор 2»)
+      const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(?:сезон|season|арка|cour).*$/i);
+      if (mTrail && mTrail[1].trim().length >= 3) {
+        s = mTrail[1].trim();
+      }
     }
+  }
+  // Каноническое объединение «Ао Аси» / «Аой Ашито»
+  if (/^ао[й]?\s+а(?:си|шито)$/i.test(s.trim())) {
+    return 'Аой Ашито';
   }
   // Каноническое объединение франшизы «Звёздные Войны: Видения» (включая спин-офф/4-й сезон «Девятый джедай»)
   if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(s)) {
@@ -1952,6 +1974,9 @@ export function unwrapRawImageUrl(url) {
     }
   }
   if (clean.startsWith('//')) clean = `https:${clean}`;
+  if (clean.includes('shikimori.one/')) {
+    clean = clean.replace('shikimori.one/', 'shikimori.io/');
+  }
   const anixMatch = clean.match(/(?:s\d*\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
   if (anixMatch) {
     const code = anixMatch[1].replace(/\.jpg$/i, '');
@@ -1991,20 +2016,29 @@ export function handleGlobalImageError(imgEl) {
   const rawUrl = imgEl.dataset.rawUrl || unwrapRawImageUrl(imgEl.getAttribute('src') || '');
   const title = imgEl.dataset.title || imgEl.getAttribute('alt') || '';
   const isLiftImg = rawUrl && rawUrl.includes('img.liftw.ws');
+  const isAnilibriaImg = rawUrl && (rawUrl.includes('anilibria.top') || rawUrl.includes('aniliberty.top'));
 
-  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !imgEl.dataset.triedWsrv) {
+  if (isAnilibriaImg && !imgEl.dataset.triedAniliberty && window.__STORM_BACKEND_ONLINE__ !== false) {
+    imgEl.dataset.triedAniliberty = '1';
+    const altUrl = rawUrl.includes('anilibria.top')
+      ? rawUrl.replace('anilibria.top', 'aniliberty.top')
+      : rawUrl.replace('aniliberty.top', 'anilibria.top');
+    imgEl.src = `/api/media/image-proxy?url=${encodeURIComponent(altUrl)}${title ? `&title=${encodeURIComponent(title.trim())}` : ''}&v=2`;
+    return;
+  }
+  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !isAnilibriaImg && !imgEl.dataset.triedWsrv) {
     imgEl.dataset.triedWsrv = '1';
     imgEl.src = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
     return;
   }
-  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !imgEl.dataset.triedWeserv) {
+  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !isAnilibriaImg && !imgEl.dataset.triedWeserv) {
     imgEl.dataset.triedWeserv = '1';
     imgEl.src = `https://images.weserv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
     return;
   }
   if (title && !imgEl.dataset.triedTitleProxy && window.__STORM_BACKEND_ONLINE__ !== false) {
     imgEl.dataset.triedTitleProxy = '1';
-    imgEl.src = `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}`;
+    imgEl.src = `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}&v=2`;
     return;
   }
   imgEl.dataset.stormFallbackDone = '1';
@@ -2039,7 +2073,7 @@ export function getSafePosterUrl(url, title = '') {
       if (window.__STORM_BACKEND_ONLINE__ === false) {
         return generateSvgPosterDataUri(cleanTitle);
       }
-      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}`;
+      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&v=2`;
     }
     return 'assets/favicon.svg';
   }
@@ -2056,21 +2090,25 @@ export function getSafePosterUrl(url, title = '') {
     if (cleanTitle && !proxyUrl.includes('title=')) {
       proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + `title=${encodeURIComponent(cleanTitle)}`;
     }
+    if (!proxyUrl.includes('v=')) {
+      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + 'v=2';
+    }
     return proxyUrl;
   }
 
   if (clean.startsWith('//')) clean = `https:${clean}`;
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
     const isLiftHost = clean.includes('img.liftw.ws') || clean.includes('lateremb.ws');
+    const isAnilibriaHost = clean.includes('anilibria.top') || clean.includes('aniliberty.top');
     const useDirectCdn = (isStormNativeApp() || window.__STORM_BACKEND_ONLINE__ === false) && !isLiftHost;
     if (useDirectCdn) {
-      if (clean.includes('static.anixart.tv') || clean.includes('rutube.ru') || clean.includes('userapi.com') || clean.includes('mycdn.me')) {
+      if (isAnilibriaHost || clean.includes('static.anixart.tv') || clean.includes('rutube.ru') || clean.includes('userapi.com') || clean.includes('mycdn.me')) {
         return clean;
       }
       return `https://wsrv.nl/?url=${encodeURIComponent(clean)}&w=500&q=85&output=webp`;
     }
     const titleParam = cleanTitle ? `&title=${encodeURIComponent(cleanTitle)}` : '';
-    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}`;
+    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}&v=2`;
   }
   return clean;
 }
@@ -2416,7 +2454,11 @@ export function isTrailerMedia(item) {
 
 export function formatMediaTitle(item) {
   if (!item) return '';
-  let rawTitle = cleanVideoTitle(item.title || item.original_title || '');
+  const detectedType = detectClientMediaType(item) || item.media_type || '';
+  const isSeriesOrAnime = detectedType === 'series' || detectedType === 'anime-series' || detectedType === 'cartoon-series' ||
+    (isAnimeItemClient(item) && detectedType !== 'movie' && detectedType !== 'anime-movie') ||
+    checkIfMediaIsSeries(item);
+  let rawTitle = cleanVideoTitle(item.title || item.original_title || '', isSeriesOrAnime);
 
   // Извлечение года с проверкой известных фильмов с числами/годами в названии
   const lowerCheck = `${item.title || ''} ${item.original_title || ''}`.toLowerCase();
@@ -2572,11 +2614,10 @@ async function loadCurrentTab() {
         if (pct >= 95) return false;
 
         // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
+        if (pct >= 90) return false;
         const sec = typeof h.time_seconds === 'number' ? h.time_seconds : (h.last_time_seconds || 0);
-        const ep = parseInt(h.episode, 10) || 1;
-        const hasRealProgress = (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
-
-        return hasRealProgress;
+        const realSec = typeof h.real_watched_seconds === 'number' ? h.real_watched_seconds : sec;
+        return sec >= 600 && realSec >= 600;
       })
       .map(h => ({
         id: h.media_id || h.id,
@@ -2749,11 +2790,11 @@ async function loadCurrentTab() {
 }
 
 // Нормализация названий медиа для надежного сопоставления и исключения дублей
-function normalizeMediaTitle(title, originalTitle = '') {
+function normalizeMediaTitle(title, originalTitle = '', isSeriesOrAnime = false) {
   if (!title && !originalTitle) return '';
   const clean = (t) => {
     if (!t) return '';
-    let raw = cleanVideoTitle(t);
+    let raw = cleanVideoTitle(t, isSeriesOrAnime);
     let s = String(raw).toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
@@ -2949,13 +2990,17 @@ function deduplicateMediaList(items) {
     // 100% исключение трейлеров, промо и фанатских концептов
     if (isTrailerMedia(item)) continue;
 
-    const itemTitle = item.title || item.name || '';
+    const rawItemTitle = item.title || item.name || '';
     const origTitle = item.original_title || item.original_name || '';
     const itemType = detectClientMediaType(item) || item.media_type || '';
-    const isSeriesOrAnime = itemType === 'series' || itemType === 'anime-series' || itemType === 'cartoon-series' || ['anilibria', 'anixart', 'shikimori'].includes(item.source);
+    const isSeriesOrAnime = itemType === 'series' || itemType === 'anime-series' || itemType === 'cartoon-series' || (['anilibria', 'anixart', 'shikimori'].includes(item.source) && itemType !== 'anime-movie' && itemType !== 'movie');
+    const itemTitle = isSeriesOrAnime ? cleanVideoTitle(rawItemTitle, true) : rawItemTitle;
+    if (isSeriesOrAnime && itemTitle) {
+      item.title = itemTitle;
+    }
     const itemYr = getMediaYear(item) || item.year || '';
-    const baseNormKey = normalizeMediaTitle(itemTitle, origTitle);
-    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle, '') : '';
+    const baseNormKey = normalizeMediaTitle(itemTitle, origTitle, isSeriesOrAnime);
+    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle, '', isSeriesOrAnime) : '';
     const normKey = (!isSeriesOrAnime && baseNormKey && itemYr) ? `${baseNormKey}_movie_${itemYr}` : baseNormKey;
     const origKey = (!isSeriesOrAnime && baseOrigKey && itemYr) ? `${baseOrigKey}_movie_${itemYr}` : baseOrigKey;
     const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
@@ -3022,7 +3067,7 @@ function deduplicateMediaList(items) {
         is_upcoming: mergedUpcoming,
         is4K: has4K,
         quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (item.quality || existing.quality)),
-        poster: item.poster || item.poster_url || existing.poster || existing.poster_url,
+        poster: ((existing.poster && (!existing.poster.includes('/api/media/image-proxy') || existing.poster.includes('url='))) ? existing.poster : ((item.poster && (!item.poster.includes('/api/media/image-proxy') || item.poster.includes('url='))) ? item.poster : (existing.poster || item.poster || existing.poster_url || item.poster_url))),
         user_status: item.user_status || existing.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       } : {
@@ -3039,7 +3084,7 @@ function deduplicateMediaList(items) {
         is_upcoming: mergedUpcoming,
         is4K: has4K,
         quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (existing.quality || item.quality)),
-        poster: existing.poster || existing.poster_url || item.poster || item.poster_url,
+        poster: ((existing.poster && (!existing.poster.includes('/api/media/image-proxy') || existing.poster.includes('url='))) ? existing.poster : ((item.poster && (!item.poster.includes('/api/media/image-proxy') || item.poster.includes('url='))) ? item.poster : (existing.poster || item.poster || existing.poster_url || item.poster_url))),
         user_status: existing.user_status || item.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       };
@@ -4018,11 +4063,10 @@ function renderHomeView(items) {
       if (pct >= 95 && isMovie) return false;
 
       // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
+      if (pct >= 90) return false;
       const sec = typeof i.time_seconds === 'number' ? i.time_seconds : (i.last_time_seconds || 0);
-      const ep = parseInt(i.episode, 10) || 1;
-      const hasRealProgress = (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
-
-      return hasRealProgress;
+      const realSec = typeof i.real_watched_seconds === 'number' ? i.real_watched_seconds : sec;
+      return sec >= 600 && realSec >= 600;
     })
     .map(i => {
       const ep = parseInt(i.episode, 10) || 1;

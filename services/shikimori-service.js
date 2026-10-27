@@ -1,5 +1,5 @@
 import { getCache, setCache } from '../db.js';
-import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType } from './canonical-media-intel.js';
+import { resolveCanonicalYear, resolveCanonicalGenres, resolveCanonicalMediaType, normalizeAnimeFranchiseTitle, extractSeasonNumberFromTitle } from './canonical-media-intel.js';
 
 const SHIKIMORI_BASE = 'https://shikimori.io';
 const SHIKIMORI_MIRRORS = ['https://shikimori.io', 'https://shikimori.one'];
@@ -19,7 +19,7 @@ async function shikiFetch(pathAndQuery, timeoutMs = 4500) {
 }
 
 export async function getShikimoriCatalog(category = 'popular', page = 1) {
-  const cacheKey = `shikimori_v4_${category}_page_${page}`;
+  const cacheKey = `shikimori_v5_${category}_page_${page}`;
   const cached = getCache('shikimori', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
@@ -51,17 +51,22 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
       return true;
     });
 
-    const items = validRaw.map(item => {
-      const title = item.russian || item.name;
+    const rawMapped = validRaw.map(item => {
+      const rawTitle = (item.russian || item.name || '').trim();
+      const rawOrig = (item.name || '').trim();
+      const isMov = item.kind === 'movie';
+      const title = isMov ? rawTitle : (normalizeAnimeFranchiseTitle(rawTitle, true) || rawTitle);
+      const origTitle = isMov ? rawOrig : (normalizeAnimeFranchiseTitle(rawOrig, true) || rawOrig);
+      const detectedSeason = isMov ? 1 : extractSeasonNumberFromTitle(rawTitle, true, rawOrig);
       const rawYear = item.aired_on ? item.aired_on.substring(0, 4) : (item.released_on ? item.released_on.substring(0, 4) : '');
       const resolvedYear = resolveCanonicalYear(title, '', '', '', rawYear) || '2026';
       const genres = resolveCanonicalGenres(title, 'anime', '', null);
-      const mediaType = item.kind === 'movie' ? 'anime-movie' : resolveCanonicalMediaType(title, '', 'anime-series', genres);
+      const mediaType = isMov ? 'anime-movie' : resolveCanonicalMediaType(title, '', 'anime-series', genres);
       const imgOrig = String(item.image?.original || item.image?.preview || '');
       const hasValidImg = Boolean(imgOrig && !imgOrig.includes('missing_'));
       const posterUrl = hasValidImg
         ? (imgOrig.startsWith('http') ? imgOrig : `${SHIKIMORI_BASE}${imgOrig}`)
-        : `/api/media/image-proxy?title=${encodeURIComponent(title)}&orig=${encodeURIComponent(item.name || '')}`;
+        : `/api/media/image-proxy?title=${encodeURIComponent(title)}&orig=${encodeURIComponent(origTitle)}`;
       const isShikiUpcoming = Boolean(
         item.status === 'anons' ||
         (parseInt(resolvedYear, 10) || 0) > new Date().getFullYear() ||
@@ -72,7 +77,9 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
         id: String(item.id),
         source: 'shikimori',
         title,
-        original_title: item.name,
+        raw_release_title: rawTitle,
+        original_title: origTitle,
+        detected_season: detectedSeason,
         poster: posterUrl,
         year: resolvedYear,
         rating: parseFloat(item.score) || 0,
@@ -86,6 +93,23 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
         episodes_released: isShikiUpcoming ? 0 : (item.episodes_aired || item.episodes || 0)
       };
     });
+    const dedupMap = new Map();
+    for (const it of rawMapped) {
+      const k = it.media_type === 'anime-movie' ? `mov_${it.id}` : it.title.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+      if (!dedupMap.has(k)) {
+        dedupMap.set(k, it);
+      } else {
+        const prev = dedupMap.get(k);
+        const maxS = Math.max(prev.detected_season || 1, it.detected_season || 1);
+        dedupMap.set(k, {
+          ...prev,
+          rating: Math.max(prev.rating || 0, it.rating || 0),
+          detected_season: maxS,
+          seasons_count: maxS > 1 ? maxS : (prev.seasons_count || 1)
+        });
+      }
+    }
+    const items = Array.from(dedupMap.values());
 
     const result = { page, category, items, total_items: items.length };
     setCache('shikimori', cacheKey, result, 1800);
@@ -98,7 +122,7 @@ export async function getShikimoriCatalog(category = 'popular', page = 1) {
 
 export async function searchShikimori(query) {
   if (!query || !query.trim()) return [];
-  const cacheKey = `shikimori_search_v3_${query.toLowerCase().trim()}`;
+  const cacheKey = `shikimori_search_v5_${query.toLowerCase().trim()}`;
   const cached = getCache('shikimori', cacheKey);
   if (Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -174,7 +198,7 @@ export async function getShikimoriRelated(animeId) {
  * Получение расписания онгоингов на текущую неделю из календаря Shikimori
  */
 export async function getShikimoriCalendar() {
-  const cacheKey = 'shikimori_live_calendar';
+  const cacheKey = 'shikimori_live_calendar_v5';
   const cached = getCache('shikimori', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -196,14 +220,19 @@ export async function getShikimoriCalendar() {
       const posterPath = d.anime.image?.original || d.anime.image?.preview || '';
       const poster = posterPath ? (posterPath.startsWith('http') ? posterPath : `${SHIKIMORI_BASE}${posterPath}`) : '';
 
+      const rawT = d.anime.russian || d.anime.name || '';
+      const rawO = d.anime.name || '';
+      const cleanT = normalizeAnimeFranchiseTitle(rawT, true) || rawT;
+      const cleanO = normalizeAnimeFranchiseTitle(rawO, true) || rawO;
+      const detectedS = extractSeasonNumberFromTitle(rawT, true, rawO);
       return {
         id: `shiki_${d.anime.id}`,
         shikimori_id: d.anime.id,
-        title: d.anime.russian || d.anime.name,
-        original_title: d.anime.name,
+        title: cleanT,
+        original_title: cleanO,
         poster,
         year: d.anime.aired_on ? d.anime.aired_on.substring(0, 4) : '2026',
-        season: 1,
+        season: detectedS,
         episode: d.next_episode || 1,
         episode_title: `Серия ${d.next_episode || 1}`,
         day_of_week: dayOfWeek,

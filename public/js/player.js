@@ -122,6 +122,9 @@ function saveMediaResumeSnapshot(override = {}) {
 
   const now = Date.now();
   const pct = durationSeconds > 0 ? Math.min(100, Math.round((timeSeconds / durationSeconds) * 100)) : 0;
+  const realWatchedSeconds = override.resetTime
+    ? 0
+    : Math.max(0, Math.round(Number(override.real_watched_seconds ?? activeRealWatchedSeconds) || 0));
 
   const snapshot = {
     media_id: mediaId,
@@ -134,6 +137,7 @@ function saveMediaResumeSnapshot(override = {}) {
     season,
     episode,
     time_seconds: timeSeconds,
+    real_watched_seconds: realWatchedSeconds,
     duration_seconds: durationSeconds,
     progress_percent: pct,
     timecode: formatResumeTimecode(timeSeconds),
@@ -141,33 +145,38 @@ function saveMediaResumeSnapshot(override = {}) {
   };
 
   try {
-    localStorage.setItem(`storm_resume_state_${mediaId}`, JSON.stringify(snapshot));
-    if (titleKey) {
-      localStorage.setItem(`storm_resume_state_title_${titleKey}`, JSON.stringify(snapshot));
+    if (realWatchedSeconds >= 600 && timeSeconds >= 600) {
+      localStorage.setItem(`storm_resume_state_${mediaId}`, JSON.stringify(snapshot));
+      if (titleKey) {
+        localStorage.setItem(`storm_resume_state_title_${titleKey}`, JSON.stringify(snapshot));
+      }
     }
     if (isSeries && timeSeconds >= 5) {
       localStorage.setItem(`storm_ep_watchtime_${mediaId}_s${season}_e${episode}`, String(timeSeconds));
     }
   } catch (_) {}
 
-  if (override.forceSync || (now - lastResumeSnapshotSyncAt >= 10000 && (timeSeconds >= 10 || (isSeries && (season > 1 || episode > 1))))) {
-    lastResumeSnapshotSyncAt = now;
-    try {
-      syncWatchProgress({
-        media_id: mediaId,
-        source: snapshot.source,
-        title: cleanT,
-        poster_url: snapshot.poster_url,
-        media_type: snapshot.media_type,
-        year: snapshot.year,
-        season,
-        episode,
-        total_episodes: (Array.isArray(currentEpisodes) && currentEpisodes.length > 0) ? currentEpisodes.length : (currentMedia.total_episodes || 1),
-        duration_seconds: durationSeconds,
-        time_seconds: timeSeconds,
-        progress_percent: pct
-      });
-    } catch (_) {}
+  if ((realWatchedSeconds >= 600 && timeSeconds >= 600) || pct >= 90) {
+    if (override.forceSync || (now - lastResumeSnapshotSyncAt >= 10000)) {
+      lastResumeSnapshotSyncAt = now;
+      try {
+        syncWatchProgress({
+          media_id: mediaId,
+          source: snapshot.source,
+          title: cleanT,
+          poster_url: snapshot.poster_url,
+          media_type: snapshot.media_type,
+          year: snapshot.year,
+          season,
+          episode,
+          total_episodes: (Array.isArray(currentEpisodes) && currentEpisodes.length > 0) ? currentEpisodes.length : (currentMedia.total_episodes || 1),
+          duration_seconds: durationSeconds,
+          time_seconds: timeSeconds,
+          real_watched_seconds: realWatchedSeconds,
+          progress_percent: pct
+        });
+      } catch (_) {}
+    }
   }
 }
 
@@ -2466,6 +2475,11 @@ export async function openPlayerModal(mediaItem, options = {}) {
   const iframeContainer = document.getElementById('cinema-player-wrapper');
   iframeContainer.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);gap:10px;"><div class="storm-spinner"></div><span>Загрузка видеоплеера...</span></div>';
 
+  const castCarouselEl = document.getElementById('cinema-cast-and-crew-container');
+  if (castCarouselEl) {
+    castCarouselEl.style.display = 'none';
+    castCarouselEl.innerHTML = '';
+  }
   document.getElementById('cinema-modal-title').textContent = cleanTitle;
   document.getElementById('cinema-modal-year').textContent = mediaItem.year || '';
   document.getElementById('cinema-modal-desc').textContent = mediaItem.description || '';
@@ -5265,6 +5279,10 @@ function playStreamUrl(url) {
   if (iframeWatchInterval) {
     clearInterval(iframeWatchInterval);
     iframeWatchInterval = null;
+  }
+
+  if (currentMedia?.id) {
+    startInvisibleEpisodeWatchTracker(currentMedia, quickBarActiveSeason || 1, quickBarActiveEpisode || currentEpisodeIndex || 1);
   }
 
   if (url.includes('.m3u8')) {
@@ -10285,9 +10303,11 @@ let activeTrackingMediaId = null;
 let activeTrackingSeason = 1;
 let activeTrackingEpisode = 1;
 let activeTrackingWatchedSeconds = 0;
+let activeRealWatchedSeconds = 0;
 let activeTrackingDurationSeconds = 1440;
 let activeTrackingHasReached50 = false;
 let activeTrackingStorageKey = '';
+let activeRealStorageKey = '';
 
 export function stopInvisibleEpisodeWatchTracker() {
   if (episodeWatchTrackerInterval) {
@@ -10328,6 +10348,7 @@ export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeN
   activeTrackingSeason = Number(seasonNum) || 1;
   activeTrackingEpisode = Number(episodeNum) || 1;
   activeTrackingStorageKey = `storm_ep_watchtime_${activeTrackingMediaId}_s${activeTrackingSeason}_e${activeTrackingEpisode}`;
+  activeRealStorageKey = `storm_real_watchtime_${activeTrackingMediaId}`;
 
   // Проверяем, не была ли серия УЖЕ отмечена просмотренной ранее
   const watchedSet = getWatchedEpisodes(activeTrackingMediaId, activeTrackingSeason);
@@ -10339,8 +10360,12 @@ export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeN
     if (isNaN(activeTrackingWatchedSeconds) || activeTrackingWatchedSeconds < 0) {
       activeTrackingWatchedSeconds = 0;
     }
+    const savedReal = parseInt(localStorage.getItem(activeRealStorageKey) || '0', 10);
+    const serverReal = Number(media?.user_watch_progress?.real_watched_seconds || 0);
+    activeRealWatchedSeconds = Math.max(0, isNaN(savedReal) ? 0 : savedReal, isNaN(serverReal) ? 0 : serverReal);
   } catch (_) {
     activeTrackingWatchedSeconds = 0;
+    activeRealWatchedSeconds = 0;
   }
 
   // Определение хронометража серии (в секундах)
@@ -10397,30 +10422,37 @@ export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeN
     if (document.hidden) return;
 
     // Нативный HTML5 видеоплеер
+    if (isResumePromptPending) return;
     const currentVideo = document.querySelector('#cinema-player-wrapper video, .cinema-video-element');
     if (currentVideo) {
-      if (!currentVideo.paused && !currentVideo.ended) {
+      if (!currentVideo.paused && !currentVideo.ended && !currentVideo.seeking) {
         if (currentVideo.duration && isFinite(currentVideo.duration) && currentVideo.duration > 30) {
           activeTrackingDurationSeconds = Math.round(currentVideo.duration);
         }
+        activeRealWatchedSeconds += 1;
         activeTrackingWatchedSeconds = Math.round(currentVideo.currentTime || 0);
-        check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+        check50PercentWatchCondition(activeRealWatchedSeconds, activeTrackingDurationSeconds);
       }
     } else {
       // Встраиваемый Iframe плеер (Kodik, Alloha, VideoCDN, FanFilm4K, RuTube, VK и др.)
+      activeRealWatchedSeconds += 1;
       activeTrackingWatchedSeconds += 1;
-      check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+      check50PercentWatchCondition(activeRealWatchedSeconds, activeTrackingDurationSeconds);
     }
 
     // Сохраняем прогресс каждые 5 секунд
-    if (activeTrackingWatchedSeconds % 5 === 0 && activeTrackingStorageKey) {
+    if (activeRealWatchedSeconds > 0 && activeRealWatchedSeconds % 5 === 0 && activeTrackingStorageKey) {
       try {
         localStorage.setItem(activeTrackingStorageKey, String(activeTrackingWatchedSeconds));
+        if (activeRealStorageKey) {
+          localStorage.setItem(activeRealStorageKey, String(activeRealWatchedSeconds));
+        }
       } catch (_) {}
       saveMediaResumeSnapshot({
         season: activeTrackingSeason,
         episode: activeTrackingEpisode,
         time_seconds: activeTrackingWatchedSeconds,
+        real_watched_seconds: activeRealWatchedSeconds,
         duration_seconds: activeTrackingDurationSeconds
       });
     }
@@ -10455,8 +10487,7 @@ if (typeof window !== 'undefined' && !window._stormPostMessageListenerAttached) 
           if (activeTrackingDurationSeconds <= 0 || activeTrackingDurationSeconds === 1440 || activeTrackingDurationSeconds === 2700) {
             activeTrackingDurationSeconds = Math.round(duration);
           }
-          activeTrackingWatchedSeconds = Math.max(activeTrackingWatchedSeconds, Math.round(time));
-          check50PercentWatchCondition(activeTrackingWatchedSeconds, activeTrackingDurationSeconds);
+          activeTrackingWatchedSeconds = Math.round(time);
         }
       }
     } catch (_) {}
@@ -12185,8 +12216,30 @@ function renderDetailedMediaInfo(mediaDetails) {
   const container = document.getElementById('cinema-side-info');
   if (!container || !mediaDetails) return;
 
-  const cleanTitle = cleanVideoTitle(mediaDetails.title);
-  const poster = mediaDetails.poster || 'assets/favicon.svg';
+  const cleanTitle = cleanVideoTitle(mediaDetails.title || currentMedia?.title || '');
+  const origTitleForPoster = String(mediaDetails.original_title || currentMedia?.original_title || '').trim();
+  const rawPoster = [
+    mediaDetails.poster,
+    mediaDetails.poster_url,
+    currentMedia?.poster,
+    currentMedia?.poster_url
+  ].find(p => p && typeof p === 'string' && p.trim() && p.trim() !== 'assets/favicon.svg' && !p.includes('undefined') && !p.includes('null')) || '';
+  let poster = 'assets/favicon.svg';
+  if (rawPoster) {
+    const normRaw = rawPoster.startsWith('//') ? `https:${rawPoster}` : rawPoster;
+    if (normRaw.startsWith('/api/media/image-proxy') || normRaw.startsWith('data:') || normRaw.startsWith('assets/')) {
+      poster = normRaw;
+    } else if (normRaw.startsWith('http://') || normRaw.startsWith('https://')) {
+      poster = `/api/media/image-proxy?url=${encodeURIComponent(normRaw)}&title=${encodeURIComponent(cleanTitle)}`;
+    } else {
+      poster = normRaw;
+    }
+  } else if (cleanTitle) {
+    poster = `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(origTitleForPoster)}&v=2`;
+  }
+  const posterFallbackUrl = cleanTitle
+    ? `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&orig=${encodeURIComponent(origTitleForPoster)}&v=2`
+    : 'assets/favicon.svg';
 
   let formattedReleaseDate = 'Не указана';
   let rawDate = mediaDetails.release_date;
@@ -12336,6 +12389,9 @@ function renderDetailedMediaInfo(mediaDetails) {
                 };
               });
             }
+            if (typeof renderCastAndCrewCarousel === 'function') {
+              renderCastAndCrewCarousel(mediaDetails);
+            }
           } else {
             const castScroll = container.querySelector('#cinema-side-cast-scroll');
             if (castScroll && castScroll.querySelector('.cast-loading-indicator')) {
@@ -12354,7 +12410,7 @@ function renderDetailedMediaInfo(mediaDetails) {
   container.innerHTML = `
     <!-- Постер и ключевые плашки -->
     <div class="cinema-side-poster-wrap" style="flex-shrink: 0 !important;">
-      <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" style="max-height: var(--cinema-poster-max-h, 175px) !important;" onerror="this.src='assets/favicon.svg'">
+      <img src="${poster}" alt="${cleanTitle}" class="cinema-side-poster" style="max-height: var(--cinema-poster-max-h, 175px) !important;" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${posterFallbackUrl}';}else{this.onerror=null;this.src='assets/favicon.svg';}">
       <div class="cinema-side-poster-glow"></div>
       <div class="cinema-side-badges">
         ${(mediaDetails?.is_upcoming || currentMedia?.is_upcoming || (typeof window.isUpcomingMediaItem === 'function' && window.isUpcomingMediaItem(mediaDetails || currentMedia)))

@@ -14,6 +14,7 @@
 import * as cheerio from 'cheerio';
 import { getCache, setCache } from '../db.js';
 import { getAnixartDiscover } from './anixart-service.js';
+import { normalizeAnimeFranchiseTitle, extractSeasonNumberFromTitle } from './canonical-media-intel.js';
 
 export function wrapPoster(url, title = '', orig = '') {
   const cleanTitle = (title || '').trim();
@@ -94,7 +95,7 @@ async function getLostFilmSeriesPoster(slug, title = '', origTitle = '') {
  * Парсит https://lostfilm.tv/schedule/ и извлекает точные даты выхода серий в русской озвучке LostFilm
  */
 export async function getLostFilmSchedule(weekStart, weekEnd) {
-  const cacheKey = `lostfilm_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v113`;
+  const cacheKey = `lostfilm_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v121`;
   const cached = getCache('lostfilm', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -301,7 +302,7 @@ export async function getLostFilmSchedule(weekStart, weekEnd) {
  * 2. AniLibria Schedule API (текущее недельное расписание онгоингов аниме)
  */
 export async function getAniLibriaSchedule(weekStart, weekEnd) {
-  const cacheKey = 'anilibria_live_schedule_v112';
+  const cacheKey = 'anilibria_live_schedule_v121';
   const cached = getCache('anilibria', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -317,8 +318,12 @@ export async function getAniLibriaSchedule(weekStart, weekEnd) {
       data.forEach(entry => {
         const r = entry.release || entry;
         if (!r) return;
-        const title = r.name?.main || r.names?.ru || r.name?.russian || r.name?.english;
-        if (!title) return;
+        const rawTitle = r.name?.main || r.names?.ru || r.name?.russian || r.name?.english;
+        if (!rawTitle) return;
+        const rawOrig = r.name?.english || '';
+        const season = extractSeasonNumberFromTitle(rawTitle, true, rawOrig);
+        const title = normalizeAnimeFranchiseTitle(rawTitle, true) || rawTitle;
+        const origTitle = normalizeAnimeFranchiseTitle(rawOrig, true) || rawOrig;
 
         const rawPoster = r.poster?.optimized?.src || r.poster?.src || r.poster?.preview || '';
         const poster = rawPoster ? (rawPoster.startsWith('http') ? rawPoster : `https://anilibria.top${rawPoster}`) : '';
@@ -337,10 +342,10 @@ export async function getAniLibriaSchedule(weekStart, weekEnd) {
         items.push({
           id: `anilib_${r.id || Math.random().toString(36).substring(7)}`,
           title,
-          original_title: r.name?.english || '',
-          poster: wrapPoster(poster, title, r.name?.english || ''),
+          original_title: origTitle,
+          poster: wrapPoster(poster, title, origTitle),
           year: String(r.year || '2026'),
-          season: 1,
+          season,
           episode: ep,
           episode_title: `Серия ${ep}`,
           day_of_week: dayOfWeek,
@@ -372,12 +377,12 @@ export async function getAniLibriaSchedule(weekStart, weekEnd) {
  * 3. Shikimori Calendar API (живой календарь выхода аниме-онгоингов)
  */
 export async function getShikimoriSchedule(weekStart, weekEnd) {
-  const cacheKey = `shikimori_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v112`;
+  const cacheKey = `shikimori_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v121`;
   const cached = getCache('shikimori', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const shikiRes = await fetch('https://shikimori.one/api/calendar', {
+    const shikiRes = await fetch('https://shikimori.io/api/calendar', {
       headers: {
         'User-Agent': 'STORM-Multimedia/1.0 (+https://github.com/ReiKatari)',
         'Accept': 'application/json'
@@ -400,25 +405,29 @@ export async function getShikimoriSchedule(weekStart, weekEnd) {
       // Строгая проверка попадания в выбранную неделю
       if (airDate.getTime() < weekStart.getTime() || airDate.getTime() > weekEnd.getTime()) return;
 
-      const title = anime.russian || anime.name;
-      if (!title) return;
+      const rawTitle = anime.russian || anime.name;
+      if (!rawTitle) return;
+      const rawOrig = anime.name || '';
+      const season = extractSeasonNumberFromTitle(rawTitle, true, rawOrig);
+      const title = normalizeAnimeFranchiseTitle(rawTitle, true) || rawTitle;
+      const origTitle = normalizeAnimeFranchiseTitle(rawOrig, true) || rawOrig;
 
       const dayOfWeek = airDate.getDay();
       const dateFormatted = `${String(airDate.getDate()).padStart(2, '0')}.${String(airDate.getMonth() + 1).padStart(2, '0')}.${airDate.getFullYear()}`;
       const timeFormatted = `${String(airDate.getHours()).padStart(2, '0')}:${String(airDate.getMinutes()).padStart(2, '0')} МСК`;
 
       let poster = 'assets/favicon.svg';
-      if (anime.image?.original) {
-        poster = `https://shikimori.one${anime.image.original}`;
+      if (anime.image?.original && !String(anime.image.original).includes('missing_')) {
+        poster = `https://shikimori.io${anime.image.original}`;
       }
 
       items.push({
         id: `shiki_${anime.id}_ep${entry.next_episode || 1}`,
         title,
-        original_title: anime.name || '',
-        poster: wrapPoster(poster, title, anime.name || ''),
+        original_title: origTitle,
+        poster: wrapPoster(poster, title, origTitle),
         year: String(airDate.getFullYear() || '2026'),
-        season: 1,
+        season,
         episode: entry.next_episode || 1,
         episode_title: `Серия ${entry.next_episode || 1}`,
         day_of_week: dayOfWeek,
@@ -450,7 +459,7 @@ export async function getShikimoriSchedule(weekStart, weekEnd) {
  * 4. TMDB Upcoming Movies (актуальные мировые кинопремьеры)
  */
 export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
-  const cacheKey = `tmdb_upcoming_${weekStart.getTime()}_${weekEnd.getTime()}_v113`;
+  const cacheKey = `tmdb_upcoming_${weekStart.getTime()}_${weekEnd.getTime()}_v121`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -537,7 +546,7 @@ export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
  * 5. TMDB TV On The Air (мировые телесериалы в эфире текущей недели)
  */
 export async function getTmdbTvSchedule(weekStart, weekEnd) {
-  const cacheKey = `tmdb_tv_${weekStart.getTime()}_${weekEnd.getTime()}_v112`;
+  const cacheKey = `tmdb_tv_${weekStart.getTime()}_${weekEnd.getTime()}_v121`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -600,7 +609,7 @@ export async function getTmdbTvSchedule(weekStart, weekEnd) {
  * 6. TVMaze Global TV Schedule (премиальный эфир телеканалов HBO, Apple TV+, Netflix, AMC)
  */
 export async function getTvMazeSchedule(weekStart, weekEnd) {
-  const cacheKey = `tvmaze_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v112`;
+  const cacheKey = `tvmaze_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v121`;
   const cached = getCache('tvmaze', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -677,7 +686,7 @@ export async function getTvMazeSchedule(weekStart, weekEnd) {
  * 7. AniXart Ongoing & Studio Dub Releases
  */
 export async function getAnixartSchedule(weekStart, weekEnd) {
-  const cacheKey = `anixart_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v113`;
+  const cacheKey = `anixart_schedule_${weekStart.getTime()}_${weekEnd.getTime()}_v121`;
   const cached = getCache('anixart', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -697,14 +706,19 @@ export async function getAnixartSchedule(weekStart, weekEnd) {
 
       const dateFormatted = `${String(epDate.getDate()).padStart(2, '0')}.${String(epDate.getMonth() + 1).padStart(2, '0')}.${epDate.getFullYear()}`;
       const epNum = (anime.episodes_released || 0) + 1;
+      const rawTitle = anime.raw_release_title || anime.title || '';
+      const rawOrig = anime.original_title || '';
+      const season = anime.detected_season || extractSeasonNumberFromTitle(rawTitle, true, rawOrig);
+      const cleanTitle = normalizeAnimeFranchiseTitle(anime.title, true) || anime.title;
+      const cleanOrig = normalizeAnimeFranchiseTitle(rawOrig, true) || rawOrig;
 
       items.push({
         id: `anix_${anime.id || idx}_ep${epNum}`,
-        title: anime.title,
-        original_title: anime.original_title || '',
-        poster: wrapPoster(anime.poster, anime.title, anime.original_title || ''),
+        title: cleanTitle,
+        original_title: cleanOrig,
+        poster: wrapPoster(anime.poster, cleanTitle, cleanOrig),
         year: String(anime.year || '2026'),
-        season: 1,
+        season,
         episode: epNum,
         episode_title: `Серия ${epNum}`,
         day_of_week: dayOfWeek,
@@ -736,7 +750,7 @@ export async function getAnixartSchedule(weekStart, weekEnd) {
  * Источники: LostFilm.TV, AniLibria, Shikimori, TMDB Movies, TMDB TV, TVMaze, AniXart
  */
 export async function getAggregatedSchedule(week = 'current') {
-  const cacheKey = `storm_live_schedule_${week}_v113`;
+  const cacheKey = `storm_live_schedule_${week}_v121`;
   const cached = getCache('schedule', cacheKey);
   if (cached && Array.isArray(cached) && cached.length > 0) {
     return {

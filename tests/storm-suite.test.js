@@ -142,18 +142,33 @@ describe('STORM MULTIMEDIA 1.2.0 — Automated Quality & Security Suite', () => 
 
     // Запись закладок и пакетного прогресса для u1
     setBookmark(u1.user.id, {
-      media_id: 'street_fighter_2026',
+      media_id: 'test_cyber_movie_2026',
       source: 'tmdb',
       media_type: 'movie',
-      title: 'Уличный боец',
+      title: 'Тестовый Кибер-Фильм',
       status: 'watching'
     });
+    // 1) Проверка правила 10 минут: перемотка на 1840 сек при реальном просмотре 120 сек (< 600 сек) НЕ должна попадать в Continue Watching
     logWatchProgressBatch(u1.user.id, [{
-      media_id: 'street_fighter_2026',
+      media_id: 'test_cyber_movie_2026',
       source: 'tmdb',
       media_type: 'movie',
-      title: 'Уличный боец',
+      title: 'Тестовый Кибер-Фильм',
       progress_seconds: 1840,
+      real_watched_seconds: 120,
+      duration_seconds: 5400,
+      device_name: 'Smart TV Living Room'
+    }]);
+    assert.equal(getContinueWatching(u1.user.id, 10).some(x => x.media_id === 'test_cyber_movie_2026'), false, 'Scrubbed video (< 10 min real watch time) must NOT enter Continue Watching');
+
+    // 2) Реальный просмотр >= 600 сек (15 минут = 900 сек) попадает в Continue Watching
+    logWatchProgressBatch(u1.user.id, [{
+      media_id: 'test_cyber_movie_2026',
+      source: 'tmdb',
+      media_type: 'movie',
+      title: 'Тестовый Кибер-Фильм',
+      progress_seconds: 1840,
+      real_watched_seconds: 900,
       duration_seconds: 5400,
       device_name: 'Smart TV Living Room'
     }]);
@@ -162,8 +177,8 @@ describe('STORM MULTIMEDIA 1.2.0 — Automated Quality & Security Suite', () => 
     // Проверка 100% изоляции: у u2 НЕ должно быть закладок или «Продолжить просмотр» от u1!
     const cw1 = getContinueWatching(u1.user.id, 10);
     const cw2 = getContinueWatching(u2.user.id, 10);
-    assert.equal(cw1.some(x => x.media_id === 'street_fighter_2026'), true);
-    assert.equal(cw2.some(x => x.media_id === 'street_fighter_2026'), false, 'User 2 MUST NOT see User 1 Continue Watching');
+    assert.equal(cw1.some(x => x.media_id === 'test_cyber_movie_2026'), true);
+    assert.equal(cw2.some(x => x.media_id === 'test_cyber_movie_2026'), false, 'User 2 MUST NOT see User 1 Continue Watching');
 
     const bm2 = getUserBookmarks(u2.user.id);
     assert.equal(bm2.length, 0, 'User 2 MUST NOT see User 1 Bookmarks');
@@ -171,7 +186,7 @@ describe('STORM MULTIMEDIA 1.2.0 — Automated Quality & Security Suite', () => 
     // Проверка кросс-девайс эстафеты (Handoff)
     const handoff = getLatestHandoffState(u1.user.id, 'Windows PC');
     assert.ok(handoff);
-    assert.equal(handoff.media_id, 'street_fighter_2026');
+    assert.equal(handoff.media_id, 'test_cyber_movie_2026');
     assert.equal(handoff.device_name, 'Smart TV Living Room');
 
     // Проверка подписок на выход серий

@@ -1,3 +1,4 @@
+const _stormCalMemoryCache = new Map();
 /* ==========================================================================
    STORM MULTIMEDIA - КАЛЕНДАРЬ РЕЛИЗОВ И РАСПИСАНИЕ СЕРИЙ
    Актуальное расписание выхода эпизодов и премьер
@@ -43,30 +44,123 @@ export function unwrapPosterUrl(url) {
   return url;
 }
 
-export function wrapPosterUrl(url, title = '') {
+const CAL_PROTECTED_TITLES = [
+  'кайдзю номер 8', 'кайдзю №8', 'кайдзю № 8', 'kaiju no. 8', 'kaiju no 8',
+  'моб психо 100', 'mob psycho 100',
+  '86', 'восемьдесят шесть', 'eighty six', 'eighty-six',
+  'ранма 1/2', 'ранма ½', 'ranma 1/2', 'ranma ½', '9-1-1',
+  'зона 88', 'area 88', 'токио 24-й район', 'гандам 00', 'вавилон 5'
+];
+
+export function normalizeCalendarSeriesItem(it) {
+  if (!it || !it.title) return it;
+  const isMovie = it.media_type === 'movie' || it.media_type === 'anime-movie' || it.episode_title === 'Мировая премьера';
+  if (isMovie) return it;
+
+  let rawTitle = String(it.title || '').trim();
+  const rawOrig = String(it.original_title || '').trim();
+  const combined = `${rawTitle} ${rawOrig}`;
+  let detectedSeason = parseInt(it.season, 10) || 1;
+
+  if (detectedSeason <= 1) {
+    const mExplicit = combined.match(/(?:\[\s*(?:тв|tv)[\s-]*(\d+)|(?:тв|tv)[\s-](\d+)|(\d+)\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*(\d+)|season\s*(\d+)|(\d+)(?:nd|rd|th)\s*season)/i);
+    if (mExplicit) {
+      const n = parseInt(mExplicit[1] || mExplicit[2] || mExplicit[3] || mExplicit[4] || mExplicit[5] || mExplicit[6], 10);
+      if (n >= 1 && n <= 30) detectedSeason = n;
+    } else if (/\bsecond\s+season\b/i.test(combined)) {
+      detectedSeason = 2;
+    } else if (/\bthird\s+season\b/i.test(combined)) {
+      detectedSeason = 3;
+    } else if (/\bfourth\s+season\b/i.test(combined)) {
+      detectedSeason = 4;
+    } else if (/\bfifth\s+season\b/i.test(combined)) {
+      detectedSeason = 5;
+    } else {
+      const mRoman = combined.match(/\b(?:II|III|IV)\b/);
+      if (mRoman && /mushoku\s+tensei|реинкарнация\s+безработного/i.test(combined)) {
+        const rMap = { II: 2, III: 3, IV: 4 };
+        detectedSeason = rMap[mRoman[0]] || detectedSeason;
+      }
+      const noYear = rawTitle.replace(/\s*[\(\[]\s*(?:19\d\d|20\d\d)\s*[\)\]]/g, '').trim();
+      const lowerNoYear = noYear.toLowerCase().replace(/ё/g, 'е');
+      if (!CAL_PROTECTED_TITLES.includes(lowerNoYear)) {
+        const mSub = noYear.match(/^(.{2,}?)\s+([2-9]|1[0-5])\s*[:.\-–—]\s*(.+)$/);
+        const mEnd = noYear.match(/^(.{2,}?)\s+([2-9]|1[0-5])$/);
+        const m = mSub || mEnd;
+        if (m && !CAL_PROTECTED_TITLES.includes(m[1].trim().toLowerCase().replace(/ё/g, 'е'))) {
+          detectedSeason = parseInt(m[2], 10);
+        } else {
+          const mPart = combined.match(/(?:[:.\-–—/|\s]+)(?:часть|part|cour)\s*([2-9])\b/i);
+          if (mPart && detectedSeason <= 1) {
+            detectedSeason = parseInt(mPart[1], 10);
+          }
+        }
+      }
+    }
+  }
+
+  let clean = rawTitle.replace(/\s*[\(\[]\s*(?:19\d\d|20\d\d)\s*[\)\]]/g, '');
+  clean = clean.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|(?:second|third|fourth|fifth)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
+  for (let pass = 0; pass < 2; pass++) {
+    clean = clean.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season|(?:second|third|fourth|fifth)\s+season|часть\s*\d+|part\s*(?:\d+|ii|iii|iv)|cour\s*\d+|акт\s*(?:\d+|ii|iii|iv)|act\s*(?:\d+|ii|iii|iv)|продолжение|финал(?:ьный\s*сезон)?|final\s*season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+  }
+  clean = clean.replace(/\s*:\s*арка\s+[^:]+$/i, '');
+  const lowerClean = clean.toLowerCase().replace(/ё/g, 'е').trim();
+  if (!CAL_PROTECTED_TITLES.some(p => lowerClean === p || lowerClean.startsWith(p + ':'))) {
+    const mSub = clean.match(/^(.{2,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(.+)$/i);
+    if (mSub && !CAL_PROTECTED_TITLES.includes(mSub[1].trim().toLowerCase().replace(/ё/g, 'е'))) {
+      clean = mSub[1].trim();
+    }
+    const mEnd = clean.match(/^(.{2,}?)\s+([2-9]|1[0-2])$/);
+    if (mEnd && !CAL_PROTECTED_TITLES.includes(mEnd[1].trim().toLowerCase().replace(/ё/g, 'е'))) {
+      clean = mEnd[1].trim();
+    }
+  }
+  if (/^ао[й]?\s+а(?:си|шито)$/i.test(clean.trim())) {
+    clean = 'Аой Ашито';
+  }
+  clean = clean.replace(/[-–—/|•:.]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+
+  return {
+    ...it,
+    title: clean || rawTitle,
+    season: detectedSeason
+  };
+}
+
+export function wrapPosterUrl(url, title = '', orig = '') {
+  const origParam = orig ? `&orig=${encodeURIComponent(orig)}` : '';
   if (!url || String(url).includes('missing_original') || String(url).includes('missing_preview') || String(url).includes('favicon.svg')) {
-    if (title) return `/api/media/image-proxy?title=${encodeURIComponent(title)}`;
+    if (title) return `/api/media/image-proxy?title=${encodeURIComponent(title)}${origParam}&v=2`;
     return POSTER_FALLBACK_SVG;
   }
   if (url.startsWith('data:') || url.startsWith('assets/')) return url;
+  const fixedUrl = String(url).replace('shikimori.one/', 'shikimori.io/');
 
   // Если открыто в офлайн WebView (file:), возвращаем прямой или распакованный URL
   if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
-    const unwrapped = unwrapPosterUrl(url);
+    const unwrapped = unwrapPosterUrl(fixedUrl);
     if (unwrapped.startsWith('http://') || unwrapped.startsWith('https://')) {
       return unwrapped;
     }
-    return unwrapPosterUrl(url);
+    return unwrapPosterUrl(fixedUrl);
   }
 
-  if (url.startsWith('/api/media/image-proxy')) {
-    if (title && !url.includes('title=')) {
-      return `${url}&title=${encodeURIComponent(title)}`;
+  if (fixedUrl.startsWith('/api/media/image-proxy')) {
+    let resUrl = fixedUrl;
+    if (title && !resUrl.includes('title=')) {
+      resUrl += `&title=${encodeURIComponent(title)}`;
     }
-    return url;
+    if (orig && !resUrl.includes('orig=')) {
+      resUrl += `&orig=${encodeURIComponent(orig)}`;
+    }
+    if (!resUrl.includes('v=')) {
+      resUrl += '&v=2';
+    }
+    return resUrl;
   }
 
-  return `/api/media/image-proxy?url=${encodeURIComponent(url)}${title ? `&title=${encodeURIComponent(title)}` : ''}`;
+  return `/api/media/image-proxy?url=${encodeURIComponent(fixedUrl)}${title ? `&title=${encodeURIComponent(title)}` : ''}${origParam}&v=2`;
 }
 
 /**
@@ -287,11 +381,12 @@ function mergeScheduleWithDefaults(liveItems, defaultItems, daysConfig) {
   const combined = [];
   const seen = new Set();
 
-  const pushUnique = (it) => {
-    if (!it || !it.title) return;
+  const pushUnique = (rawIt) => {
+    if (!rawIt || !rawIt.title) return;
+    const it = normalizeCalendarSeriesItem(rawIt);
     const rawDay = it.day_of_week !== undefined ? it.day_of_week : it.day;
     const dayId = (rawDay !== undefined && !isNaN(parseInt(rawDay, 10))) ? parseInt(rawDay, 10) : 1;
-    const cleanTitle = String(it.title).toLowerCase().replace(/[^a-zа-яё0-9]/gi, '');
+    const cleanTitle = String(it.title).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/gi, '');
     const key = `${cleanTitle}_d${dayId}`;
     if (!cleanTitle || seen.has(key)) return;
     seen.add(key);
@@ -317,16 +412,11 @@ async function loadAndRenderWeek(container) {
   const defaultItems = selectedWeek === 'next' ? DEFAULT_NEXT_WEEK : DEFAULT_CURRENT_WEEK;
   let scheduleItems = mergeScheduleWithDefaults([], defaultItems, daysConfig);
 
-  // 1. Быстрая загрузка из локального кэша v114, если есть
-  try {
-    const localCached = localStorage.getItem(`storm_cal_v114_${selectedWeek}`);
-    if (localCached) {
-      const parsed = JSON.parse(localCached);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        scheduleItems = mergeScheduleWithDefaults(parsed, defaultItems, daysConfig);
-      }
-    }
-  } catch {}
+  // 1. Быстрая загрузка из оперативного кэша сессии (без хранения в localStorage)
+  const memCached = _stormCalMemoryCache.get(selectedWeek);
+  if (Array.isArray(memCached) && memCached.length > 0) {
+    scheduleItems = mergeScheduleWithDefaults(memCached, defaultItems, daysConfig);
+  }
 
   // 2. Мгновенная отрисовка доступных данных без ожидания сети
   if (scheduleItems.length > 0) {
@@ -354,9 +444,7 @@ async function loadAndRenderWeek(container) {
       const liveList = Array.isArray(schedData) ? schedData : (schedData.items || schedData.schedule || []);
       if (liveList && liveList.length > 0) {
         const combined = mergeScheduleWithDefaults(liveList, defaultItems, daysConfig);
-        try {
-          localStorage.setItem(`storm_cal_v114_${selectedWeek}`, JSON.stringify(combined));
-        } catch {}
+        _stormCalMemoryCache.set(selectedWeek, combined);
         renderScheduleDaysAndGrid(container, combined, daysConfig);
       }
     }
@@ -508,7 +596,7 @@ function renderEpgMatrixGuide(grid, items, dayId, week) {
               </div>
               <div class="epg-matrix-shows-track">
                 ${studioItems.length > 0 ? studioItems.map(it => {
-                  const posterUrl = wrapPosterUrl(it.poster, it.title);
+                  const posterUrl = wrapPosterUrl(it.poster, it.title, it.original_title || '');
                   return `
                     <div class="epg-show-card" data-id="${it.id}" title="${escapeHtml(it.title)}: ${it.air_time || '20:00 МСК'}">
                       <img src="${posterUrl}" class="epg-show-thumb" alt="${escapeHtml(it.title)}" onerror="if(!this.dataset.triedDirect && this.src && this.src.includes('/api/media/image-proxy')){ this.dataset.triedDirect='1'; try { const u = new URLSearchParams(this.src.split('?')[1]).get('url'); if(u){ this.src=u; return; } }catch(_){} } this.onerror=null; this.src='${POSTER_FALLBACK_SVG}';">
@@ -567,7 +655,7 @@ function renderDayGrid(grid, items, dayId, week) {
     const season = it.season || 1;
     const episode = it.episode || 1;
     const is4K = Boolean(it.is4K || it.quality?.includes('4K'));
-    const posterUrl = wrapPosterUrl(it.poster, it.title);
+    const posterUrl = wrapPosterUrl(it.poster, it.title, it.original_title || '');
 
     let statusText = `📅 ${it.release_date || ''} в ${it.air_time || '20:00 МСК'}`;
     let statusClass = 'upcoming';

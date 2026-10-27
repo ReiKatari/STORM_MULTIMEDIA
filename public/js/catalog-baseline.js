@@ -140,7 +140,7 @@ export const VERIFIED_CATALOG_BASELINE = {
     },
     {
       "id": "rhs_arcane2",
-      "title": "Аркейн (2 сезон)",
+      "title": "Аркейн",
       "original_title": "Arcane Season 2",
       "poster": "https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg",
       "year": "2024",
@@ -597,7 +597,7 @@ export const VERIFIED_CATALOG_BASELINE = {
     },
     {
       "id": "rhs_arcane2",
-      "title": "Аркейн (2 сезон)",
+      "title": "Аркейн",
       "original_title": "Arcane Season 2",
       "poster": "https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg",
       "year": "2024",
@@ -2343,7 +2343,7 @@ export const VERIFIED_CATALOG_BASELINE = {
   "cartoon-series": [
     {
       "id": "rhs_arcane2",
-      "title": "Аркейн (2 сезон)",
+      "title": "Аркейн",
       "original_title": "Arcane Season 2",
       "poster": "https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg",
       "year": "2024",
