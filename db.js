@@ -721,11 +721,41 @@ export function updateUserSettings(userId, settings) {
   if (u) mariaSaveUser(u);
 }
 
+function isMockedPresetFamilyProfile(p) {
+  if (!p || typeof p !== 'object') return false;
+  if (p.id === 'family' || p.id === 'kids') return true;
+  if (p.name === 'Семейный просмотр' && p.subtitle === 'Общий кинозал для всей семьи') return true;
+  if (p.name === 'Детский профиль' && p.subtitle === 'Добрая анимация и сказки без 18+') return true;
+  return false;
+}
+
 export function getUserFamilyProfiles(userId) {
-  const user = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+  const user = db.prepare('SELECT username, avatar, role, settings_json FROM users WHERE id = ?').get(userId);
   if (!user) return null;
   const settings = JSON.parse(user.settings_json || '{}');
-  return settings.familyProfiles || null;
+  if (!Array.isArray(settings.familyProfiles)) return null;
+  const cleaned = settings.familyProfiles.filter(p => p && !isMockedPresetFamilyProfile(p));
+  if (cleaned.length !== settings.familyProfiles.length) {
+    settings.familyProfiles = cleaned.length > 0 ? cleaned : [
+      {
+        id: 'primary',
+        name: user.username || 'Основной профиль',
+        subtitle: 'Персональный кинозал',
+        avatar: user.avatar || 'assets/avatar_default.svg',
+        avatarBg: 'linear-gradient(135deg, #f59e0b, #d97706)',
+        isKid: false,
+        ageRating: '18+',
+        hasPin: false,
+        pin: '',
+        themePreference: 'auto',
+        defaultTab: 'home',
+        screenTimeLimit: 0,
+        isDefault: true
+      }
+    ];
+    updateUserSettings(userId, settings);
+  }
+  return settings.familyProfiles;
 }
 
 export function saveUserFamilyProfiles(userId, profiles) {
@@ -2838,6 +2868,11 @@ export function cleanupMockAndTestUsers() {
     const mockUsers = allUsers.filter(isMockOrTestUserRecord);
     for (const mu of mockUsers) {
       deleteUserAccountById(mu.id);
+    }
+    // Очищаем преднастроенные замоканные семейные профили (family / kids) у всех реальных пользователей
+    const realUsers = db.prepare('SELECT id FROM users').all();
+    for (const ru of realUsers) {
+      try { getUserFamilyProfiles(ru.id); } catch (_) {}
     }
     return mockUsers.length;
   } catch (err) {

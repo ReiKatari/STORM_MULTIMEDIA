@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.3.0';
+import { t, formatDate } from './i18n.js?v=1.3.1';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -1149,18 +1149,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.3.0').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.3.1').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.3.0').then(achMod => {
+  import('./achievements.js?v=1.3.1').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.3.0').then(themeMod => {
+  import('./theme.js?v=1.3.1').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -1224,7 +1224,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.3.0').then(m => {
+      import('./player.js?v=1.3.1').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -1238,10 +1238,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.3.0').then(m => {
+      import('./player.js?v=1.3.1').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.3.0').then(m => {
+      import('./ad-shield.js?v=1.3.1').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -1265,7 +1265,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.3.0').then(m => {
+      import('./ad-shield.js?v=1.3.1').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -1278,7 +1278,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.3.0').then(m => {
+      import('./smart-skip.js?v=1.3.1').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -1291,7 +1291,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.3.0').then(m => {
+      import('./player.js?v=1.3.1').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -1309,11 +1309,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.3.0').then(m => {
+      import('./player.js?v=1.3.1').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.3.0').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.3.1').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1536,7 +1536,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.3.0').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.3.1').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1621,7 +1621,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.3.0').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.3.1').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -1895,38 +1895,16 @@ const DEFAULT_PROFILES = [
     defaultTab: 'home',
     screenTimeLimit: 0,
     isDefault: true
-  },
-  {
-    id: 'family',
-    name: 'Семейный просмотр',
-    subtitle: 'Общий кинозал для всей семьи',
-    avatar: FAMILY_AVATAR_PRESETS[50]?.icon || '👨‍👩‍👧',
-    avatarBg: 'linear-gradient(135deg, #10b981, #059669)',
-    isKid: false,
-    ageRating: '16+',
-    hasPin: false,
-    pin: '',
-    themePreference: 'auto',
-    defaultTab: 'home',
-    screenTimeLimit: 0,
-    isDefault: false
-  },
-  {
-    id: 'kids',
-    name: 'Детский профиль',
-    subtitle: 'Добрая анимация и сказки без 18+',
-    avatar: FAMILY_AVATAR_PRESETS[51]?.icon || '🦄',
-    avatarBg: 'linear-gradient(135deg, #ff007f, #a855f7)',
-    isKid: true,
-    ageRating: '6+',
-    hasPin: true,
-    pin: '0000',
-    themePreference: 'auto',
-    defaultTab: 'cartoons',
-    screenTimeLimit: 60,
-    isDefault: false
   }
 ];
+
+function isMockedPresetProfile(p) {
+  if (!p || typeof p !== 'object') return false;
+  if (p.id === 'family' || p.id === 'kids') return true;
+  if (p.name === 'Семейный просмотр' && p.subtitle === 'Общий кинозал для всей семьи') return true;
+  if (p.name === 'Детский профиль' && p.subtitle === 'Добрая анимация и сказки без 18+') return true;
+  return false;
+}
 
 const LEGACY_EMOJI_TO_SVG_MAP = {
   '👑': FAMILY_AVATAR_PRESETS[17]?.icon || FAMILY_AVATAR_PRESETS[0]?.icon,
@@ -1958,15 +1936,14 @@ const LEGACY_EMOJI_TO_SVG_MAP = {
 function enrichProfileDefaults(p, idx = 0) {
   if (!p || typeof p !== 'object') return DEFAULT_PROFILES[0];
   const isPrim = p.id === 'primary' || p.isDefault || idx === 0;
-  const isFam = p.id === 'family';
-  const isKid = Boolean(p.isKid || p.id === 'kids');
+  const isKid = Boolean(p.isKid);
   const fallbackSub = isPrim
     ? 'Персональный кинозал'
-    : (isKid ? 'Безопасный детский режим' : (isFam ? 'Общий кинозал для всей семьи' : 'Персональный кинопрофиль'));
+    : (isKid ? 'Безопасный детский режим' : 'Персональный кинопрофиль');
   const resolvedName = (isPrim && (p.name === 'Основной профиль' || !p.name) && isRealAuthenticatedAccount() && currentUser?.username)
     ? currentUser.username
     : (p.name || 'Основной профиль');
-  const rawAvatar = p.avatar || (isPrim ? DEFAULT_PROFILES[0].avatar : (isKid ? DEFAULT_PROFILES[2].avatar : DEFAULT_PROFILES[1].avatar));
+  const rawAvatar = p.avatar || DEFAULT_PROFILES[0].avatar;
   const upgradedAvatar = LEGACY_EMOJI_TO_SVG_MAP[rawAvatar] || rawAvatar;
   return {
     ...p,
@@ -1982,6 +1959,21 @@ function enrichProfileDefaults(p, idx = 0) {
 
 let familyProfiles = DEFAULT_PROFILES.map(enrichProfileDefaults);
 let activeProfileId = localStorage.getItem('storm_active_profile_id') || 'primary';
+if (activeProfileId === 'family' || activeProfileId === 'kids') {
+  activeProfileId = 'primary';
+  try { localStorage.setItem('storm_active_profile_id', 'primary'); } catch (_) {}
+}
+
+function sanitizeFamilyProfilesList(list) {
+  const filtered = Array.isArray(list) ? list.filter(p => p && !isMockedPresetProfile(p)) : [];
+  const base = filtered.length > 0 ? filtered : DEFAULT_PROFILES;
+  const mapped = base.map(enrichProfileDefaults);
+  if (!mapped.some(p => p.id === activeProfileId)) {
+    activeProfileId = mapped[0]?.id || 'primary';
+    try { localStorage.setItem('storm_active_profile_id', activeProfileId); } catch (_) {}
+  }
+  return mapped;
+}
 
 function getUserFamilyStorageKey() {
   if (isRealAuthenticatedAccount() && currentUser?.id) {
@@ -2003,7 +1995,8 @@ async function syncProfilesWithServer() {
       try {
         const cached = JSON.parse(localStorage.getItem(userKey) || 'null');
         if (Array.isArray(cached) && cached.length > 0) {
-          familyProfiles = cached.map(enrichProfileDefaults);
+          familyProfiles = sanitizeFamilyProfilesList(cached);
+          localStorage.setItem(userKey, JSON.stringify(familyProfiles));
         }
       } catch (_) {}
     }
@@ -2015,7 +2008,7 @@ async function syncProfilesWithServer() {
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.profiles) && data.profiles.length > 0) {
-        familyProfiles = data.profiles.map(enrichProfileDefaults);
+        familyProfiles = sanitizeFamilyProfilesList(data.profiles);
         if (userKey) {
           localStorage.setItem(userKey, JSON.stringify(familyProfiles));
         }
@@ -2027,13 +2020,14 @@ async function syncProfilesWithServer() {
 
 export function getFamilyProfiles() {
   if (!isRealAuthenticatedAccount()) return [];
-  return familyProfiles.map(enrichProfileDefaults);
+  familyProfiles = sanitizeFamilyProfilesList(familyProfiles);
+  return familyProfiles;
 }
 
 export function saveFamilyProfiles(profiles) {
   if (!isRealAuthenticatedAccount()) return;
   if (!Array.isArray(profiles) || profiles.length === 0) return;
-  familyProfiles = profiles.map(enrichProfileDefaults);
+  familyProfiles = sanitizeFamilyProfilesList(profiles);
   const userKey = getUserFamilyStorageKey();
   if (userKey) {
     localStorage.setItem(userKey, JSON.stringify(familyProfiles));
@@ -2245,29 +2239,16 @@ function renderAvatarElement(p) {
 
 function getProfileQuickStats(p) {
   const isPrim = p.id === 'primary' || p.isDefault;
-  let watchedCount = 0;
-  let favCount = 0;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('storm_status_')) {
-        const val = localStorage.getItem(k);
-        if (val === 'completed' || val === 'watching') watchedCount++;
-        if (val === 'favorite') favCount++;
-      }
-    }
-  } catch (_) {}
   if (isPrim) {
-    watchedCount = Math.max(watchedCount, currentUser?.stats?.history_count || 12);
-    favCount = Math.max(favCount, currentUser?.stats?.bookmarks_count || 5);
-  } else if (p.isKid) {
-    watchedCount = Math.max(3, Math.floor(watchedCount * 0.4));
-    favCount = Math.max(2, Math.floor(favCount * 0.5));
-  } else {
-    watchedCount = Math.max(5, Math.floor(watchedCount * 0.7));
-    favCount = Math.max(3, Math.floor(favCount * 0.6));
+    const st = computeLocalAndMergedProfileStats(currentUser?.stats || {});
+    const watchedCount = (Number(st.completedCount) || 0) + (Number(st.watchingCount) || 0);
+    const favCount = Number(st.favoritesCount) || 0;
+    return { watchedCount, favCount };
   }
-  return { watchedCount, favCount };
+  return {
+    watchedCount: Number(p.watchedCount) || 0,
+    favCount: Number(p.favCount) || 0
+  };
 }
 
 // -------------------------------------------------------------
