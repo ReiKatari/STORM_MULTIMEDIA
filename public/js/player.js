@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.2.8';
-import { getUser, showToast } from './auth.js?v=1.2.8';
-import { t } from './i18n.js?v=1.2.8';
-import { trackClientAction } from './achievements.js?v=1.2.8';
-import { renderReviewsSection } from './reviews.js?v=1.2.8';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.2.8';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.2.8';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.2.8';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.2.8';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.2.8';
-import { saveMediaForOffline } from './offline-storage.js?v=1.2.8';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.2.8';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.2.8';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.2.8';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.2.8';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.2.8';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.2.9';
+import { getUser, showToast } from './auth.js?v=1.2.9';
+import { t } from './i18n.js?v=1.2.9';
+import { trackClientAction } from './achievements.js?v=1.2.9';
+import { renderReviewsSection } from './reviews.js?v=1.2.9';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.2.9';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.2.9';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.2.9';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.2.9';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.2.9';
+import { saveMediaForOffline } from './offline-storage.js?v=1.2.9';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.2.9';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.2.9';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.2.9';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.2.9';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.2.9';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -2644,7 +2644,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
 
   let initialStartedPlayerId = null;
   let initialStartedPlayerUrl = null;
-  if (initialChoice && initialChoice.url && mediaItem.source !== 'anilibria' && mediaItem.source !== 'anixart') {
+  const isInitialItemUpcoming = Boolean(mediaItem.is_upcoming || mediaItem.status === 'Анонс' || mediaItem.quality === 'Ожидается' || String(mediaItem.id || '').startsWith('tmdb_up_'));
+  if (!isInitialItemUpcoming && initialChoice && initialChoice.url && mediaItem.source !== 'anilibria' && mediaItem.source !== 'anixart') {
     initialStartedPlayerId = initialChoice.id;
     initialStartedPlayerUrl = initialChoice.url;
     selectPlayer(initialChoice);
@@ -2741,6 +2742,7 @@ export async function openPlayerModal(mediaItem, options = {}) {
     // 🛡️ ОБЪЕДИНЕНИЕ СЕРВЕРНЫХ И УНИВЕРСАЛЬНЫХ ПЛЕЕРОВ:
     // Для отечественного контента жестко фильтруем LostFilm и RHS
     const mergedPlayers = [];
+    const isDetailsStrictlyUpcoming = Boolean((details.is_upcoming || details.status === 'Анонс') && (!Array.isArray(details.players) || details.players.length === 0));
     if (Array.isArray(details.players) && details.players.length > 0) {
       details.players.forEach(dp => {
         if (!dp || !dp.url) return;
@@ -2750,13 +2752,15 @@ export async function openPlayerModal(mediaItem, options = {}) {
         }
       });
     }
-    fallbackSuite.forEach(fp => {
-      if (!fp || !fp.url) return;
-      if (isDomestic && (fp.id === 'lostfilm_player' || fp.id === 'rhs_player')) return;
-      if (!mergedPlayers.some(mp => mp.id === fp.id)) {
-        mergedPlayers.push(fp);
-      }
-    });
+    if (!isDetailsStrictlyUpcoming) {
+      fallbackSuite.forEach(fp => {
+        if (!fp || !fp.url) return;
+        if (isDomestic && (fp.id === 'lostfilm_player' || fp.id === 'rhs_player')) return;
+        if (!mergedPlayers.some(mp => mp.id === fp.id)) {
+          mergedPlayers.push(fp);
+        }
+      });
+    }
 
     currentPlayers = mergedPlayers;
 
@@ -7274,9 +7278,10 @@ export function checkIfMediaIsSeries(media) {
 
   // Явные признаки фильма: если медиа помечено как фильм и не входит в список подтверждённых сериалов
   const isExplicitMovie = media.media_type === 'movie' || media.type === 'movie' || 
-                          media.media_type === 'cartoon' || media.media_type === 'anime-movie' ||
+                          media.media_type === 'cartoon' || media.media_type === 'anime-movie' || media.media_type === 'anime-movies' ||
+                          media.kind === 'movie' || media.is_movie ||
                           media.category === 'Фильм' || media.category === 'фильм' || 
-                          media.category === 'Мультфильм';
+                          media.category === 'Мультфильм' || media.category === 'Аниме-фильм' || media.category === 'аниме-фильм';
 
   if (isExplicitMovie && !isExplicitSeriesTitle) {
     return false;
@@ -13089,9 +13094,17 @@ async function renderSeriesSeasons(mediaDetails, initialSeason = null, initialEp
   }
 
   const detType = detectClientMediaType(mediaDetails);
-  const isMovie = !checkIfMediaIsSeries(mediaDetails) && !checkIfMediaIsSeries(currentMedia) &&
-                  (detType === 'movie' || detType === 'cartoon' || detType === 'anime-movie' ||
-                   mediaDetails.media_type === 'movie' || mediaDetails.category === 'Фильм' || mediaDetails.category === 'фильм');
+  const isExplicitAnimeOrFullMovie = detType === 'movie' || detType === 'cartoon' || detType === 'anime-movie' ||
+                   mediaDetails.media_type === 'movie' || mediaDetails.media_type === 'cartoon' || mediaDetails.media_type === 'anime-movie' || mediaDetails.media_type === 'anime-movies' ||
+                   currentMedia?.media_type === 'anime-movie' || currentMedia?.media_type === 'movie' || currentMedia?.media_type === 'cartoon' ||
+                   mediaDetails.category === 'Фильм' || mediaDetails.category === 'фильм' || mediaDetails.category === 'Мультфильм' || mediaDetails.category === 'Аниме-фильм';
+  if (isExplicitAnimeOrFullMovie || mediaDetails.is_upcoming || mediaDetails.status === 'Анонс') {
+    mediaDetails.seasons = [];
+    mediaDetails.episodes = [];
+    container.style.display = 'none';
+    return;
+  }
+  const isMovie = !checkIfMediaIsSeries(mediaDetails) && !checkIfMediaIsSeries(currentMedia) && isExplicitAnimeOrFullMovie;
 
   const isSeries = !isMovie && (checkIfMediaIsSeries(mediaDetails) ||
                    checkIfMediaIsSeries(currentMedia) ||

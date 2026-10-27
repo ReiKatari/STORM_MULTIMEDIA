@@ -162,7 +162,7 @@ export async function searchShikimori(query) {
  */
 export async function getShikimoriRelated(animeId) {
   if (!animeId) return [];
-  const cacheKey = `shikimori_related_v4_${animeId}`;
+  const cacheKey = `shikimori_related_v5_${animeId}`;
   const cached = getCache('shikimori', cacheKey);
   if (Array.isArray(cached) && cached.length > 0) return cached;
 
@@ -284,7 +284,8 @@ export async function getShikimoriRelated(animeId) {
         poster: it.poster,
         media_type: it.media_type,
         rating: it.rating,
-        status: it.status
+        status: it.status,
+        is_upcoming: it.status === 'Анонс'
       }));
 
     if (items.length > 0) {
@@ -357,5 +358,83 @@ export async function getShikimoriCalendar() {
   } catch (err) {
     console.error('[Shikimori Calendar] Ошибка:', err.message);
     return [];
+  }
+}
+
+
+/**
+ * Получение точных метаданных конкретного релиза Shikimori по ID (/api/animes/:id)
+ */
+export async function getShikimoriDetails(animeId) {
+  const cleanId = String(animeId || '').replace(/^shiki_/i, '').trim();
+  if (!/^\d+$/.test(cleanId)) return null;
+  const cacheKey = `shikimori_details_v2_${cleanId}`;
+  const cached = getCache('shikimori', cacheKey);
+  if (cached && cached.id) return cached;
+
+  try {
+    const res = await shikiFetch(`/api/animes/${cleanId}`, 4500);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.id) return null;
+
+    const rawTitle = String(data.russian || data.name || '').trim();
+    const rawOrig = String(data.name || '').trim();
+    const kind = String(data.kind || '').toLowerCase().trim();
+    const isMovie = kind === 'movie';
+    const isUpcoming = Boolean(
+      data.status === 'anons' ||
+      (data.aired_on && new Date(data.aired_on) > new Date()) ||
+      (data.status !== 'released' && Number(data.episodes_aired || 0) === 0 && !data.aired_on)
+    );
+    const title = (isMovie || isUpcoming) ? rawTitle : (normalizeAnimeFranchiseTitle(rawTitle, true) || rawTitle);
+    const origTitle = (isMovie || isUpcoming) ? rawOrig : (normalizeAnimeFranchiseTitle(rawOrig, true) || rawOrig);
+    const rawYear = data.aired_on ? data.aired_on.substring(0, 4) : (data.released_on ? data.released_on.substring(0, 4) : '');
+    const imgOrig = String(data.image?.original || data.image?.preview || '');
+    const posterUrl = (imgOrig && !imgOrig.includes('missing_'))
+      ? (imgOrig.startsWith('http') ? imgOrig : `${SHIKIMORI_BASE}${imgOrig}`)
+      : `/api/media/image-proxy?title=${encodeURIComponent(title)}&orig=${encodeURIComponent(origTitle)}`;
+
+    const cleanDesc = String(data.description || '')
+      .replace(/\[(?:character|anime|manga|person|url)[^\]]*\]/gi, '')
+      .replace(/\[\/(?:character|anime|manga|person|url)\]/gi, '')
+      .replace(/\[[a-z]+\]|\[\/[a-z]+\]/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const genres = Array.isArray(data.genres)
+      ? data.genres.map(g => g.russian || g.name).filter(Boolean)
+      : [];
+
+    const result = {
+      id: String(data.id),
+      shikimori_id: String(data.id),
+      source: 'shikimori',
+      title,
+      raw_release_title: rawTitle,
+      original_title: origTitle,
+      kind,
+      is_movie: isMovie,
+      media_type: isMovie ? 'anime-movie' : 'anime-series',
+      category: isMovie ? 'Аниме-фильм' : 'Аниме-сериал',
+      year: rawYear,
+      release_date: data.aired_on || data.released_on || '',
+      poster: posterUrl,
+      rating: parseFloat(data.score) || 0,
+      duration: data.duration ? `${data.duration} мин.` : '',
+      runtime_minutes: Number(data.duration) || 0,
+      description: cleanDesc,
+      genres,
+      is_upcoming: isUpcoming,
+      status: data.status === 'anons' ? 'Анонс' : (data.status === 'released' ? 'Вышел' : 'Онгоинг'),
+      quality: isUpcoming ? 'Ожидается' : '1080p FHD',
+      episodes_total: Number(data.episodes) || 0,
+      episodes_released: isUpcoming ? 0 : (Number(data.episodes_aired || data.episodes) || 0)
+    };
+
+    setCache('shikimori', cacheKey, result, 3600);
+    return result;
+  } catch (_) {
+    return null;
   }
 }

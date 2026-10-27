@@ -614,7 +614,7 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
   const rawOrig = String(original_title || '').replace(/\s*\(\d{4}\)\s*$/i, '').trim();
   if (!rawTitle && !rawOrig) return null;
 
-  const cacheKey = `match_v2:${rawTitle.toLowerCase()}:${rawOrig.toLowerCase()}:${year || ''}:${Boolean(is_series)}`;
+  const cacheKey = `match_v5:${rawTitle.toLowerCase()}:${rawOrig.toLowerCase()}:${year || ''}:${Boolean(is_series)}`;
   const cached = getCached(cacheKey);
   if (cached !== null) return cached || null;
 
@@ -627,10 +627,16 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
     return nWords.every(w => hSet.has(w));
   };
 
+  const splitSubtitleRegex = /[:.]|\s+[—–-]\s+/;
   const targetTitle = norm(rawTitle);
   const targetOrig = norm(rawOrig);
-  const basePart = rawTitle ? rawTitle.split(/[.:—–-]/)[0].trim() : '';
+  const basePart = rawTitle ? rawTitle.split(splitSubtitleRegex)[0].trim() : '';
   const targetBase = (basePart && basePart.length >= 4 && basePart.toLowerCase() !== rawTitle.toLowerCase()) ? norm(basePart) : '';
+  const GENERIC_SUB_WORDS = new Set(['фильм', 'сериал', 'сезон', 'часть', 'movie', 'season', 'part', 'тв', 'tv', 'аниме', 'история', 'арка', 'глава', 'hen', 'arc']);
+  const baseWordsSet = new Set((targetBase || '').split(' ').filter(Boolean));
+  const subtitleWords = targetBase
+    ? targetTitle.split(' ').filter(w => w.length >= 3 && !baseWordsSet.has(w) && !GENERIC_SUB_WORDS.has(w) && !/^\d+$/.test(w))
+    : [];
   const targetYear = parseInt(year, 10) || 0;
 
   const searchPromises = [];
@@ -667,14 +673,17 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
     let titleScore = 0;
     const cTitle = norm(item.title);
     const cOrig = norm(item.original_title);
-    const cBase = norm(String(item.title || '').split(/[.:—–-]/)[0]);
+    const cBase = norm(String(item.title || '').split(splitSubtitleRegex)[0]);
     const cYear = parseInt(item.year, 10) || 0;
+    const candidateMatchesSubtitle = subtitleWords.length === 0 || subtitleWords.every(sw => cTitle.split(' ').includes(sw));
 
     if (targetTitle && cTitle === targetTitle) {
-      titleScore = Math.max(titleScore, 130);
-    } else if (targetTitle && cTitle && targetTitle.split(' ').length >= 2 && (cTitle.startsWith(targetTitle + ' ') || (cBase === targetTitle && cBase.split(' ').length >= 2))) {
+      titleScore = Math.max(titleScore, 135);
+    } else if (targetTitle && cTitle && hasAllWords(cTitle, targetTitle) && (cBase === targetBase || cTitle.startsWith((targetBase || targetTitle) + ' '))) {
+      titleScore = Math.max(titleScore, 128);
+    } else if (targetTitle && cTitle && subtitleWords.length === 0 && targetTitle.split(' ').length >= 2 && (cTitle.startsWith(targetTitle + ' ') || (cBase === targetTitle && cBase.split(' ').length >= 2))) {
       titleScore = Math.max(titleScore, 90);
-    } else if (targetBase && cBase && targetBase.split(' ').length >= 2 && targetBase === cBase) {
+    } else if (targetBase && cBase && candidateMatchesSubtitle && targetBase.split(' ').length >= 2 && targetBase === cBase) {
       titleScore = Math.max(titleScore, 85);
     }
 

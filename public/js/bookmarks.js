@@ -1,11 +1,11 @@
-import { trackClientAction } from './achievements.js?v=1.2.8';
+import { trackClientAction } from './achievements.js?v=1.2.9';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.2.8';
-import { t } from './i18n.js?v=1.2.8';
-import { normalizeStatus } from './status-icons.js?v=1.2.8';
+import { getToken, showToast } from './auth.js?v=1.2.9';
+import { t } from './i18n.js?v=1.2.9';
+import { normalizeStatus } from './status-icons.js?v=1.2.9';
 
 let memoryBookmarksCache = [];
 
@@ -1061,7 +1061,7 @@ export function detectClientMediaType(item) {
       t.includes('перекуре за супермаркетом') || t.includes('дандадан') || t.includes('клинок, рассекающий') ||
       t.includes('атака титанов') || t.includes('аркейн') || t.includes('поднятие уровня') || t.includes('магическая битва') ||
       t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) {
-    if (t.includes('фильм') || cat === 'anime-movies' || item.media_type === 'anime-movie') {
+    if (t.includes('фильм') || t.includes('резе') || t.includes('reze') || cat === 'anime-movies' || cat === 'anime-movie' || cat === 'аниме-фильм' || item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie) {
       return 'anime-movie';
     }
     return 'anime-series';

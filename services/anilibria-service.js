@@ -199,22 +199,36 @@ function mapReleaseEpisodes(rel, posterFallback, seasonNum = 1) {
 /**
  * Получение детальной информации о релизе и ВСЕХ сезонов франшизы с HLS потоками
  */
-export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
+export async function getAniLibriaDetails(releaseId, fallbackTitle = '', options = {}) {
   let cleanId = String(releaseId || '').replace(/^(?:anilibria_|anilib_|libria_)/i, '').trim();
-  const normalizedFallback = normalizeAnimeFranchiseTitle(fallbackTitle || '', true);
+  const rawFallback = String(fallbackTitle || '').trim();
+  const wantMovie = Boolean(options?.isMovie || options?.media_type === 'anime-movie');
+  const normalizedFallback = wantMovie ? rawFallback : normalizeAnimeFranchiseTitle(rawFallback, true);
+  const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').replace(/\s+/g, ' ').trim();
 
-  if (!/^\d+$/.test(cleanId) && (normalizedFallback || fallbackTitle || cleanId)) {
+  if (!/^\d+$/.test(cleanId) && (normalizedFallback || rawFallback || cleanId)) {
     try {
-      const searchQ = normalizedFallback || fallbackTitle || cleanId.replace(/_/g, ' ');
+      const searchQ = normalizedFallback || rawFallback || cleanId.replace(/_/g, ' ');
       const searchRes = await searchAniLibria(searchQ);
       if (searchRes?.items?.length > 0) {
-        cleanId = String(searchRes.items[0].id);
+        const targetCanon = norm(searchQ);
+        const targetRaw = norm(rawFallback || searchQ);
+        const matchedItem = searchRes.items.find(it => {
+          if (!it || !it.id) return false;
+          if (wantMovie && it.media_type !== 'anime-movie') return false;
+          const itTitle = norm(it.title);
+          const itRaw = norm(it.raw_release_title || it.title);
+          return itTitle === targetCanon || itRaw === targetRaw || itTitle === targetRaw;
+        });
+        if (matchedItem) {
+          cleanId = String(matchedItem.id);
+        }
       }
     } catch (_) {}
   }
-  if (!cleanId) return null;
+  if (!/^\d+$/.test(cleanId)) return null;
 
-  const cacheKey = `details_franchise_v7_${cleanId}`;
+  const cacheKey = `details_franchise_v9_${cleanId}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 
@@ -464,7 +478,7 @@ export async function searchAniLibria(query) {
   if (!query || !query.trim()) return { items: [] };
 
   const cleanQ = normalizeAnimeFranchiseTitle(query.trim(), true) || query.trim();
-  const cacheKey = `search_v5_${cleanQ.toLowerCase()}`;
+  const cacheKey = `search_v7_${cleanQ.toLowerCase()}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 

@@ -119,7 +119,8 @@ import {
 import {
   getShikimoriCatalog,
   searchShikimori,
-  getShikimoriRelated
+  getShikimoriRelated,
+  getShikimoriDetails
 } from './services/shikimori-service.js';
 
 import {
@@ -4430,7 +4431,7 @@ const itemDetailsCache = new Map();
 app.get('/api/media/item', async (req, res) => {
   try {
     const { id, source, url } = req.query;
-    const cacheKey = `${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}`;
+    const cacheKey = `v5_${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}_${req.query.media_type || ''}`;
     const cached = itemDetailsCache.get(cacheKey);
     if (cached && (Date.now() - cached.time < 30 * 60 * 1000)) {
       let userBookmark = null;
@@ -4489,14 +4490,32 @@ app.get('/api/media/item', async (req, res) => {
       }
     } else if (source === 'shikimori' || String(id || '').startsWith('shiki_')) {
       const cleanShikiId = String(id || '').replace(/^shiki_/i, '').trim();
-      const shikiTitle = normalizeAnimeFranchiseTitle(req.query.title || '', true) || req.query.title || '';
-      const libriaDetails = shikiTitle ? await getAniLibriaDetails('', shikiTitle) : null;
-      if (libriaDetails) {
+      const shikiMeta = cleanShikiId ? await getShikimoriDetails(cleanShikiId) : null;
+      const isShikiMovie = Boolean(shikiMeta?.is_movie || req.query.media_type === 'anime-movie' || req.query.media_type === 'movie');
+      const isShikiUpcoming = Boolean(shikiMeta?.is_upcoming || req.query.status === 'Анонс' || req.query.is_upcoming === 'true');
+      const rawShikiTitle = shikiMeta?.title || req.query.title || '';
+      const shikiTitle = (isShikiMovie || isShikiUpcoming)
+        ? rawShikiTitle
+        : (normalizeAnimeFranchiseTitle(rawShikiTitle, true) || rawShikiTitle);
+
+      const libriaDetails = (!isShikiUpcoming && shikiTitle)
+        ? await getAniLibriaDetails('', shikiTitle, { isMovie: isShikiMovie, media_type: isShikiMovie ? 'anime-movie' : 'anime-series' })
+        : null;
+
+      if (libriaDetails && (!isShikiMovie || libriaDetails.media_type === 'anime-movie')) {
         mediaDetails = {
           ...libriaDetails,
           id: cleanShikiId || libriaDetails.id,
           source: 'shikimori',
           shikimori_id: cleanShikiId,
+          title: shikiMeta?.title || libriaDetails.title || shikiTitle,
+          original_title: shikiMeta?.original_title || libriaDetails.original_title || req.query.original_title || '',
+          year: shikiMeta?.year || libriaDetails.year || req.query.year || '',
+          poster: shikiMeta?.poster || libriaDetails.poster || req.query.poster || 'assets/favicon.svg',
+          media_type: isShikiMovie ? 'anime-movie' : (libriaDetails.media_type || 'anime-series'),
+          category: isShikiMovie ? 'Аниме-фильм' : 'Аниме-сериал',
+          seasons: isShikiMovie ? [] : libriaDetails.seasons,
+          episodes: isShikiMovie ? [] : libriaDetails.episodes,
           players: [
             {
               id: 'anilibria_hls',
@@ -4517,13 +4536,22 @@ app.get('/api/media/item', async (req, res) => {
           source: 'shikimori',
           shikimori_id: cleanShikiId,
           title: shikiTitle || 'Аниме',
-          original_title: req.query.original_title || '',
-          poster: req.query.poster || 'assets/favicon.svg',
-          year: resolveCanonicalYear(shikiTitle, '', '', '', req.query.year || '') || '2026',
-          rating: parseFloat(req.query.rating) || 8.0,
-          description: req.query.description || 'Аниме доступно для онлайн-просмотра в высоком качестве с русской озвучкой и субтитрами.',
-          media_type: req.query.media_type || 'anime-series',
-          category: (req.query.media_type === 'anime-movie') ? 'Аниме-фильм' : 'Аниме-сериал',
+          original_title: shikiMeta?.original_title || req.query.original_title || '',
+          poster: shikiMeta?.poster || req.query.poster || 'assets/favicon.svg',
+          year: shikiMeta?.year || req.query.year || (isShikiUpcoming ? 'Анонс' : resolveCanonicalYear(shikiTitle, '', '', '', '') || '2026'),
+          release_date: shikiMeta?.release_date || '',
+          rating: shikiMeta?.rating || parseFloat(req.query.rating) || 8.0,
+          duration: shikiMeta?.duration || '',
+          runtime_minutes: shikiMeta?.runtime_minutes || 0,
+          genres: shikiMeta?.genres?.length ? shikiMeta.genres : undefined,
+          description: shikiMeta?.description || req.query.description || (isShikiUpcoming ? 'Аниме официально анонсировано и находится в производстве. Видеопоток появится сразу после премьеры.' : 'Аниме доступно для онлайн-просмотра в высоком качестве с русской озвучкой и субтитрами.'),
+          media_type: isShikiMovie ? 'anime-movie' : (req.query.media_type || shikiMeta?.media_type || 'anime-series'),
+          category: isShikiMovie ? 'Аниме-фильм' : 'Аниме-сериал',
+          is_upcoming: isShikiUpcoming,
+          status: shikiMeta?.status || (isShikiUpcoming ? 'Анонс' : 'Вышел'),
+          quality: isShikiUpcoming ? 'Ожидается' : '1080p FHD',
+          seasons: [],
+          episodes: [],
           players: []
         };
       }
@@ -4968,17 +4996,26 @@ app.get('/api/media/item', async (req, res) => {
       (!/[.!?…»")]$/.test(rawDesc) && rawDesc.length < 250);
     const hasValidDesc = !isDescStub;
 
-    const canonicalType = resolveCanonicalMediaType(mediaDetails.title);
-    const isSeries = mediaDetails.media_type === 'series' || 
-                     mediaDetails.category === 'Сериал' || 
-                     mediaDetails.media_type === 'cartoon-series' || 
-                     mediaDetails.media_type === 'anime-series' ||
-                     canonicalType === 'series';
-    if (canonicalType === 'series') {
+    const isExplicitMovieReq = req.query.media_type === 'anime-movie' || req.query.media_type === 'movie' || req.query.media_type === 'cartoon' || mediaDetails.media_type === 'anime-movie' || mediaDetails.category === 'Аниме-фильм';
+    const canonicalType = resolveCanonicalMediaType(mediaDetails.title, mediaDetails.fanfilm_4k_url || mediaDetails.link || '', mediaDetails.category || req.query.media_type || '', mediaDetails.genres, mediaDetails);
+    if (isExplicitMovieReq || canonicalType === 'anime-movie') {
+      if (req.query.media_type === 'anime-movie' || mediaDetails.media_type === 'anime-movie' || canonicalType === 'anime-movie') {
+        mediaDetails.media_type = 'anime-movie';
+        mediaDetails.category = 'Аниме-фильм';
+      }
+      mediaDetails.seasons = [];
+      mediaDetails.episodes = [];
+    } else if (canonicalType === 'series') {
       mediaDetails.media_type = 'series';
       mediaDetails.category = 'Сериал';
     }
-    const needsSeasons = isSeries && (!mediaDetails.seasons || mediaDetails.seasons.length === 0);
+    const isSeries = !isExplicitMovieReq && canonicalType !== 'anime-movie' && (
+                     mediaDetails.media_type === 'series' || 
+                     mediaDetails.category === 'Сериал' || 
+                     mediaDetails.media_type === 'cartoon-series' || 
+                     mediaDetails.media_type === 'anime-series' ||
+                     canonicalType === 'series');
+    const needsSeasons = isSeries && !mediaDetails.is_upcoming && (!mediaDetails.seasons || mediaDetails.seasons.length === 0);
 
     const hasRichCast = mediaDetails.cast?.some(c => Boolean(c.photo));
     const needsDurationEnrichment = !mediaDetails.duration || !mediaDetails.runtime_minutes || mediaDetails.duration === '1 ч 45 мин' || mediaDetails.duration === '145 мин' || mediaDetails.duration === '2 ч 25 мин';
@@ -4997,7 +5034,7 @@ app.get('/api/media/item', async (req, res) => {
         ]);
         if (tmdbSearch.items?.length > 0) {
           const isAnimeSource = source === 'anilibria' || source === 'anixart' || source === 'shikimori' || String(mediaDetails.media_type || '').includes('anime');
-    if (isAnimeSource && mediaDetails.media_type !== 'anime-movie') {
+    if (isAnimeSource && mediaDetails.media_type !== 'anime-movie' && !isExplicitMovieReq && !mediaDetails.is_upcoming) {
       if (mediaDetails.title) {
         mediaDetails.title = normalizeAnimeFranchiseTitle(mediaDetails.title, true) || mediaDetails.title;
       }
@@ -5324,7 +5361,7 @@ app.get('/api/media/item', async (req, res) => {
     mediaDetails.trailer_url = '';
 
     // Быстрое обогащение через Lift (api.liftw.ws): lift_id, студийные озвучки, рейтинги КП/IMDb, русские роли актеров и части франшизы
-    if (!isKnownUnreleased && !mediaDetails.lift_id && mediaDetails.title) {
+    if (!isKnownUnreleased && !mediaDetails.is_upcoming && mediaDetails.status !== 'Анонс' && !mediaDetails.lift_id && mediaDetails.title) {
       try {
         const matchedLiftId = await Promise.race([
           resolveLiftMatch({
@@ -5343,6 +5380,9 @@ app.get('/api/media/item', async (req, res) => {
             new Promise(r => setTimeout(() => r(null), 2200))
           ]);
           if (liftInfo) {
+            if (isSeries && !isExplicitMovieReq && liftInfo.seasons?.length && (!mediaDetails.seasons || mediaDetails.seasons.length === 0)) {
+              mediaDetails.seasons = liftInfo.seasons;
+            }
             if (liftInfo.voiceovers?.length && !mediaDetails.voiceovers?.length) {
               mediaDetails.voiceovers = liftInfo.voiceovers;
             }
@@ -5422,7 +5462,7 @@ app.get('/api/media/item', async (req, res) => {
       ['lift', 'fanfilm4k', 'anilibria'].includes(mediaDetails.source) ||
       (Array.isArray(mediaDetails.episodes) && mediaDetails.episodes.some(ep => ep && (ep.hls_1080 || ep.hls_720 || ep.embed_url)))
     );
-    if (!hasVerifiedOnlineStream && !isKnownUnreleased) {
+    if (!hasVerifiedOnlineStream && !isKnownUnreleased && !mediaDetails.is_upcoming && mediaDetails.status !== 'Анонс') {
       const detailProbe = await probeSingleItemDigitalStream(mediaDetails);
       if (detailProbe && detailProbe.hasStream) {
         hasVerifiedOnlineStream = true;
@@ -5437,12 +5477,24 @@ app.get('/api/media/item', async (req, res) => {
     }
     const finalUpcomingState = Boolean(
       isKnownUnreleased ||
+      mediaDetails.status === 'Анонс' ||
       (!hasVerifiedOnlineStream && (mediaDetails.stream_verified === false || isFutureRelease || isMediaUpcomingOrUnreleased(mediaDetails)))
     );
     mediaDetails.is_upcoming = finalUpcomingState;
     if (finalUpcomingState) {
       mediaDetails.is4K = false;
       mediaDetails.quality = 'Ожидается';
+      mediaDetails.seasons = [];
+      mediaDetails.episodes = [];
+      allPlayers = [];
+    }
+    if (mediaDetails.media_type === 'anime-movie' || mediaDetails.media_type === 'movie' || mediaDetails.media_type === 'cartoon' || req.query.media_type === 'anime-movie') {
+      if (req.query.media_type === 'anime-movie' || mediaDetails.media_type === 'anime-movie') {
+        mediaDetails.media_type = 'anime-movie';
+        mediaDetails.category = 'Аниме-фильм';
+      }
+      mediaDetails.seasons = [];
+      mediaDetails.episodes = [];
     } else if (hasVerifiedOnlineStream && mediaDetails.quality === 'Ожидается') {
       mediaDetails.is4K = mediaDetails.source !== 'anilibria';
       mediaDetails.quality = mediaDetails.is4K ? '4K Ultra HD' : '1080p FHD';

@@ -618,7 +618,7 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
 
   if (isAnime) {
     const hasAnimeEps = (parseInt(item.total_episodes, 10) > 1) || (parseInt(item.episode, 10) > 1) || (parseInt(item.episodes_total, 10) > 1) || (parseInt(item.episodes_released, 10) > 1) || (Array.isArray(item.seasons) && item.seasons.length > 0);
-    if (norm.includes('фильм') || norm.includes('movie') || catStr === 'anime-movies' || catStr === 'anime-movie' || item.media_type === 'anime-movie' || (item.category && String(item.category).includes('Фильм')) || (!hasAnimeEps && item.media_type === 'movie')) {
+    if (norm.includes('фильм') || norm.includes('movie') || norm.includes('резе') || norm.includes('reze') || catStr === 'anime-movies' || catStr === 'anime-movie' || catStr === 'аниме-фильм' || item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie || (item.category && String(item.category).includes('Фильм')) || (!hasAnimeEps && item.media_type === 'movie')) {
       return 'anime-movie';
     }
     return 'anime-series';

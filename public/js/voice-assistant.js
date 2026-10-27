@@ -4,8 +4,8 @@
    уровня сигнала (VU-Meter), потоковое и серверное распознавание речи 16 кГц
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.8';
-import { trackClientAction } from './achievements.js?v=1.2.8';
+import { showToast } from './auth.js?v=1.2.9';
+import { trackClientAction } from './achievements.js?v=1.2.9';
 
 let recognition = null;
 let isListening = false;
