@@ -407,12 +407,19 @@
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognizer = new SpeechRecognition();
       recognizer.lang = 'ru-RU';
-      recognizer.interimResults = false;
+      recognizer.interimResults = true;
 
       recognizer.onresult = (e) => {
-        const text = e.results[0][0].transcript;
-        if (text) {
-          searchInput.value = text;
+        let interim = '';
+        let finalStr = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalStr += e.results[i][0].transcript;
+          else interim += e.results[i][0].transcript;
+        }
+        const raw = (finalStr || interim).replace(/[.,!?;:"«»]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const cleaned = raw.replace(/^(?:найди|найти|ищи|поиск|включи|покажи|смотреть)\s+(?:фильм\s+|сериал\s+|аниме\s+|мультфильм\s+)?/i, '').trim();
+        if (cleaned) searchInput.value = cleaned;
+        if (finalStr && cleaned) {
           doSearch();
         }
       };

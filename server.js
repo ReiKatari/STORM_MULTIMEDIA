@@ -73,6 +73,7 @@ import {
   touchSessionActivity,
   flushWatchProgressBatch,
   getUserTotpConfig,
+  getSavedAccountsByTokens,
   closeMariaDbPool
 } from './db.js';
 import { l1Cache } from './services/lru-cache.js';
@@ -87,6 +88,7 @@ import {
   helmetSecurityHeadersMiddleware,
   setSecureSessionCookie,
   clearSecureSessionCookie,
+  parseVaultTokensFromReq,
   parseDeviceNameFromUserAgent
 } from './middlewares/security.middleware.js';
 import { createAuthRouter } from './routes/auth.routes.js';
@@ -988,9 +990,9 @@ app.use(authMiddleware);
 // ==========================================
 // КРИПТОГРАФИЧЕСКАЯ ЗАЩИТА СЕССИЙ И COOKIES
 // ==========================================
-function setSessionCookie(res, token, req = null) {
+function setSessionCookie(res, token, req = null, extraVaultTokens = []) {
   if (!token) return;
-  setSecureSessionCookie(res, token, req);
+  setSecureSessionCookie(res, token, req, extraVaultTokens);
 }
 
 // ==========================================
@@ -1087,8 +1089,13 @@ app.post('/api/auth/register', loginRateLimiter, (req, res) => {
       userAgent: ua,
       deviceName: parseDeviceNameFromUserAgent(ua)
     });
-    setSessionCookie(res, session.token, req);
-    res.json(session);
+    const vaultRes = getSavedAccountsByTokens([session.token, ...parseVaultTokensFromReq(req)], session.user.id);
+    setSessionCookie(res, session.token, req, vaultRes.validTokens);
+    res.json({
+      ...session,
+      savedAccounts: vaultRes.accounts,
+      vaultTokens: vaultRes.validTokens
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -1125,8 +1132,13 @@ app.post('/api/auth/login', loginRateLimiter, (req, res) => {
       }
     }
 
-    setSessionCookie(res, session.token, req);
-    res.json(session);
+    const vaultRes = getSavedAccountsByTokens([session.token, ...parseVaultTokensFromReq(req)], session.user.id);
+    setSessionCookie(res, session.token, req, vaultRes.validTokens);
+    res.json({
+      ...session,
+      savedAccounts: vaultRes.accounts,
+      vaultTokens: vaultRes.validTokens
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -1309,11 +1321,15 @@ app.post('/api/admin/launch-minerva', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  if (req.token) {
+  const keepInSwitcher = Boolean(req.body?.keepInSwitcher);
+  const currentVault = parseVaultTokensFromReq(req);
+  if (req.token && !keepInSwitcher) {
     logoutUser(req.token);
   }
-  clearSecureSessionCookie(res);
-  res.json({ success: true });
+  const remaining = keepInSwitcher ? currentVault : currentVault.filter(t => t !== req.token);
+  const { accounts, validTokens } = getSavedAccountsByTokens(remaining, null);
+  clearSecureSessionCookie(res, req, validTokens);
+  res.json({ success: true, savedAccounts: accounts, vaultTokens: validTokens });
 });
 
 app.post('/api/auth/logout-all', requireAuth, (req, res) => {
@@ -1326,15 +1342,23 @@ app.post('/api/auth/logout-all', requireAuth, (req, res) => {
 });
 
 app.get('/api/auth/me', (req, res) => {
+  const vaultRes = getSavedAccountsByTokens([req.token, ...parseVaultTokensFromReq(req)], req.user?.id || null);
   if (!req.user) {
-    res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
-    return res.json({ user: null, authenticated: false });
+    clearSecureSessionCookie(res, req, vaultRes.validTokens);
+    return res.json({
+      user: null,
+      authenticated: false,
+      savedAccounts: vaultRes.accounts,
+      vaultTokens: vaultRes.validTokens
+    });
   }
   const stats = getUserStats(req.user.id);
   res.json({
     user: req.user,
     stats,
-    token: req.token
+    token: req.token,
+    savedAccounts: vaultRes.accounts,
+    vaultTokens: vaultRes.validTokens
   });
 });
 

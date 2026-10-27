@@ -3,7 +3,7 @@
    Генерация QR-кода (с автоопределением LAN IP) и управление ТВ/плеером
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.5';
+import { showToast } from './auth.js?v=1.2.6';
 
 let remoteSessionId = localStorage.getItem('storm_remote_session') || ('storm_' + Math.random().toString(36).substring(2, 8));
 localStorage.setItem('storm_remote_session', remoteSessionId);
@@ -163,6 +163,19 @@ export async function openRemoteQrModal() {
 export function handleIncomingRemoteAction(data) {
   if (!data || !data.action) return;
 
+  // Автоматически закрываем окно QR-кода при получении первой команды со смартфона
+  const qrModal = document.getElementById('storm-remote-modal');
+  if (qrModal && qrModal.classList.contains('is-open')) {
+    qrModal.classList.remove('is-open');
+  }
+
+  // Если пришли навигационные команды с телефона, автоматически включаем удобный ТВ-режим
+  if (['up', 'down', 'left', 'right', 'enter'].includes(data.action) && !document.body.classList.contains('tv-mode')) {
+    if (typeof window.toggleTvMode === 'function') {
+      window.toggleTvMode(true);
+    }
+  }
+
   const video = document.getElementById('storm-video-player') || document.querySelector('#cinema-player-wrapper video');
   const iframe = document.querySelector('#cinema-player-wrapper iframe');
 
@@ -228,12 +241,12 @@ export function handleIncomingRemoteAction(data) {
       }
       break;
     case 'next_ep':
-      import('./player.js?v=1.2.5').then(m => {
+      import('./player.js?v=1.2.6').then(m => {
         if (m.playInPlayerNextEpisode) m.playInPlayerNextEpisode();
       }).catch(() => {});
       break;
     case 'prev_ep':
-      import('./player.js?v=1.2.5').then(m => {
+      import('./player.js?v=1.2.6').then(m => {
         if (m.playInPlayerPrevEpisode) m.playInPlayerPrevEpisode();
       }).catch(() => {});
       break;
@@ -247,7 +260,7 @@ export function handleIncomingRemoteAction(data) {
       break;
     }
     case 'toggle_tv_mode':
-      import('./gamepad-tv.js?v=1.2.5').then(m => {
+      import('./gamepad-tv.js?v=1.2.6').then(m => {
         if (m.toggleTvMode) m.toggleTvMode();
       }).catch(() => {});
       break;

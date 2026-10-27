@@ -27,19 +27,74 @@ export function isRequestSecure(req) {
   return proto === 'https';
 }
 
-export function setSecureSessionCookie(res, token, req = null) {
+export function parseVaultTokensFromReq(req) {
+  if (!req) return [];
+  const out = [];
+  const addTok = (t) => {
+    const clean = String(t || '').trim();
+    if (/^[a-zA-Z0-9_-]{16,256}$/.test(clean) && !out.includes(clean)) {
+      out.push(clean);
+    }
+  };
+  if (req.token) addTok(req.token);
+  const headerVault = req.headers?.['x-storm-vault'];
+  if (headerVault) {
+    String(headerVault).split(/[.,;\s]+/).forEach(addTok);
+  }
+  const cookieHeader = String(req.headers?.cookie || '');
+  const vaultMatch = cookieHeader.match(/storm_vault=([a-zA-Z0-9_.-]+)/);
+  if (vaultMatch && vaultMatch[1]) {
+    vaultMatch[1].split('.').forEach(addTok);
+  }
+  const tokMatch = cookieHeader.match(/storm_token=([a-zA-Z0-9_-]+)/);
+  if (tokMatch && tokMatch[1]) {
+    addTok(tokMatch[1]);
+  }
+  return out.slice(0, 8);
+}
+
+export function setVaultCookieOnly(res, vaultTokens = [], req = null) {
+  if (!res) return;
+  const maxAge = 30 * 24 * 3600;
+  const secureFlag = isRequestSecure(req) ? '; Secure' : '';
+  const cleanList = Array.from(new Set((vaultTokens || []).map(t => String(t || '').trim()).filter(t => /^[a-zA-Z0-9_-]{16,256}$/.test(t)))).slice(0, 8);
+  if (cleanList.length === 0) {
+    res.setHeader('Set-Cookie', 'storm_vault=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  } else {
+    res.setHeader('Set-Cookie', `storm_vault=${cleanList.join('.')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`);
+  }
+}
+
+export function setSecureSessionCookie(res, token, req = null, extraVaultTokens = []) {
   if (!token || !res) return;
   const maxAge = 30 * 24 * 3600;
   const secureFlag = isRequestSecure(req) ? '; Secure' : '';
-  res.setHeader(
-    'Set-Cookie',
-    `storm_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`
-  );
+  const combinedVault = Array.from(new Set([
+    String(token).trim(),
+    ...parseVaultTokensFromReq(req),
+    ...(Array.isArray(extraVaultTokens) ? extraVaultTokens : [])
+  ].filter(t => /^[a-zA-Z0-9_-]{16,256}$/.test(t)))).slice(0, 8);
+
+  res.setHeader('Set-Cookie', [
+    `storm_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`,
+    `storm_vault=${combinedVault.join('.')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`
+  ]);
 }
 
-export function clearSecureSessionCookie(res) {
+export function clearSecureSessionCookie(res, req = null, remainingVaultTokens = null) {
   if (!res) return;
-  res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  const maxAge = 30 * 24 * 3600;
+  const secureFlag = isRequestSecure(req) ? '; Secure' : '';
+  const cookies = ['storm_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'];
+  if (Array.isArray(remainingVaultTokens)) {
+    const cleanList = Array.from(new Set(remainingVaultTokens.map(t => String(t || '').trim()).filter(t => /^[a-zA-Z0-9_-]{16,256}$/.test(t)))).slice(0, 8);
+    if (cleanList.length > 0) {
+      cookies.push(`storm_vault=${cleanList.join('.')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`);
+    } else {
+      cookies.push('storm_vault=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+    }
+  }
+  res.setHeader('Set-Cookie', cookies);
 }
 
 export function escapeHtmlEntities(str) {

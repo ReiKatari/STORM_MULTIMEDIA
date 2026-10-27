@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.5';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.5';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.5';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.5';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.5';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.5';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.5';
+import { initTheme, setTheme } from './theme.js?v=1.2.6';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.6';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.2.6';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.6';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.6';
+import { getStatusIconSvg } from './status-icons.js?v=1.2.6';
+import { initFormFactorEngine } from './form-factor.js?v=1.2.6';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.2.5';
+const STORM_ASSET_VER = '1.2.6';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -5700,7 +5700,22 @@ export async function executeSearch(query = null) {
   }
 
   if (q.length >= 2) {
-    renderSkeletonGrid();
+    // Мгновенный показ совпадений из локального кэша (0 мс задержки) до ответа сервера
+    const instantMatches = typeof searchBaselineCatalog === 'function' ? [...searchBaselineCatalog(q)] : [];
+    const qLower = q.toLowerCase().replace(/ё/g, 'е');
+    for (const locIt of (rawCatalogItems || [])) {
+      const tLow = String(locIt.title || '').toLowerCase().replace(/ё/g, 'е');
+      const oLow = String(locIt.original_title || '').toLowerCase().replace(/ё/g, 'е');
+      if (tLow.includes(qLower) || oLow.includes(qLower)) {
+        instantMatches.push(locIt);
+      }
+    }
+    if (instantMatches.length > 0) {
+      rawCatalogItems = deduplicateMediaList(instantMatches);
+      renderFilteredCatalog();
+    } else {
+      renderSkeletonGrid();
+    }
     try {
       let items = [];
       try {
@@ -5767,6 +5782,9 @@ export async function executeSearch(query = null) {
       totalCatalogPages = 1;
       currentPage = 1;
       renderFilteredCatalog();
+      if (document.body.classList.contains('tv-mode') && typeof window.stormFocusFirstCatalogCard === 'function') {
+        setTimeout(() => window.stormFocusFirstCatalogCard(), 60);
+      }
     } catch (err) {
       const container = document.getElementById('media-render-container');
       if (container) {
@@ -5912,6 +5930,12 @@ function initFiltersCollapsible() {
 
 if (typeof window !== 'undefined') {
   window.executeSearch = executeSearch;
+  window.stormOnTvModeChanged = () => {
+    lastRenderedHomeKey = '';
+    const container = document.getElementById('media-render-container');
+    if (container) container.dataset.renderedView = '';
+    renderFilteredCatalog();
+  };
   window.toggleFiltersCollapsible = toggleFiltersCollapsible;
 }
 
@@ -6982,8 +7006,26 @@ export function renderFilteredCatalog() {
 
   const heroContainer = document.getElementById('hero-showcase-container');
 
-  // Если мы на вкладке Главная, выбран режим витрины (grid без принудительного переключения) и нет фильтрации/поиска
-  if (currentTab === 'home' && currentViewMode === 'grid' && !isHomeCustomViewActive && !isFiltered && (!searchQuery || !searchQuery.trim())) {
+  const isTvModeNow = document.body.classList.contains('tv-mode') || document.documentElement.getAttribute('data-tv-mode') === 'true';
+
+  // В ТВ-режиме (или при кастомном виде на Главной) собираем единый плоский список без группировки по лентам и без баннера
+  if (currentTab === 'home' && (isTvModeNow || isHomeCustomViewActive) && (!searchQuery || !searchQuery.trim())) {
+    ensureLiftHomeRailsLoaded();
+    if (cachedLiftHomeRails) {
+      const extraPool = [
+        ...(cachedLiftHomeRails.foreignFilms || []),
+        ...(cachedLiftHomeRails.foreignSeries || []),
+        ...(cachedLiftHomeRails.ruFilms || []),
+        ...(cachedLiftHomeRails.ruSeries || [])
+      ];
+      if (extraPool.length > 0) {
+        currentItems = deduplicateMediaList([...currentItems, ...extraPool]);
+      }
+    }
+  }
+
+  // Если мы на вкладке Главная, НЕ в ТВ-режиме, выбран режим витрины и нет фильтрации/поиска
+  if (!isTvModeNow && currentTab === 'home' && currentViewMode === 'grid' && !isHomeCustomViewActive && !isFiltered && (!searchQuery || !searchQuery.trim())) {
     const qBar = document.getElementById('storm-quick-catalog-bar');
     if (qBar) {
       qBar.style.display = 'none';
@@ -6992,7 +7034,15 @@ export function renderFilteredCatalog() {
     renderHomeView(currentItems);
   } else {
     hideHeroShowcase();
-    renderQuickCatalogBar(currentItems.length);
+    if (isTvModeNow) {
+      const qBar = document.getElementById('storm-quick-catalog-bar');
+      if (qBar) {
+        qBar.style.display = 'none';
+        qBar.innerHTML = '';
+      }
+    } else {
+      renderQuickCatalogBar(currentItems.length);
+    }
     renderMediaItems(currentItems);
   }
 }
@@ -7604,10 +7654,16 @@ function initModals() {
   const tvCodeRefreshBtn = document.getElementById('tv-code-refresh-btn');
   const tvCodeBackBtn = document.getElementById('tv-code-back-btn');
 
+  const recoveryForm = document.getElementById('recovery-form');
+  const switchToRecovery = document.getElementById('switch-to-recovery');
+  const recoveryBackToLogin = document.getElementById('recovery-back-to-login');
+  const recSendTelegramBtn = document.getElementById('rec-send-telegram-btn');
+
   const setAuthModalMode = (mode = 'login') => {
     stopTvDeviceCodeSession();
     if (tvCodeContainer) tvCodeContainer.style.display = 'none';
-    if (authModeTabs) authModeTabs.style.display = mode === 'tv' ? 'none' : 'flex';
+    if (recoveryForm) recoveryForm.style.display = 'none';
+    if (authModeTabs) authModeTabs.style.display = (mode === 'tv' || mode === 'recovery') ? 'none' : 'flex';
     if (mode === 'register') {
       if (loginForm) loginForm.style.display = 'none';
       if (registerForm) registerForm.style.display = 'block';
@@ -7615,12 +7671,24 @@ function initModals() {
       if (authTabLogin) authTabLogin.className = 'storm-btn storm-btn-secondary storm-btn-sm';
       if (authTabRegister) authTabRegister.className = 'storm-btn storm-btn-primary storm-btn-sm';
       setTimeout(() => document.getElementById('reg-username')?.focus(), 60);
+    } else if (mode === 'recovery') {
+      if (loginForm) loginForm.style.display = 'none';
+      if (registerForm) registerForm.style.display = 'none';
+      if (recoveryForm) recoveryForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = '🔑 Восстановление пароля';
+      const loginTyped = (document.getElementById('login-username')?.value || '').trim();
+      const recLoginInput = document.getElementById('rec-login');
+      if (recLoginInput && loginTyped && !recLoginInput.value) {
+        recLoginInput.value = loginTyped;
+      }
+      setTimeout(() => document.getElementById('rec-login')?.focus(), 60);
     } else {
       if (registerForm) registerForm.style.display = 'none';
       if (loginForm) loginForm.style.display = 'block';
       if (authModalTitle) authModalTitle.textContent = t('auth_login') || 'Вход в систему';
       if (authTabLogin) authTabLogin.className = 'storm-btn storm-btn-primary storm-btn-sm';
       if (authTabRegister) authTabRegister.className = 'storm-btn storm-btn-secondary storm-btn-sm';
+      fetchSavedAccounts().catch(() => {});
       setTimeout(() => document.getElementById('login-username')?.focus(), 60);
     }
   };
@@ -7629,6 +7697,63 @@ function initModals() {
     setAuthModalMode(mode);
     if (authModal) authModal.classList.add('is-open');
   };
+
+  if (switchToRecovery) {
+    switchToRecovery.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('recovery');
+    };
+  }
+  if (recoveryBackToLogin) {
+    recoveryBackToLogin.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('login');
+    };
+  }
+  if (recSendTelegramBtn) {
+    recSendTelegramBtn.onclick = async () => {
+      const loginVal = (document.getElementById('rec-login')?.value || '').trim();
+      const origText = recSendTelegramBtn.textContent;
+      recSendTelegramBtn.disabled = true;
+      recSendTelegramBtn.textContent = '⏳ Отправка...';
+      try {
+        await requestTelegramPasswordReset(loginVal);
+        document.getElementById('rec-code')?.focus();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        recSendTelegramBtn.disabled = false;
+        recSendTelegramBtn.textContent = origText;
+      }
+    };
+  }
+  if (recoveryForm) {
+    recoveryForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const loginVal = (document.getElementById('rec-login')?.value || '').trim();
+      const codeVal = (document.getElementById('rec-code')?.value || '').trim();
+      const passVal = (document.getElementById('rec-new-password')?.value || '').trim();
+      const submitBtn = document.getElementById('rec-submit-btn');
+      const origText = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Сброс пароля...';
+      }
+      try {
+        await confirmPasswordReset(loginVal, codeVal, passVal);
+        recoveryForm.reset();
+        setAuthModalMode('login');
+        if (authModal) authModal.classList.remove('is-open');
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = origText;
+        }
+      }
+    };
+  }
 
   if (loginModalBtn && authModal) {
     loginModalBtn.onclick = () => window.openStormAuthModal('login');

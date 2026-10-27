@@ -4,8 +4,8 @@
    Leanback HUD 2.0 с динамическим авто-затуханием и полной навигацией во всех меню
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.5';
-import { trackClientAction } from './achievements.js?v=1.2.5';
+import { showToast } from './auth.js?v=1.2.6';
+import { trackClientAction } from './achievements.js?v=1.2.6';
 
 let isTvModeActive = false;
 let gamepadLoopId = null;
@@ -202,10 +202,14 @@ export function toggleTvMode(forceState = null) {
     }
   }
 
+  if (typeof window.stormOnTvModeChanged === 'function') {
+    try { window.stormOnTvModeChanged(isTvModeActive); } catch (_) {}
+  }
+
   if (isTvModeActive) {
-    showToast('📺 Активирован режим Smart TV (Leanback HUD 2.0)', 'info');
+    showToast('📺 Активирован режим Smart TV (удобная сетка для пульта)', 'info');
     renderTvHudBar();
-    focusInitialElement();
+    setTimeout(() => focusInitialElement(), 40);
     startGamepadPolling();
     trackClientAction('use_gamepad');
     playTvSelectSound();
@@ -1052,9 +1056,9 @@ function moveFocus(direction) {
   let bestCandidate = null;
   let bestDistance = Infinity;
 
-  // 1. Приоритетная последовательная навигация по горизонтальным каруселям и лентам (Plex и Emby Style)
+  // 1. Приоритетная последовательная навигация по сетке постеров, вкладкам и каруселям
   if (direction === 'left' || direction === 'right') {
-    const parentRail = currentFocusedElement.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll');
+    const parentRail = currentFocusedElement.closest('#media-render-container.view-grid, .rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll');
     if (parentRail) {
       const railItems = focusables.filter(el => parentRail.contains(el));
       const currIdx = railItems.indexOf(currentFocusedElement);
@@ -1289,6 +1293,16 @@ function focusInitialElement() {
     focusInitialElementInContainer(openModal);
     return;
   }
+  const firstCard = document.querySelector('#media-render-container .media-card');
+  if (firstCard && firstCard.offsetParent !== null) {
+    setFocusTo(firstCard);
+    return;
+  }
+  const activeTab = document.querySelector('.storm-tab-btn.active');
+  if (activeTab && activeTab.offsetParent !== null) {
+    setFocusTo(activeTab);
+    return;
+  }
   const focusables = getFocusableElements();
   if (focusables.length > 0) {
     setFocusTo(focusables[0]);
@@ -1345,6 +1359,10 @@ function switchAdjacentTab(direction) {
 
 if (typeof window !== 'undefined') {
   window.toggleTvMode = toggleTvMode;
+  window.stormFocusFirstCatalogCard = () => {
+    const firstCard = document.querySelector('#media-render-container .media-card');
+    if (firstCard && firstCard.offsetParent !== null) setFocusTo(firstCard);
+  };
   window.updateTvHudContext = updateTvHudContext;
   window.pokeTvHud = pokeTvHud;
 }

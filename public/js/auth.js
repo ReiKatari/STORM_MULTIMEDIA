@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.2.5';
+import { t, formatDate } from './i18n.js?v=1.2.6';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -171,6 +171,8 @@ export async function checkAuth() {
         }
         localStorage.setItem('storm_active_user_id', String(data.user.id));
         localStorage.setItem('storm_user', JSON.stringify(currentUser));
+        if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
+        if (Array.isArray(data.savedAccounts)) cachedSavedAccounts = data.savedAccounts;
         updateAuthUI();
         notifyAuthChanged();
         return currentUser;
@@ -253,8 +255,11 @@ export async function register(username, email, password) {
   localStorage.setItem('storm_token', currentToken);
   localStorage.setItem('storm_user', JSON.stringify(currentUser));
 
+  if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
+  if (Array.isArray(data.savedAccounts)) cachedSavedAccounts = data.savedAccounts;
   updateAuthUI();
   notifyAuthChanged();
+  renderSavedAccountsLists();
   showToast(`✅ Аккаунт «${currentUser.username}» успешно создан!`, 'success');
   return currentUser;
 }
@@ -310,8 +315,11 @@ export async function login(loginStr, password) {
   localStorage.setItem('storm_token', currentToken);
   localStorage.setItem('storm_user', JSON.stringify(currentUser));
 
+  if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
+  if (Array.isArray(data.savedAccounts)) cachedSavedAccounts = data.savedAccounts;
   updateAuthUI();
   notifyAuthChanged();
+  renderSavedAccountsLists();
   showToast(t('msg_login_success'), 'success');
   return currentUser;
 }
@@ -804,18 +812,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.2.5').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.2.6').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.2.5').then(achMod => {
+  import('./achievements.js?v=1.2.6').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.2.5').then(themeMod => {
+  import('./theme.js?v=1.2.6').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -879,7 +887,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.2.5').then(m => {
+      import('./player.js?v=1.2.6').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -893,10 +901,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.2.5').then(m => {
+      import('./player.js?v=1.2.6').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.2.5').then(m => {
+      import('./ad-shield.js?v=1.2.6').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -920,7 +928,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.2.5').then(m => {
+      import('./ad-shield.js?v=1.2.6').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -933,7 +941,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.2.5').then(m => {
+      import('./smart-skip.js?v=1.2.6').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -946,7 +954,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.2.5').then(m => {
+      import('./player.js?v=1.2.6').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -964,11 +972,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.2.5').then(m => {
+      import('./player.js?v=1.2.6').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.2.5').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.2.6').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1057,6 +1065,20 @@ export function openProfileModal() {
     }
   }
 
+  const addAccBtn = document.getElementById('profile-add-account-btn');
+  if (addAccBtn) {
+    addAccBtn.onclick = () => {
+      modal.classList.remove('is-open');
+      if (typeof window.openStormAuthModal === 'function') {
+        window.openStormAuthModal('login');
+      } else {
+        document.getElementById('auth-modal')?.classList.add('is-open');
+      }
+    };
+  }
+  fetchSavedAccounts().catch(() => {});
+  loadProfileRecoveryConfigUI().catch(() => {});
+
   // Сбрасываем активную вкладку на 'overview'
   switchProfileTab('overview');
 
@@ -1105,7 +1127,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.2.5').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.2.6').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1190,7 +1212,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.2.5').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.2.6').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -2732,4 +2754,403 @@ export function openPinPromptModal(targetProfile, onSuccess, customTitle = null)
   }
 
   window.addEventListener('keydown', onKeyDown);
+}
+
+
+// =========================================================================
+// БЫСТРОЕ ПЕРЕКЛЮЧЕНИЕ АККАУНТОВ (ACCOUNT SWITCHER) И ВОССТАНОВЛЕНИЕ ПАРОЛЯ
+// =========================================================================
+let cachedSavedAccounts = [];
+
+function getLocalVaultTokens() {
+  try {
+    const raw = localStorage.getItem('storm_vault_tokens');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.filter(Boolean);
+    }
+  } catch (_) {}
+  return currentToken ? [currentToken] : [];
+}
+
+function saveLocalVaultTokens(tokens = []) {
+  try {
+    const merged = Array.from(new Set([...(Array.isArray(tokens) ? tokens : []), ...(currentToken ? [currentToken] : [])].filter(t => t && !String(t).startsWith('guest_') && !String(t).startsWith('offline_')))).slice(0, 8);
+    if (typeof window !== 'undefined') window.__STORM_SUPPRESS_DB_SYNC__ = true;
+    localStorage.setItem('storm_vault_tokens', JSON.stringify(merged));
+  } catch (_) {
+  } finally {
+    if (typeof window !== 'undefined') window.__STORM_SUPPRESS_DB_SYNC__ = false;
+  }
+}
+
+export async function fetchSavedAccounts() {
+  try {
+    const vaultTokens = getLocalVaultTokens();
+    const headers = {};
+    if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`;
+    if (vaultTokens.length > 0) headers['X-Storm-Vault'] = vaultTokens.join('.');
+    const res = await fetch('/api/auth/saved-accounts', {
+      headers,
+      credentials: 'same-origin'
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
+      if (Array.isArray(data.accounts)) {
+        cachedSavedAccounts = data.accounts;
+      }
+    }
+  } catch (_) {}
+  renderSavedAccountsLists();
+  return cachedSavedAccounts;
+}
+
+export async function switchSavedAccount(targetUserId) {
+  const uid = Number(targetUserId || 0);
+  if (!uid) return null;
+  const vaultTokens = getLocalVaultTokens();
+  const headers = { 'Content-Type': 'application/json' };
+  if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`;
+  if (vaultTokens.length > 0) headers['X-Storm-Vault'] = vaultTokens.join('.');
+
+  const res = await fetch('/api/auth/switch-account', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers,
+    body: JSON.stringify({ userId: uid, vaultTokens })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data || !data.user) {
+    throw new Error(data?.error || 'Не удалось переключить аккаунт');
+  }
+
+  const keepVault = Array.isArray(data.vaultTokens) ? data.vaultTokens : vaultTokens;
+  clearUserSessionLocalCache();
+  currentToken = data.token;
+  currentUser = data.user;
+  if (data.stats) currentUser.stats = data.stats;
+  if (typeof window !== 'undefined') {
+    window.__STORM_CURRENT_USER__ = currentUser;
+    window.__STORM_CURRENT_TOKEN__ = currentToken;
+  }
+  localStorage.setItem('storm_active_user_id', String(data.user.id));
+  localStorage.setItem('storm_token', currentToken);
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
+  saveLocalVaultTokens(keepVault);
+  if (Array.isArray(data.savedAccounts)) {
+    cachedSavedAccounts = data.savedAccounts;
+  }
+
+  updateAuthUI();
+  notifyAuthChanged();
+  renderSavedAccountsLists();
+  showToast(`⚡ Вы переключились на аккаунт «${currentUser.username}»!`, 'success');
+  return currentUser;
+}
+
+export async function removeSavedAccount(targetUserId) {
+  const uid = Number(targetUserId || 0);
+  if (!uid) return;
+  const vaultTokens = getLocalVaultTokens();
+  const headers = { 'Content-Type': 'application/json' };
+  if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`;
+  if (vaultTokens.length > 0) headers['X-Storm-Vault'] = vaultTokens.join('.');
+
+  const res = await fetch('/api/auth/saved-accounts/remove', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers,
+    body: JSON.stringify({ userId: uid, vaultTokens })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (Array.isArray(data.vaultTokens)) {
+    saveLocalVaultTokens(data.vaultTokens);
+  }
+  if (Array.isArray(data.accounts)) {
+    cachedSavedAccounts = data.accounts;
+  }
+  if (data.removedCurrent) {
+    currentToken = null;
+    currentUser = null;
+    clearUserSessionLocalCache();
+    if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
+    updateAuthUI();
+    notifyAuthChanged();
+  }
+  renderSavedAccountsLists();
+  showToast('Аккаунт удалён из списка быстрого доступа на устройстве', 'info');
+}
+
+export function renderSavedAccountsLists() {
+  const profileListEl = document.getElementById('profile-saved-accounts-list');
+  const authBoxEl = document.getElementById('auth-saved-accounts-box');
+  const authListEl = document.getElementById('auth-saved-accounts-list');
+
+  const accounts = Array.isArray(cachedSavedAccounts) ? cachedSavedAccounts : [];
+
+  if (profileListEl) {
+    if (accounts.length === 0) {
+      profileListEl.innerHTML = `<div style="font-size: 12px; color: var(--text-muted); padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.45);">Нет сохранённых сессий. Войдите в аккаунт или нажмите «➕ Добавить аккаунт».</div>`;
+    } else {
+      profileListEl.innerHTML = accounts.map(acc => {
+        const isCurr = Boolean(currentUser && Number(currentUser.id) === Number(acc.id));
+        const roleBadge = (acc.role === 'admin' || String(acc.username || '').toLowerCase() === 'reikatari')
+          ? `<span style="padding: 2px 6px; border-radius: 5px; background: rgba(245, 158, 11, 0.2); color: #f59e0b; font-size: 10px; font-weight: 800; margin-left: 6px;">ADMIN</span>`
+          : '';
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 11px; background: ${isCurr ? 'rgba(0, 210, 255, 0.12)' : 'rgba(30, 41, 59, 0.65)'}; border: 1px solid ${isCurr ? 'rgba(0, 210, 255, 0.45)' : 'rgba(255, 255, 255, 0.08)'};">
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+              <img src="${escapeHtml(acc.avatar || 'assets/avatar_default.svg')}" alt="" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.15);" onerror="this.src='assets/avatar_default.svg'">
+              <div style="min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700; color: var(--text-primary, #f8fafc); display: flex; align-items: center; flex-wrap: wrap;">
+                  <span>${escapeHtml(acc.username)}</span>
+                  ${roleBadge}
+                  ${isCurr ? `<span style="padding: 2px 6px; border-radius: 5px; background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px; font-weight: 800; margin-left: 6px;">АКТИВЕН</span>` : ''}
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted, #94a3b8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(acc.email || '')}</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+              ${!isCurr ? `<button type="button" class="storm-btn storm-btn-primary storm-btn-sm" data-switch-uid="${acc.id}" style="font-size: 11px; padding: 5px 10px;">⚡ Переключить</button>` : ''}
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" data-remove-uid="${acc.id}" title="Удалить аккаунт из быстрого переключения" style="font-size: 11px; padding: 5px 8px; color: #f87171;">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      profileListEl.querySelectorAll('[data-switch-uid]').forEach(btn => {
+        btn.onclick = async () => {
+          const uid = Number(btn.getAttribute('data-switch-uid'));
+          btn.disabled = true;
+          btn.textContent = '⏳...';
+          try {
+            await switchSavedAccount(uid);
+            openProfileModal();
+          } catch (err) {
+            showToast(err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = '⚡ Переключить';
+          }
+        };
+      });
+
+      profileListEl.querySelectorAll('[data-remove-uid]').forEach(btn => {
+        btn.onclick = async () => {
+          const uid = Number(btn.getAttribute('data-remove-uid'));
+          await removeSavedAccount(uid);
+          if (currentUser) openProfileModal();
+        };
+      });
+    }
+  }
+
+  if (authBoxEl && authListEl) {
+    if (accounts.length === 0) {
+      authBoxEl.style.display = 'none';
+    } else {
+      authBoxEl.style.display = 'block';
+      authListEl.innerHTML = accounts.map(acc => {
+        const isCurr = Boolean(currentUser && Number(currentUser.id) === Number(acc.id));
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 9px; background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(255,255,255,0.08);">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <img src="${escapeHtml(acc.avatar || 'assets/avatar_default.svg')}" alt="" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover;" onerror="this.src='assets/avatar_default.svg'">
+              <div style="min-width: 0;">
+                <div style="font-size: 12px; font-weight: 700; color: #f8fafc;">${escapeHtml(acc.username)} ${isCurr ? '<span style="color:#34d399;font-size:10px;">(активен)</span>' : ''}</div>
+                <div style="font-size: 10px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(acc.email || '')}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 5px;">
+              <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" data-auth-switch-uid="${acc.id}" style="font-size: 11px; padding: 4px 10px;">⚡ Войти</button>
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" data-auth-remove-uid="${acc.id}" title="Забыть аккаунт" style="font-size: 11px; padding: 4px 7px; color: #f87171;">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      authListEl.querySelectorAll('[data-auth-switch-uid]').forEach(btn => {
+        btn.onclick = async () => {
+          const uid = Number(btn.getAttribute('data-auth-switch-uid'));
+          btn.disabled = true;
+          btn.textContent = '⏳...';
+          try {
+            await switchSavedAccount(uid);
+            document.getElementById('auth-modal')?.classList.remove('is-open');
+          } catch (err) {
+            showToast(err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = '⚡ Войти';
+          }
+        };
+      });
+
+      authListEl.querySelectorAll('[data-auth-remove-uid]').forEach(btn => {
+        btn.onclick = async () => {
+          const uid = Number(btn.getAttribute('data-auth-remove-uid'));
+          await removeSavedAccount(uid);
+        };
+      });
+    }
+  }
+}
+
+export async function requestTelegramPasswordReset(loginStr) {
+  const cleanLogin = String(loginStr || '').trim();
+  if (!cleanLogin) {
+    throw new Error('Введите имя пользователя или email, чтобы получить код в Telegram');
+  }
+  const res = await fetch('/api/auth/password/request-telegram', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login: cleanLogin })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data?.error || 'Ошибка отправки кода в Telegram');
+  }
+  showToast(`✈️ ${data.message}`, 'success');
+  return data;
+}
+
+export async function confirmPasswordReset(loginStr, codeStr, newPasswordStr) {
+  const cleanLogin = String(loginStr || '').trim();
+  const cleanCode = String(codeStr || '').trim();
+  const cleanPass = String(newPasswordStr || '').trim();
+  if (!cleanLogin || !cleanCode || !cleanPass) {
+    throw new Error('Заполните логин/email, резервный код (или код из Telegram) и новый пароль');
+  }
+  if (cleanPass.length < 6) {
+    throw new Error('Новый пароль должен содержать не менее 6 символов');
+  }
+
+  const vaultTokens = getLocalVaultTokens();
+  const headers = { 'Content-Type': 'application/json' };
+  if (vaultTokens.length > 0) headers['X-Storm-Vault'] = vaultTokens.join('.');
+
+  const res = await fetch('/api/auth/password/reset-confirm', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers,
+    body: JSON.stringify({ login: cleanLogin, code: cleanCode, newPassword: cleanPass })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data || !data.user) {
+    throw new Error(data?.error || 'Не удалось сбросить пароль');
+  }
+
+  const keepVault = Array.isArray(data.vaultTokens) ? data.vaultTokens : vaultTokens;
+  clearUserSessionLocalCache();
+  currentToken = data.token;
+  currentUser = data.user;
+  if (typeof window !== 'undefined') {
+    window.__STORM_CURRENT_USER__ = currentUser;
+    window.__STORM_CURRENT_TOKEN__ = currentToken;
+  }
+  localStorage.setItem('storm_active_user_id', String(data.user.id));
+  localStorage.setItem('storm_token', currentToken);
+  localStorage.setItem('storm_user', JSON.stringify(currentUser));
+  saveLocalVaultTokens(keepVault);
+  if (Array.isArray(data.savedAccounts)) {
+    cachedSavedAccounts = data.savedAccounts;
+  }
+
+  updateAuthUI();
+  notifyAuthChanged();
+  renderSavedAccountsLists();
+  showToast(`✅ ${data.message || 'Пароль успешно обновлён, вход выполнен!'}`, 'success');
+  return currentUser;
+}
+
+export async function loadProfileRecoveryConfigUI() {
+  const gridEl = document.getElementById('profile-recovery-codes-grid');
+  const tgInput = document.getElementById('profile-recovery-tg-input');
+  const copyBtn = document.getElementById('profile-copy-recovery-codes-btn');
+  const regenBtn = document.getElementById('profile-regen-recovery-codes-btn');
+  const saveTgBtn = document.getElementById('profile-save-recovery-tg-btn');
+  const testTgBtn = document.getElementById('profile-test-recovery-tg-btn');
+  if (!gridEl) return;
+
+  const token = getToken();
+  if (!token || token.startsWith('guest_') || token.startsWith('offline_')) {
+    gridEl.innerHTML = `<div style="grid-column: 1 / -1; color: var(--text-muted); font-size: 12px;">Войдите в аккаунт, чтобы просматривать резервные коды восстановления и привязать Telegram.</div>`;
+    return;
+  }
+
+  let currentCodes = [];
+  const renderCodes = (codes = []) => {
+    currentCodes = codes;
+    if (!codes || codes.length === 0) {
+      gridEl.innerHTML = `<div style="grid-column: 1 / -1; color: var(--text-muted);">Нет кодов</div>`;
+      return;
+    }
+    gridEl.innerHTML = codes.map(c => `<div style="padding: 6px 8px; border-radius: 7px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.08); user-select: all;">${escapeHtml(c)}</div>`).join('');
+  };
+
+  try {
+    const res = await fetch('/api/auth/recovery/config', {
+      headers: { 'Authorization': `Bearer ${token}` },
+      credentials: 'same-origin'
+    });
+    if (res.ok) {
+      const data = await res.json();
+      renderCodes(data.recoveryCodes || []);
+      if (tgInput) tgInput.value = data.telegramChatId || '';
+    }
+  } catch (_) {}
+
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      if (!currentCodes.length) return;
+      const text = `STORM MULTIMEDIA — Резервные коды восстановления (${currentUser?.username || 'User'}):\n` + currentCodes.join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('📋 Резервные коды скопированы в буфер обмена!', 'success');
+      } catch (_) {
+        showToast('Коды: ' + currentCodes.join(', '), 'info');
+      }
+    };
+  }
+
+  if (regenBtn) {
+    regenBtn.onclick = async () => {
+      try {
+        const res = await fetch('/api/auth/recovery/regenerate-codes', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${getToken()}` },
+          credentials: 'same-origin'
+        });
+        const data = await res.json();
+        if (res.ok && data.recoveryCodes) {
+          renderCodes(data.recoveryCodes);
+          showToast('🔄 Сгенерированы новые одноразовые резервные коды!', 'success');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    };
+  }
+
+  const saveTgHandler = async (sendTest = false) => {
+    const chatId = (tgInput?.value || '').trim();
+    try {
+      const res = await fetch('/api/auth/recovery/telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ telegramChatId: chatId, sendTest })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка сохранения Telegram');
+      showToast(`✅ ${data.message}`, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  if (saveTgBtn) saveTgBtn.onclick = () => saveTgHandler(false);
+  if (testTgBtn) testTgBtn.onclick = () => saveTgHandler(true);
 }

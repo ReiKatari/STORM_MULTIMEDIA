@@ -16,7 +16,14 @@ import {
   verifyFamilyProfilePin,
   getLatestHandoffState,
   getReleaseSubscriptions,
-  getUserAchievements
+  getUserAchievements,
+  getSavedAccountsByTokens,
+  removeAccountFromDeviceVault,
+  ensureUserRecoveryConfig,
+  regenerateUserRecoveryCodes,
+  saveUserRecoveryTelegram,
+  createTelegramPasswordResetOtp,
+  resetUserPasswordWithCode
 } from '../db.js';
 import {
   generateTotpSecret,
@@ -24,7 +31,15 @@ import {
   verifyTotpCode,
   generateBackupCodes
 } from '../services/totp-service.js';
-import { sanitizeXSS } from '../middlewares/security.middleware.js';
+import {
+  sanitizeXSS,
+  parseVaultTokensFromReq,
+  setSecureSessionCookie,
+  setVaultCookieOnly,
+  clearSecureSessionCookie,
+  parseDeviceNameFromUserAgent
+} from '../middlewares/security.middleware.js';
+import { dispatchTelegramNotification } from '../services/release-notifier.js';
 
 export function createAuthRouter({ requireAuth }) {
   const router = express.Router();
@@ -135,6 +150,208 @@ export function createAuthRouter({ requireAuth }) {
     }
   });
 
+
+  // =========================================================================
+  // БЫСТРОЕ ПЕРЕКЛЮЧЕНИЕ АККАУНТОВ (ACCOUNT SWITCHER)
+  // =========================================================================
+  router.get('/api/auth/saved-accounts', (req, res) => {
+    try {
+      const { accounts, validTokens } = getSavedAccountsByTokens(
+        [req.token, ...parseVaultTokensFromReq(req)],
+        req.user?.id || null
+      );
+      res.json({
+        success: true,
+        currentUserId: req.user?.id || null,
+        accounts,
+        vaultTokens: validTokens
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/auth/switch-account', (req, res) => {
+    try {
+      const targetUserId = Number(req.body?.userId || 0);
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'Не указан ID аккаунта для переключения' });
+      }
+      const extraClientTokens = Array.isArray(req.body?.vaultTokens) ? req.body.vaultTokens : [];
+      const { validPairs, validTokens } = getSavedAccountsByTokens(
+        [req.token, ...parseVaultTokensFromReq(req), ...extraClientTokens],
+        targetUserId
+      );
+      const match = validPairs.find(p => Number(p.user.id) === targetUserId);
+      if (!match) {
+        return res.status(404).json({ error: 'Сессия этого аккаунта истекла. Пожалуйста, войдите по паролю.' });
+      }
+      setSecureSessionCookie(res, match.token, req, validTokens);
+      const stats = getUserStats(match.user.id);
+      const accounts = validPairs.map(({ user }) => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.username)}`,
+        role: user.role || 'user',
+        created_at: user.created_at,
+        isCurrent: Number(user.id) === targetUserId
+      }));
+      res.json({
+        success: true,
+        token: match.token,
+        user: match.user,
+        stats,
+        savedAccounts: accounts,
+        vaultTokens: validTokens
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/auth/saved-accounts/remove', (req, res) => {
+    try {
+      const targetUserId = Number(req.body?.userId || 0);
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'Не указан ID аккаунта' });
+      }
+      const extraClientTokens = Array.isArray(req.body?.vaultTokens) ? req.body.vaultTokens : [];
+      const remainingTokens = removeAccountFromDeviceVault(
+        targetUserId,
+        [req.token, ...parseVaultTokensFromReq(req), ...extraClientTokens]
+      );
+      const isRemovingCurrent = req.user && Number(req.user.id) === targetUserId;
+      if (isRemovingCurrent) {
+        clearSecureSessionCookie(res, req, remainingTokens);
+      } else {
+        setVaultCookieOnly(res, remainingTokens, req);
+      }
+      const { accounts, validTokens } = getSavedAccountsByTokens(
+        remainingTokens,
+        isRemovingCurrent ? null : (req.user?.id || null)
+      );
+      res.json({
+        success: true,
+        removedCurrent: Boolean(isRemovingCurrent),
+        accounts,
+        vaultTokens: validTokens
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // =========================================================================
+  // ВОССТАНОВЛЕНИЕ ПАРОЛЯ ЧЕРЕЗ РЕЗЕРВНЫЙ КОД ИЛИ TELEGRAM-БОТА
+  // =========================================================================
+  router.get('/api/auth/recovery/config', requireAuth, (req, res) => {
+    try {
+      const cfg = ensureUserRecoveryConfig(req.user.id);
+      res.json({
+        success: true,
+        ...cfg,
+        telegramBotConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN)
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/auth/recovery/regenerate-codes', requireAuth, (req, res) => {
+    try {
+      const recoveryCodes = regenerateUserRecoveryCodes(req.user.id);
+      res.json({
+        success: true,
+        recoveryCodes,
+        message: 'Новые резервные коды восстановления сгенерированы'
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/auth/recovery/telegram', requireAuth, async (req, res) => {
+    try {
+      const chatId = String(req.body?.telegramChatId || '').trim();
+      const sendTest = Boolean(req.body?.sendTest);
+      const savedChatId = saveUserRecoveryTelegram(req.user.id, chatId);
+      let testSent = false;
+      if (sendTest && savedChatId) {
+        testSent = await dispatchTelegramNotification(
+          savedChatId,
+          `🛡️ <b>STORM MULTIMEDIA</b>\nВаш Telegram успешно привязан к аккаунту <b>${req.user.username}</b> для мгновенного восстановления пароля и уведомлений о премьерах!`
+        );
+      }
+      res.json({
+        success: true,
+        telegramChatId: savedChatId,
+        testSent,
+        telegramBotConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+        message: savedChatId
+          ? (sendTest
+              ? (testSent ? 'Telegram привязан, тестовое сообщение доставлено!' : 'Telegram Chat ID сохранён в профиле (для доставки сообщений укажите TELEGRAM_BOT_TOKEN на сервере)')
+              : 'Telegram Chat ID успешно сохранён в профиле')
+          : 'Привязка Telegram Chat ID очищена'
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/auth/password/request-telegram', async (req, res) => {
+    try {
+      const login = String(req.body?.login || '').trim();
+      const { user, telegramChatId, code } = createTelegramPasswordResetOtp(login);
+      const delivered = await dispatchTelegramNotification(
+        telegramChatId,
+        `🔑 <b>STORM MULTIMEDIA — Восстановление пароля</b>\n\nАккаунт: <b>${user.username}</b>\nОдноразовый код сброса пароля: <code>${code}</code>\n\n⏳ Код действителен в течение 10 минут.`
+      );
+      if (!delivered) {
+        return res.status(400).json({
+          error: 'Не удалось отправить сообщение через Telegram Bot API (проверьте TELEGRAM_BOT_TOKEN или используйте один из 8 резервных кодов восстановления / 2FA TOTP).'
+        });
+      }
+      res.json({
+        success: true,
+        message: `Одноразовый 6-значный код отправлен в привязанный Telegram для «${user.username}»`
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/auth/password/reset-confirm', (req, res) => {
+    try {
+      const { login, code, newPassword } = req.body || {};
+      const ua = String(req.headers['user-agent'] || '');
+      const { session, methodUsed } = resetUserPasswordWithCode(
+        login,
+        code,
+        newPassword,
+        verifyTotpCode,
+        {
+          ipAddress: req.ip || '',
+          userAgent: ua,
+          deviceName: parseDeviceNameFromUserAgent(ua)
+        }
+      );
+      const vaultRes = getSavedAccountsByTokens([session.token, ...parseVaultTokensFromReq(req)], session.user.id);
+      setSecureSessionCookie(res, session.token, req, vaultRes.validTokens);
+      res.json({
+        success: true,
+        methodUsed,
+        token: session.token,
+        user: session.user,
+        savedAccounts: vaultRes.accounts,
+        vaultTokens: vaultRes.validTokens,
+        message: `Пароль для «${session.user.username}» успешно обновлён!`
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // Мультипрофили, детский режим и PIN-код в БД (Пункт 2.6)
   router.post('/api/auth/family-profiles/pin', requireAuth, (req, res) => {
     try {
@@ -240,10 +457,13 @@ export function createAuthRouter({ requireAuth }) {
   // Единый гидратор состояния из БД при старте (0 байт в localStorage)
   router.get('/api/user/bootstrap', (req, res) => {
     try {
+      const vaultBootstrap = getSavedAccountsByTokens([req.token, ...parseVaultTokensFromReq(req)], req.user?.id || null);
       if (!req.user) {
         return res.json({
           authenticated: false,
           user: null,
+          savedAccounts: vaultBootstrap.accounts,
+          vaultTokens: vaultBootstrap.validTokens,
           settings: {},
           kv: {},
           bookmarks: [],
@@ -304,7 +524,9 @@ export function createAuthRouter({ requireAuth }) {
         handoff,
         subscriptions,
         achievements,
-        activeSessionsCount: sessions.length
+        activeSessionsCount: sessions.length,
+        savedAccounts: vaultBootstrap.accounts,
+        vaultTokens: vaultBootstrap.validTokens
       });
     } catch (err) {
       res.status(500).json({ error: err.message });

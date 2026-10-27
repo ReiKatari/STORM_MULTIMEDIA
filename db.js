@@ -542,9 +542,10 @@ export function registerUser(username, email, password, avatar = null, meta = {}
 
   const insert = db.prepare(`
     INSERT INTO users (username, email, password_hash, avatar, created_at, settings_json)
-    VALUES (?, ?, ?, ?, ?, '{}')
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
-  const result = insert.run(cleanUsername, cleanEmail, passwordHash, defaultAvatar, now);
+  const initSettings = JSON.stringify({ recovery_codes: generateFormattedRecoveryCodes(8), _updated_at: now });
+  const result = insert.run(cleanUsername, cleanEmail, passwordHash, defaultAvatar, now, initSettings);
   const userId = Number(result.lastInsertRowid);
 
   // Создание дефолтных коллекций и синхронизация с MariaDB
@@ -3142,3 +3143,285 @@ setImmediate(() => {
     }
   } catch (_) {}
 });
+
+
+// =========================================================================
+// 4. БЫСТРОЕ ПЕРЕКЛЮЧЕНИЕ АККАУНТОВ (ACCOUNT SWITCHER) И ВОССТАНОВЛЕНИЕ ПАРОЛЯ
+// =========================================================================
+const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function generateFormattedRecoveryCodes(count = 8) {
+  const codes = [];
+  for (let i = 0; i < count; i++) {
+    const bytes = crypto.randomBytes(8);
+    let p1 = '';
+    let p2 = '';
+    for (let j = 0; j < 4; j++) {
+      p1 += RECOVERY_ALPHABET[bytes[j] % RECOVERY_ALPHABET.length];
+      p2 += RECOVERY_ALPHABET[bytes[j + 4] % RECOVERY_ALPHABET.length];
+    }
+    codes.push(`${p1}-${p2}`);
+  }
+  return codes;
+}
+
+export function getSavedAccountsByTokens(candidateTokens = [], currentUserId = null) {
+  const rawTokens = Array.isArray(candidateTokens) ? candidateTokens : [];
+  const expandedTokens = new Set();
+  for (const t of rawTokens) {
+    const clean = String(t || '').trim();
+    if (clean && clean.length >= 16) expandedTokens.add(clean);
+  }
+
+  // Подтягиваем связанные токены устройства из настроек текущего и найденных пользователей
+  if (currentUserId) {
+    try {
+      const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(Number(currentUserId));
+      if (row?.settings_json) {
+        const s = JSON.parse(row.settings_json || '{}');
+        if (Array.isArray(s.device_vault_tokens)) {
+          s.device_vault_tokens.forEach(t => { if (t && String(t).length >= 16) expandedTokens.add(String(t)); });
+        }
+      }
+    } catch (_) {}
+  }
+
+  const validPairs = []; // { user, token }
+  const seenUserIds = new Set();
+
+  for (const tok of expandedTokens) {
+    const u = getUserByToken(tok);
+    if (u && u.id && !seenUserIds.has(Number(u.id))) {
+      seenUserIds.add(Number(u.id));
+      validPairs.push({ user: u, token: tok });
+      try {
+        const uSet = u.settings || JSON.parse(u.settings_json || '{}');
+        if (Array.isArray(uSet.device_vault_tokens)) {
+          for (const extraTok of uSet.device_vault_tokens) {
+            if (extraTok && !expandedTokens.has(extraTok)) {
+              const extraU = getUserByToken(extraTok);
+              if (extraU && extraU.id && !seenUserIds.has(Number(extraU.id))) {
+                seenUserIds.add(Number(extraU.id));
+                validPairs.push({ user: extraU, token: extraTok });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  const validTokens = validPairs.map(p => p.token).slice(0, 8);
+
+  // Если на устройстве > 1 аккаунта, синхронизируем связку токенов между ними
+  if (validPairs.length > 1) {
+    for (const { user } of validPairs) {
+      try {
+        const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(user.id);
+        const s = JSON.parse(row?.settings_json || '{}');
+        const prev = Array.isArray(s.device_vault_tokens) ? s.device_vault_tokens : [];
+        if (JSON.stringify(prev) !== JSON.stringify(validTokens)) {
+          s.device_vault_tokens = validTokens;
+          updateUserSettings(user.id, s);
+        }
+      } catch (_) {}
+    }
+  }
+
+  const accounts = validPairs.map(({ user }) => ({
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    avatar: user.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.username)}`,
+    role: user.role || 'user',
+    created_at: user.created_at,
+    isCurrent: currentUserId ? Number(user.id) === Number(currentUserId) : false
+  }));
+
+  return { accounts, validTokens, validPairs };
+}
+
+export function removeAccountFromDeviceVault(targetUserId, candidateTokens = []) {
+  const { validPairs } = getSavedAccountsByTokens(candidateTokens, null);
+  const remainingPairs = validPairs.filter(p => Number(p.user.id) !== Number(targetUserId));
+  const removedPairs = validPairs.filter(p => Number(p.user.id) === Number(targetUserId));
+  const remainingTokens = remainingPairs.map(p => p.token);
+
+  for (const { user } of validPairs) {
+    try {
+      const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(user.id);
+      const s = JSON.parse(row?.settings_json || '{}');
+      s.device_vault_tokens = Number(user.id) === Number(targetUserId) ? [] : remainingTokens;
+      updateUserSettings(user.id, s);
+    } catch (_) {}
+  }
+
+  for (const { token } of removedPairs) {
+    try { logoutUser(token); } catch (_) {}
+  }
+
+  return remainingTokens;
+}
+
+export function ensureUserRecoveryConfig(userId) {
+  const row = db.prepare('SELECT id, username, email, settings_json FROM users WHERE id = ?').get(Number(userId));
+  if (!row) return { recoveryCodes: [], telegramChatId: '', totpEnabled: false, totpBackupCodesCount: 0 };
+  const s = JSON.parse(row.settings_json || '{}');
+  let changed = false;
+
+  if (!Array.isArray(s.recovery_codes) || s.recovery_codes.length === 0) {
+    s.recovery_codes = generateFormattedRecoveryCodes(8);
+    changed = true;
+  }
+
+  if (!s.telegram_chat_id) {
+    try {
+      const subRow = db.prepare("SELECT telegram_chat_id FROM release_subscriptions WHERE user_id = ? AND telegram_chat_id IS NOT NULL AND telegram_chat_id != '' LIMIT 1").get(Number(userId));
+      if (subRow?.telegram_chat_id) {
+        s.telegram_chat_id = String(subRow.telegram_chat_id).trim();
+        changed = true;
+      }
+    } catch (_) {}
+  }
+
+  if (changed) {
+    updateUserSettings(Number(userId), s);
+  }
+
+  return {
+    recoveryCodes: s.recovery_codes || [],
+    telegramChatId: s.telegram_chat_id || '',
+    totpEnabled: Boolean(s.totp_enabled && s.totp_secret),
+    totpBackupCodesCount: Array.isArray(s.totp_backup_codes) ? s.totp_backup_codes.length : 0
+  };
+}
+
+export function regenerateUserRecoveryCodes(userId) {
+  const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(Number(userId));
+  if (!row) throw new Error('Пользователь не найден');
+  const s = JSON.parse(row.settings_json || '{}');
+  s.recovery_codes = generateFormattedRecoveryCodes(8);
+  updateUserSettings(Number(userId), s);
+  return s.recovery_codes;
+}
+
+export function saveUserRecoveryTelegram(userId, telegramChatId) {
+  const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(Number(userId));
+  if (!row) throw new Error('Пользователь не найден');
+  const cleanChatId = String(telegramChatId || '').trim();
+  const s = JSON.parse(row.settings_json || '{}');
+  s.telegram_chat_id = cleanChatId;
+  updateUserSettings(Number(userId), s);
+  if (cleanChatId) {
+    try {
+      db.prepare('UPDATE release_subscriptions SET telegram_chat_id = ? WHERE user_id = ?').run(cleanChatId, Number(userId));
+    } catch (_) {}
+  }
+  return cleanChatId;
+}
+
+export function createTelegramPasswordResetOtp(loginOrEmail) {
+  const cleanLogin = String(loginOrEmail || '').trim();
+  if (!cleanLogin) throw new Error('Укажите имя пользователя или email');
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)').get(cleanLogin, cleanLogin);
+  if (!user) {
+    throw new Error('Пользователь с таким именем или email не найден');
+  }
+  const cfg = ensureUserRecoveryConfig(user.id);
+  if (!cfg.telegramChatId) {
+    throw new Error('К этому аккаунту не привязан Telegram Chat ID. Используйте резервный код восстановления или код 2FA TOTP.');
+  }
+  const otpNum = 100000 + (crypto.randomBytes(4).readUInt32BE(0) % 900000);
+  const code = String(otpNum);
+  const s = JSON.parse(user.settings_json || '{}');
+  s.password_reset_otp = {
+    codeHash: hashPassword(code),
+    expiresAt: Date.now() + 10 * 60 * 1000,
+    attempts: 0
+  };
+  updateUserSettings(user.id, s);
+  return { user, telegramChatId: cfg.telegramChatId, code };
+}
+
+export function resetUserPasswordWithCode(loginOrEmail, rawCode, newPassword, verifyTotpFn = null, meta = {}) {
+  const cleanLogin = String(loginOrEmail || '').trim();
+  const cleanCode = String(rawCode || '').trim().toUpperCase();
+  const normCode = cleanCode.replace(/[^A-Z0-9]/g, '');
+  const cleanNewPass = String(newPassword || '').trim();
+
+  if (!cleanLogin) throw new Error('Укажите имя пользователя или email');
+  if (!normCode) throw new Error('Введите резервный код или код из Telegram / 2FA');
+  if (cleanNewPass.length < 6) throw new Error('Новый пароль должен содержать не менее 6 символов');
+
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)').get(cleanLogin, cleanLogin);
+  if (!user) {
+    throw new Error('Пользователь с таким именем или email не найден');
+  }
+
+  ensureUserRecoveryConfig(user.id);
+  const freshRow = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  const s = JSON.parse(freshRow.settings_json || '{}');
+
+  let methodUsed = null;
+
+  // 1. Проверка одноразовых резервных кодов восстановления (recovery_codes)
+  if (Array.isArray(s.recovery_codes)) {
+    const idx = s.recovery_codes.findIndex(c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === normCode);
+    if (idx !== -1) {
+      methodUsed = 'recovery_code';
+      s.recovery_codes.splice(idx, 1);
+      if (s.recovery_codes.length === 0) {
+        s.recovery_codes = generateFormattedRecoveryCodes(8);
+      }
+    }
+  }
+
+  // 2. Проверка резервных кодов 2FA TOTP (totp_backup_codes)
+  if (!methodUsed && Array.isArray(s.totp_backup_codes)) {
+    const idx = s.totp_backup_codes.findIndex(c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === normCode);
+    if (idx !== -1) {
+      methodUsed = 'totp_backup_code';
+      s.totp_backup_codes.splice(idx, 1);
+    }
+  }
+
+  // 3. Проверка 6-значного кода приложения-аутентификатора 2FA TOTP
+  if (!methodUsed && s.totp_secret && typeof verifyTotpFn === 'function') {
+    if (verifyTotpFn(s.totp_secret, normCode, 1)) {
+      methodUsed = 'totp_app';
+    }
+  }
+
+  // 4. Проверка одноразового кода из Telegram-бота
+  if (!methodUsed && s.password_reset_otp) {
+    const otp = s.password_reset_otp;
+    if (Date.now() <= Number(otp.expiresAt || 0) && Number(otp.attempts || 0) < 5) {
+      if (verifyPassword(normCode, otp.codeHash)) {
+        methodUsed = 'telegram_otp';
+        delete s.password_reset_otp;
+      } else {
+        otp.attempts = Number(otp.attempts || 0) + 1;
+        updateUserSettings(user.id, s);
+      }
+    }
+  }
+
+  if (!methodUsed) {
+    throw new Error('Неверный или просроченный резервный код / код восстановления');
+  }
+
+  delete s.password_reset_otp;
+  updateUserSettings(user.id, s);
+
+  const newHash = hashPassword(cleanNewPass);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+  const updatedUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(user.id);
+  if (updatedUser) {
+    mariaSaveUser(updatedUser);
+    mariaDeleteUserSessions(user.id);
+  }
+
+  const session = createSession(user.id, meta);
+  return { session, methodUsed };
+}

@@ -12996,3 +12996,22 @@ body[data-card-density="compact"] #media-render-container.media-container.view-g
   }
 }
 
+
+
+/* ==========================================================================
+   ЧИСТЫЙ ТВ-РЕЖИМ (SMART TV / ПУЛЬТ / ТЕЛЕФОН): БЕЗ БАННЕРА И ГРУППИРОВКИ ЛЕНТ
+   ========================================================================== */
+body.tv-mode #hero-showcase-container,
+body.tv-mode #hero-spotlight,
+body.tv-mode .hero-showcase,
+body.tv-mode .home-rails-top-bar,
+body.tv-mode #storm-quick-catalog-bar,
+body.tv-mode #storm-filters-collapsible,
+body.tv-mode .view-mode-switcher,
+.storm-tv-focus-aura {
+  display: none !important;
+}
+
+body.tv-mode #media-render-container.view-grid {
+  padding-top: 8px !important;
+}
