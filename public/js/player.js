@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.2.9';
-import { getUser, showToast } from './auth.js?v=1.2.9';
-import { t } from './i18n.js?v=1.2.9';
-import { trackClientAction } from './achievements.js?v=1.2.9';
-import { renderReviewsSection } from './reviews.js?v=1.2.9';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.2.9';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.2.9';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.2.9';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.2.9';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.2.9';
-import { saveMediaForOffline } from './offline-storage.js?v=1.2.9';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.2.9';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.2.9';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.2.9';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.2.9';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.2.9';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.3.0';
+import { getUser, showToast } from './auth.js?v=1.3.0';
+import { t } from './i18n.js?v=1.3.0';
+import { trackClientAction } from './achievements.js?v=1.3.0';
+import { renderReviewsSection } from './reviews.js?v=1.3.0';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.3.0';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.3.0';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.3.0';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.3.0';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.3.0';
+import { saveMediaForOffline } from './offline-storage.js?v=1.3.0';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.3.0';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.3.0';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.3.0';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.3.0';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.3.0';
 
 function escapeHtml(str) {
   if (!str) return '';

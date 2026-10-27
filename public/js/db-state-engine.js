@@ -8,40 +8,111 @@
   if (window.__STORM_DB_STATE_ENGINE_ACTIVE__) return;
   window.__STORM_DB_STATE_ENGINE_ACTIVE__ = true;
 
-  // 1. Очистка любого локального дискового хранилища браузера и перехват в чистую RAM-память
+  // 1. Изолированное локальное хранилище для Гостя + синхронизируемое с БД хранилище для Авторизованного профиля
   const ramStore = new Map();
   window.__STORM_EPHEMERAL_RAM_STORE__ = ramStore;
+  const nativeLSRef = (() => {
+    try { return window.localStorage; } catch (_) { return null; }
+  })();
+  const GUEST_VAULT_KEY = 'storm_guest_local_vault_v1';
+  const AUTH_PERSIST_KEYS = ['storm_token', 'storm_user', 'storm_active_user_id', 'storm_vault_tokens', 'storm_explicit_guest_mode'];
 
-  try {
-    const nativeLS = window.localStorage;
-    if (nativeLS && nativeLS.length > 0) {
-      for (const preserveKey of ['storm_token', 'storm_user', 'storm_active_user_id', 'storm_toasted_achievements_v1', 'storm_local_achievements']) {
-        const val = nativeLS.getItem(preserveKey);
-        if (val) ramStore.set(preserveKey, val);
+  function isRealAuthenticatedSession() {
+    const tok = String(ramStore.get('storm_token') || '').trim();
+    if (!tok || tok.startsWith('guest_') || tok.startsWith('offline_')) return false;
+    try {
+      const uRaw = ramStore.get('storm_user');
+      if (uRaw) {
+        const u = JSON.parse(uRaw);
+        if (!u || !u.id || Number(u.id) === 9999 || u.isGuest) return false;
       }
-      nativeLS.clear();
+    } catch (_) {}
+    return true;
+  }
+
+  function loadGuestVaultFromDisk() {
+    if (!nativeLSRef) return {};
+    try {
+      const raw = nativeLSRef.getItem(GUEST_VAULT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  let guestVaultCache = loadGuestVaultFromDisk();
+  let guestVaultSaveTimer = null;
+
+  function persistGuestVaultToDisk() {
+    if (!nativeLSRef) return;
+    if (guestVaultSaveTimer) clearTimeout(guestVaultSaveTimer);
+    guestVaultSaveTimer = setTimeout(() => {
+      guestVaultSaveTimer = null;
+      try {
+        nativeLSRef.setItem(GUEST_VAULT_KEY, JSON.stringify(guestVaultCache));
+      } catch (_) {}
+    }, 80);
+  }
+
+  try {
+    if (nativeLSRef && nativeLSRef.length > 0) {
+      for (const preserveKey of [...AUTH_PERSIST_KEYS, 'storm_toasted_achievements_v1', 'storm_local_achievements', 'storm_view_mode', 'storm_theme', 'storm_accent', 'storm_font', 'storm_ui_scale']) {
+        const val = nativeLSRef.getItem(preserveKey);
+        if (val !== null && val !== undefined) ramStore.set(preserveKey, val);
+      }
+      // Если сессия гостевая — восстанавливаем локальные данные гостя в память
+      if (!isRealAuthenticatedSession()) {
+        for (const [gk, gv] of Object.entries(guestVaultCache)) {
+          if (gv !== null && gv !== undefined && !AUTH_PERSIST_KEYS.includes(gk) && gk !== 'storm_family_profiles') {
+            ramStore.set(gk, String(gv));
+          }
+        }
+      }
     }
   } catch (_) {}
 
-  try {
-    const nativeSS = window.sessionStorage;
-    if (nativeSS && nativeSS.length > 0) {
-      nativeSS.clear();
+  window.getStormGuestVaultSnapshot = function() {
+    const merged = { ...loadGuestVaultFromDisk(), ...guestVaultCache };
+    if (!isRealAuthenticatedSession()) {
+      for (const [k, v] of ramStore.entries()) {
+        if (shouldPersistKeyToDatabase(k) && k !== 'storm_family_profiles') {
+          merged[k] = v;
+        }
+      }
     }
-  } catch (_) {}
+    return merged;
+  };
+
+  window.restoreStormGuestVaultToRam = function() {
+    guestVaultCache = loadGuestVaultFromDisk();
+    for (const [gk, gv] of Object.entries(guestVaultCache)) {
+      if (gv !== null && gv !== undefined && !AUTH_PERSIST_KEYS.includes(gk) && gk !== 'storm_family_profiles') {
+        ramStore.set(gk, String(gv));
+      }
+    }
+  };
+
+  window.clearStormGuestVaultSnapshot = function() {
+    guestVaultCache = {};
+    try {
+      if (nativeLSRef) nativeLSRef.removeItem(GUEST_VAULT_KEY);
+    } catch (_) {}
+  };
 
   let syncTimer = null;
   const dirtyKv = {};
 
   function shouldPersistKeyToDatabase(key) {
     if (!key || typeof key !== 'string') return false;
-    // Временные кэши каталогов не засоряют JSON настроек пользователя, так как каталог кэшируется в L1/L2 на сервере
     if (
       key.startsWith('storm_cat_cache_') ||
       key.startsWith('storm_sw_') ||
       key.startsWith('storm_mod_healed_') ||
       key === 'storm_token' ||
-      key === 'storm_user'
+      key === 'storm_user' ||
+      key === GUEST_VAULT_KEY
     ) {
       return false;
     }
@@ -49,9 +120,11 @@
   }
 
   function scheduleDatabaseSettingsSync() {
+    if (!isRealAuthenticatedSession()) return;
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = setTimeout(async () => {
       syncTimer = null;
+      if (!isRealAuthenticatedSession()) return;
       const keysToSync = Object.keys(dirtyKv);
       if (keysToSync.length === 0) return;
       const payloadKv = { ...dirtyKv };
@@ -71,7 +144,7 @@
     }, 350);
   }
 
-  // Переопределение методов Storage.prototype для работы строго в оперативной памяти (0 байт на диске)
+  // Переопределение window.localStorage: локальное сохранение для гостя и облачная синхронизация для аккаунта
   try {
     const ephemStorage = {
       getItem(key) {
@@ -82,17 +155,39 @@
         const k = String(key);
         const v = String(value);
         ramStore.set(k, v);
-        if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
-          dirtyKv[k] = v;
-          scheduleDatabaseSettingsSync();
+        try {
+          if (nativeLSRef && (AUTH_PERSIST_KEYS.includes(k) || k === 'storm_view_mode' || k === 'storm_theme' || k === 'storm_accent')) {
+            nativeLSRef.setItem(k, v);
+          }
+        } catch (_) {}
+
+        if (isRealAuthenticatedSession()) {
+          if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
+            dirtyKv[k] = v;
+            scheduleDatabaseSettingsSync();
+          }
+        } else if (!window.__STORM_SUPPRESS_GUEST_VAULT_WRITE__ && shouldPersistKeyToDatabase(k) && k !== 'storm_family_profiles') {
+          guestVaultCache[k] = v;
+          persistGuestVaultToDisk();
         }
       },
       removeItem(key) {
         const k = String(key);
         ramStore.delete(k);
-        if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
-          dirtyKv[k] = null;
-          scheduleDatabaseSettingsSync();
+        try {
+          if (nativeLSRef && AUTH_PERSIST_KEYS.includes(k)) {
+            nativeLSRef.removeItem(k);
+          }
+        } catch (_) {}
+
+        if (isRealAuthenticatedSession()) {
+          if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
+            dirtyKv[k] = null;
+            scheduleDatabaseSettingsSync();
+          }
+        } else if (!window.__STORM_SUPPRESS_GUEST_VAULT_WRITE__ && shouldPersistKeyToDatabase(k)) {
+          delete guestVaultCache[k];
+          persistGuestVaultToDisk();
         }
       },
       clear() {
@@ -189,7 +284,11 @@
     try {
       const headers = { 'X-Storm-Device': CLIENT_DEVICE_NAME };
       const token = ramStore.get('storm_token');
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && !String(token).startsWith('guest_') && !String(token).startsWith('offline_')) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else if (ramStore.get('storm_explicit_guest_mode') === '1' || String(token || '').startsWith('guest_')) {
+        headers['X-Storm-Guest-Mode'] = '1';
+      }
 
       const res = await fetch(`/api/user/bootstrap?device=${encodeURIComponent(CLIENT_DEVICE_NAME)}`, {
         headers,
@@ -575,8 +674,10 @@
       modal.querySelector('#storm-ext-tracks-close')?.addEventListener('click', () => {
         modal.style.display = 'none';
       });
-      modal.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') modal.style.display = 'none';
+      window.addEventListener('keydown', (e) => {
+        if ((e.key === 'Escape' || e.keyCode === 27) && modal.style.display !== 'none') {
+          modal.style.display = 'none';
+        }
       });
 
       const rangeEl = modal.querySelector('#storm-sub-offset-range');

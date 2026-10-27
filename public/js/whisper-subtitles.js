@@ -3,9 +3,9 @@
    Синхронное распознавание речи и субтитры без фиктивных фраз и с VAD
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.9';
-import { getProAudioMasterNode } from './pro-media-engine.js?v=1.2.9';
-import { getActiveSubtitleText } from './subtitles-manager.js?v=1.2.9';
+import { showToast } from './auth.js?v=1.3.0';
+import { getProAudioMasterNode } from './pro-media-engine.js?v=1.3.0';
+import { getActiveSubtitleText } from './subtitles-manager.js?v=1.3.0';
 
 let isWhisperActive = false;
 let recognition = null;

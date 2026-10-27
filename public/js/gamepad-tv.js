@@ -4,8 +4,8 @@
    Leanback HUD 2.0 с динамическим авто-затуханием и полной навигацией во всех меню
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.9';
-import { trackClientAction } from './achievements.js?v=1.2.9';
+import { showToast } from './auth.js?v=1.3.0';
+import { trackClientAction } from './achievements.js?v=1.3.0';
 
 let isTvModeActive = false;
 let gamepadLoopId = null;
@@ -782,16 +782,23 @@ function handleSpatialKeyboard(e) {
   const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
   const isProfileOpen = Boolean(document.getElementById('profile-modal')?.classList.contains('is-open'));
 
+  if (e._stormEscHandled) return;
+
   // Проверяем, находится ли фокус прямо на текстовом поле ввода
-  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
-    // Разрешаем закрытие по Escape/Back
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+    // Разрешаем закрытие модального окна по Escape/Back
     if (e.key === 'Escape' || e.keyCode === 4 || e.keyCode === 27) {
       e.target.blur();
-      closeActiveModalOrBack();
+      if (typeof window.closeTopmostStormModalOnEscape === 'function' && window.closeTopmostStormModalOnEscape(e)) {
+        return;
+      }
+      if (isTvModeActive) {
+        closeActiveModalOrBack();
+      }
       return;
     }
-    // Нажатие стрелки вниз переводит фокус из поисковой строки в результаты каталога
-    if (e.key === 'ArrowDown' || e.keyCode === 20 || e.keyCode === 40) {
+    // Нажатие стрелки вниз переводит фокус из поисковой строки в результаты каталога (только в ТВ-режиме)
+    if (isTvModeActive && (e.key === 'ArrowDown' || e.keyCode === 20 || e.keyCode === 40)) {
       e.target.blur();
       e.preventDefault();
       moveFocus('down');
@@ -814,12 +821,11 @@ function handleSpatialKeyboard(e) {
     166, 167, 176, 177, 178, 179, 227, 228, 403, 404, 405, 406, 10009, 461
   ].includes(c);
 
-  // Если ТВ-режим не активен — обычная работа браузера на ПК (стрелки прокручивают страницу, Escape закрывает модалки)
+  // Если ТВ-режим не активен — Escape обрабатывается через closeTopmostStormModalOnEscape
   if (!isTvModeActive) {
     if (e.key === 'Escape' || e.keyCode === 27) {
-      if (document.querySelector('.storm-modal-backdrop.is-open')) {
-        e.preventDefault();
-        closeActiveModalOrBack();
+      if (typeof window.closeTopmostStormModalOnEscape === 'function') {
+        window.closeTopmostStormModalOnEscape(e);
       }
     }
     return;

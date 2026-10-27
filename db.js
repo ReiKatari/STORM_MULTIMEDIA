@@ -812,6 +812,23 @@ export function getUserStats(userId) {
   const wontWatchCount = db.prepare("SELECT count(*) as count FROM bookmarks WHERE user_id = ? AND (status = 'wont_watch' OR status = 'abandoned')").get(userId)?.count || 0;
   const totalWatchedSeconds = db.prepare('SELECT COALESCE(SUM(time_seconds), 0) as total FROM watch_history WHERE user_id = ?').get(userId)?.total || 0;
   const customListsCount = db.prepare('SELECT count(*) as count FROM custom_lists WHERE user_id = ?').get(userId)?.count || 0;
+  const unlockedAchievementsCount = db.prepare('SELECT count(*) as count FROM user_achievements WHERE user_id = ? AND unlocked = 1').get(userId)?.count || 0;
+
+  let savedWatchedHours = 0;
+  let savedXp = 0;
+  let savedLevel = 1;
+  try {
+    const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+    if (uRow && uRow.settings_json) {
+      const s = JSON.parse(uRow.settings_json || '{}');
+      const kv = s.kv_store || {};
+      savedWatchedHours = Math.max(parseFloat(s.watchedHours || 0) || 0, parseFloat(kv.storm_watched_hours || 0) || 0);
+      savedXp = Math.max(parseInt(s.profileXp || 0, 10) || 0, parseInt(kv.storm_user_xp || 0, 10) || 0);
+      savedLevel = Math.max(parseInt(s.profileLevel || 1, 10) || 1, parseInt(kv.storm_user_level || 1, 10) || 1);
+    }
+  } catch (_) {}
+
+  const historyHours = Math.round((totalWatchedSeconds / 3600) * 10) / 10;
 
   return {
     bookmarksCount,
@@ -822,9 +839,180 @@ export function getUserStats(userId) {
     onHoldCount,
     droppedCount,
     wontWatchCount,
-    totalWatchedHours: Math.round((totalWatchedSeconds / 3600) * 10) / 10,
-    customListsCount
+    totalWatchedHours: Math.max(historyHours, savedWatchedHours),
+    customListsCount,
+    unlockedAchievementsCount,
+    savedXp,
+    savedLevel
   };
+}
+
+export function mergeGuestDataIntoUser(userId, guestData) {
+  if (!userId || !guestData || typeof guestData !== 'object') return false;
+  try {
+    // 1. Закладки гостя
+    const bmList = Array.isArray(guestData.bookmarks)
+      ? guestData.bookmarks
+      : (guestData.bookmarks && typeof guestData.bookmarks === 'object' ? Object.values(guestData.bookmarks) : []);
+    for (const bm of bmList) {
+      if (!bm || (!bm.media_id && !bm.id && !bm.title)) continue;
+      try {
+        setBookmark(userId, {
+          media_id: String(bm.media_id || bm.id || bm.title || ''),
+          source: bm.source || 'catalog',
+          title: bm.title || 'Без названия',
+          original_title: bm.original_title || '',
+          poster_url: bm.poster_url || bm.poster || '',
+          media_type: bm.media_type || bm.type || 'movie',
+          year: bm.year || null,
+          status: bm.status || bm.user_status || 'planned',
+          episodes_watched: Number(bm.episodes_watched || 0),
+          total_episodes: Number(bm.total_episodes || 0),
+          watched_episodes_json: bm.watched_episodes_json || '[]',
+          is_favorite: Boolean(bm.is_favorite || bm.isFavorite || bm.status === 'favorite')
+        });
+      } catch (_) {}
+    }
+
+    // 2. История продолжения просмотра (watch_history)
+    const cwList = Array.isArray(guestData.continueWatching)
+      ? guestData.continueWatching
+      : (guestData.continueWatching && typeof guestData.continueWatching === 'object' ? Object.values(guestData.continueWatching) : []);
+    for (const cw of cwList) {
+      if (!cw || (!cw.media_id && !cw.id && !cw.title)) continue;
+      try {
+        const mId = String(cw.media_id || cw.id || '');
+        const src = String(cw.source || 'catalog');
+        const tSec = Math.max(600, Number(cw.time_seconds || cw.progress_seconds || cw.currentTime || 600));
+        const dSec = Math.max(tSec + 60, Number(cw.duration_seconds || cw.duration || 5400));
+        db.prepare(`
+          INSERT INTO watch_history (user_id, media_id, source, title, poster_url, media_type, season, episode, time_seconds, duration_seconds, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id, media_id, source) DO UPDATE SET
+            time_seconds = MAX(watch_history.time_seconds, excluded.time_seconds),
+            duration_seconds = MAX(watch_history.duration_seconds, excluded.duration_seconds),
+            season = excluded.season,
+            episode = excluded.episode,
+            updated_at = CURRENT_TIMESTAMP
+        `).run(
+          userId,
+          mId,
+          src,
+          cw.title || 'Без названия',
+          cw.poster_url || cw.poster || '',
+          cw.media_type || cw.type || 'movie',
+          Number(cw.season || 1),
+          Number(cw.episode || 1),
+          tSec,
+          dSec
+        );
+      } catch (_) {}
+    }
+
+    // 3. Пользовательские коллекции (custom_lists)
+    const lists = Array.isArray(guestData.customLists) ? guestData.customLists : [];
+    for (const lst of lists) {
+      if (!lst || !lst.title) continue;
+      try {
+        const created = createCustomList(userId, String(lst.title).trim(), lst.description || '', lst.color || '#00d2ff', Boolean(lst.is_public));
+        const listId = created?.id;
+        if (listId && Array.isArray(lst.items)) {
+          for (const item of lst.items) {
+            if (!item) continue;
+            try {
+              addCustomListItem(listId, {
+                media_id: String(item.media_id || item.id || ''),
+                source: item.source || 'catalog',
+                title: item.title || '',
+                poster_url: item.poster_url || item.poster || '',
+                media_type: item.media_type || item.type || 'movie',
+                year: item.year || null
+              });
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 4. Достижения гостя (user_achievements)
+    const achMap = (guestData.achievements && typeof guestData.achievements === 'object') ? guestData.achievements : {};
+    for (const [achId, entry] of Object.entries(achMap)) {
+      if (!achId || !entry) continue;
+      try {
+        const amt = entry.unlocked ? Math.max(Number(entry.target || 1), Number(entry.progress || 1)) : Number(entry.progress || 0);
+        if (amt > 0) {
+          updateAchievementProgress(userId, achId, amt, true);
+        }
+      } catch (_) {}
+    }
+
+    // 5. Настройки, KV, часы просмотра, опыт (XP) и уровень (Level)
+    const uRow = db.prepare('SELECT username, avatar, role, settings_json FROM users WHERE id = ?').get(userId);
+    const currentSettings = JSON.parse(uRow?.settings_json || '{}');
+    const kvStore = { ...(currentSettings.kv_store || {}) };
+    if (guestData.kv && typeof guestData.kv === 'object') {
+      for (const [k, v] of Object.entries(guestData.kv)) {
+        if (v !== null && v !== undefined && k !== 'storm_token' && k !== 'storm_user' && k !== 'storm_family_profiles') {
+          kvStore[k] = String(v);
+        }
+      }
+    }
+    const mergedXp = Math.max(Number(currentSettings.profileXp || 0), Number(guestData.xp || 0), Number(kvStore.storm_user_xp || 0));
+    const mergedLevel = Math.max(Number(currentSettings.profileLevel || 1), Number(guestData.level || 1), Number(kvStore.storm_user_level || 1));
+    const mergedHours = Math.max(Number(currentSettings.watchedHours || 0), Number(guestData.watchedHours || 0), Number(kvStore.storm_watched_hours || 0));
+
+    if (mergedXp > 0) {
+      currentSettings.profileXp = mergedXp;
+      kvStore.storm_user_xp = String(mergedXp);
+    }
+    if (mergedLevel > 1) {
+      currentSettings.profileLevel = mergedLevel;
+      kvStore.storm_user_level = String(mergedLevel);
+    }
+    if (mergedHours > 0) {
+      currentSettings.watchedHours = mergedHours;
+      kvStore.storm_watched_hours = String(mergedHours);
+    }
+    if (guestData.bio) {
+      currentSettings.bio = String(guestData.bio);
+      kvStore.storm_profile_bio = String(guestData.bio);
+    }
+    if (guestData.avatarBg) {
+      currentSettings.avatarBg = String(guestData.avatarBg);
+      kvStore.storm_profile_aura = String(guestData.avatarBg);
+    }
+    currentSettings.kv_store = kvStore;
+
+    // Инициализируем собственные семейные профили нового пользователя
+    if (!Array.isArray(currentSettings.familyProfiles) || currentSettings.familyProfiles.length === 0) {
+      currentSettings.familyProfiles = [
+        {
+          id: 'primary',
+          name: uRow?.username || 'Основной профиль',
+          subtitle: (uRow?.role === 'admin' || uRow?.username === 'ReiKatari') ? 'Основной администратор' : 'Владелец аккаунта',
+          avatar: guestData.avatar || uRow?.avatar || 'assets/avatar_default.svg',
+          avatarBg: guestData.avatarBg || 'linear-gradient(135deg, #f59e0b, #d97706)',
+          isKid: false,
+          ageRating: '18+',
+          hasPin: false,
+          pin: '',
+          themePreference: 'auto',
+          defaultTab: 'home',
+          screenTimeLimit: 0,
+          isDefault: true
+        }
+      ];
+    }
+
+    updateUserSettings(userId, currentSettings);
+    try {
+      autoSyncUserAchievements(userId, { total_watched_hours: mergedHours });
+    } catch (_) {}
+    return true;
+  } catch (err) {
+    console.warn('mergeGuestDataIntoUser error:', err.message);
+    return false;
+  }
 }
 
 // Закладки и статусы
@@ -3333,19 +3521,7 @@ export function getSavedAccountsByTokens(candidateTokens = [], currentUserId = n
     if (clean && clean.length >= 16) expandedTokens.add(clean);
   }
 
-  // Подтягиваем связанные токены устройства из настроек текущего и найденных пользователей
-  if (currentUserId) {
-    try {
-      const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(Number(currentUserId));
-      if (row?.settings_json) {
-        const s = JSON.parse(row.settings_json || '{}');
-        if (Array.isArray(s.device_vault_tokens)) {
-          s.device_vault_tokens.forEach(t => { if (t && String(t).length >= 16) expandedTokens.add(String(t)); });
-        }
-      }
-    } catch (_) {}
-  }
-
+  // Используем строго локальные токены текущего браузера без кросс-девайс слияния через БД
   const validPairs = []; // { user, token }
   const seenUserIds = new Set();
 
@@ -3354,39 +3530,10 @@ export function getSavedAccountsByTokens(candidateTokens = [], currentUserId = n
     if (u && u.id && !seenUserIds.has(Number(u.id))) {
       seenUserIds.add(Number(u.id));
       validPairs.push({ user: u, token: tok });
-      try {
-        const uSet = u.settings || JSON.parse(u.settings_json || '{}');
-        if (Array.isArray(uSet.device_vault_tokens)) {
-          for (const extraTok of uSet.device_vault_tokens) {
-            if (extraTok && !expandedTokens.has(extraTok)) {
-              const extraU = getUserByToken(extraTok);
-              if (extraU && extraU.id && !seenUserIds.has(Number(extraU.id))) {
-                seenUserIds.add(Number(extraU.id));
-                validPairs.push({ user: extraU, token: extraTok });
-              }
-            }
-          }
-        }
-      } catch (_) {}
     }
   }
 
   const validTokens = validPairs.map(p => p.token).slice(0, 8);
-
-  // Если на устройстве > 1 аккаунта, синхронизируем связку токенов между ними
-  if (validPairs.length > 1) {
-    for (const { user } of validPairs) {
-      try {
-        const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(user.id);
-        const s = JSON.parse(row?.settings_json || '{}');
-        const prev = Array.isArray(s.device_vault_tokens) ? s.device_vault_tokens : [];
-        if (JSON.stringify(prev) !== JSON.stringify(validTokens)) {
-          s.device_vault_tokens = validTokens;
-          updateUserSettings(user.id, s);
-        }
-      } catch (_) {}
-    }
-  }
 
   const accounts = validPairs.map(({ user }) => ({
     id: user.id,

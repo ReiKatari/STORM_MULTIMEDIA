@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.2.9';
+import { t, formatDate } from './i18n.js?v=1.3.0';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -95,9 +95,18 @@ export function showToast(message, type = 'info') {
   }, 3500);
 }
 
-export function clearUserSessionLocalCache() {
+export function isRealAuthenticatedAccount(user = currentUser, token = currentToken) {
+  const tok = String(token || localStorage.getItem('storm_token') || '').trim();
+  if (!user || !user.id || Number(user.id) === 9999 || user.isGuest) return false;
+  if (!tok || tok.startsWith('guest_') || tok.startsWith('offline_')) return false;
+  return true;
+}
+
+export function clearUserSessionLocalCache(options = {}) {
+  const { restoreGuestVault = true } = options || {};
   if (typeof window !== 'undefined') {
     window.__STORM_SUPPRESS_DB_SYNC__ = true;
+    window.__STORM_SUPPRESS_GUEST_VAULT_WRITE__ = true;
     window.__STORM_CURRENT_USER__ = null;
     window.__STORM_CURRENT_TOKEN__ = null;
     if (typeof window.resetStormDirtySettingsQueue === 'function') {
@@ -113,6 +122,8 @@ export function clearUserSessionLocalCache() {
     localStorage.removeItem('storm_custom_lists');
     localStorage.removeItem('storm_family_profiles');
     localStorage.removeItem('storm_watched_hours');
+    localStorage.removeItem('storm_user_xp');
+    localStorage.removeItem('storm_user_level');
     localStorage.removeItem('storm_dismissed_continue_v1');
     localStorage.removeItem('storm_achievements_cache');
     const keysToRemove = [];
@@ -124,21 +135,32 @@ export function clearUserSessionLocalCache() {
         k.startsWith('storm_season_status_') ||
         k.startsWith('storm_series_completed_meta_') ||
         k.startsWith('storm_resume_state_') ||
-        k.startsWith('storm_ep_watched_')
+        k.startsWith('storm_ep_watched_') ||
+        k.startsWith('storm_family_profiles_u_')
       )) {
         keysToRemove.push(k);
       }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
+    try {
+      if (typeof DEFAULT_PROFILES !== 'undefined') {
+        familyProfiles = DEFAULT_PROFILES.map(p => ({ ...p }));
+        activeProfileId = 'primary';
+      }
+    } catch (_) {}
     if (typeof window !== 'undefined') {
       window.__STORM_MEMORY_BOOKMARKS__ = [];
-      window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { cleared: true } }));
-      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { cleared: true } }));
+      if (restoreGuestVault && typeof window.restoreStormGuestVaultToRam === 'function') {
+        window.restoreStormGuestVaultToRam();
+      }
+      window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { cleared: !restoreGuestVault } }));
+      window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { cleared: !restoreGuestVault } }));
     }
   } catch (_) {
   } finally {
     if (typeof window !== 'undefined') {
       window.__STORM_SUPPRESS_DB_SYNC__ = false;
+      window.__STORM_SUPPRESS_GUEST_VAULT_WRITE__ = false;
     }
   }
 }
@@ -206,6 +228,91 @@ export async function checkAuth() {
   return currentUser;
 }
 
+function collectGuestProgressForRegistration() {
+  const vaultSnap = (typeof window !== 'undefined' && typeof window.getStormGuestVaultSnapshot === 'function')
+    ? window.getStormGuestVaultSnapshot()
+    : {};
+  const st = computeLocalAndMergedProfileStats({});
+  let bookmarks = [];
+  let continueWatching = [];
+  let customLists = [];
+  let achievements = {};
+  try {
+    const rawBm = localStorage.getItem('storm_local_bookmarks') || vaultSnap.storm_local_bookmarks;
+    if (rawBm) {
+      const parsed = JSON.parse(rawBm);
+      bookmarks = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    }
+  } catch (_) {}
+  try {
+    if (typeof window !== 'undefined' && Array.isArray(window.__STORM_MEMORY_BOOKMARKS__)) {
+      const seen = new Set(bookmarks.map(b => String(b.media_id || b.id || b.title || '')));
+      for (const mb of window.__STORM_MEMORY_BOOKMARKS__) {
+        const k = String(mb.media_id || mb.id || mb.title || '');
+        if (k && !seen.has(k)) {
+          seen.add(k);
+          bookmarks.push(mb);
+        }
+      }
+    }
+  } catch (_) {}
+  try {
+    const rawCw = localStorage.getItem('storm_continue_watching') || vaultSnap.storm_continue_watching;
+    if (rawCw) {
+      const parsed = JSON.parse(rawCw);
+      continueWatching = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    }
+  } catch (_) {}
+  try {
+    const rawLists = localStorage.getItem('storm_custom_lists') || vaultSnap.storm_custom_lists;
+    if (rawLists) {
+      const parsed = JSON.parse(rawLists);
+      if (Array.isArray(parsed)) customLists = parsed;
+    }
+  } catch (_) {}
+  try {
+    const rawAch = localStorage.getItem('storm_local_achievements') || vaultSnap.storm_local_achievements;
+    if (rawAch) {
+      achievements = JSON.parse(rawAch) || {};
+    }
+  } catch (_) {}
+
+  const kv = {};
+  for (const [k, v] of Object.entries(vaultSnap)) {
+    if (v !== null && v !== undefined && k !== 'storm_family_profiles') {
+      kv[k] = String(v);
+    }
+  }
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k !== 'storm_token' && k !== 'storm_user' && k !== 'storm_family_profiles') {
+      const val = localStorage.getItem(k);
+      if (val !== null) kv[k] = val;
+    }
+  }
+
+  const rankInfo = computeRankAndLevelFromStats(st);
+  kv.storm_user_xp = String(rankInfo.xp);
+  kv.storm_user_level = String(rankInfo.level);
+  if (st.totalWatchedHours > 0) {
+    kv.storm_watched_hours = String(st.totalWatchedHours);
+  }
+
+  return {
+    bookmarks,
+    continueWatching,
+    customLists,
+    achievements,
+    watchedHours: st.totalWatchedHours || 0,
+    xp: rankInfo.xp,
+    level: rankInfo.level,
+    bio: localStorage.getItem('storm_profile_bio') || vaultSnap.storm_profile_bio || '',
+    avatar: localStorage.getItem('storm_guest_avatar') || (currentUser?.isGuest ? currentUser.avatar : '') || '',
+    avatarBg: localStorage.getItem('storm_profile_aura') || vaultSnap.storm_profile_aura || '',
+    kv
+  };
+}
+
 export async function register(username, email, password) {
   const uStr = String(username || '').trim();
   const eStr = String(email || '').trim().toLowerCase();
@@ -224,14 +331,22 @@ export async function register(username, email, password) {
     throw new Error('Пароль должен содержать не менее 6 символов');
   }
 
+  const guestPayload = (!isRealAuthenticatedAccount()) ? collectGuestProgressForRegistration() : null;
+
   let res;
   try {
     res = await fetch('/api/auth/register', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: uStr, email: eStr, password: pStr }),
-      signal: AbortSignal.timeout(10000)
+      body: JSON.stringify({
+        username: uStr,
+        email: eStr,
+        password: pStr,
+        avatar: guestPayload?.avatar || undefined,
+        guestData: guestPayload
+      }),
+      signal: AbortSignal.timeout(12000)
     });
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
   } catch (netErr) {
@@ -244,9 +359,15 @@ export async function register(username, email, password) {
     throw new Error(data?.error || 'Ошибка регистрации');
   }
 
-  clearUserSessionLocalCache();
+  if (typeof window !== 'undefined' && typeof window.clearStormGuestVaultSnapshot === 'function') {
+    window.clearStormGuestVaultSnapshot();
+  }
+  clearUserSessionLocalCache({ restoreGuestVault: false });
+  localStorage.removeItem('storm_explicit_guest_mode');
+
   currentToken = data.token;
   currentUser = data.user;
+  if (data.stats) currentUser.stats = data.stats;
   if (typeof window !== 'undefined') {
     window.__STORM_CURRENT_USER__ = currentUser;
     window.__STORM_CURRENT_TOKEN__ = currentToken;
@@ -255,12 +376,36 @@ export async function register(username, email, password) {
   localStorage.setItem('storm_token', currentToken);
   localStorage.setItem('storm_user', JSON.stringify(currentUser));
 
+  if (guestPayload && guestPayload.kv) {
+    for (const [k, v] of Object.entries(guestPayload.kv)) {
+      if (v !== null && v !== undefined && k !== 'storm_token' && k !== 'storm_user' && k !== 'storm_family_profiles') {
+        localStorage.setItem(k, String(v));
+      }
+    }
+  }
+
+  familyProfiles = DEFAULT_PROFILES.map((p, idx) => enrichProfileDefaults({
+    ...p,
+    name: idx === 0 ? currentUser.username : p.name,
+    avatar: idx === 0 && currentUser.avatar ? currentUser.avatar : p.avatar
+  }, idx));
+  saveFamilyProfiles(familyProfiles);
+
   if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
   if (Array.isArray(data.savedAccounts)) cachedSavedAccounts = data.savedAccounts;
+  if (typeof window !== 'undefined' && typeof window.hydrateStateFromDatabase === 'function') {
+    window.hydrateStateFromDatabase().catch(() => {});
+  }
   updateAuthUI();
   notifyAuthChanged();
   renderSavedAccountsLists();
-  showToast(`✅ Аккаунт «${currentUser.username}» успешно создан!`, 'success');
+
+  const hadGuestProgress = guestPayload && (guestPayload.level > 1 || guestPayload.xp > 50 || (guestPayload.bookmarks && guestPayload.bookmarks.length > 0));
+  if (hadGuestProgress) {
+    showToast(`✅ Аккаунт «${currentUser.username}» создан! Прогресс гостя (Уровень ${guestPayload.level}, ${guestPayload.xp} XP) перенесён в профиль.`, 'success');
+  } else {
+    showToast(`✅ Аккаунт «${currentUser.username}» успешно создан!`, 'success');
+  }
   return currentUser;
 }
 
@@ -345,23 +490,15 @@ export function loginOfflineUser(username = 'Пользователь', customEm
 }
 
 export function loginAsGuest() {
-  clearUserSessionLocalCache();
-  currentUser = {
-    id: 9999,
-    username: 'Гость',
-    email: 'guest@storm.local',
-    role: 'user',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=StormGuest',
-    created_at: new Date().toISOString(),
-    stats: { bookmarks_count: 0, history_count: 0 }
-  };
-  currentToken = 'guest_token_' + Date.now();
-  localStorage.setItem('storm_token', currentToken);
-  localStorage.setItem('storm_user', JSON.stringify(currentUser));
+  fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+  currentToken = null;
+  currentUser = null;
+  clearUserSessionLocalCache({ restoreGuestVault: true });
+  localStorage.setItem('storm_explicit_guest_mode', '1');
   updateAuthUI();
   notifyAuthChanged();
-  showToast('Вы вошли как гость', 'info');
-  return currentUser;
+  showToast('Включён локальный гостевой профиль (все данные сохраняются на устройстве)', 'info');
+  return null;
 }
 
 export async function logout() {
@@ -380,7 +517,8 @@ export async function logout() {
 
   currentToken = null;
   currentUser = null;
-  clearUserSessionLocalCache();
+  clearUserSessionLocalCache({ restoreGuestVault: true });
+  localStorage.setItem('storm_explicit_guest_mode', '1');
 
   updateAuthUI();
   notifyAuthChanged();
@@ -446,6 +584,16 @@ export function stopTvDeviceCodeSession() {
 }
 
 export function updateFamilyHeaderUI() {
+  const headerFamilyBtn = document.getElementById('header-family-btn');
+  if (!isRealAuthenticatedAccount()) {
+    if (headerFamilyBtn) headerFamilyBtn.style.display = 'none';
+    ['family-profiles-modal', 'family-profiles-manage-modal', 'family-profile-editor-modal', 'family-pin-prompt-modal'].forEach(id => {
+      document.getElementById(id)?.classList.remove('is-open');
+    });
+    return;
+  }
+  if (headerFamilyBtn) headerFamilyBtn.style.display = 'inline-flex';
+
   const profile = getActiveProfile();
   const iconEl = document.getElementById('active-profile-avatar-icon');
   const labelEl = document.getElementById('active-profile-name-label');
@@ -457,7 +605,7 @@ export function updateFamilyHeaderUI() {
     }
   }
   if (labelEl && profile) {
-    labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Семья';
+    labelEl.textContent = profile.name ? profile.name.split(' ')[0] : 'Профиль';
   }
 }
 
@@ -469,7 +617,7 @@ export function updateAuthUI() {
   const userNameSpan = document.getElementById('user-name-label');
   const adminDashboardBtn = document.getElementById('admin-dashboard-btn');
 
-  if (currentUser) {
+  if (isRealAuthenticatedAccount()) {
     if (loginBtn) loginBtn.style.display = 'none';
     if (headerProfileBtn) headerProfileBtn.style.display = 'none';
     if (profileBtn) profileBtn.style.display = 'flex';
@@ -483,7 +631,6 @@ export function updateAuthUI() {
     }
     if (userNameSpan) userNameSpan.textContent = currentUser.username;
 
-    // Кнопка административного дашборда для ReiKatari или роли admin
     if (adminDashboardBtn) {
       if (currentUser.username === 'ReiKatari' || currentUser.role === 'admin') {
         adminDashboardBtn.style.display = 'inline-flex';
@@ -501,20 +648,173 @@ export function updateAuthUI() {
   updateFamilyHeaderUI();
 }
 
-export const AVATAR_PRESETS = [
-  { id: 'bot-1', name: 'Cyber Titan', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=STORM-1' },
-  { id: 'bot-2', name: 'Neon Scout', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=CyberRei' },
-  { id: 'bot-3', name: 'Matrix Unit', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=NeonMatrix' },
-  { id: 'adv-1', name: 'Shadow Hunter', url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=ShadowHunter' },
-  { id: 'adv-2', name: 'Cyber Hero', url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=CyberHero' },
-  { id: 'adv-3', name: 'Valeria Prime', url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Valeria' },
-  { id: 'mic-1', name: 'Imperium Gold', url: 'https://api.dicebear.com/7.x/micah/svg?seed=WarhammerGoth' },
-  { id: 'mic-2', name: 'Star Voyager', url: 'https://api.dicebear.com/7.x/micah/svg?seed=SpaceCommander' },
-  { id: 'lor-1', name: 'Anime Star', url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=AnimeStar' },
-  { id: 'lor-2', name: 'Cyber Kitsune', url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=CyberKitsune' },
-  { id: 'ava-1', name: 'Cinema Master', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=CinemaFan' },
-  { id: 'ide-1', name: 'Quantum Core', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=StormMaster' }
+function buildStylizedAvatarSvgUri({ c1, c2, accent, kind, visor, glyph }) {
+  const id = (kind + c1 + c2).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+  let art = '';
+  if (kind === 'mecha') {
+    art = `
+      <polygon points="50,12 82,28 78,70 50,88 22,70 18,28" fill="url(#g_${id})" stroke="${accent}" stroke-width="2.5"/>
+      <polygon points="32,10 42,24 24,28" fill="${accent}" opacity="0.85"/>
+      <polygon points="68,10 58,24 76,28" fill="${accent}" opacity="0.85"/>
+      <rect x="26" y="38" width="48" height="14" rx="7" fill="#090d16" stroke="${visor}" stroke-width="2"/>
+      <rect x="31" y="42" width="14" height="6" rx="3" fill="${visor}"/>
+      <rect x="55" y="42" width="14" height="6" rx="3" fill="${visor}"/>
+      <path d="M36 66 L50 73 L64 66" stroke="${accent}" stroke-width="3" fill="none" stroke-linecap="round"/>
+    `;
+  } else if (kind === 'kitsune') {
+    art = `
+      <polygon points="20,14 42,32 24,52" fill="${c1}" stroke="${accent}" stroke-width="2"/>
+      <polygon points="80,14 58,32 76,52" fill="${c1}" stroke="${accent}" stroke-width="2"/>
+      <path d="M22,42 C22,24 78,24 78,42 C78,66 58,84 50,88 C42,84 22,66 22,42 Z" fill="url(#g_${id})" stroke="${accent}" stroke-width="2.5"/>
+      <path d="M30,46 Q40,39 46,47" stroke="${visor}" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <path d="M70,46 Q60,39 54,47" stroke="${visor}" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <polygon points="46,62 54,62 50,69" fill="${visor}"/>
+      <circle cx="50" cy="30" r="4.5" fill="${visor}"/>
+    `;
+  } else if (kind === 'astro') {
+    art = `
+      <circle cx="50" cy="50" r="34" fill="url(#g_${id})" stroke="${accent}" stroke-width="2.8"/>
+      <rect x="25" y="32" width="50" height="30" rx="15" fill="#070b14" stroke="${visor}" stroke-width="2.2"/>
+      <path d="M32,40 Q50,33 66,42" stroke="${visor}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
+      <circle cx="38" cy="49" r="3.5" fill="${accent}"/>
+      <circle cx="62" cy="49" r="3.5" fill="${accent}"/>
+      <rect x="42" y="70" width="16" height="6" rx="3" fill="${visor}" opacity="0.85"/>
+    `;
+  } else if (kind === 'samurai') {
+    art = `
+      <path d="M16,38 L50,14 L84,38 L74,44 L26,44 Z" fill="${c2}" stroke="${accent}" stroke-width="2.2"/>
+      <circle cx="50" cy="24" r="6" fill="${visor}"/>
+      <path d="M26,42 L74,42 L68,78 L50,88 L32,78 Z" fill="url(#g_${id})" stroke="${accent}" stroke-width="2.2"/>
+      <rect x="31" y="48" width="38" height="11" rx="5.5" fill="#090d16" stroke="${visor}" stroke-width="1.8"/>
+      <circle cx="41" cy="53.5" r="3" fill="${visor}"/>
+      <circle cx="59" cy="53.5" r="3" fill="${visor}"/>
+      <path d="M37,70 L50,65 L63,70" stroke="${visor}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+    `;
+  } else if (kind === 'royal') {
+    art = `
+      <circle cx="50" cy="54" r="30" fill="url(#g_${id})" stroke="${accent}" stroke-width="2.5"/>
+      <polygon points="22,38 32,16 44,30 50,12 56,30 68,16 78,38" fill="${visor}" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+      <circle cx="39" cy="53" r="4" fill="#ffffff"/>
+      <circle cx="61" cy="53" r="4" fill="#ffffff"/>
+      <path d="M40,67 Q50,74 60,67" stroke="${visor}" stroke-width="3" fill="none" stroke-linecap="round"/>
+    `;
+  } else {
+    art = `
+      <rect x="20" y="20" width="60" height="60" rx="22" fill="url(#g_${id})" stroke="${accent}" stroke-width="2.5"/>
+      <circle cx="38" cy="46" r="5" fill="#090d16"/><circle cx="39.5" cy="44.5" r="2" fill="${visor}"/>
+      <circle cx="62" cy="46" r="5" fill="#090d16"/><circle cx="63.5" cy="44.5" r="2" fill="${visor}"/>
+      <path d="M39,63 Q50,71 61,63" stroke="${visor}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+    `;
+  }
+  const badge = glyph ? `<text x="50" y="83" text-anchor="middle" font-size="14" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">${glyph}</text>` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <defs>
+      <linearGradient id="bg_${id}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${c1}"/>
+        <stop offset="100%" stop-color="${c2}"/>
+      </linearGradient>
+      <linearGradient id="g_${id}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#1e293b"/>
+        <stop offset="100%" stop-color="#0f172a"/>
+      </linearGradient>
+    </defs>
+    <rect width="100" height="100" rx="26" fill="url(#bg_${id})"/>
+    <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+    ${art}
+    ${badge}
+  </svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg.trim().replace(/\s+/g, ' '));
+}
+
+const RAW_STYLIZED_AVATARS = [
+  // 1. Киберпанк и Неон (10)
+  { id: 'cyber-titan', label: 'Кибер-Титан', cat: 'Киберпанк', kind: 'mecha', c1: '#00d2ff', c2: '#0051ff', accent: '#38bdf8', visor: '#00f0ff', glyph: '⚡', bg: 'linear-gradient(135deg, #00d2ff, #0051ff)' },
+  { id: 'neon-samurai', label: 'Неоновый Самурай', cat: 'Киберпанк', kind: 'samurai', c1: '#ff007f', c2: '#7928ca', accent: '#f472b6', visor: '#00f0ff', glyph: '⚔️', bg: 'linear-gradient(135deg, #ff007f, #7928ca)' },
+  { id: 'netrunner-zero', label: 'Нетраннер Зеро', cat: 'Киберпанк', kind: 'mecha', c1: '#00ff66', c2: '#059669', accent: '#34d399', visor: '#a7f3d0', glyph: '🕶️', bg: 'linear-gradient(135deg, #00ff66, #059669)' },
+  { id: 'synth-valkyrie', label: 'Синт-Валькирия', cat: 'Киберпанк', kind: 'royal', c1: '#a855f7', c2: '#4338ca', accent: '#e879f9', visor: '#fde047', glyph: '✨', bg: 'linear-gradient(135deg, #a855f7, #4338ca)' },
+  { id: 'chrome-ronin', label: 'Хромовый Ронин', cat: 'Киберпанк', kind: 'samurai', c1: '#475569', c2: '#0f172a', accent: '#94a3b8', visor: '#ef4444', glyph: '🗡️', bg: 'linear-gradient(135deg, #475569, #0f172a)' },
+  { id: 'quantum-ghost', label: 'Квантовый Призрак', cat: 'Киберпанк', kind: 'astro', c1: '#06b6d4', c2: '#3b82f6', accent: '#67e8f9', visor: '#ffffff', glyph: '💠', bg: 'linear-gradient(135deg, #06b6d4, #3b82f6)' },
+  { id: 'night-city-v', label: 'Агент Найт-Сити', cat: 'Киберпанк', kind: 'mecha', c1: '#facc15', c2: '#ea580c', accent: '#fde047', visor: '#00f0ff', glyph: '🔥', bg: 'linear-gradient(135deg, #facc15, #ea580c)' },
+  { id: 'matrix-architect', label: 'Архитектор Матрицы', cat: 'Киберпанк', kind: 'astro', c1: '#10b981', c2: '#064e3b', accent: '#6ee7b7', visor: '#00ff66', glyph: '💻', bg: 'linear-gradient(135deg, #10b981, #064e3b)' },
+  { id: 'pulse-hacker', label: 'Пульс-Хакер', cat: 'Киберпанк', kind: 'kitsune', c1: '#ec4899', c2: '#6366f1', accent: '#f9a8d4', visor: '#38bdf8', glyph: '🎧', bg: 'linear-gradient(135deg, #ec4899, #6366f1)' },
+  { id: 'aegis-droid', label: 'Дроид Эгида', cat: 'Киберпанк', kind: 'mecha', c1: '#38bdf8', c2: '#1d4ed8', accent: '#bae6fd', visor: '#facc15', glyph: '🛡️', bg: 'linear-gradient(135deg, #38bdf8, #1d4ed8)' },
+
+  // 2. Аниме и Фэнтези (10)
+  { id: 'kitsune-spirit', label: 'Дух Кицунэ', cat: 'Аниме и Фэнтези', kind: 'kitsune', c1: '#f97316', c2: '#dc2626', accent: '#fdba74', visor: '#fef08a', glyph: '🦊', bg: 'linear-gradient(135deg, #f97316, #dc2626)' },
+  { id: 'shadow-shinobi', label: 'Шиноби Тени', cat: 'Аниме и Фэнтези', kind: 'samurai', c1: '#312e81', c2: '#1e1b4b', accent: '#818cf8', visor: '#c084fc', glyph: '🥷', bg: 'linear-gradient(135deg, #312e81, #1e1b4b)' },
+  { id: 'arcane-archmage', label: 'Архимаг Эфира', cat: 'Аниме и Фэнтези', kind: 'royal', c1: '#8b5cf6', c2: '#3b0764', accent: '#d8b4fe', visor: '#38bdf8', glyph: '🔮', bg: 'linear-gradient(135deg, #8b5cf6, #3b0764)' },
+  { id: 'crimson-alchemist', label: 'Алый Алхимик', cat: 'Аниме и Фэнтези', kind: 'samurai', c1: '#ef4444', c2: '#7f1d1d', accent: '#fca5a5', visor: '#fbbf24', glyph: '⚗️', bg: 'linear-gradient(135deg, #ef4444, #7f1d1d)' },
+  { id: 'sakura-empress', label: 'Императрица Сакуры', cat: 'Аниме и Фэнтези', kind: 'royal', c1: '#f472b6', c2: '#be185d', accent: '#fbcfe8', visor: '#fef08a', glyph: '🌸', bg: 'linear-gradient(135deg, #f472b6, #be185d)' },
+  { id: 'dragon-lord', label: 'Повелитель Драконов', cat: 'Аниме и Фэнтези', kind: 'mecha', c1: '#dc2626', c2: '#991b1b', accent: '#f59e0b', visor: '#fde047', glyph: '🐉', bg: 'linear-gradient(135deg, #dc2626, #991b1b)' },
+  { id: 'moonlight-neko', label: 'Лунная Нэко', cat: 'Аниме и Фэнтези', kind: 'kitsune', c1: '#c084fc', c2: '#6b21a8', accent: '#f3e8ff', visor: '#fde047', glyph: '🌙', bg: 'linear-gradient(135deg, #c084fc, #6b21a8)' },
+  { id: 'celestial-paladin', label: 'Небесный Паладин', cat: 'Аниме и Фэнтези', kind: 'royal', c1: '#fbbf24', c2: '#b45309', accent: '#fef3c7', visor: '#38bdf8', glyph: '👑', bg: 'linear-gradient(135deg, #fbbf24, #b45309)' },
+  { id: 'abyssal-reaper', label: 'Жнец Бездны', cat: 'Аниме и Фэнтези', kind: 'samurai', c1: '#4c1d95', c2: '#090d16', accent: '#a78bfa', visor: '#f43f5e', glyph: '💀', bg: 'linear-gradient(135deg, #4c1d95, #090d16)' },
+  { id: 'storm-shonen', label: 'Герой Бури', cat: 'Аниме и Фэнтези', kind: 'kitsune', c1: '#0284c7', c2: '#0369a1', accent: '#7dd3fc', visor: '#facc15', glyph: '⚡', bg: 'linear-gradient(135deg, #0284c7, #0369a1)' },
+
+  // 3. Космос и Sci-Fi (10)
+  { id: 'star-commander', label: 'Звёздный Командор', cat: 'Космос', kind: 'astro', c1: '#2563eb', c2: '#1e3a8a', accent: '#93c5fd', visor: '#38bdf8', glyph: '🚀', bg: 'linear-gradient(135deg, #2563eb, #1e3a8a)' },
+  { id: 'nova-voyager', label: 'Странник Сверхновой', cat: 'Космос', kind: 'astro', c1: '#7c3aed', c2: '#ec4899', accent: '#f9a8d4', visor: '#fde047', glyph: '🪐', bg: 'linear-gradient(135deg, #7c3aed, #ec4899)' },
+  { id: 'galactic-corsair', label: 'Галактический Корсар', cat: 'Космос', kind: 'samurai', c1: '#0ea5e9', c2: '#312e81', accent: '#67e8f9', visor: '#f43f5e', glyph: '☄️', bg: 'linear-gradient(135deg, #0ea5e9, #312e81)' },
+  { id: 'nebula-oracle', label: 'Оракул Туманности', cat: 'Космос', kind: 'royal', c1: '#d946ef', c2: '#4f46e5', accent: '#f5d0fe', visor: '#00f0ff', glyph: '🌌', bg: 'linear-gradient(135deg, #d946ef, #4f46e5)' },
+  { id: 'orbital-guardian', label: 'Орбитальный Страж', cat: 'Космос', kind: 'mecha', c1: '#14b8a6', c2: '#0f766e', accent: '#99f6e4', visor: '#fef08a', glyph: '🛰️', bg: 'linear-gradient(135deg, #14b8a6, #0f766e)' },
+  { id: 'chrono-pilot', label: 'Хроно-Пилот', cat: 'Космос', kind: 'astro', c1: '#f59e0b', c2: '#7c2d12', accent: '#fde68a', visor: '#38bdf8', glyph: '⏱️', bg: 'linear-gradient(135deg, #f59e0b, #7c2d12)' },
+  { id: 'eclipse-templar', label: 'Тамплиер Затмения', cat: 'Космос', kind: 'samurai', c1: '#1e293b', c2: '#020617', accent: '#f59e0b', visor: '#fbbf24', glyph: '🌑', bg: 'linear-gradient(135deg, #1e293b, #020617)' },
+  { id: 'plasma-valkyrie', label: 'Плазменная Валькирия', cat: 'Космос', kind: 'kitsune', c1: '#06b6d4', c2: '#7e22ce', accent: '#a5f3fc', visor: '#f472b6', glyph: '💫', bg: 'linear-gradient(135deg, #06b6d4, #7e22ce)' },
+  { id: 'void-navigator', label: 'Навигатор Пустоты', cat: 'Космос', kind: 'astro', c1: '#4338ca', c2: '#0f172a', accent: '#a5b4fc', visor: '#2dd4bf', glyph: '🧭', bg: 'linear-gradient(135deg, #4338ca, #0f172a)' },
+  { id: 'hyperion-prime', label: 'Гиперион Прайм', cat: 'Космос', kind: 'mecha', c1: '#eab308', c2: '#a16207', accent: '#fef08a', visor: '#00f0ff', glyph: '☀️', bg: 'linear-gradient(135deg, #eab308, #a16207)' },
+
+  // 4. Кино, Игры и Поп-культура (10)
+  { id: 'cinema-maestro', label: 'Маэстро Кино', cat: 'Кино и Игры', kind: 'royal', c1: '#e11d48', c2: '#881337', accent: '#fda4af', visor: '#fde047', glyph: '🎬', bg: 'linear-gradient(135deg, #e11d48, #881337)' },
+  { id: 'imax-vip', label: 'Властелин 4K UHD', cat: 'Кино и Игры', kind: 'astro', c1: '#d97706', c2: '#78350f', accent: '#fcd34d', visor: '#ffffff', glyph: '🍿', bg: 'linear-gradient(135deg, #d97706, #78350f)' },
+  { id: 'pro-esports', label: 'Киберспортсмен', cat: 'Кино и Игры', kind: 'mecha', c1: '#8b5cf6', c2: '#ec4899', accent: '#ddd6fe', visor: '#00ff66', glyph: '🎮', bg: 'linear-gradient(135deg, #8b5cf6, #ec4899)' },
+  { id: 'arcade-legend', label: 'Легенда Аркад', cat: 'Кино и Игры', kind: 'cute', c1: '#22c55e', c2: '#15803d', accent: '#bbf7d0', visor: '#fde047', glyph: '👾', bg: 'linear-gradient(135deg, #22c55e, #15803d)' },
+  { id: 'noir-detective', label: 'Нуар-Детектив', cat: 'Кино и Игры', kind: 'samurai', c1: '#52525b', c2: '#18181b', accent: '#d4d4d8', visor: '#f59e0b', glyph: '🕵️', bg: 'linear-gradient(135deg, #52525b, #18181b)' },
+  { id: 'phantom-opera', label: 'Призрак Театра', cat: 'Кино и Игры', kind: 'royal', c1: '#b45309', c2: '#451a03', accent: '#fcd34d', visor: '#f8fafc', glyph: '🎭', bg: 'linear-gradient(135deg, #b45309, #451a03)' },
+  { id: 'synthwave-dj', label: 'Синтвейв Диджей', cat: 'Кино и Игры', kind: 'astro', c1: '#f43f5e', c2: '#6366f1', accent: '#fda4af', visor: '#38bdf8', glyph: '🎵', bg: 'linear-gradient(135deg, #f43f5e, #6366f1)' },
+  { id: 'oscar-sovereign', label: 'Золотой Триумфатор', cat: 'Кино и Игры', kind: 'royal', c1: '#eab308', c2: '#ca8a04', accent: '#fef9c3', visor: '#ffffff', glyph: '🏆', bg: 'linear-gradient(135deg, #eab308, #ca8a04)' },
+  { id: 'vr-champion', label: 'Чемпион Метавселенной', cat: 'Кино и Игры', kind: 'astro', c1: '#00d2ff', c2: '#9333ea', accent: '#a5f3fc', visor: '#00ff66', glyph: '🥽', bg: 'linear-gradient(135deg, #00d2ff, #9333ea)' },
+  { id: 'diamond-critic', label: 'Бриллиантовый Критик', cat: 'Кино и Игры', kind: 'royal', c1: '#38bdf8', c2: '#0369a1', accent: '#e0f2fe', visor: '#fde047', glyph: '💎', bg: 'linear-gradient(135deg, #38bdf8, #0369a1)' },
+
+  // 5. Звери-хранители и Тотемы (10)
+  { id: 'arctic-wolf', label: 'Полярный Волк', cat: 'Тотемы', kind: 'kitsune', c1: '#38bdf8', c2: '#1e3a8a', accent: '#bae6fd', visor: '#00f0ff', glyph: '🐺', bg: 'linear-gradient(135deg, #38bdf8, #1e3a8a)' },
+  { id: 'golden-lion', label: 'Имперский Лев', cat: 'Тотемы', kind: 'royal', c1: '#f59e0b', c2: '#b45309', accent: '#fde68a', visor: '#fef08a', glyph: '🦁', bg: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  { id: 'black-panther', label: 'Ночная Пантера', cat: 'Тотемы', kind: 'kitsune', c1: '#581c87', c2: '#090d16', accent: '#c084fc', visor: '#e879f9', glyph: '🐆', bg: 'linear-gradient(135deg, #581c87, #090d16)' },
+  { id: 'flame-phoenix', label: 'Огненный Феникс', cat: 'Тотемы', kind: 'royal', c1: '#ef4444', c2: '#ea580c', accent: '#fed7aa', visor: '#fef08a', glyph: '🦅', bg: 'linear-gradient(135deg, #ef4444, #ea580c)' },
+  { id: 'emerald-tiger', label: 'Изумрудный Тигр', cat: 'Тотемы', kind: 'kitsune', c1: '#10b981', c2: '#047857', accent: '#a7f3d0', visor: '#fde047', glyph: '🐯', bg: 'linear-gradient(135deg, #10b981, #047857)' },
+  { id: 'snow-owl', label: 'Полярная Сова', cat: 'Тотемы', kind: 'cute', c1: '#64748b', c2: '#334155', accent: '#e2e8f0', visor: '#38bdf8', glyph: '🦉', bg: 'linear-gradient(135deg, #64748b, #334155)' },
+  { id: 'cyber-shark', label: 'Неоновая Акула', cat: 'Тотемы', kind: 'mecha', c1: '#0284c7', c2: '#1e1b4b', accent: '#7dd3fc', visor: '#f43f5e', glyph: '🦈', bg: 'linear-gradient(135deg, #0284c7, #1e1b4b)' },
+  { id: 'mystic-raven', label: 'Мистический Ворон', cat: 'Тотемы', kind: 'samurai', c1: '#4c1d95', c2: '#1e1b4b', accent: '#c4b5fd', visor: '#a855f7', glyph: '🐦‍⬛', bg: 'linear-gradient(135deg, #4c1d95, #1e1b4b)' },
+  { id: 'jade-panda', label: 'Нефритовая Панда', cat: 'Тотемы', kind: 'cute', c1: '#059669', c2: '#064e3b', accent: '#6ee7b7', visor: '#ffffff', glyph: '🐼', bg: 'linear-gradient(135deg, #059669, #064e3b)' },
+  { id: 'thunder-lynx', label: 'Грозовая Рысь', cat: 'Тотемы', kind: 'kitsune', c1: '#eab308', c2: '#713f12', accent: '#fef08a', visor: '#38bdf8', glyph: '⚡', bg: 'linear-gradient(135deg, #eab308, #713f12)' },
+
+  // 6. Семья, Дети и Уют (10)
+  { id: 'family-cinema', label: 'Семейный Кинозал', cat: 'Семья и Уют', kind: 'cute', c1: '#10b981', c2: '#059669', accent: '#a7f3d0', visor: '#fef08a', glyph: '👨‍👩‍👧', bg: 'linear-gradient(135deg, #10b981, #059669)' },
+  { id: 'star-unicorn', label: 'Звёздный Единорог', cat: 'Семья и Уют', kind: 'kitsune', c1: '#ec4899', c2: '#8b5cf6', accent: '#fbcfe8', visor: '#fef08a', glyph: '🦄', bg: 'linear-gradient(135deg, #ec4899, #8b5cf6)' },
+  { id: 'plush-teddy', label: 'Плюшевый Хранитель', cat: 'Семья и Уют', kind: 'cute', c1: '#f59e0b', c2: '#b45309', accent: '#fde68a', visor: '#ffffff', glyph: '🧸', bg: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  { id: 'sunny-kitty', label: 'Солнечный Котик', cat: 'Семья и Уют', kind: 'kitsune', c1: '#fb7185', c2: '#e11d48', accent: '#ffe4e6', visor: '#fef08a', glyph: '🐱', bg: 'linear-gradient(135deg, #fb7185, #e11d48)' },
+  { id: 'happy-corgi', label: 'Весёлый Корги', cat: 'Семья и Уют', kind: 'cute', c1: '#f97316', c2: '#c2410c', accent: '#ffedd5', visor: '#ffffff', glyph: '🐶', bg: 'linear-gradient(135deg, #f97316, #c2410c)' },
+  { id: 'magic-bunny', label: 'Волшебный Зайка', cat: 'Семья и Уют', kind: 'kitsune', c1: '#a855f7', c2: '#ec4899', accent: '#f3e8ff', visor: '#fde047', glyph: '🐰', bg: 'linear-gradient(135deg, #a855f7, #ec4899)' },
+  { id: 'little-astronaut', label: 'Юный Космонавт', cat: 'Семья и Уют', kind: 'astro', c1: '#38bdf8', c2: '#2563eb', accent: '#e0f2fe', visor: '#fde047', glyph: '🌟', bg: 'linear-gradient(135deg, #38bdf8, #2563eb)' },
+  { id: 'dino-explorer', label: 'Дино-Искатель', cat: 'Семья и Уют', kind: 'cute', c1: '#22c55e', c2: '#0d9488', accent: '#dcfce7', visor: '#fef08a', glyph: '🦖', bg: 'linear-gradient(135deg, #22c55e, #0d9488)' },
+  { id: 'fairy-butterfly', label: 'Фея Сказки', cat: 'Семья и Уют', kind: 'royal', c1: '#f472b6', c2: '#9333ea', accent: '#fce7f3', visor: '#67e8f9', glyph: '🦋', bg: 'linear-gradient(135deg, #f472b6, #9333ea)' },
+  { id: 'cozy-penguin', label: 'Уютный Пингвинёнок', cat: 'Семья и Уют', kind: 'cute', c1: '#0ea5e9', c2: '#0369a1', accent: '#e0f2fe', visor: '#fde047', glyph: '🐧', bg: 'linear-gradient(135deg, #0ea5e9, #0369a1)' }
 ];
+
+export const FAMILY_AVATAR_PRESETS = RAW_STYLIZED_AVATARS.map(item => ({
+  id: item.id,
+  icon: buildStylizedAvatarSvgUri(item),
+  label: item.label,
+  cat: item.cat,
+  bg: item.bg
+}));
+
+export const AVATAR_PRESETS = FAMILY_AVATAR_PRESETS.map(item => ({
+  id: item.id,
+  name: item.label,
+  cat: item.cat,
+  bg: item.bg,
+  url: item.icon
+}));
 
 export async function updateProfile(username, email, avatar, bio = '') {
   const cleanUser = String(username || '').trim() || 'Пользователь';
@@ -663,6 +963,20 @@ function computeLocalAndMergedProfileStats(serverStats = {}) {
   const savedHours = parseFloat(localStorage.getItem('storm_watched_hours') || '0') || 0;
   const localHours = Math.max(savedHours, Math.round((estimatedMinutes / 60) * 10) / 10);
 
+  let localUnlockedAch = 0;
+  try {
+    const rawAch = localStorage.getItem('storm_local_achievements');
+    if (rawAch) {
+      const parsedAch = JSON.parse(rawAch);
+      localUnlockedAch = Object.values(parsedAch || {}).filter(a => a && a.unlocked).length;
+    }
+  } catch (_) {}
+
+  const savedXpLocal = parseInt(localStorage.getItem('storm_user_xp') || '0', 10) || 0;
+  const savedLevelLocal = parseInt(localStorage.getItem('storm_user_level') || '1', 10) || 1;
+  const savedXpServer = parseInt(serverStats.savedXp || currentUser?.settings?.profileXp || 0, 10) || 0;
+  const savedLevelServer = parseInt(serverStats.savedLevel || currentUser?.settings?.profileLevel || 1, 10) || 1;
+
   return {
     totalWatchedHours: Math.max(Number(serverStats.totalWatchedHours || 0), localHours),
     watchingCount: Math.max(Number(serverStats.watchingCount || 0), localWatching, localContinue.length),
@@ -673,38 +987,56 @@ function computeLocalAndMergedProfileStats(serverStats = {}) {
     droppedCount: Math.max(Number(serverStats.droppedCount || 0), localDropped),
     wontWatchCount: Math.max(Number(serverStats.wontWatchCount || 0), localWont),
     bookmarksCount: Math.max(Number(serverStats.bookmarksCount || serverStats.bookmarks_count || 0), localTotalBm),
-    customListsCount: Math.max(Number(serverStats.customListsCount || 0), localTotalLists)
+    customListsCount: Math.max(Number(serverStats.customListsCount || 0), localTotalLists),
+    unlockedAchievementsCount: Math.max(Number(serverStats.unlockedAchievementsCount || 0), localUnlockedAch),
+    savedXp: Math.max(savedXpLocal, savedXpServer),
+    savedLevel: Math.max(savedLevelLocal, savedLevelServer)
   };
 }
 
-function updateProfileRankUI(st = {}) {
-  const xp = Math.round(
+const STORM_PROFILE_RANKS = [
+  { minXp: 0,    level: 1, icon: '🎬', name: 'Зритель-исследователь', sub: 'Начало путешествия по кинозалу STORM' },
+  { minXp: 150,  level: 2, icon: '🍿', name: 'Ценитель премьер', sub: 'Активный поиск лучших фильмов и сериалов' },
+  { minXp: 350,  level: 3, icon: '⚡', name: 'Адепт 4K UHD', sub: 'Высокий вкус и коллекционирование шедевров' },
+  { minXp: 700,  level: 4, icon: '💎', name: 'Хранитель коллекций', sub: 'Эксперт по редким релизам и озвучкам' },
+  { minXp: 1300, level: 5, icon: '🌌', name: 'Архитектор кинозала', sub: 'Мастер персональных подборок и марафонов' },
+  { minXp: 2200, level: 6, icon: '👑', name: 'Магистр STORM MULTIMEDIA', sub: 'Легендарный статус в экосистеме STORM SOFT' }
+];
+
+function computeRankAndLevelFromStats(st = {}) {
+  const formulaXp = Math.round(
     (Number(st.totalWatchedHours || 0) * 25) +
     (Number(st.completedCount || 0) * 40) +
     (Number(st.watchingCount || 0) * 20) +
     (Number(st.bookmarksCount || 0) * 15) +
     (Number(st.favoritesCount || 0) * 20) +
     (Number(st.customListsCount || 0) * 50) +
+    (Number(st.unlockedAchievementsCount || 0) * 35) +
     50
   );
+  const minXpForSavedLevel = STORM_PROFILE_RANKS.find(r => r.level === Number(st.savedLevel || 1))?.minXp || 0;
+  const xp = Math.max(formulaXp, Number(st.savedXp || 0), minXpForSavedLevel);
 
-  const ranks = [
-    { minXp: 0,    level: 1, icon: '🎬', name: 'Зритель-исследователь', sub: 'Начало путешествия по кинозалу STORM' },
-    { minXp: 150,  level: 2, icon: '🍿', name: 'Ценитель премьер', sub: 'Активный поиск лучших фильмов и сериалов' },
-    { minXp: 350,  level: 3, icon: '⚡', name: 'Адепт 4K UHD', sub: 'Высокий вкус и коллекционирование шедевров' },
-    { minXp: 700,  level: 4, icon: '💎', name: 'Хранитель коллекций', sub: 'Эксперт по редким релизам и озвучкам' },
-    { minXp: 1300, level: 5, icon: '🌌', name: 'Архитектор кинозала', sub: 'Мастер персональных подборок и марафонов' },
-    { minXp: 2200, level: 6, icon: '👑', name: 'Магистр STORM MULTIMEDIA', sub: 'Легендарный статус в экосистеме STORM SOFT' }
-  ];
-
-  let currentRank = ranks[0];
-  let nextRank = ranks[1];
-  for (let i = 0; i < ranks.length; i++) {
-    if (xp >= ranks[i].minXp) {
-      currentRank = ranks[i];
-      nextRank = ranks[i + 1] || null;
+  let currentRank = STORM_PROFILE_RANKS[0];
+  let nextRank = STORM_PROFILE_RANKS[1];
+  for (let i = 0; i < STORM_PROFILE_RANKS.length; i++) {
+    if (xp >= STORM_PROFILE_RANKS[i].minXp) {
+      currentRank = STORM_PROFILE_RANKS[i];
+      nextRank = STORM_PROFILE_RANKS[i + 1] || null;
     }
   }
+  try {
+    const prevXp = parseInt(localStorage.getItem('storm_user_xp') || '0', 10) || 0;
+    const prevLvl = parseInt(localStorage.getItem('storm_user_level') || '1', 10) || 1;
+    if (xp > prevXp) localStorage.setItem('storm_user_xp', String(xp));
+    if (currentRank.level > prevLvl) localStorage.setItem('storm_user_level', String(currentRank.level));
+  } catch (_) {}
+
+  return { xp, level: currentRank.level, currentRank, nextRank };
+}
+
+function updateProfileRankUI(st = {}) {
+  const { xp, currentRank, nextRank } = computeRankAndLevelFromStats(st);
 
   const iconEl = document.getElementById('profile-rank-icon');
   const nameEl = document.getElementById('profile-rank-name');
@@ -735,12 +1067,17 @@ export function openProfileModal() {
   const modal = document.getElementById('profile-modal');
   if (!modal) return;
 
-  const currentAvatar = currentUser && currentUser.avatar
+  const savedGuestAvatar = localStorage.getItem('storm_guest_avatar') || '';
+  const currentAvatar = (currentUser && currentUser.avatar)
     ? currentUser.avatar
-    : 'assets/avatar_default.svg';
+    : (savedGuestAvatar || FAMILY_AVATAR_PRESETS[0]?.icon || 'assets/avatar_default.svg');
+  const currentAura = localStorage.getItem('storm_profile_avatar_bg') || FAMILY_BG_GRADIENTS[0].bg;
   const avatarEl = document.getElementById('profile-avatar');
   if (avatarEl) {
     avatarEl.src = currentAvatar;
+    avatarEl.style.background = currentAura;
+    avatarEl.style.padding = '3px';
+    avatarEl.style.boxShadow = '0 0 18px rgba(0, 210, 255, 0.35)';
     avatarEl.onerror = () => {
       if (!avatarEl.src.endsWith('assets/avatar_default.svg')) {
         avatarEl.src = 'assets/avatar_default.svg';
@@ -812,18 +1149,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.2.9').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.3.0').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.2.9').then(achMod => {
+  import('./achievements.js?v=1.3.0').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.2.9').then(themeMod => {
+  import('./theme.js?v=1.3.0').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -887,7 +1224,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.2.9').then(m => {
+      import('./player.js?v=1.3.0').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -901,10 +1238,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.2.9').then(m => {
+      import('./player.js?v=1.3.0').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.2.9').then(m => {
+      import('./ad-shield.js?v=1.3.0').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -928,7 +1265,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.2.9').then(m => {
+      import('./ad-shield.js?v=1.3.0').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -941,7 +1278,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.2.9').then(m => {
+      import('./smart-skip.js?v=1.3.0').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -954,7 +1291,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.2.9').then(m => {
+      import('./player.js?v=1.3.0').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -972,11 +1309,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.2.9').then(m => {
+      import('./player.js?v=1.3.0').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.2.9').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.3.0').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1076,8 +1413,14 @@ export function openProfileModal() {
       }
     };
   }
-  fetchSavedAccounts().catch(() => {});
-  loadProfileRecoveryConfigUI().catch(() => {});
+  const switcherCard = document.getElementById('profile-account-switcher-card');
+  if (!isRealAuthenticatedAccount()) {
+    if (switcherCard) switcherCard.style.display = 'none';
+  } else {
+    if (switcherCard) switcherCard.style.display = 'block';
+    fetchSavedAccounts().catch(() => {});
+    loadProfileRecoveryConfigUI().catch(() => {});
+  }
 
   // Сбрасываем активную вкладку на 'overview'
   switchProfileTab('overview');
@@ -1089,9 +1432,41 @@ function renderAvatarPresets(selectedUrl) {
   const container = document.getElementById('avatar-presets-container');
   if (!container) return;
 
+  let catBar = document.getElementById('profile-avatar-cat-bar');
+  if (!catBar && container.parentElement) {
+    catBar = document.createElement('div');
+    catBar.id = 'profile-avatar-cat-bar';
+    catBar.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;';
+    container.parentElement.insertBefore(catBar, container);
+  }
+  if (catBar) {
+    const cats = ['Все', 'Киберпанк', 'Аниме и Фэнтези', 'Космос', 'Кино и Игры', 'Тотемы', 'Семья и Уют'];
+    catBar.innerHTML = cats.map((cat, idx) => `
+      <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm profile-avatar-cat-pill ${idx === 0 ? 'active' : ''}" data-cat="${cat}" style="font-size: 11px; padding: 4px 10px; border-radius: 999px; ${idx === 0 ? 'background: var(--accent); color: #090d16; font-weight: 800;' : ''}">${cat === 'Все' ? 'Все (60)' : cat}</button>
+    `).join('');
+    catBar.querySelectorAll('.profile-avatar-cat-pill').forEach(btn => {
+      btn.onclick = () => {
+        catBar.querySelectorAll('.profile-avatar-cat-pill').forEach(b => {
+          b.classList.remove('active');
+          b.style.background = '';
+          b.style.color = '';
+          b.style.fontWeight = '';
+        });
+        btn.classList.add('active');
+        btn.style.background = 'var(--accent)';
+        btn.style.color = '#090d16';
+        btn.style.fontWeight = '800';
+        const c = btn.dataset.cat;
+        container.querySelectorAll('.avatar-preset-item').forEach(el => {
+          el.style.display = (c === 'Все' || el.dataset.cat === c) ? 'flex' : 'none';
+        });
+      };
+    });
+  }
+
   container.innerHTML = AVATAR_PRESETS.map(preset => `
-    <div class="avatar-preset-item ${selectedUrl === preset.url ? 'selected' : ''}" data-url="${preset.url}" title="${preset.name}">
-      <img src="${preset.url}" alt="${preset.name}">
+    <div class="avatar-preset-item ${selectedUrl === preset.url ? 'selected' : ''}" data-cat="${preset.cat || ''}" data-bg="${preset.bg || ''}" data-url="${preset.url}" title="${preset.name} (${preset.cat || ''})" style="background: ${preset.bg || 'var(--bg-secondary)'}; padding: 2px; border-radius: 14px;">
+      <img src="${preset.url}" alt="${preset.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
     </div>
   `).join('');
 
@@ -1100,6 +1475,9 @@ function renderAvatarPresets(selectedUrl) {
       container.querySelectorAll('.avatar-preset-item').forEach(el => el.classList.remove('selected'));
       item.classList.add('selected');
       const url = item.dataset.url;
+      if (!isRealAuthenticatedAccount()) {
+        localStorage.setItem('storm_guest_avatar', url);
+      }
       const input = document.getElementById('edit-avatar-url');
       if (input) input.value = url;
       const profileAvatar = document.getElementById('profile-avatar');
@@ -1108,6 +1486,37 @@ function renderAvatarPresets(selectedUrl) {
       if (livePreview) livePreview.src = url;
     });
   });
+
+  const auraContainer = document.getElementById('profile-aura-presets-container');
+  if (auraContainer) {
+    const currentAura = localStorage.getItem('storm_profile_avatar_bg') || FAMILY_BG_GRADIENTS[0].bg;
+    auraContainer.innerHTML = FAMILY_BG_GRADIENTS.map(g => `
+      <button type="button" class="family-bg-swatch ${g.bg === currentAura ? 'selected' : ''}" data-bg="${g.bg}" title="${g.label}" style="background: ${g.bg}; width: 34px; height: 34px; border-radius: 10px; border: 2px solid ${g.bg === currentAura ? '#ffffff' : 'rgba(255,255,255,0.18)'}; cursor: pointer;"></button>
+    `).join('');
+    auraContainer.querySelectorAll('.family-bg-swatch').forEach(sw => {
+      sw.onclick = () => {
+        const bg = sw.dataset.bg;
+        localStorage.setItem('storm_profile_avatar_bg', bg);
+        auraContainer.querySelectorAll('.family-bg-swatch').forEach(s => {
+          s.classList.remove('selected');
+          s.style.borderColor = 'rgba(255,255,255,0.18)';
+        });
+        sw.classList.add('selected');
+        sw.style.borderColor = '#ffffff';
+        const profileAvatar = document.getElementById('profile-avatar');
+        if (profileAvatar) {
+          profileAvatar.style.background = bg;
+          profileAvatar.style.padding = '3px';
+        }
+        const livePreview = document.getElementById('edit-avatar-live-preview');
+        if (livePreview) {
+          livePreview.style.background = bg;
+          livePreview.style.padding = '3px';
+        }
+        showToast('✨ Цветовая аура аватара обновлена', 'info');
+      };
+    });
+  }
 }
 
 export function switchProfileTab(tabName) {
@@ -1127,7 +1536,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.2.9').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.3.0').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1212,7 +1621,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.2.9').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.3.0').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -1427,40 +1836,6 @@ export function initProfileHandlers() {
 // МНОГОПРОФИЛЬНОСТЬ И СЕМЕЙНЫЙ АККАУНТ
 // ==========================================
 
-export const FAMILY_AVATAR_PRESETS = [
-  // Герои и статус
-  { id: 'crown', icon: '👑', label: 'Корона', bg: 'linear-gradient(135deg, #f59e0b, #d97706)' },
-  { id: 'hero', icon: '🦸', label: 'Герой', bg: 'linear-gradient(135deg, #00d2ff, #0072ff)' },
-  { id: 'ninja', icon: '🥷', label: 'Ниндзя', bg: 'linear-gradient(135deg, #64748b, #1e293b)' },
-  { id: 'wizard', icon: '🧙', label: 'Маг', bg: 'linear-gradient(135deg, #a855f7, #6366f1)' },
-  { id: 'detective', icon: '🕵️', label: 'Детектив', bg: 'linear-gradient(135deg, #d97706, #78350f)' },
-  { id: 'cyborg', icon: '🤖', label: 'Киборг', bg: 'linear-gradient(135deg, #00f0ff, #0066cc)' },
-
-  // Семья и дети
-  { id: 'family', icon: '👨‍👩‍👧', label: 'Семья', bg: 'linear-gradient(135deg, #10b981, #059669)' },
-  { id: 'unicorn', icon: '🦄', label: 'Единорог', bg: 'linear-gradient(135deg, #ff007f, #a855f7)' },
-  { id: 'bear', icon: '🧸', label: 'Мишка', bg: 'linear-gradient(135deg, #f59e0b, #b45309)' },
-  { id: 'cat', icon: '🐱', label: 'Котик', bg: 'linear-gradient(135deg, #fb7185, #e11d48)' },
-  { id: 'lion', icon: '🦁', label: 'Лев', bg: 'linear-gradient(135deg, #f59e0b, #ea580c)' },
-  { id: 'astronaut', icon: '🚀', label: 'Космонавт', bg: 'linear-gradient(135deg, #38bdf8, #1d4ed8)' },
-
-  // Аниме и игры
-  { id: 'lightning', icon: '⚡', label: 'Молния', bg: 'linear-gradient(135deg, #facc15, #ca8a04)' },
-  { id: 'gamepad', icon: '🎮', label: 'Геймер', bg: 'linear-gradient(135deg, #8b5cf6, #4c1d95)' },
-  { id: 'dragon', icon: '🐉', label: 'Дракон', bg: 'linear-gradient(135deg, #ef4444, #991b1b)' },
-  { id: 'fox', icon: '🦊', label: 'Лис', bg: 'linear-gradient(135deg, #f97316, #c2410c)' },
-  { id: 'sakura', icon: '🌸', label: 'Сакура', bg: 'linear-gradient(135deg, #f472b6, #db2777)' },
-  { id: 'pixel', icon: '👾', label: 'Пиксель', bg: 'linear-gradient(135deg, #39ff14, #15803d)' },
-
-  // Кино и классика
-  { id: 'popcorn', icon: '🍿', label: 'Попкорн', bg: 'linear-gradient(135deg, #ef4444, #f59e0b)' },
-  { id: 'clapper', icon: '🎬', label: 'Хлопушка', bg: 'linear-gradient(135deg, #334155, #0f172a)' },
-  { id: 'theatre', icon: '🎭', label: 'Театр', bg: 'linear-gradient(135deg, #d4af37, #997b1e)' },
-  { id: 'star', icon: '🌟', label: 'Звезда', bg: 'linear-gradient(135deg, #fbbf24, #d97706)' },
-  { id: 'glasses', icon: '🕶️', label: 'Нео', bg: 'linear-gradient(135deg, #00ff66, #065f46)' },
-  { id: 'diamond', icon: '💎', label: 'Алмаз', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)' }
-];
-
 export const FAMILY_BG_GRADIENTS = [
   { id: 'gold', label: 'Золото короны', bg: 'linear-gradient(135deg, #f59e0b, #d97706)' },
   { id: 'cyan', label: 'Кибер-циан', bg: 'linear-gradient(135deg, #00d2ff, #0072ff)' },
@@ -1469,7 +1844,20 @@ export const FAMILY_BG_GRADIENTS = [
   { id: 'amethyst', label: 'Аметистовая ночь', bg: 'linear-gradient(135deg, #8b5cf6, #4c1d95)' },
   { id: 'ruby', label: 'Огненный рубин', bg: 'linear-gradient(135deg, #ef4444, #991b1b)' },
   { id: 'matrix', label: 'Матричный код', bg: 'linear-gradient(135deg, #00ff66, #065f46)' },
-  { id: 'slate', label: 'Имперский титан', bg: 'linear-gradient(135deg, #475569, #0f172a)' }
+  { id: 'slate', label: 'Имперский титан', bg: 'linear-gradient(135deg, #475569, #0f172a)' },
+  // +12 новых цветовых аур (всего 20)
+  { id: 'cyber_ice', label: 'Арктический неон', bg: 'linear-gradient(135deg, #00f0ff, #3b82f6, #1d4ed8)' },
+  { id: 'sunset_blaze', label: 'Пламя заката', bg: 'linear-gradient(135deg, #ff4e50, #f9d423)' },
+  { id: 'aurora_borealis', label: 'Северное сияние', bg: 'linear-gradient(135deg, #00c6ff, #0072ff, #00ff87)' },
+  { id: 'sakura_bloom', label: 'Цветение сакуры', bg: 'linear-gradient(135deg, #ff758c, #ff7eb3)' },
+  { id: 'quantum_violet', label: 'Квантовый ультрафиолет', bg: 'linear-gradient(135deg, #7f00ff, #e100ff)' },
+  { id: 'solar_flare', label: 'Солнечная корона', bg: 'linear-gradient(135deg, #f12711, #f5af19)' },
+  { id: 'deep_ocean', label: 'Бездна океана', bg: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' },
+  { id: 'crimson_velvet', label: 'Кровавый бархат', bg: 'linear-gradient(135deg, #870000, #190a05)' },
+  { id: 'toxic_lime', label: 'Кислотный импульс', bg: 'linear-gradient(135deg, #a8ff78, #78ffd6)' },
+  { id: 'imperial_gold', label: 'Имперское золото', bg: 'linear-gradient(135deg, #d4af37, #aa7c11, #593e06)' },
+  { id: 'cosmic_nebula', label: 'Туманность Андромеды', bg: 'linear-gradient(135deg, #ff0844, #ffb199, #6a11cb)' },
+  { id: 'obsidian_rose', label: 'Обсидиановая роза', bg: 'linear-gradient(135deg, #1f1c2c, #928dab, #e94057)' }
 ];
 
 const THEME_LABELS_MAP = {
@@ -1497,7 +1885,7 @@ const DEFAULT_PROFILES = [
     id: 'primary',
     name: 'Основной профиль',
     subtitle: 'Персональный кинозал',
-    avatar: '👑',
+    avatar: FAMILY_AVATAR_PRESETS[0]?.icon || '👑',
     avatarBg: 'linear-gradient(135deg, #f59e0b, #d97706)',
     isKid: false,
     ageRating: '18+',
@@ -1512,7 +1900,7 @@ const DEFAULT_PROFILES = [
     id: 'family',
     name: 'Семейный просмотр',
     subtitle: 'Общий кинозал для всей семьи',
-    avatar: '👨‍👩‍👧',
+    avatar: FAMILY_AVATAR_PRESETS[50]?.icon || '👨‍👩‍👧',
     avatarBg: 'linear-gradient(135deg, #10b981, #059669)',
     isKid: false,
     ageRating: '16+',
@@ -1527,7 +1915,7 @@ const DEFAULT_PROFILES = [
     id: 'kids',
     name: 'Детский профиль',
     subtitle: 'Добрая анимация и сказки без 18+',
-    avatar: '🦄',
+    avatar: FAMILY_AVATAR_PRESETS[51]?.icon || '🦄',
     avatarBg: 'linear-gradient(135deg, #ff007f, #a855f7)',
     isKid: true,
     ageRating: '6+',
@@ -1540,17 +1928,50 @@ const DEFAULT_PROFILES = [
   }
 ];
 
+const LEGACY_EMOJI_TO_SVG_MAP = {
+  '👑': FAMILY_AVATAR_PRESETS[17]?.icon || FAMILY_AVATAR_PRESETS[0]?.icon,
+  '🦸': FAMILY_AVATAR_PRESETS[0]?.icon,
+  '🥷': FAMILY_AVATAR_PRESETS[11]?.icon,
+  '🧙': FAMILY_AVATAR_PRESETS[12]?.icon,
+  '🕵️': FAMILY_AVATAR_PRESETS[34]?.icon,
+  '🤖': FAMILY_AVATAR_PRESETS[9]?.icon,
+  '👨‍👩‍👧': FAMILY_AVATAR_PRESETS[50]?.icon,
+  '🦄': FAMILY_AVATAR_PRESETS[51]?.icon,
+  '🧸': FAMILY_AVATAR_PRESETS[52]?.icon,
+  '🐱': FAMILY_AVATAR_PRESETS[53]?.icon,
+  '🦁': FAMILY_AVATAR_PRESETS[41]?.icon,
+  '🚀': FAMILY_AVATAR_PRESETS[20]?.icon,
+  '⚡': FAMILY_AVATAR_PRESETS[19]?.icon,
+  '🎮': FAMILY_AVATAR_PRESETS[32]?.icon,
+  '🐉': FAMILY_AVATAR_PRESETS[15]?.icon,
+  '🦊': FAMILY_AVATAR_PRESETS[10]?.icon,
+  '🌸': FAMILY_AVATAR_PRESETS[14]?.icon,
+  '👾': FAMILY_AVATAR_PRESETS[33]?.icon,
+  '🍿': FAMILY_AVATAR_PRESETS[31]?.icon,
+  '🎬': FAMILY_AVATAR_PRESETS[30]?.icon,
+  '🎭': FAMILY_AVATAR_PRESETS[35]?.icon,
+  '🌟': FAMILY_AVATAR_PRESETS[37]?.icon,
+  '🕶️': FAMILY_AVATAR_PRESETS[2]?.icon,
+  '💎': FAMILY_AVATAR_PRESETS[39]?.icon
+};
+
 function enrichProfileDefaults(p, idx = 0) {
   if (!p || typeof p !== 'object') return DEFAULT_PROFILES[0];
   const isPrim = p.id === 'primary' || p.isDefault || idx === 0;
   const isFam = p.id === 'family';
   const isKid = Boolean(p.isKid || p.id === 'kids');
   const fallbackSub = isPrim
-    ? 'Основной администратор'
+    ? 'Персональный кинозал'
     : (isKid ? 'Безопасный детский режим' : (isFam ? 'Общий кинозал для всей семьи' : 'Персональный кинопрофиль'));
+  const resolvedName = (isPrim && (p.name === 'Основной профиль' || !p.name) && isRealAuthenticatedAccount() && currentUser?.username)
+    ? currentUser.username
+    : (p.name || 'Основной профиль');
+  const rawAvatar = p.avatar || (isPrim ? DEFAULT_PROFILES[0].avatar : (isKid ? DEFAULT_PROFILES[2].avatar : DEFAULT_PROFILES[1].avatar));
+  const upgradedAvatar = LEGACY_EMOJI_TO_SVG_MAP[rawAvatar] || rawAvatar;
   return {
     ...p,
-    name: (isPrim && p.name === 'Основной профиль' && currentUser?.username) ? currentUser.username : (p.name || 'Профиль'),
+    name: resolvedName,
+    avatar: upgradedAvatar,
     subtitle: p.subtitle || fallbackSub,
     ageRating: p.ageRating || (isKid ? '6+' : '18+'),
     themePreference: p.themePreference || 'auto',
@@ -1560,55 +1981,74 @@ function enrichProfileDefaults(p, idx = 0) {
 }
 
 let familyProfiles = DEFAULT_PROFILES.map(enrichProfileDefaults);
-try {
-  const saved = localStorage.getItem('storm_family_profiles');
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      familyProfiles = parsed.map(enrichProfileDefaults);
-    }
-  }
-} catch {}
-
 let activeProfileId = localStorage.getItem('storm_active_profile_id') || 'primary';
 
-// Фоновая синхронизация с сервером при наличии сети
+function getUserFamilyStorageKey() {
+  if (isRealAuthenticatedAccount() && currentUser?.id) {
+    return `storm_family_profiles_u_${currentUser.id}`;
+  }
+  return null;
+}
+
+// Фоновая синхронизация профилей ТОЛЬКО для авторизованного пользователя
 async function syncProfilesWithServer() {
   try {
+    if (!isRealAuthenticatedAccount()) {
+      familyProfiles = DEFAULT_PROFILES.map(enrichProfileDefaults);
+      updateFamilyHeaderUI();
+      return;
+    }
+    const userKey = getUserFamilyStorageKey();
+    if (userKey) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(userKey) || 'null');
+        if (Array.isArray(cached) && cached.length > 0) {
+          familyProfiles = cached.map(enrichProfileDefaults);
+        }
+      } catch (_) {}
+    }
     const token = getToken();
-    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-    const res = await fetch('/api/profiles', { headers });
+    if (!token || token === 'local_token') return;
+    const res = await fetch('/api/profiles', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.profiles) && data.profiles.length > 0) {
         familyProfiles = data.profiles.map(enrichProfileDefaults);
-        localStorage.setItem('storm_family_profiles', JSON.stringify(familyProfiles));
+        if (userKey) {
+          localStorage.setItem(userKey, JSON.stringify(familyProfiles));
+        }
         updateAuthUI();
       }
     }
   } catch {}
 }
-syncProfilesWithServer();
 
 export function getFamilyProfiles() {
+  if (!isRealAuthenticatedAccount()) return [];
   return familyProfiles.map(enrichProfileDefaults);
 }
 
 export function saveFamilyProfiles(profiles) {
+  if (!isRealAuthenticatedAccount()) return;
   if (!Array.isArray(profiles) || profiles.length === 0) return;
   familyProfiles = profiles.map(enrichProfileDefaults);
-  localStorage.setItem('storm_family_profiles', JSON.stringify(familyProfiles));
+  const userKey = getUserFamilyStorageKey();
+  if (userKey) {
+    localStorage.setItem(userKey, JSON.stringify(familyProfiles));
+  }
 
-  // Фоновая отправка на сервер
+  // Фоновая отправка на сервер только при реальном токене
   try {
     const token = getToken();
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
+    if (!token || token === 'local_token') return;
     fetch('/api/profiles/save', {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({ profiles: familyProfiles })
     }).catch(() => {});
   } catch {}
@@ -1834,6 +2274,10 @@ function getProfileQuickStats(p) {
 // 1. МОДАЛЬНОЕ ОКНО «КТО СМОТРИТ?» (ВЫБОР И ЦЕНТР ПРОФИЛЕЙ)
 // -------------------------------------------------------------
 export function openProfileSwitcherModal() {
+  if (!isRealAuthenticatedAccount()) {
+    showToast('Войдите в аккаунт или зарегистрируйтесь для настройки семейных профилей', 'info');
+    return;
+  }
   let modal = document.getElementById('family-profiles-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -2034,6 +2478,7 @@ export function openProfileSwitcherModal() {
 // 2. МОДАЛЬНОЕ ОКНО «УПРАВЛЕНИЕ ПРОФИЛЯМИ»
 // -------------------------------------------------------------
 export function openProfileManagementModal() {
+  if (!isRealAuthenticatedAccount()) return;
   let modal = document.getElementById('family-profiles-manage-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -2241,11 +2686,11 @@ export function openProfileEditorModal(profileId = null) {
 
       <!-- Выбор аватарки и цветовой ауры -->
       <div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
-          <label style="font-size: 12.5px; font-weight: 700; color: #ffffff;">Выбор аватарки (24 образа экосистемы)</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+          <label style="font-size: 12.5px; font-weight: 700; color: #ffffff;">Выбор аватарки (60 стильных образов)</label>
           <div style="display: flex; gap: 6px;">
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="editor-random-avatar-btn" style="font-size: 11px; padding: 4px 10px;">
-              🎲 Случайный робот
+              🎲 Случайный образ
             </button>
             <label class="storm-btn storm-btn-secondary storm-btn-sm" style="font-size: 11px; padding: 4px 10px; margin: 0; cursor: pointer;">
               📁 Загрузить фото
@@ -2253,20 +2698,25 @@ export function openProfileEditorModal(profileId = null) {
             </label>
           </div>
         </div>
-        <div class="family-avatar-picker-grid" id="family-avatar-presets-container">
+        <div id="family-avatar-category-tabs" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+          ${['Все', 'Киберпанк', 'Аниме и Фэнтези', 'Космос', 'Кино и Игры', 'Тотемы', 'Семья и Уют'].map((cat, idx) => `
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm family-avatar-cat-btn ${idx === 0 ? 'active' : ''}" data-cat="${cat}" style="font-size: 11px; padding: 3px 9px; border-radius: 999px; ${idx === 0 ? 'background: var(--accent); color: #090d16; font-weight: 800;' : ''}">${cat === 'Все' ? 'Все (60)' : cat}</button>
+          `).join('')}
+        </div>
+        <div class="family-avatar-picker-grid" id="family-avatar-presets-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; max-height: 220px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.22); border-radius: 12px; border: 1px solid var(--border-subtle);">
           ${FAMILY_AVATAR_PRESETS.map(preset => `
-            <button type="button" class="avatar-preset-btn ${preset.icon === selectedAvatar ? 'selected' : ''}" data-icon="${preset.icon}" data-bg="${preset.bg}" title="${preset.label}" style="background: ${preset.bg};">
-              ${preset.icon}
+            <button type="button" class="avatar-preset-btn ${preset.icon === selectedAvatar ? 'selected' : ''}" data-cat="${preset.cat}" data-icon="${preset.icon}" data-bg="${preset.bg}" title="${preset.label} (${preset.cat})" style="background: ${preset.bg}; padding: 0; overflow: hidden; width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+              <img src="${preset.icon}" alt="${preset.label}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px; pointer-events: none;">
             </button>
           `).join('')}
         </div>
 
-        <!-- Палитра градиентов кольца аватара -->
-        <div style="margin-top: 10px;">
-          <div style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px;">Цветовая аура аватара:</div>
-          <div class="family-bg-gradient-picker" id="family-bg-gradient-container">
+        <!-- Палитра градиентов кольца аватара (20 цветовых аур) -->
+        <div style="margin-top: 12px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px;">Цветовая аура аватара (20 стилей):</div>
+          <div class="family-bg-gradient-picker" id="family-bg-gradient-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 8px;">
             ${FAMILY_BG_GRADIENTS.map(g => `
-              <button type="button" class="family-bg-swatch ${g.bg === selectedBg ? 'selected' : ''}" data-bg="${g.bg}" title="${g.label}" style="background: ${g.bg};"></button>
+              <button type="button" class="family-bg-swatch ${g.bg === selectedBg ? 'selected' : ''}" data-bg="${g.bg}" title="${g.label}" style="background: ${g.bg}; width: 34px; height: 34px; border-radius: 10px;"></button>
             `).join('')}
           </div>
         </div>
@@ -2410,6 +2860,28 @@ export function openProfileEditorModal(profileId = null) {
       avatarPreview.innerHTML = renderAvatarElement({ avatar: selectedAvatar, name: '' });
     }
   };
+
+  const catTabs = modal.querySelector('#family-avatar-category-tabs');
+  if (catTabs && presetsContainer) {
+    catTabs.querySelectorAll('.family-avatar-cat-btn').forEach(cBtn => {
+      cBtn.onclick = () => {
+        catTabs.querySelectorAll('.family-avatar-cat-btn').forEach(b => {
+          b.classList.remove('active');
+          b.style.background = '';
+          b.style.color = '';
+          b.style.fontWeight = '';
+        });
+        cBtn.classList.add('active');
+        cBtn.style.background = 'var(--accent)';
+        cBtn.style.color = '#090d16';
+        cBtn.style.fontWeight = '800';
+        const targetCat = cBtn.dataset.cat;
+        presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(item => {
+          item.style.display = (targetCat === 'Все' || item.dataset.cat === targetCat) ? 'flex' : 'none';
+        });
+      };
+    });
+  }
 
   if (presetsContainer) {
     presetsContainer.querySelectorAll('.avatar-preset-btn').forEach(btn => {

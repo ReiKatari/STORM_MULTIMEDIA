@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.9';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.9';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.2.9';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.9';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.9';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.9';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.9';
+import { initTheme, setTheme } from './theme.js?v=1.3.0';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.0';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.0';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.0';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.0';
+import { getStatusIconSvg } from './status-icons.js?v=1.3.0';
+import { initFormFactorEngine } from './form-factor.js?v=1.3.0';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.2.6';
@@ -7521,22 +7521,39 @@ window.applyCountryFilter = applyCountryFilter;
 // МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (MODALS)
 // -------------------------------------------------------------
 function initModals() {
-  // Иерархическое закрытие через Escape (ESC):
-  // 1. Кастомные выпадающие списки -> 2. Всплывающие поповеры/стикеры -> 3. Настройки Ambilight ->
-  // 4. Студийные панели (Pro Видео, Pro Звук) -> 5. Полноэкранный режим видео -> 6. Вторичные модалки -> 7. Плеер
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' && e.keyCode !== 27) return;
+  // Универсальное иерархическое закрытие ВСЕХ модальных окон, шторок и оверлеев через Escape (ESC):
+  const closeTopmostStormModalOnEscape = (e) => {
+    if (e && e.key !== 'Escape' && e.keyCode !== 27) return false;
+    if (e && e._stormEscHandled) return true;
+
+    const markHandled = () => {
+      if (!e) return true;
+      e._stormEscHandled = true;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        try { document.activeElement.blur(); } catch (_) {}
+      }
+      return true;
+    };
 
     // 1. Открытые кастомные выпадающие списки
     const openDropdowns = document.querySelectorAll('.storm-custom-dropdown.is-open');
     if (openDropdowns.length > 0) {
       openDropdowns.forEach(dd => dd.classList.remove('is-open'));
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 2. Всплывающие поповеры (стикеры, обои, превью карточек)
+    // 2. Всплывающие поповеры и меню источников плеера
     let closedPopover = false;
+    const playerMenu = document.getElementById('player-source-menu');
+    if (playerMenu && playerMenu.style.display === 'block') {
+      playerMenu.style.display = 'none';
+      document.getElementById('player-source-dropdown')?.classList.remove('is-open');
+      document.body.classList.remove('player-dropdown-active');
+      closedPopover = true;
+    }
     const stickerPopover = document.getElementById('chat-stickers-popover');
     if (stickerPopover && stickerPopover.style.display !== 'none') {
       stickerPopover.style.display = 'none';
@@ -7551,54 +7568,102 @@ function initModals() {
       hideCardHoverPreview();
     }
     if (closedPopover) {
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 3. Панель настроек Ambilight
+    // 3. Панель настроек Ambilight и CleanView
     const ambHost = document.getElementById('ambilight-settings-panel-host');
     if (ambHost && ambHost.children.length > 0) {
       ambHost.innerHTML = '';
-      e.stopPropagation();
-      return;
+      return markHandled();
+    }
+    const cvAim = document.getElementById('storm-cleanview-aim-layer');
+    if (cvAim) {
+      cvAim.remove();
+      return markHandled();
+    }
+    const cvPanel = document.getElementById('storm-cleanview-panel');
+    if (cvPanel && cvPanel.classList.contains('is-open')) {
+      cvPanel.classList.remove('is-open');
+      return markHandled();
     }
 
-    // 4. Внутренняя студийная шторка плеера (Pro Видео, Pro Звук, Ambilight, Субтитры)
+    // 4. Специальные модальные окна плеера (External Tracks, Series Wheel, Lift Download, Studio Drawer)
+    const extTracksModal = document.getElementById('storm-external-tracks-modal');
+    if (extTracksModal && extTracksModal.style.display !== 'none') {
+      extTracksModal.style.display = 'none';
+      return markHandled();
+    }
+    const wheelModal = document.getElementById('series-wheel-modal');
+    if (wheelModal && (wheelModal.classList.contains('is-open') || (wheelModal.style.display && wheelModal.style.display !== 'none'))) {
+      wheelModal.classList.remove('is-open');
+      wheelModal.style.display = 'none';
+      return markHandled();
+    }
+    const dlModal = document.getElementById('lift-download-modal');
+    if (dlModal && (dlModal.classList.contains('is-open') || (dlModal.style.display && dlModal.style.display !== 'none'))) {
+      dlModal.classList.remove('is-open');
+      dlModal.style.display = 'none';
+      return markHandled();
+    }
     const studioBackdrop = document.getElementById('player-studio-modal-backdrop');
     if (studioBackdrop && studioBackdrop.style.display !== 'none') {
       studioBackdrop.style.display = 'none';
       const drawerBody = studioBackdrop.querySelector('#studio-drawer-body');
       if (drawerBody) drawerBody.style.display = 'block';
       document.querySelectorAll('.studio-tab-btn').forEach(btn => btn.classList.remove('active'));
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 5. Полноэкранный режим плеера
+    // 5. Голосовой ассистент HUD и мобильная шторка
+    const voiceHud = document.getElementById('storm-voice-assistant-hud');
+    if (voiceHud && voiceHud.classList.contains('is-open')) {
+      document.getElementById('storm-voice-hud-close')?.click();
+      voiceHud.classList.remove('is-open');
+      return markHandled();
+    }
+    const drawer = document.getElementById('mobile-drawer-backdrop');
+    if (drawer && drawer.classList.contains('is-open')) {
+      if (typeof closeMobileDrawer === 'function') closeMobileDrawer();
+      else drawer.classList.remove('is-open');
+      return markHandled();
+    }
+
+    // 6. Любые открытые вторичные модальные окна (КРОМЕ видеоплеера cinema-modal)
+    const secondaryModals = Array.from(document.querySelectorAll('.storm-modal-backdrop.is-open, .modal-backdrop.is-open')).filter(m => m.id !== 'cinema-modal');
+    if (secondaryModals.length > 0) {
+      const topModal = secondaryModals[secondaryModals.length - 1];
+      topModal.classList.remove('is-open');
+      if (topModal.id === 'auth-modal' && typeof stopTvDeviceCodeSession === 'function') {
+        stopTvDeviceCodeSession();
+      }
+      if (!document.querySelector('.storm-modal-backdrop.is-open')) {
+        document.body.classList.remove('modal-open');
+      }
+      return markHandled();
+    }
+
+    // 7. Полноэкранный режим плеера
     const cinemaModal = document.getElementById('cinema-modal');
     if (cinemaModal && cinemaModal.classList.contains('is-fullscreen')) {
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
       cinemaModal.classList.remove('is-fullscreen');
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 6. Любые открытые вторичные модальные окна (КРОМЕ видеоплеера cinema-modal)
-    const secondaryModals = Array.from(document.querySelectorAll('.storm-modal-backdrop.is-open')).filter(m => m.id !== 'cinema-modal');
-    if (secondaryModals.length > 0) {
-      const topModal = secondaryModals[secondaryModals.length - 1];
-      topModal.classList.remove('is-open');
-      e.stopPropagation();
-      return;
-    }
-
-    // 7. И только если открыт исключительно видеоплеер — закрываем его
+    // 8. И только если открыт исключительно видеоплеер — закрываем его
     if (cinemaModal && cinemaModal.classList.contains('is-open')) {
       closePlayerModal();
+      return markHandled();
     }
-  });
+
+    return false;
+  };
+
+  window.closeTopmostStormModalOnEscape = closeTopmostStormModalOnEscape;
+  window.addEventListener('keydown', closeTopmostStormModalOnEscape, true);
 
   // Закрытие кастомных выпадающих списков при клике вне их области
   document.addEventListener('click', (e) => {

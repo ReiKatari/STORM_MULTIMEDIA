@@ -19,6 +19,7 @@ try {
 
 import {
   registerUser,
+  mergeGuestDataIntoUser,
   loginUser,
   createSession,
   logoutUser,
@@ -1287,10 +1288,16 @@ app.post('/api/auth/register', loginRateLimiter, (req, res) => {
       userAgent: ua,
       deviceName: parseDeviceNameFromUserAgent(ua)
     });
+    if (req.body?.guestData && typeof req.body.guestData === 'object') {
+      mergeGuestDataIntoUser(session.user.id, req.body.guestData);
+    }
+    const stats = getUserStats(session.user.id);
+    session.user.stats = stats;
     const vaultRes = getSavedAccountsByTokens([session.token, ...parseVaultTokensFromReq(req)], session.user.id);
     setSessionCookie(res, session.token, req, vaultRes.validTokens);
     res.json({
       ...session,
+      stats,
       savedAccounts: vaultRes.accounts,
       vaultTokens: vaultRes.validTokens
     });
@@ -1685,7 +1692,9 @@ app.delete('/api/admin/users/:id', (req, res) => {
 // Управление семейными профилями
 app.get('/api/profiles', (req, res) => {
   try {
-    const userId = req.user ? req.user.id : null;
+    const authHeader = String(req.headers.authorization || '');
+    const hasExplicitBearer = authHeader.startsWith('Bearer ') && authHeader.length > 15;
+    const userId = (hasExplicitBearer && req.user) ? req.user.id : null;
     let profiles = null;
     if (userId) {
       profiles = getUserFamilyProfiles(userId);

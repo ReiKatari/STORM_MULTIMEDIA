@@ -457,8 +457,9 @@ export function createAuthRouter({ requireAuth }) {
   // Единый гидратор состояния из БД при старте (0 байт в localStorage)
   router.get('/api/user/bootstrap', (req, res) => {
     try {
-      const vaultBootstrap = getSavedAccountsByTokens([req.token, ...parseVaultTokensFromReq(req)], req.user?.id || null);
-      if (!req.user) {
+      const isExplicitGuest = req.headers['x-storm-guest-mode'] === '1';
+      const vaultBootstrap = getSavedAccountsByTokens([req.token, ...parseVaultTokensFromReq(req)], (!isExplicitGuest && req.user?.id) ? req.user.id : null);
+      if (!req.user || isExplicitGuest) {
         return res.json({
           authenticated: false,
           user: null,
