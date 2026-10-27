@@ -5,9 +5,9 @@ const _stormCalMemoryCache = new Map();
    с переключением недель, фильтрами, реальными обложками и студиями
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.0';
-import { openPlayerModal } from './player.js?v=1.2.0';
-import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.2.0';
+import { showToast } from './auth.js?v=1.2.3';
+import { openPlayerModal } from './player.js?v=1.2.3';
+import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.2.3';
 
 let selectedWeek = 'current'; // 'current' | 'next'
 let selectedDay = new Date().getDay(); // 0=ВС, 1=ПН, 2=ВТ...

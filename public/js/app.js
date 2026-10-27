@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.0';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.0';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.0';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.0';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.0';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.0';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.0';
+import { initTheme, setTheme } from './theme.js?v=1.2.3';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.3';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.3';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.3';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.3';
+import { getStatusIconSvg } from './status-icons.js?v=1.2.3';
+import { initFormFactorEngine } from './form-factor.js?v=1.2.3';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.2.0';
+const STORM_ASSET_VER = '1.2.3';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;

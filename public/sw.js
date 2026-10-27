@@ -2,8 +2,8 @@
    STORM MULTIMEDIA - SERVICE WORKER v4 (БЫСТРЫЙ КЭШ И БЕЗОПАСНЫЕ ES-МОДУЛИ)
    ========================================================================== */
 
-const APP_VERSION = '1.2.0';
-const CACHE_NAME = `storm-multimedia-v4-${APP_VERSION}`;
+const APP_VERSION = '1.2.3';
+const CACHE_NAME = `storm-multimedia-v5-${APP_VERSION}`;
 
 // Минимальная оболочка при установке (< 70 КБ), чтобы не нагружать сеть и процессор при старте
 const SHELL_ASSETS = [
@@ -131,7 +131,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
         try {
-          const netRes = await fetch(event.request);
+          const netRes = await fetch(event.request, { cache: 'no-cache' });
           if (isValidCacheableAsset(netRes, url.pathname)) {
             cache.put(event.request, netRes.clone()).catch(() => {});
             return netRes;

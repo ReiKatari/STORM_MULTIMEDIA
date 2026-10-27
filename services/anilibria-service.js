@@ -214,7 +214,7 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
   }
   if (!cleanId) return null;
 
-  const cacheKey = `details_franchise_v6_${cleanId}`;
+  const cacheKey = `details_franchise_v7_${cleanId}`;
   const cached = getCache('anilibria', cacheKey);
   if (cached) return cached;
 
@@ -230,12 +230,12 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
     if (!rel) throw new Error(`AniLibria release ${cleanId} not found`);
 
     const baseInfo = formatAniLibriaRelease(rel);
-    const isMovie = rel.type?.value === 'MOVIE' && (!Array.isArray(franchiseRes) || franchiseRes.length === 0);
+    const isMovie = rel.type?.value === 'MOVIE' || baseInfo.media_type === 'anime-movie';
 
-    let franchiseObj = Array.isArray(franchiseRes) && franchiseRes.length > 0 ? franchiseRes[0] : null;
+    let franchiseObj = (!isMovie && Array.isArray(franchiseRes) && franchiseRes.length > 0) ? franchiseRes[0] : null;
     let franchiseReleasesMeta = [];
 
-    if (franchiseObj && Array.isArray(franchiseObj.franchise_releases) && franchiseObj.franchise_releases.length > 0) {
+    if (!isMovie && franchiseObj && Array.isArray(franchiseObj.franchise_releases) && franchiseObj.franchise_releases.length > 0) {
       franchiseReleasesMeta = franchiseObj.franchise_releases
         .slice()
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
@@ -244,14 +244,12 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
     }
 
     // Если во франшизе нет связанных сезонов, дополнительно проверяем поиск по базовому названию
-    const canonicalTitle = normalizeAnimeFranchiseTitle(
-      franchiseObj?.name || baseInfo.title || fallbackTitle,
-      !isMovie
-    ) || baseInfo.title;
-    const canonicalOrigTitle = normalizeAnimeFranchiseTitle(
-      franchiseObj?.name_english || baseInfo.original_title || '',
-      !isMovie
-    ) || baseInfo.original_title;
+    const canonicalTitle = isMovie
+      ? baseInfo.title
+      : (normalizeAnimeFranchiseTitle(franchiseObj?.name || baseInfo.title || fallbackTitle, true) || baseInfo.title);
+    const canonicalOrigTitle = isMovie
+      ? baseInfo.original_title
+      : (normalizeAnimeFranchiseTitle(franchiseObj?.name_english || baseInfo.original_title || '', true) || baseInfo.original_title);
 
     if (franchiseReleasesMeta.length <= 1 && !isMovie && canonicalTitle) {
       try {
@@ -284,8 +282,8 @@ export async function getAniLibriaDetails(releaseId, fallbackTitle = '') {
     }
 
     // Отделяем ТВ/ONA сезоны от полнометражных фильмов внутри франшизы (если основной релиз не фильм)
-    const seriesReleasesMeta = franchiseReleasesMeta.filter(r => r.type?.value !== 'MOVIE');
-    const effectiveReleasesMeta = seriesReleasesMeta.length > 0 ? seriesReleasesMeta : franchiseReleasesMeta;
+    const seriesReleasesMeta = isMovie ? [rel] : franchiseReleasesMeta.filter(r => r.type?.value !== 'MOVIE');
+    const effectiveReleasesMeta = isMovie ? [rel] : (seriesReleasesMeta.length > 0 ? seriesReleasesMeta : franchiseReleasesMeta);
 
     // Параллельно загружаем полные данные с эпизодами для всех сезонов франшизы
     const fullReleases = await Promise.all(

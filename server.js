@@ -814,14 +814,11 @@ app.use((req, res, next) => {
   if (!entry) return next();
 
   const isHtmlOrSw = ext === '.html' || decodedRel === '/sw.js';
-  const hasImmutableVer = Boolean((ext === '.js' || ext === '.css') && req.query && req.query.v && !req.query.retry);
 
   if (isHtmlOrSw) {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  } else if (hasImmutableVer) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   } else if (ext === '.js' || ext === '.css' || ext === '.json') {
-    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.setHeader('Cache-Control', 'no-cache, max-age=0, must-revalidate');
   } else {
     res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
   }
@@ -914,8 +911,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
-      const hasVer = Boolean(res.req?.query?.v && !res.req?.query?.retry);
-      res.setHeader('Cache-Control', hasVer ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate');
+      res.setHeader('Cache-Control', 'no-cache, max-age=0, must-revalidate');
     } else {
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     }
@@ -4198,7 +4194,8 @@ app.get('/api/media/item', async (req, res) => {
       mediaDetails = await getAnixartReleaseDetails(cleanAnixId);
     } else if (source === 'anilibria' || String(id || '').startsWith('libria_') || String(id || '').startsWith('anilib')) {
       const cleanLibriaId = String(id || '').replace(/^(?:anilibria_|anilib_|libria_)/i, '');
-      const details = await getAniLibriaDetails(cleanLibriaId, normalizeAnimeFranchiseTitle(req.query.title || '', true));
+      const isReqMovie = req.query.media_type === 'anime-movie' || req.query.media_type === 'movie';
+      const details = await getAniLibriaDetails(cleanLibriaId, normalizeAnimeFranchiseTitle(req.query.title || '', !isReqMovie));
       if (details) {
         mediaDetails = {
           ...details,
@@ -4746,7 +4743,12 @@ app.get('/api/media/item', async (req, res) => {
         } catch (_) {}
       }
     }
+          const isExplicitAnimeMovie = mediaDetails.media_type === 'anime-movie';
           const validItems = tmdbSearch.items.filter(it => {
+            if (isExplicitAnimeMovie) {
+              if (it.media_type === 'series' || it.media_type === 'tv' || it.media_type === 'anime-series') return false;
+              if (mediaDetails.year && it.year && Math.abs(Number(mediaDetails.year) - Number(it.year)) > 1) return false;
+            }
             const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || '', isSeries ? '1' : '', '');
             return sc >= 200;
           });

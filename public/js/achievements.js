@@ -3,7 +3,7 @@
    Гибридный движок: 100% поддержка Гостевого (локального) и Облачного режимов
    ========================================================================== */
 
-import { getUser } from './auth.js?v=1.2.0';
+import { getUser } from './auth.js?v=1.2.3';
 
 export const ACHIEVEMENTS_CATALOG = [
   // 1. Киномарафон (Фильмы и сериалы)
@@ -154,9 +154,12 @@ function updateLocalAchievementProgress(stateObj, achievementId, amount = 1, isS
   const achMeta = ACHIEVEMENTS_CATALOG.find(a => a.id === achievementId);
   if (!achMeta) return null;
 
+  const achKey = String(achievementId);
   const target = achMeta.target || 1;
   const existing = stateObj[achievementId] || { progress: 0, unlocked: false, unlocked_at: null };
-  const wasUnlocked = Boolean(existing.unlocked);
+  const persistedToasted = loadToastedAchievementsSet();
+  const alreadyInCache = Array.isArray(cachedAchievements) && cachedAchievements.some(a => a && a.id === achievementId && a.unlocked);
+  const wasUnlocked = Boolean(existing.unlocked || toastedIdsSession.has(achKey) || persistedToasted.has(achKey) || alreadyInCache);
 
   let newProgress = isSet ? Math.max(existing.progress || 0, amount) : (existing.progress || 0) + amount;
   newProgress = Math.min(Math.max(0, newProgress), target);
@@ -186,7 +189,8 @@ function buildMergedCatalog(serverList = null) {
   const toastedSet = loadToastedAchievementsSet();
   let toastedChanged = false;
   const serverMap = new Map();
-  if (Array.isArray(serverList)) {
+  const hasServerItems = Array.isArray(serverList) && serverList.length > 0;
+  if (hasServerItems) {
     isAchievementsHydrated = true;
     serverList.forEach(item => {
       if (item && item.id) {
@@ -212,10 +216,10 @@ function buildMergedCatalog(serverList = null) {
     const lItem = localMap[ach.id];
     const target = ach.target || 1;
     const progress = Math.min(target, Math.max(sItem?.progress || 0, lItem?.progress || 0));
-    const unlocked = Boolean(sItem?.unlocked || lItem?.unlocked || progress >= target);
+    const unlocked = Boolean(sItem?.unlocked || lItem?.unlocked || toastedSet.has(String(ach.id)) || toastedIdsSession.has(String(ach.id)) || progress >= target);
     const unlocked_at = lItem?.unlocked_at || sItem?.unlocked_at || (unlocked ? Date.now() : null);
 
-    if (!lItem || lItem.progress !== progress || Boolean(lItem.unlocked) !== unlocked) {
+    if (hasServerItems && (!lItem || lItem.progress !== (unlocked ? target : progress) || Boolean(lItem.unlocked) !== unlocked)) {
       localMap[ach.id] = { progress: unlocked ? target : progress, target, unlocked, unlocked_at };
       localChanged = true;
     }
@@ -228,7 +232,7 @@ function buildMergedCatalog(serverList = null) {
     };
   });
 
-  if (localChanged) {
+  if (localChanged && hasServerItems) {
     saveLocalAchievementsState(localMap);
   }
   cachedAchievements = merged;
@@ -655,52 +659,51 @@ function hasValidServerSession() {
 
 // 3. Отправка события прогресса (работает и для Гостя, и для Авторизованного профиля!)
 export async function trackClientAction(action, meta = {}) {
-  if (hasValidServerSession() && !isAchievementsHydrated) {
-    try { await fetchUserAchievements(false); } catch (_) {}
-    isAchievementsHydrated = true;
+  if (hasValidServerSession()) {
+    if (!isAchievementsHydrated || !cachedAchievements || cachedAchievements.length === 0) {
+      try { await fetchUserAchievements(true); } catch (_) {}
+      isAchievementsHydrated = true;
+    }
+    try {
+      const res = await fetch('/api/achievements/track', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('storm_token') || ''}`
+        },
+        body: JSON.stringify({ action, meta })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        evaluateLocalAction(action, meta);
+        if (data.unlocked && data.unlocked.length > 0) {
+          const stateObj = loadLocalAchievementsState();
+          data.unlocked.forEach(ach => {
+            if (!ach || !ach.id) return;
+            showAchievementToast(ach);
+            stateObj[ach.id] = {
+              progress: ach.target || 1,
+              target: ach.target || 1,
+              unlocked: true,
+              unlocked_at: ach.unlocked_at || Date.now()
+            };
+          });
+          saveLocalAchievementsState(stateObj);
+          buildMergedCatalog(cachedAchievements);
+          notifyAchievementsUpdated();
+          return data.unlocked;
+        }
+      }
+    } catch (_) {}
+    return [];
   }
+
   const localUnlocked = evaluateLocalAction(action, meta);
   if (localUnlocked.length > 0) {
-    if (!hasValidServerSession() || isAchievementsHydrated) {
-      localUnlocked.forEach(ach => showAchievementToast(ach));
-    }
+    localUnlocked.forEach(ach => showAchievementToast(ach));
     notifyAchievementsUpdated();
   }
-
-  if (!hasValidServerSession()) {
-    return localUnlocked;
-  }
-
-  try {
-    const res = await fetch('/api/achievements/track', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('storm_token') || ''}`
-      },
-      body: JSON.stringify({ action, meta })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.unlocked && data.unlocked.length > 0) {
-        const stateObj = loadLocalAchievementsState();
-        data.unlocked.forEach(ach => {
-          stateObj[ach.id] = {
-            progress: ach.target || 1,
-            target: ach.target || 1,
-            unlocked: true,
-            unlocked_at: ach.unlocked_at || Date.now()
-          };
-          showAchievementToast(ach);
-        });
-        saveLocalAchievementsState(stateObj);
-        buildMergedCatalog(cachedAchievements);
-        notifyAchievementsUpdated();
-      }
-    }
-  } catch (_) {}
-
   return localUnlocked;
 }
 

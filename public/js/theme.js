@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МЕНЕДЖЕР 10 ЭТАЛОННЫХ ТЕМ, 13 АКЦЕНТОВ И 10 ШРИФТОВ (STORM AURORA FLUID)
    ========================================================================== */
 
-import { trackClientAction } from './achievements.js?v=1.2.0';
+import { trackClientAction } from './achievements.js?v=1.2.3';
 
 export const THEMES = [
   'STORM MIDNIGHT',
@@ -284,7 +284,7 @@ export function initTheme() {
         if (tName && THEMES.includes(tName)) {
           setTheme(tName, { fromUser: true });
           triggerHapticFeedback(12);
-          import('./auth.js?v=1.2.0').then(m => m.showToast?.(`🎨 Тема оформления: ${tName}`, 'info')).catch(() => {});
+          import('./auth.js?v=1.2.3').then(m => m.showToast?.(`🎨 Тема оформления: ${tName}`, 'info')).catch(() => {});
         }
         return;
       }
@@ -295,7 +295,7 @@ export function initTheme() {
         if (tName && THEMES.includes(tName)) {
           setTheme(tName, { fromUser: true });
           triggerHapticFeedback(12);
-          import('./auth.js?v=1.2.0').then(m => m.showToast?.(`🎨 Тема оформления: ${tName}`, 'info')).catch(() => {});
+          import('./auth.js?v=1.2.3').then(m => m.showToast?.(`🎨 Тема оформления: ${tName}`, 'info')).catch(() => {});
         }
         return;
       }
@@ -307,7 +307,7 @@ export function initTheme() {
           setAccent(aName, { fromUser: true });
           triggerHapticFeedback(12);
           const label = accentDot.getAttribute('title') || aName;
-          import('./auth.js?v=1.2.0').then(m => m.showToast?.(`✨ Акцент подсветки: ${label}`, 'info')).catch(() => {});
+          import('./auth.js?v=1.2.3').then(m => m.showToast?.(`✨ Акцент подсветки: ${label}`, 'info')).catch(() => {});
         }
       }
     });

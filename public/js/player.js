@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.2.0';
-import { getUser, showToast } from './auth.js?v=1.2.0';
-import { t } from './i18n.js?v=1.2.0';
-import { trackClientAction } from './achievements.js?v=1.2.0';
-import { renderReviewsSection } from './reviews.js?v=1.2.0';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.2.0';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.2.0';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.2.0';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.2.0';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.2.0';
-import { saveMediaForOffline } from './offline-storage.js?v=1.2.0';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.2.0';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.2.0';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.2.0';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.2.0';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.2.0';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.2.3';
+import { getUser, showToast } from './auth.js?v=1.2.3';
+import { t } from './i18n.js?v=1.2.3';
+import { trackClientAction } from './achievements.js?v=1.2.3';
+import { renderReviewsSection } from './reviews.js?v=1.2.3';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.2.3';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.2.3';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.2.3';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.2.3';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.2.3';
+import { saveMediaForOffline } from './offline-storage.js?v=1.2.3';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.2.3';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.2.3';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.2.3';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.2.3';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.2.3';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -11136,8 +11136,27 @@ function renderAniLibriaControls(details, options = {}) {
   const episodes = activeSeasonObj?.episodes || [];
   if (episodes.length === 0) return;
 
+  const isAnimeMovie = details.media_type === 'anime-movie' || currentMedia.media_type === 'anime-movie';
   currentMedia.episodes = episodes;
-  currentMedia.media_type = 'anime-series';
+  currentMedia.media_type = isAnimeMovie ? 'anime-movie' : 'anime-series';
+
+  if (isAnimeMovie) {
+    quickBarSeriesData = null;
+    const quickBar = document.getElementById('player-series-quick-bar');
+    if (quickBar) quickBar.style.display = 'none';
+    const seasonsCont = document.getElementById('series-seasons-container');
+    if (seasonsCont) seasonsCont.style.display = 'none';
+    const epBadge = document.getElementById('inplayer-ep-badge');
+    if (epBadge) epBadge.textContent = '🎬 АНИМЕ-ФИЛЬМ';
+    const initialEp = episodes[0];
+    if (initialEp) {
+      currentEpisodeIndex = 1;
+      const streamUrl = initialEp.hls_1080 || initialEp.hls_720 || initialEp.hls_480;
+      if (streamUrl) playStreamUrl(streamUrl);
+      loadSkipTimes(activeSeasonObj.release_id || currentMedia.id, 1);
+    }
+    return;
+  }
 
   const targetEpNum = options.initialEpisode ? parseInt(options.initialEpisode, 10) : (episodes[0]?.ordinal || 1);
   quickBarActiveSeason = activeSeasonObj.season_number || 1;

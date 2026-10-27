@@ -179,10 +179,44 @@ export function createAuthRouter({ requireAuth }) {
       }
       if (body.kv && typeof body.kv === 'object') {
         const kvStore = { ...(currentSettings.kv_store || {}) };
+        const serverAchs = getUserAchievements(req.user.id);
+        const serverUnlockedIds = new Set(serverAchs.filter(a => a && a.unlocked).map(a => String(a.id)));
+
         for (const [k, v] of Object.entries(body.kv)) {
           const safeKey = String(k).slice(0, 120);
           if (v === null || v === undefined) {
+            if (safeKey === 'storm_toasted_achievements_v1' || safeKey === 'storm_local_achievements') continue;
             delete kvStore[safeKey];
+          } else if (safeKey === 'storm_toasted_achievements_v1') {
+            const mergedToast = new Set(serverUnlockedIds);
+            try {
+              const prevArr = JSON.parse(kvStore.storm_toasted_achievements_v1 || '[]');
+              if (Array.isArray(prevArr)) prevArr.forEach(id => { if (id) mergedToast.add(String(id)); });
+            } catch (_) {}
+            try {
+              const nextArr = typeof v === 'string' ? JSON.parse(v) : v;
+              if (Array.isArray(nextArr)) nextArr.forEach(id => { if (id) mergedToast.add(String(id)); });
+            } catch (_) {}
+            kvStore.storm_toasted_achievements_v1 = JSON.stringify(Array.from(mergedToast));
+          } else if (safeKey === 'storm_local_achievements') {
+            let prevMap = {};
+            let nextMap = {};
+            try { prevMap = JSON.parse(kvStore.storm_local_achievements || '{}') || {}; } catch (_) {}
+            try { nextMap = (typeof v === 'string' ? JSON.parse(v) : v) || {}; } catch (_) {}
+            const mergedMap = { ...prevMap, ...nextMap };
+            for (const a of serverAchs) {
+              const prevEntry = prevMap[a.id];
+              const nextEntry = nextMap[a.id];
+              const isUnl = Boolean(a.unlocked || prevEntry?.unlocked || nextEntry?.unlocked);
+              const maxProg = Math.min(a.target || 1, Math.max(a.progress || 0, prevEntry?.progress || 0, nextEntry?.progress || 0));
+              mergedMap[a.id] = {
+                progress: isUnl ? (a.target || 1) : maxProg,
+                target: a.target || 1,
+                unlocked: isUnl,
+                unlocked_at: prevEntry?.unlocked_at || nextEntry?.unlocked_at || a.unlocked_at || (isUnl ? Date.now() : null)
+              };
+            }
+            kvStore.storm_local_achievements = JSON.stringify(mergedMap);
           } else {
             kvStore[safeKey] = typeof v === 'string' ? v.slice(0, 65536) : JSON.stringify(v).slice(0, 65536);
           }
@@ -232,13 +266,37 @@ export function createAuthRouter({ requireAuth }) {
       const subscriptions = getReleaseSubscriptions(userId);
       const sessions = getUserActiveSessions(userId);
       const achievements = getUserAchievements(userId);
+      const kvOut = { ...(settings.kv_store || {}) };
+      try {
+        const toastedSet = new Set();
+        try {
+          const prevT = JSON.parse(kvOut.storm_toasted_achievements_v1 || '[]');
+          if (Array.isArray(prevT)) prevT.forEach(id => { if (id) toastedSet.add(String(id)); });
+        } catch (_) {}
+        let localAchMap = {};
+        try { localAchMap = JSON.parse(kvOut.storm_local_achievements || '{}') || {}; } catch (_) {}
+        for (const a of achievements) {
+          if (!a || !a.id) continue;
+          const isUnl = Boolean(a.unlocked || (a.target > 0 && a.progress >= a.target));
+          localAchMap[a.id] = {
+            progress: isUnl ? (a.target || 1) : Math.max(a.progress || 0, localAchMap[a.id]?.progress || 0),
+            target: a.target || 1,
+            unlocked: isUnl,
+            unlocked_at: localAchMap[a.id]?.unlocked_at || a.unlocked_at || (isUnl ? Date.now() : null)
+          };
+          if (isUnl) toastedSet.add(String(a.id));
+        }
+        kvOut.storm_local_achievements = JSON.stringify(localAchMap);
+        kvOut.storm_toasted_achievements_v1 = JSON.stringify(Array.from(toastedSet));
+      } catch (_) {}
 
       res.json({
         authenticated: true,
+        token: req.token || null,
         user: req.user,
         stats,
         settings,
-        kv: settings.kv_store || {},
+        kv: kvOut,
         bookmarks,
         continueWatching,
         customLists,

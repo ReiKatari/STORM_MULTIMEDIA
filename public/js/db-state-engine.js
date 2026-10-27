@@ -15,6 +15,10 @@
   try {
     const nativeLS = window.localStorage;
     if (nativeLS && nativeLS.length > 0) {
+      for (const preserveKey of ['storm_token', 'storm_user', 'storm_active_user_id', 'storm_toasted_achievements_v1', 'storm_local_achievements']) {
+        const val = nativeLS.getItem(preserveKey);
+        if (val) ramStore.set(preserveKey, val);
+      }
       nativeLS.clear();
     }
   } catch (_) {}
@@ -196,6 +200,11 @@
       if (!data || !data.authenticated || !data.user) return null;
 
       window.__STORM_BOOTSTRAP_DATA__ = data;
+      if (data.token) ramStore.set('storm_token', String(data.token));
+      if (data.user) {
+        ramStore.set('storm_user', JSON.stringify(data.user));
+        if (data.user.id) ramStore.set('storm_active_user_id', String(data.user.id));
+      }
       if (data.kv && typeof data.kv === 'object') {
         for (const [k, v] of Object.entries(data.kv)) {
           if (v !== null && v !== undefined) {

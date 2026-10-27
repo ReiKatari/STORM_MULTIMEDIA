@@ -1981,16 +1981,38 @@ export const ACHIEVEMENTS_CATALOG = [
 ];
 
 export function getUserAchievements(userId) {
-  const userRows = db.prepare('SELECT achievement_id, progress, target, unlocked, unlocked_at FROM user_achievements WHERE user_id = ?').all(userId);
+  if (userId) {
+    try {
+      const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+      if (uRow && uRow.settings_json) {
+        const sObj = JSON.parse(uRow.settings_json);
+        const rawLocalAch = sObj?.kv_store?.storm_local_achievements;
+        if (rawLocalAch) {
+          const parsedLocal = typeof rawLocalAch === 'string' ? JSON.parse(rawLocalAch) : rawLocalAch;
+          if (parsedLocal && typeof parsedLocal === 'object') {
+            for (const [achId, val] of Object.entries(parsedLocal)) {
+              if (val && (val.unlocked || (val.target > 0 && val.progress >= val.target))) {
+                const meta = ACHIEVEMENTS_CATALOG.find(a => a.id === achId);
+                if (meta) updateAchievementProgress(userId, achId, meta.target || 1, true);
+              }
+            }
+          }
+        }
+      }
+      autoSyncUserAchievements(userId);
+    } catch (_) {}
+  }
+  const userRows = userId ? db.prepare('SELECT achievement_id, progress, target, unlocked, unlocked_at FROM user_achievements WHERE user_id = ?').all(userId) : [];
   const map = new Map();
   userRows.forEach(row => map.set(row.achievement_id, row));
 
   return ACHIEVEMENTS_CATALOG.map(ach => {
     const userAch = map.get(ach.id);
+    const isUnl = userAch ? Boolean(userAch.unlocked || (ach.target > 0 && userAch.progress >= ach.target)) : false;
     return {
       ...ach,
-      progress: userAch ? userAch.progress : 0,
-      unlocked: userAch ? Boolean(userAch.unlocked) : false,
+      progress: isUnl ? ach.target : (userAch ? userAch.progress : 0),
+      unlocked: isUnl,
       unlocked_at: userAch ? userAch.unlocked_at : null
     };
   });
@@ -2151,7 +2173,15 @@ export function trackUserAction(userId, actionType, meta = {}) {
       const watchingCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId)?.count || 0;
       if (watchingCnt > 0) tryUnlock('status_watching', watchingCnt, true);
       const completedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId)?.count || 0;
-      if (completedCnt > 0) tryUnlock('status_completed', completedCnt, true);
+      if (completedCnt > 0) {
+        tryUnlock('status_completed', completedCnt, true);
+        tryUnlock('cinema_first', completedCnt, true);
+        tryUnlock('cinema_novice', completedCnt, true);
+        tryUnlock('cinema_veteran', completedCnt, true);
+        tryUnlock('cinema_master', completedCnt, true);
+        tryUnlock('cinema_legend', completedCnt, true);
+        tryUnlock('cinema_god', completedCnt, true);
+      }
       const plannedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'planned'").get(userId)?.count || 0;
       if (plannedCnt > 0) tryUnlock('status_planned', plannedCnt, true);
       break;
@@ -2262,7 +2292,15 @@ export function autoSyncUserAchievements(userId, clientState = {}) {
   const watchingCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'watching'").get(userId)?.count || 0;
   if (watchingCnt > 0) tryUnlock('status_watching', watchingCnt, true);
   const completedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'completed'").get(userId)?.count || 0;
-  if (completedCnt > 0) tryUnlock('status_completed', completedCnt, true);
+  if (completedCnt > 0) {
+    tryUnlock('status_completed', completedCnt, true);
+    tryUnlock('cinema_first', completedCnt, true);
+    tryUnlock('cinema_novice', completedCnt, true);
+    tryUnlock('cinema_veteran', completedCnt, true);
+    tryUnlock('cinema_master', completedCnt, true);
+    tryUnlock('cinema_legend', completedCnt, true);
+    tryUnlock('cinema_god', completedCnt, true);
+  }
   const plannedCnt = db.prepare("SELECT COUNT(*) AS count FROM bookmarks WHERE user_id = ? AND status = 'planned'").get(userId)?.count || 0;
   if (plannedCnt > 0) tryUnlock('status_planned', plannedCnt, true);
 
@@ -3038,3 +3076,41 @@ export function getVectorRecommendationsForUser(userId, candidateItems = [], lim
   scored.sort((a, b) => b.vector_score - a.vector_score);
   return scored.slice(0, limit);
 }
+
+
+// Гарантия однократного получения каждого достижения и очистка кэша фильма Безответная бабочка
+setImmediate(() => {
+  try {
+    db.prepare("DELETE FROM cache WHERE key LIKE '%10296%' OR key LIKE '%бабочк%'").run();
+    const allUsers = db.prepare("SELECT id, settings_json FROM users").all();
+    for (const u of allUsers) {
+      try {
+        const fullAchs = getUserAchievements(u.id);
+        const sObj = JSON.parse(u.settings_json || "{}");
+        if (!sObj.kv_store || typeof sObj.kv_store !== "object") sObj.kv_store = {};
+        let prevLocalMap = {};
+        try { prevLocalMap = JSON.parse(sObj.kv_store.storm_local_achievements || "{}") || {}; } catch (_) {}
+        const localAchMap = { ...prevLocalMap };
+        const toastedSet = new Set();
+        try {
+          const prevToast = JSON.parse(sObj.kv_store.storm_toasted_achievements_v1 || "[]");
+          if (Array.isArray(prevToast)) prevToast.forEach(id => { if (id) toastedSet.add(String(id)); });
+        } catch (_) {}
+        for (const a of fullAchs) {
+          const prevE = prevLocalMap[a.id];
+          const isUnl = Boolean(a.unlocked || prevE?.unlocked || (a.target > 0 && a.progress >= a.target));
+          localAchMap[a.id] = {
+            progress: isUnl ? a.target : Math.max(a.progress || 0, prevE?.progress || 0),
+            target: a.target || 1,
+            unlocked: isUnl,
+            unlocked_at: prevE?.unlocked_at || a.unlocked_at || (isUnl ? Date.now() : null)
+          };
+          if (isUnl) toastedSet.add(String(a.id));
+        }
+        sObj.kv_store.storm_local_achievements = JSON.stringify(localAchMap);
+        sObj.kv_store.storm_toasted_achievements_v1 = JSON.stringify(Array.from(toastedSet));
+        updateUserSettings(u.id, sObj);
+      } catch (_) {}
+    }
+  } catch (_) {}
+});
