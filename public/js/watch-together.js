@@ -3,10 +3,10 @@
    WebSocket синхронизация таймкодов, воспроизведения и встроенный кибер-чат
    ========================================================================== */
 
-import { getUser, showToast } from './auth.js?v=1.2.3';
-import { trackClientAction } from './achievements.js?v=1.2.3';
-import { openPlayerModal } from './player.js?v=1.2.3';
-import { setAudioDucking } from './pro-media-engine.js?v=1.2.3';
+import { getUser, showToast } from './auth.js?v=1.2.5';
+import { trackClientAction } from './achievements.js?v=1.2.5';
+import { openPlayerModal } from './player.js?v=1.2.5';
+import { setAudioDucking } from './pro-media-engine.js?v=1.2.5';
 
 let ws = null;
 let currentRoom = null;
@@ -184,7 +184,7 @@ function handleSocketMessage(data) {
       break;
 
     case 'storm_remote_action':
-      import('./storm-remote.js?v=1.2.3').then(m => m.handleIncomingRemoteAction(data)).catch(() => {});
+      import('./storm-remote.js?v=1.2.5').then(m => m.handleIncomingRemoteAction(data)).catch(() => {});
       break;
 
     case 'error':

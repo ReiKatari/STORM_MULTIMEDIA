@@ -82,7 +82,7 @@
         const k = String(key);
         const v = String(value);
         ramStore.set(k, v);
-        if (shouldPersistKeyToDatabase(k)) {
+        if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
           dirtyKv[k] = v;
           scheduleDatabaseSettingsSync();
         }
@@ -90,7 +90,7 @@
       removeItem(key) {
         const k = String(key);
         ramStore.delete(k);
-        if (shouldPersistKeyToDatabase(k)) {
+        if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
           dirtyKv[k] = null;
           scheduleDatabaseSettingsSync();
         }
@@ -252,6 +252,15 @@
   }
 
   window.hydrateStateFromDatabase = hydrateStateFromDatabase;
+  window.resetStormDirtySettingsQueue = function() {
+    if (syncTimer) {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+    }
+    for (const k of Object.keys(dirtyKv)) {
+      delete dirtyKv[k];
+    }
+  };
 
   // 4. Баннер бесшовной эстафеты просмотра между устройствами (Пункт 4.5)
   function renderSeamlessHandoffBanner(handoff) {

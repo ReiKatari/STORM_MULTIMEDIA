@@ -8,7 +8,7 @@
  * - Статистика и аналитика экосистемы
  */
 
-import { showToast } from './auth.js?v=1.2.3';
+import { showToast } from './auth.js?v=1.2.5';
 
 let adminDataCache = null;
 

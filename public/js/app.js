@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.4';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.4';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.4';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.4';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.4';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.4';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.4';
+import { initTheme, setTheme } from './theme.js?v=1.2.5';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.5';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.5';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.5';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.5';
+import { getStatusIconSvg } from './status-icons.js?v=1.2.5';
+import { initFormFactorEngine } from './form-factor.js?v=1.2.5';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.2.4';
+const STORM_ASSET_VER = '1.2.5';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -7588,16 +7588,14 @@ function initModals() {
     });
   });
 
-  // Открытие модалки логина
+  // Открытие модалки логина / регистрации
   const loginModalBtn = document.getElementById('login-modal-btn');
   const authModal = document.getElementById('auth-modal');
-  if (loginModalBtn && authModal) {
-    loginModalBtn.onclick = () => authModal.classList.add('is-open');
-  }
-
-  // Переключение Вход / Регистрация / ТВ-код
   const switchToRegister = document.getElementById('switch-to-register');
   const switchToLogin = document.getElementById('switch-to-login');
+  const authTabLogin = document.getElementById('auth-tab-login');
+  const authTabRegister = document.getElementById('auth-tab-register');
+  const authModeTabs = document.getElementById('auth-mode-tabs');
   const loginForm = document.getElementById('login-form');
   const registerForm = document.getElementById('register-form');
   const authModalTitle = document.getElementById('auth-modal-title');
@@ -7606,20 +7604,47 @@ function initModals() {
   const tvCodeRefreshBtn = document.getElementById('tv-code-refresh-btn');
   const tvCodeBackBtn = document.getElementById('tv-code-back-btn');
 
+  const setAuthModalMode = (mode = 'login') => {
+    stopTvDeviceCodeSession();
+    if (tvCodeContainer) tvCodeContainer.style.display = 'none';
+    if (authModeTabs) authModeTabs.style.display = mode === 'tv' ? 'none' : 'flex';
+    if (mode === 'register') {
+      if (loginForm) loginForm.style.display = 'none';
+      if (registerForm) registerForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = t('auth_register') || 'Регистрация';
+      if (authTabLogin) authTabLogin.className = 'storm-btn storm-btn-secondary storm-btn-sm';
+      if (authTabRegister) authTabRegister.className = 'storm-btn storm-btn-primary storm-btn-sm';
+      setTimeout(() => document.getElementById('reg-username')?.focus(), 60);
+    } else {
+      if (registerForm) registerForm.style.display = 'none';
+      if (loginForm) loginForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = t('auth_login') || 'Вход в систему';
+      if (authTabLogin) authTabLogin.className = 'storm-btn storm-btn-primary storm-btn-sm';
+      if (authTabRegister) authTabRegister.className = 'storm-btn storm-btn-secondary storm-btn-sm';
+      setTimeout(() => document.getElementById('login-username')?.focus(), 60);
+    }
+  };
+
+  window.openStormAuthModal = (mode = 'login') => {
+    setAuthModalMode(mode);
+    if (authModal) authModal.classList.add('is-open');
+  };
+
+  if (loginModalBtn && authModal) {
+    loginModalBtn.onclick = () => window.openStormAuthModal('login');
+  }
+
+  if (authTabLogin) authTabLogin.onclick = () => setAuthModalMode('login');
+  if (authTabRegister) authTabRegister.onclick = () => setAuthModalMode('register');
+
   if (switchToRegister && switchToLogin) {
-    switchToRegister.onclick = () => {
-      stopTvDeviceCodeSession();
-      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
-      loginForm.style.display = 'none';
-      registerForm.style.display = 'block';
-      authModalTitle.textContent = t('auth_register');
+    switchToRegister.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('register');
     };
-    switchToLogin.onclick = () => {
-      stopTvDeviceCodeSession();
-      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
-      registerForm.style.display = 'none';
-      loginForm.style.display = 'block';
-      authModalTitle.textContent = t('auth_login');
+    switchToLogin.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('login');
     };
   }
 
@@ -7689,14 +7714,27 @@ function initModals() {
   if (registerForm) {
     registerForm.onsubmit = async (e) => {
       e.preventDefault();
-      const userVal = (document.getElementById('reg-username')?.value || '').trim() || 'Пользователь';
+      const userVal = (document.getElementById('reg-username')?.value || '').trim();
       const emailVal = (document.getElementById('reg-email')?.value || '').trim();
       const passVal = (document.getElementById('reg-password')?.value || '').trim();
+      const submitBtn = document.getElementById('register-submit-btn') || registerForm.querySelector('button[type="submit"]');
+      const origText = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Создание аккаунта...';
+      }
       try {
         await register(userVal, emailVal, passVal);
-        authModal.classList.remove('is-open');
+        registerForm.reset();
+        setAuthModalMode('login');
+        if (authModal) authModal.classList.remove('is-open');
       } catch (err) {
         showToast(err.message, 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = origText;
+        }
       }
     };
   }

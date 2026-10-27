@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
-  <script src="/js/error-boundary.js?v=1.2.4"></script>
-  <script src="/js/db-state-engine.js?v=1.2.4"></script>
+  <script src="/js/error-boundary.js?v=1.2.5"></script>
+  <script src="/js/db-state-engine.js?v=1.2.5"></script>
   <script>
     (function() {
       var VER = '1.2.0';
@@ -103,16 +103,16 @@
   <meta name="theme-color" content="#8b5cf6">
 
   <!-- Параллельная предзагрузка критического ядра ES-модулей витрины -->
-  <link rel="modulepreload" href="/js/app.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/theme.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/i18n.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/auth.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/bookmarks.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/status-icons.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/form-factor.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.2.4">
-  <link rel="modulepreload" href="/js/achievements.js?v=1.2.4">
+  <link rel="modulepreload" href="/js/app.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/theme.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/i18n.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/auth.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/bookmarks.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/status-icons.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/form-factor.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.2.5">
+  <link rel="modulepreload" href="/js/achievements.js?v=1.2.5">
 
   <!-- Подключение 10 динамических гарнитур STORM AURORA FLUID (Cyrillic + Latin) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -120,12 +120,12 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.min.css" media="print" onload="this.media='all'">
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.2.4">
-  <link rel="stylesheet" href="/styles/components.css?v=1.2.4">
-  <link rel="stylesheet" href="/styles/main.css?v=1.2.4">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.2.4" id="storm-tv-mode-css" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.2.5">
+  <link rel="stylesheet" href="/styles/components.css?v=1.2.5">
+  <link rel="stylesheet" href="/styles/main.css?v=1.2.5">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.2.5" id="storm-tv-mode-css" media="print" onload="this.media='all'">
   <script>try{if(localStorage.getItem('storm_tv_mode')==='true')document.getElementById('storm-tv-mode-css').media='all';}catch(_){}</script>
-  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.2.4"></noscript>
+  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.2.5"></noscript>
 </head>
 <body data-active-tab="home">
 
@@ -759,6 +759,12 @@
         <button type="button" class="storm-modal-close">✕</button>
       </div>
       <div class="storm-modal-body">
+        <!-- Переключатель режима Вход / Регистрация -->
+        <div id="auth-mode-tabs" style="display: flex; gap: 6px; background: var(--bg-tertiary, rgba(15, 23, 42, 0.7)); padding: 4px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));">
+          <button type="button" id="auth-tab-login" class="storm-btn storm-btn-primary storm-btn-sm" style="flex: 1; border-radius: 9px; font-weight: 700;" data-i18n="auth_login">Вход в аккаунт</button>
+          <button type="button" id="auth-tab-register" class="storm-btn storm-btn-secondary storm-btn-sm" style="flex: 1; border-radius: 9px; font-weight: 700;" data-i18n="auth_register">Регистрация</button>
+        </div>
+
         <!-- Форма входа -->
         <form id="login-form" novalidate>
           <div class="filter-group" style="margin-bottom: 14px;">
@@ -767,7 +773,7 @@
           </div>
           <div class="filter-group" style="margin-bottom: 18px;">
             <label data-i18n="auth_password">Пароль</label>
-            <input type="password" class="storm-input" id="login-password" placeholder="Введите пароль (необязательно для быстрого входа)" autocomplete="current-password">
+            <input type="password" class="storm-input" id="login-password" placeholder="Введите пароль" autocomplete="current-password">
           </div>
           <button type="submit" class="storm-btn storm-btn-primary" id="login-submit-btn" style="width: 100%; margin-bottom: 10px;" data-i18n="auth_login_submit">Войти в аккаунт</button>
           <button type="button" class="storm-btn storm-btn-secondary" id="open-tv-code-btn" style="width: 100%; margin-bottom: 10px;">📺 Войти по коду с ТВ</button>
@@ -1450,8 +1456,9 @@
           </div>
         </div>
 
-        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
-          <button class="storm-btn storm-btn-danger" style="width: 100%;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; flex-wrap: wrap;">
+          <button type="button" class="storm-btn storm-btn-secondary" style="flex: 1 1 220px;" id="profile-register-switch-btn">✨ Новый аккаунт / Сменить профиль</button>
+          <button type="button" class="storm-btn storm-btn-danger" style="flex: 1 1 220px;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
         </div>
       </div>
     </div>
@@ -1955,7 +1962,7 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.2.4"></script>
+  <script type="module" src="/js/app.js?v=1.2.5"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): резервное восстановление при обрыве мобильной сети -->
   <script>
@@ -1988,7 +1995,7 @@
           } else {
             var s = document.createElement('script');
             s.type = 'module';
-            s.src = '/js/app.js?v=1.2.4&retry=' + Date.now();
+            s.src = '/js/app.js?v=1.2.5&retry=' + Date.now();
             document.body.appendChild(s);
           }
         }

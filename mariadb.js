@@ -188,6 +188,10 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
 
   try {
     try { sqliteDb.pragma('foreign_keys = OFF'); } catch (_) {}
+    try {
+      await (pool || activePool).query("DELETE FROM users WHERE username = 'storm_reg_test_999'");
+      sqliteDb.prepare("DELETE FROM users WHERE username = 'storm_reg_test_999'").run();
+    } catch (_) {}
     // 1. Синхронизация пользователей (с сохранением локальных ключей kv_store / dismissed_continue / toasted_achievements)
     const [mUsers] = await (pool || activePool).query('SELECT * FROM users');
     const validUserIds = new Set((mUsers || []).map(u => Number(u.id)));

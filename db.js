@@ -513,29 +513,57 @@ try {
 
 // Управление пользователями
 export function registerUser(username, email, password, avatar = null, meta = {}) {
-  const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
-  if (existingUser) {
-    throw new Error('Пользователь с таким именем или email уже существует');
+  const cleanUsername = String(username || '').trim();
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanPassword = String(password || '').trim();
+
+  if (cleanUsername.length < 3) {
+    throw new Error('Имя пользователя должно содержать не менее 3 символов');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Укажите корректный адрес электронной почты (email)');
+  }
+  if (cleanPassword.length < 6) {
+    throw new Error('Пароль должен содержать не менее 6 символов');
   }
 
-  const passwordHash = hashPassword(password);
+  const existingByName = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(cleanUsername);
+  if (existingByName) {
+    throw new Error('Пользователь с таким именем уже существует');
+  }
+  const existingByEmail = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(cleanEmail);
+  if (existingByEmail) {
+    throw new Error('Этот адрес электронной почты уже зарегистрирован');
+  }
+
+  const passwordHash = hashPassword(cleanPassword);
   const now = Date.now();
-  const defaultAvatar = avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
+  const defaultAvatar = avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanUsername)}`;
 
   const insert = db.prepare(`
     INSERT INTO users (username, email, password_hash, avatar, created_at, settings_json)
     VALUES (?, ?, ?, ?, ?, '{}')
   `);
-  const result = insert.run(username, email, passwordHash, defaultAvatar, now);
+  const result = insert.run(cleanUsername, cleanEmail, passwordHash, defaultAvatar, now);
   const userId = Number(result.lastInsertRowid);
 
-  // Создание дефолтных коллекций
+  // Создание дефолтных коллекций и синхронизация с MariaDB
   const createList = db.prepare(`
     INSERT INTO custom_lists (user_id, title, description, color, created_at)
     VALUES (?, ?, ?, ?, ?)
   `);
-  createList.run(userId, 'Избранные шедевры', 'Коллекция лучших фильмов и сериалов', '#00d2ff', now);
-  createList.run(userId, 'Аниме марафон', 'Список аниме для просмотра на выходных', '#ff007f', now);
+  const list1 = createList.run(userId, 'Избранные шедевры', 'Коллекция лучших фильмов и сериалов', '#00d2ff', now);
+  const list2 = createList.run(userId, 'Аниме марафон', 'Список аниме для просмотра на выходных', '#ff007f', now);
+  try {
+    if (list1?.lastInsertRowid) {
+      const row1 = db.prepare('SELECT * FROM custom_lists WHERE id = ?').get(Number(list1.lastInsertRowid));
+      if (row1) mariaSaveCustomList(row1);
+    }
+    if (list2?.lastInsertRowid) {
+      const row2 = db.prepare('SELECT * FROM custom_lists WHERE id = ?').get(Number(list2.lastInsertRowid));
+      if (row2) mariaSaveCustomList(row2);
+    }
+  } catch (_) {}
 
   const newUser = db.prepare('SELECT id, username, email, password_hash, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
   if (newUser) mariaSaveUser(newUser);

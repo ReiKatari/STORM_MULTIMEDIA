@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.2.3';
+import { t, formatDate } from './i18n.js?v=1.2.5';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -23,11 +23,33 @@ let currentToken = localStorage.getItem('storm_token') || null;
 let onAuthChangedCallbacks = [];
 
 export function getToken() {
-  return currentToken;
+  if (currentToken) return currentToken;
+  if (typeof window !== 'undefined' && window.__STORM_CURRENT_TOKEN__) {
+    currentToken = window.__STORM_CURRENT_TOKEN__;
+    return currentToken;
+  }
+  const stored = localStorage.getItem('storm_token');
+  if (stored) {
+    currentToken = stored;
+    return currentToken;
+  }
+  return null;
 }
 
 export function getUser() {
-  return currentUser;
+  if (currentUser) return currentUser;
+  if (typeof window !== 'undefined' && window.__STORM_CURRENT_USER__) {
+    currentUser = window.__STORM_CURRENT_USER__;
+    return currentUser;
+  }
+  try {
+    const raw = localStorage.getItem('storm_user');
+    if (raw) {
+      currentUser = JSON.parse(raw);
+      return currentUser;
+    }
+  } catch (_) {}
+  return null;
 }
 
 export function onAuthChanged(cb) {
@@ -35,6 +57,10 @@ export function onAuthChanged(cb) {
 }
 
 function notifyAuthChanged() {
+  if (typeof window !== 'undefined') {
+    window.__STORM_CURRENT_USER__ = currentUser || null;
+    window.__STORM_CURRENT_TOKEN__ = currentToken || null;
+  }
   if (currentUser && typeof window !== 'undefined' && typeof window.hydrateStateFromDatabase === 'function') {
     window.hydrateStateFromDatabase().catch(() => {});
   }
@@ -70,6 +96,14 @@ export function showToast(message, type = 'info') {
 }
 
 export function clearUserSessionLocalCache() {
+  if (typeof window !== 'undefined') {
+    window.__STORM_SUPPRESS_DB_SYNC__ = true;
+    window.__STORM_CURRENT_USER__ = null;
+    window.__STORM_CURRENT_TOKEN__ = null;
+    if (typeof window.resetStormDirtySettingsQueue === 'function') {
+      window.resetStormDirtySettingsQueue();
+    }
+  }
   try {
     localStorage.removeItem('storm_token');
     localStorage.removeItem('storm_user');
@@ -101,7 +135,12 @@ export function clearUserSessionLocalCache() {
       window.dispatchEvent(new CustomEvent('storm:continue-watching-updated', { detail: { cleared: true } }));
       window.dispatchEvent(new CustomEvent('storm:bookmarks-updated', { detail: { cleared: true } }));
     }
-  } catch (_) {}
+  } catch (_) {
+  } finally {
+    if (typeof window !== 'undefined') {
+      window.__STORM_SUPPRESS_DB_SYNC__ = false;
+    }
+  }
 }
 
 export async function checkAuth() {
@@ -167,20 +206,30 @@ export async function checkAuth() {
 
 export async function register(username, email, password) {
   const uStr = String(username || '').trim();
-  const eStr = String(email || '').trim();
+  const eStr = String(email || '').trim().toLowerCase();
   const pStr = String(password || '').trim();
 
   if (!uStr || !eStr || !pStr) {
     throw new Error('Заполните имя пользователя, email и пароль');
+  }
+  if (uStr.length < 3) {
+    throw new Error('Имя пользователя должно содержать не менее 3 символов');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eStr)) {
+    throw new Error('Укажите корректный адрес электронной почты (email)');
+  }
+  if (pStr.length < 6) {
+    throw new Error('Пароль должен содержать не менее 6 символов');
   }
 
   let res;
   try {
     res = await fetch('/api/auth/register', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: uStr, email: eStr, password: pStr }),
-      signal: AbortSignal.timeout(4000)
+      signal: AbortSignal.timeout(10000)
     });
     if (typeof window !== 'undefined') window.__STORM_BACKEND_ONLINE__ = true;
   } catch (netErr) {
@@ -196,13 +245,17 @@ export async function register(username, email, password) {
   clearUserSessionLocalCache();
   currentToken = data.token;
   currentUser = data.user;
+  if (typeof window !== 'undefined') {
+    window.__STORM_CURRENT_USER__ = currentUser;
+    window.__STORM_CURRENT_TOKEN__ = currentToken;
+  }
   localStorage.setItem('storm_active_user_id', String(data.user.id));
   localStorage.setItem('storm_token', currentToken);
   localStorage.setItem('storm_user', JSON.stringify(currentUser));
 
   updateAuthUI();
   notifyAuthChanged();
-  showToast(t('msg_login_success'), 'success');
+  showToast(`✅ Аккаунт «${currentUser.username}» успешно создан!`, 'success');
   return currentUser;
 }
 
@@ -304,15 +357,17 @@ export function loginAsGuest() {
 }
 
 export async function logout() {
-  if (currentToken) {
-    try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${currentToken}` }
-      });
-    } catch (e) {
-      // Игнорируем сетевые ошибки при выходе
-    }
+  const tokenToRevoke = currentToken || localStorage.getItem('storm_token') || null;
+  try {
+    const headers = {};
+    if (tokenToRevoke) headers['Authorization'] = `Bearer ${tokenToRevoke}`;
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers
+    });
+  } catch (e) {
+    // Игнорируем сетевые ошибки при выходе
   }
 
   currentToken = null;
@@ -749,18 +804,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.2.3').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.2.5').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.2.3').then(achMod => {
+  import('./achievements.js?v=1.2.5').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.2.3').then(themeMod => {
+  import('./theme.js?v=1.2.5').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -824,7 +879,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.2.3').then(m => {
+      import('./player.js?v=1.2.5').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -838,10 +893,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.2.3').then(m => {
+      import('./player.js?v=1.2.5').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.2.3').then(m => {
+      import('./ad-shield.js?v=1.2.5').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -865,7 +920,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.2.3').then(m => {
+      import('./ad-shield.js?v=1.2.5').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -878,7 +933,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.2.3').then(m => {
+      import('./smart-skip.js?v=1.2.5').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -891,7 +946,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.2.3').then(m => {
+      import('./player.js?v=1.2.5').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -909,11 +964,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.2.3').then(m => {
+      import('./player.js?v=1.2.5').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.2.3').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.2.5').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -963,14 +1018,28 @@ export function openProfileModal() {
   // Рендерим пресеты аватарок
   renderAvatarPresets(currentUser?.avatar || '');
 
-  // Кнопка выхода / входа внизу модалки
+  // Кнопка выхода / входа и быстрой регистрации внизу модалки
   const logoutBtn = document.getElementById('profile-logout-btn');
+  const regSwitchBtn = document.getElementById('profile-register-switch-btn');
+  if (regSwitchBtn) {
+    regSwitchBtn.textContent = currentUser ? '✨ Новый аккаунт / Сменить профиль' : '✨ Создать аккаунт (Регистрация)';
+    regSwitchBtn.onclick = () => {
+      modal.classList.remove('is-open');
+      if (typeof window.openStormAuthModal === 'function') {
+        window.openStormAuthModal('register');
+      } else {
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.classList.add('is-open');
+        document.getElementById('switch-to-register')?.click();
+      }
+    };
+  }
   if (logoutBtn) {
     if (currentUser) {
       logoutBtn.textContent = t('auth_logout') || 'Выйти из аккаунта';
       logoutBtn.className = 'storm-btn storm-btn-danger';
-      logoutBtn.onclick = () => {
-        logout();
+      logoutBtn.onclick = async () => {
+        await logout();
         modal.classList.remove('is-open');
       };
     } else {
@@ -978,8 +1047,12 @@ export function openProfileModal() {
       logoutBtn.className = 'storm-btn storm-btn-primary';
       logoutBtn.onclick = () => {
         modal.classList.remove('is-open');
-        const authModal = document.getElementById('auth-modal');
-        if (authModal) authModal.classList.add('is-open');
+        if (typeof window.openStormAuthModal === 'function') {
+          window.openStormAuthModal('login');
+        } else {
+          const authModal = document.getElementById('auth-modal');
+          if (authModal) authModal.classList.add('is-open');
+        }
       };
     }
   }
@@ -1032,7 +1105,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.2.3').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.2.5').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1117,7 +1190,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.2.3').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.2.5').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');

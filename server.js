@@ -1063,19 +1063,26 @@ const deviceCodeRateLimiter = createRateLimiter({
 
 app.post('/api/auth/register', loginRateLimiter, (req, res) => {
   try {
-    const { username, email, password, avatar } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Заполните все обязательные поля' });
+    const cleanUsername = String(req.body?.username || '').trim();
+    const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
+    const cleanPassword = String(req.body?.password || '').trim();
+    const avatar = req.body?.avatar || null;
+
+    if (!cleanUsername || !cleanEmail || !cleanPassword) {
+      return res.status(400).json({ error: 'Заполните имя пользователя, email и пароль' });
     }
-    if (username.length < 3) {
+    if (cleanUsername.length < 3) {
       return res.status(400).json({ error: 'Имя пользователя должно содержать не менее 3 символов' });
     }
-    if (password.length < 6) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Укажите корректный адрес электронной почты (email)' });
+    }
+    if (cleanPassword.length < 6) {
       return res.status(400).json({ error: 'Пароль должен содержать не менее 6 символов' });
     }
 
     const ua = String(req.headers['user-agent'] || '');
-    const session = registerUser(username, email, password, avatar, {
+    const session = registerUser(cleanUsername, cleanEmail, cleanPassword, avatar, {
       ipAddress: req.ip || '',
       userAgent: ua,
       deviceName: parseDeviceNameFromUserAgent(ua)
@@ -1305,7 +1312,7 @@ app.post('/api/auth/logout', (req, res) => {
   if (req.token) {
     logoutUser(req.token);
   }
-  res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+  clearSecureSessionCookie(res);
   res.json({ success: true });
 });
 
@@ -1313,7 +1320,7 @@ app.post('/api/auth/logout-all', requireAuth, (req, res) => {
   const keepCurrent = Boolean(req.body?.keepCurrent);
   logoutAllUserSessions(req.user.id, keepCurrent ? req.token : null);
   if (!keepCurrent) {
-    res.setHeader('Set-Cookie', 'storm_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+    clearSecureSessionCookie(res);
   }
   res.json({ success: true });
 });
