@@ -2435,6 +2435,85 @@ if (typeof window !== 'undefined') {
   }, { passive: true });
 }
 
+// ============================================================================
+// ОПТИМИЗАЦИЯ 2: HOVER INTENT PREFETCHING (220 ms) & INSTANT PLAYER OPEN
+// ============================================================================
+export const prefetchedItemDetailsCache = new Map();
+export const inFlightItemDetailsPromises = new Map();
+let liftPreconnectInjected = false;
+
+export function ensureLiftPreconnect() {
+  if (liftPreconnectInjected || typeof document === 'undefined') return;
+  liftPreconnectInjected = true;
+  try {
+    if (!document.querySelector('link[rel="preconnect"][href*="embed.liftw.ws"]')) {
+      const link = document.createElement('link');
+      link.rel = 'preconnect';
+      link.href = 'https://embed.liftw.ws';
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+    }
+  } catch (_) {}
+}
+
+export function buildMediaItemUrl(mediaItem) {
+  if (!mediaItem) return '';
+  const cleanTitle = cleanVideoTitle(mediaItem.title || '');
+  const mediaType = detectClientMediaType(mediaItem) || mediaItem.media_type || mediaItem.type || '';
+  const fanfilmUrl = mediaItem.fanfilm_4k_url || (mediaItem.source === 'fanfilm4k' ? (mediaItem.link || mediaItem.url || '') : '');
+  const yr = detectClientYear(mediaItem) || mediaItem.year || '';
+  return `/api/media/item?id=${encodeURIComponent(mediaItem.id || '')}&source=${encodeURIComponent(mediaItem.source || '')}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(yr)}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}&rutube_id=${encodeURIComponent(mediaItem.rutube_id || '')}&embed_url=${encodeURIComponent(mediaItem.embed_url || '')}`;
+}
+
+export async function prefetchMediaItemDetails(mediaItem) {
+  if (!mediaItem || !mediaItem.id) return null;
+  ensureLiftPreconnect();
+  const itemUrl = buildMediaItemUrl(mediaItem);
+  if (!itemUrl) return null;
+
+  const cached = prefetchedItemDetailsCache.get(itemUrl);
+  if (cached && (Date.now() - cached.time < 10 * 60 * 1000)) {
+    return cached.data;
+  }
+  if (inFlightItemDetailsPromises.has(itemUrl)) {
+    return inFlightItemDetailsPromises.get(itemUrl);
+  }
+
+  const p = (async () => {
+    try {
+      const headers = {};
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('storm_token') : null;
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(itemUrl, {
+        headers,
+        priority: 'low'
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data) {
+        if (prefetchedItemDetailsCache.size >= 60) {
+          const oldestKey = prefetchedItemDetailsCache.keys().next().value;
+          if (oldestKey) prefetchedItemDetailsCache.delete(oldestKey);
+        }
+        prefetchedItemDetailsCache.set(itemUrl, { time: Date.now(), data });
+      }
+      return data;
+    } catch (_) {
+      return null;
+    } finally {
+      inFlightItemDetailsPromises.delete(itemUrl);
+    }
+  })();
+
+  inFlightItemDetailsPromises.set(itemUrl, p);
+  return p;
+}
+
+if (typeof window !== 'undefined') {
+  window.prefetchStormMediaItem = prefetchMediaItemDetails;
+}
+
 export async function openPlayerModal(mediaItem, options = {}) {
   const cleanTitle = cleanVideoTitle(mediaItem?.title || '');
   const detectedType = detectClientMediaType(mediaItem);
@@ -2664,17 +2743,40 @@ export async function openPlayerModal(mediaItem, options = {}) {
     const itemUrl = `/api/media/item?id=${encodeURIComponent(mediaItem.id)}&source=${mediaItem.source}&url=${encodeURIComponent(mediaItem.link || '')}&title=${encodeURIComponent(cleanTitle)}&year=${encodeURIComponent(currentMedia?.year || detectClientYear(mediaItem) || mediaItem.year || '')}&poster=${encodeURIComponent(mediaItem.poster || '')}&media_type=${encodeURIComponent(mediaType)}&fanfilm_4k_url=${encodeURIComponent(fanfilmUrl)}&rutube_id=${encodeURIComponent(mediaItem.rutube_id || '')}&embed_url=${encodeURIComponent(mediaItem.embed_url || '')}`;
     
     let details = null;
-    try {
-      const headers = {};
-      const token = localStorage.getItem('storm_token');
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+    const prefetched = prefetchedItemDetailsCache.get(itemUrl);
+    if (prefetched && (Date.now() - prefetched.time < 10 * 60 * 1000) && prefetched.data) {
+      details = typeof structuredClone === 'function' ? structuredClone(prefetched.data) : JSON.parse(JSON.stringify(prefetched.data));
+    } else if (inFlightItemDetailsPromises.has(itemUrl)) {
+      try {
+        const inFlightData = await inFlightItemDetailsPromises.get(itemUrl);
+        if (inFlightData) {
+          details = typeof structuredClone === 'function' ? structuredClone(inFlightData) : JSON.parse(JSON.stringify(inFlightData));
+        }
+      } catch (_) {}
+    }
 
-      const res = await fetch(itemUrl, { headers, signal: controller.signal });
-      clearTimeout(fetchTimeout);
-      if (res.ok) {
-        details = await res.json();
+    if (!details) {
+      try {
+        const headers = {};
+        const token = localStorage.getItem('storm_token');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(itemUrl, { headers, signal: controller.signal });
+        clearTimeout(fetchTimeout);
+        if (res.ok) {
+          details = await res.json();
+          if (details) {
+            if (prefetchedItemDetailsCache.size >= 60) {
+              const oldestKey = prefetchedItemDetailsCache.keys().next().value;
+              if (oldestKey) prefetchedItemDetailsCache.delete(oldestKey);
+            }
+            prefetchedItemDetailsCache.set(itemUrl, { time: Date.now(), data: details });
+          }
+        }
+      } catch {
+        clearTimeout(fetchTimeout);
       }
-    } catch {
+    } else {
       clearTimeout(fetchTimeout);
     }
 

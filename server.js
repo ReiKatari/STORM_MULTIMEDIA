@@ -211,7 +211,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('etag', 'weak');
 const server = http.createServer(app);
+
+// Директория постоянного дискового кэша оптимизированных изображений WebP
+const IMAGE_CACHE_DIR = path.join(__dirname, 'data', 'image-cache');
+try {
+  fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
+} catch (_) {}
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3900;
 
@@ -710,7 +717,6 @@ app.use((req, res, next) => {
     p.startsWith('/api/bookmarks') ||
     p.startsWith('/api/media/continue-watching') ||
     p.startsWith('/api/media/progress') ||
-    p.startsWith('/api/media/item') ||
     p.startsWith('/api/custom-lists') ||
     p.startsWith('/api/profiles') ||
     p.startsWith('/api/admin') ||
@@ -856,13 +862,7 @@ app.use((req, res, next) => {
 
 app.use(compression({
   level: 6,
-  threshold: 1024,
-  brotli: {
-    enabled: true,
-    params: {
-      [nodeZlib.constants.BROTLI_PARAM_QUALITY]: 4
-    }
-  }
+  threshold: 512
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -2405,6 +2405,52 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
     const orig = req.query.orig || '';
 
     const normalizedUrl = normalizeImageUrl(rawUrl);
+    const targetUrl = normalizedUrl || (title ? `title:${title}:${orig}` : '');
+    let diskCacheFilePath = null;
+    let diskHash = '';
+    const extMimeMap = {
+      webp: 'image/webp',
+      avif: 'image/avif',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg'
+    };
+
+    if (targetUrl) {
+      const accept = String(req.headers['accept'] || '');
+      let outputFormat = 'webp';
+      if (accept.includes('image/avif') && req.query.fmt === 'avif') {
+        outputFormat = 'avif';
+      } else if (req.query.fmt === 'png') {
+        outputFormat = 'png';
+      } else if (req.query.fmt === 'jpg' || req.query.fmt === 'jpeg') {
+        outputFormat = 'jpeg';
+      } else if (accept.includes('image/webp') || req.query.fmt === 'webp' || sharp) {
+        outputFormat = 'webp';
+      }
+      const diskKey = `${targetUrl}|${req.query.w || ''}|${outputFormat}`;
+      diskHash = nodeCrypto.createHash('sha1').update(diskKey).digest('hex');
+      const ext = outputFormat === 'jpeg' ? 'jpg' : outputFormat;
+      diskCacheFilePath = path.join(IMAGE_CACHE_DIR, `${diskHash}.${ext}`);
+
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (ifNoneMatch && (ifNoneMatch === `"${diskHash}"` || ifNoneMatch === diskHash)) {
+        if (fs.existsSync(diskCacheFilePath)) {
+          return res.status(304).end();
+        }
+      }
+
+      if (fs.existsSync(diskCacheFilePath)) {
+        try {
+          const fileBuf = await fs.promises.readFile(diskCacheFilePath);
+          res.setHeader('Content-Type', extMimeMap[ext] || `image/${ext}`);
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          res.setHeader('ETag', `"${diskHash}"`);
+          res.setHeader('X-Storm-Image-Cache', 'HIT-DISK');
+          return res.send(fileBuf);
+        } catch (_) {}
+      }
+    }
 
     // 1. Если передана прямая ссылка (включая static.anixart.tv / tmdb / kinopoisk / shikimori):
     // Сервер загружает бинарный буфер, оптимизирует через Sharp (WebP/AVIF) и отдаёт браузеру напрямую
@@ -2414,6 +2460,11 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
         const optimized = await transformImageWithSharp(img, req);
         res.set('Content-Type', optimized.contentType);
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        if (diskHash) res.set('ETag', `"${diskHash}"`);
+        res.set('X-Storm-Image-Cache', 'MISS');
+        if (optimized.buffer && diskCacheFilePath) {
+          fs.promises.writeFile(diskCacheFilePath, optimized.buffer).catch(() => {});
+        }
         return res.send(optimized.buffer);
       }
     }
@@ -2425,6 +2476,11 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
         const optimized = await transformImageWithSharp(resolvedImg, req);
         res.set('Content-Type', optimized.contentType);
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        if (diskHash) res.set('ETag', `"${diskHash}"`);
+        res.set('X-Storm-Image-Cache', 'MISS');
+        if (optimized.buffer && diskCacheFilePath) {
+          fs.promises.writeFile(diskCacheFilePath, optimized.buffer).catch(() => {});
+        }
         return res.send(optimized.buffer);
       }
     }
@@ -2804,6 +2860,38 @@ async function verifyItemsDigitalStreamAvailability(items, { concurrency = 6 } =
   await Promise.all(workers);
   return items;
 }
+
+app.post('/api/media/batch-probe', async (req, res) => {
+  try {
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const items = rawItems.slice(0, 30);
+    const results = {};
+    const concurrency = 6;
+    let cursor = 0;
+
+    const workers = Array.from({ length: Math.min(concurrency, items.length || 1) }, async () => {
+      while (cursor < items.length) {
+        const idx = cursor++;
+        const it = items[idx];
+        if (!it || typeof it !== 'object') continue;
+        const itemId = String(it.id || it.title || idx);
+        try {
+          const probe = await probeSingleItemDigitalStream(it);
+          results[itemId] = probe;
+        } catch (err) {
+          results[itemId] = { hasStream: false, error: err.message };
+        }
+      }
+    });
+
+    if (items.length > 0) {
+      await Promise.all(workers);
+    }
+    return res.json({ success: true, results });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 async function executeCatalogFetch(category, page = 1, source = 'all', extraFilters = {}) {
   const normCategory = category === 'home' ? 'popular' : category;
@@ -4583,8 +4671,21 @@ app.get('/api/media/item', async (req, res) => {
   try {
     const { id, source, url } = req.query;
     const cacheKey = `v7_${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}_${req.query.media_type || ''}`;
-    const cached = itemDetailsCache.get(cacheKey);
+    let cached = itemDetailsCache.get(cacheKey);
+    let l2Cached = null;
+    if (!cached || (Date.now() - cached.time >= 30 * 60 * 1000)) {
+      try {
+        l2Cached = getCache('item_details_l2', cacheKey);
+        if (l2Cached) {
+          cached = { time: Date.now(), data: l2Cached };
+          itemDetailsCache.set(cacheKey, cached);
+        }
+      } catch (_) {}
+    }
+
     if (cached && (Date.now() - cached.time < 30 * 60 * 1000)) {
+      res.setHeader('X-Storm-Cache', l2Cached ? 'HIT-L2' : 'HIT-L1');
+      res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
       let userBookmark = null;
       let userWatchProgress = null;
       let userWatchedHistory = [];
@@ -5731,13 +5832,21 @@ app.get('/api/media/item', async (req, res) => {
       userWatchedHistory = getWatchedHistoryEpisodesForMedia(req.user.id, String(id || mediaDetails.id), source || 'fanfilm4k', mediaDetails.title);
     }
 
+    const fullMediaData = {
+      ...mediaDetails,
+      players: allPlayers
+    };
+
     itemDetailsCache.set(cacheKey, {
-      data: {
-        ...mediaDetails,
-        players: allPlayers
-      },
+      data: fullMediaData,
       time: Date.now()
     });
+    try {
+      setCache('item_details_l2', cacheKey, fullMediaData, 7200);
+    } catch (_) {}
+
+    res.setHeader('X-Storm-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
 
     res.json({
       ...mediaDetails,

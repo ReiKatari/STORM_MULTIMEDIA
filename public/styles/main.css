@@ -681,6 +681,16 @@ body {
   }
 }
 
+.media-grid .media-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 220px 360px;
+}
+
+.media-grid .media-card:hover,
+.media-grid .media-card:focus-within {
+  content-visibility: visible;
+}
+
 .media-card {
   display: flex;
   flex-direction: column;

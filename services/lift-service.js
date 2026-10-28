@@ -1,5 +1,6 @@
 import https from 'node:https';
 import http from 'node:http';
+import { getCache, setCache } from '../db.js';
 
 /**
  * Сервис прямой интеграции с базой и мультитрековым Ad-Free балансером Lift (liftw.ws / liftapp.ink)
@@ -194,16 +195,25 @@ export async function liftFetchJson(urlStr, timeoutMs = 8000, options = {}) {
   return res.json();
 }
 
-// Простой in-memory кэш с TTL
+// Простой in-memory кэш с TTL и двухуровневой L2 базой (SQLite / MariaDB)
 const liftCache = new Map();
 function getCached(key) {
   const entry = liftCache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    liftCache.delete(key);
-    return null;
+  if (entry) {
+    if (Date.now() > entry.expiresAt) {
+      liftCache.delete(key);
+    } else {
+      return entry.value;
+    }
   }
-  return entry.value;
+  try {
+    const l2Val = getCache('lift_l2', key);
+    if (l2Val !== null && l2Val !== undefined) {
+      liftCache.set(key, { value: l2Val, expiresAt: Date.now() + 30 * 60 * 1000 });
+      return l2Val;
+    }
+  } catch (_) {}
+  return null;
 }
 function setCached(key, value, ttlMs = 10 * 60 * 1000) {
   if (liftCache.size > 1500) {
@@ -211,6 +221,11 @@ function setCached(key, value, ttlMs = 10 * 60 * 1000) {
     if (firstKey) liftCache.delete(firstKey);
   }
   liftCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  if (value) {
+    try {
+      setCache('lift_l2', key, value, Math.max(600, Math.round((ttlMs || 1800000) / 1000)));
+    } catch (_) {}
+  }
   return value;
 }
 

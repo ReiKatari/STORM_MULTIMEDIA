@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.3.4';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.4';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.4';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.4';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.4';
-import { getStatusIconSvg } from './status-icons.js?v=1.3.4';
-import { initFormFactorEngine } from './form-factor.js?v=1.3.4';
+import { initTheme, setTheme } from './theme.js?v=1.3.5';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.5';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.5';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.5';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.5';
+import { getStatusIconSvg } from './status-icons.js?v=1.3.5';
+import { initFormFactorEngine } from './form-factor.js?v=1.3.5';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.3.3';
+const STORM_ASSET_VER = '1.3.5';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -5170,6 +5170,7 @@ function renderHomeView(items) {
     railEl.querySelectorAll('.media-card').forEach((card, cIdx) => {
       const item = railData.items[cIdx];
       if (!item) return;
+      card._mediaItem = item;
 
       card.onclick = () => {
         if (carousel && carousel.dataset.isDragging === 'true') return;
@@ -5395,6 +5396,7 @@ function renderMediaItems(items) {
     }
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
+      card._mediaItem = items[idx];
       card.onclick = () => openPlayerModal(items[idx]);
 
       const bmBtn = card.querySelector('.media-card-bookmark-btn');
@@ -5517,6 +5519,7 @@ function renderMediaItems(items) {
     }).join('');
 
     container.querySelectorAll('.media-detailed-card').forEach((card, idx) => {
+      card._mediaItem = items[idx];
       card.onclick = () => openPlayerModal(items[idx]);
 
       const playBtn = card.querySelector('.play-btn');
@@ -5609,6 +5612,7 @@ function renderMediaItems(items) {
     `;
 
     container.querySelectorAll('tbody tr').forEach((row, idx) => {
+      row._mediaItem = items[idx];
       row.onclick = () => openPlayerModal(items[idx]);
 
       const playBtn = row.querySelector('.table-play-btn');
@@ -8464,6 +8468,63 @@ function hideCardHoverPreview() {
 }
 
 window.addEventListener('touchstart', hideCardHoverPreview, { passive: true });
+
+// Hover Intent Prefetching (220 ms) & Instant Player Open
+let hoverPrefetchTimer = null;
+let currentPrefetchedCard = null;
+
+function triggerCardHoverPrefetch(card) {
+  if (!card || !card.isConnected) return;
+  const item = card._mediaItem || {
+    id: card.dataset.id,
+    source: card.dataset.source,
+    title: card.dataset.title,
+    year: card.dataset.year,
+    link: card.dataset.link || card.dataset.url,
+    poster: card.dataset.poster,
+    media_type: card.dataset.mediaType || card.dataset.type,
+    fanfilm_4k_url: card.dataset.fanfilm4kUrl
+  };
+  if (item && (item.id || item.title)) {
+    if (typeof window.prefetchStormMediaItem === 'function') {
+      window.prefetchStormMediaItem(item);
+    } else if (typeof loadPlayerModule === 'function') {
+      loadPlayerModule().then(m => {
+        if (m && typeof m.prefetchMediaItemDetails === 'function') {
+          m.prefetchMediaItemDetails(item);
+        }
+      }).catch(() => {});
+    }
+  }
+}
+
+document.addEventListener('pointerover', (e) => {
+  const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
+  if (!card || card === currentPrefetchedCard) return;
+  clearTimeout(hoverPrefetchTimer);
+  currentPrefetchedCard = card;
+  hoverPrefetchTimer = setTimeout(() => {
+    triggerCardHoverPrefetch(card);
+  }, 220);
+}, { passive: true });
+
+document.addEventListener('pointerout', (e) => {
+  const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
+  if (card && card === currentPrefetchedCard) {
+    clearTimeout(hoverPrefetchTimer);
+    currentPrefetchedCard = null;
+  }
+}, { passive: true });
+
+document.addEventListener('focusin', (e) => {
+  const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
+  if (!card) return;
+  clearTimeout(hoverPrefetchTimer);
+  currentPrefetchedCard = card;
+  hoverPrefetchTimer = setTimeout(() => {
+    triggerCardHoverPrefetch(card);
+  }, 220);
+}, { passive: true });
 
 // -------------------------------------------------------------
 // PWA И SERVICE WORKER
