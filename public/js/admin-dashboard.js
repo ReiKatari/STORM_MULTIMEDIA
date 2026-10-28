@@ -198,21 +198,21 @@ export async function openAdminDashboardModal() {
 
           <!-- Вкладка 1: Пользователи и активность -->
           <div id="admin-users-view" class="admin-tab-pane is-active">
-            <div class="admin-search-toolbar">
+            <div class="admin-search-toolbar" style="margin-bottom: 22px; gap: 18px;">
               <div class="storm-search-box" style="flex: 1; max-width: 440px;">
                 <span class="storm-search-icon" style="display:inline-flex;align-items:center;">${SVG.search}</span>
                 <input type="text" id="admin-user-search-input" class="storm-search-input" placeholder="Поиск по имени пользователя или e-mail...">
               </div>
-              <div class="admin-filter-pills" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <div class="admin-filter-pills" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button type="button" class="storm-btn storm-btn-xs storm-btn-primary admin-role-filter-btn" data-role="all">Все аккаунты</button>
                 <button type="button" class="storm-btn storm-btn-xs storm-btn-secondary admin-role-filter-btn" data-role="admin">Администраторы</button>
                 <button type="button" class="storm-btn storm-btn-xs storm-btn-secondary admin-role-filter-btn" data-role="with_bookmarks">С закладками</button>
-                <select id="admin-user-sort-select" class="admin-sort-select" title="Сортировка списка пользователей">
+                <select id="admin-user-sort-select" class="admin-sort-select" title="Сортировка списка пользователей" style="margin-left: 6px;">
                   <option value="id_asc">Сначала ранние</option>
                   <option value="bookmarks_desc">По числу закладок</option>
                   <option value="recent_desc">По дате активности</option>
                 </select>
-                <div class="admin-user-count-badge" id="admin-user-count-badge">Показано: 0 из 0</div>
+                <div class="admin-user-count-badge" id="admin-user-count-badge" style="margin-left: 6px;">Показано: 0 из 0</div>
               </div>
             </div>
 
@@ -610,6 +610,25 @@ function filterAndRenderUsers() {
     const avatarSrc = u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(u.username)}`;
     const sessionsCnt = u.active_sessions_count || 0;
 
+    const isLive = Boolean(u.is_live_watching);
+    const isOnline = Boolean(u.is_online);
+    const timeSinceActive = Date.now() - (u.last_active_at || u.created_at);
+    const isRecentlySeen = timeSinceActive < 15 * 60 * 1000;
+
+    let statusDotColor = '#64748b';
+    let statusDotTitle = `Офлайн (был в сети ${lastActDate})`;
+
+    if (isLive) {
+      statusDotColor = '#00f0ff';
+      statusDotTitle = `Смотрит сейчас: ${escapeHtml(u.watching_now?.title || '')}`;
+    } else if (isOnline) {
+      statusDotColor = '#10b981';
+      statusDotTitle = 'В сети (активен сейчас)';
+    } else if (isRecentlySeen) {
+      statusDotColor = '#f59e0b';
+      statusDotTitle = `Был в сети ${Math.round(timeSinceActive / 60000)} мин. назад`;
+    }
+
     let watchingHtml = `
       <div class="admin-idle-pill">
         <span class="admin-idle-dot"></span>
@@ -664,7 +683,7 @@ function filterAndRenderUsers() {
           <div class="admin-user-cell">
             <div style="position:relative;flex-shrink:0;">
               <img src="${avatarSrc}" alt="${escapeHtml(u.username)}" class="admin-user-avatar" onerror="this.src='assets/favicon.svg'">
-              <span title="${sessionsCnt > 0 ? 'Активных устройств: ' + sessionsCnt : 'Офлайн'}" style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;background:${sessionsCnt > 0 ? '#10b981' : '#64748b'};border:2px solid #0f172a;"></span>
+              <span title="${statusDotTitle}" style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;background:${statusDotColor};border:2px solid #0f172a;${isLive ? 'box-shadow: 0 0 8px #00f0ff;' : (isOnline ? 'box-shadow: 0 0 6px #10b981;' : '')}"></span>
             </div>
             <div>
               <div class="admin-user-name">

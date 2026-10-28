@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.4.0';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.4.0';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.4.0';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.4.0';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.4.0';
-import { getStatusIconSvg } from './status-icons.js?v=1.4.0';
-import { initFormFactorEngine } from './form-factor.js?v=1.4.0';
+import { initTheme, setTheme } from './theme.js?v=1.4.1';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.4.1';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.4.1';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.4.1';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.4.1';
+import { getStatusIconSvg } from './status-icons.js?v=1.4.1';
+import { initFormFactorEngine } from './form-factor.js?v=1.4.1';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.3.9';
@@ -398,6 +398,31 @@ async function startStormApp() {
   try { initLanguageSwitcher(); } catch (e) { console.warn('initLanguageSwitcher error:', e); }
   try { initNewCyberFeatures(); } catch (e) { console.warn('initNewCyberFeatures error:', e); }
   try { initAdminDashboard(); } catch (e) { console.warn('initAdminDashboard error:', e); }
+
+// 4. Постоянная телеметрия присутствия (Site-wide Presence Ping)
+function sendUserPresencePing() {
+  try {
+    const token = (typeof getToken === 'function' ? getToken() : null) || localStorage.getItem('storm_token') || sessionStorage.getItem('storm_token');
+    if (!token || token.startsWith('offline_') || token.startsWith('guest_')) return;
+    if (document.hidden) return;
+
+    fetch('/api/auth/me', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      credentials: 'same-origin'
+    }).catch(() => {});
+  } catch (_) {}
+}
+
+sendUserPresencePing();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) sendUserPresencePing();
+}, { passive: true });
+window.addEventListener('focus', () => sendUserPresencePing(), { passive: true });
+setInterval(sendUserPresencePing, 60 * 1000);
+
   try { initDynamicMediaIsland(); } catch (e) { console.warn('initDynamicMediaIsland error:', e); }
   try { updateFamilyProfileHeader(); } catch (e) { console.warn('updateFamilyProfileHeader error:', e); }
 

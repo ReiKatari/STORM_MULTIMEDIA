@@ -2524,6 +2524,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
     const quickBar = document.getElementById('player-series-quick-bar');
     if (quickBar) quickBar.style.display = 'none';
     modal.classList.remove('has-series-bar');
+    // Для фильмов запускаем трекер просмотра сразу (работает для HTML5 Video и Iframe)
+    startInvisibleEpisodeWatchTracker(currentMedia, 1, 1);
   }
 
   // Мгновенный сброс скролла на 0, чтобы плеер открывался на весь экран сверху без необходимости пролистывать

@@ -1510,17 +1510,9 @@ export function logWatchProgress(userId, data) {
   const existingHistory = db.prepare('SELECT * FROM watch_history WHERE user_id = ? AND (media_id = ? OR title = ?)').get(userId, String(media_id), cleanT);
   const cumulativeReal = Math.max(real_watched_seconds, Number(existingHistory?.real_watched_seconds || 0));
 
-  // Проверка минимального порога (10 минут реального просмотра)
-  if (isMovieType) {
-    if (progressPercent < 90.0 && (real_watched_seconds < 600 || time_seconds < 600)) {
-      return { media_id, season: safeSeason, episode: safeEpisode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
-    }
-  } else {
-    // Для сериалов и аниме-сериалов: достаточно 10 минут накопленного времени на всем сериале, либо статуса watching
-    const isSeriesEligible = (cumulativeReal >= 600) || (existingBookmark?.status === 'watching') || (safeSeason > 1 || safeEpisode > 1) || Boolean(existingHistory);
-    if (!isSeriesEligible && time_seconds < 600 && real_watched_seconds < 600) {
-      return { media_id, season: safeSeason, episode: safeEpisode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
-    }
+  // Защита от мусорных заголовков и фиктивных открытий без реального просмотра (< 3 сек)
+  if (time_seconds < 3 && real_watched_seconds < 3 && progressPercent < 1.0) {
+    return { media_id, season: safeSeason, episode: safeEpisode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
   }
 
   // Если пользователь ранее удалил запись из «Продолжить просмотр», снимаем флаг удаления при новом реальном просмотре
@@ -1658,7 +1650,7 @@ export function logWatchProgress(userId, data) {
     targetSeason,
     targetEpisode,
     targetTime,
-    Math.max(600, cumulativeReal),
+    cumulativeReal,
     duration_seconds,
     targetProgress,
     now
@@ -1675,7 +1667,7 @@ export function logWatchProgress(userId, data) {
     season: targetSeason,
     episode: targetEpisode,
     time_seconds: targetTime,
-    real_watched_seconds: Math.max(600, cumulativeReal),
+    real_watched_seconds: cumulativeReal,
     duration_seconds,
     progress_percent: targetProgress,
     updated_at: now
@@ -3069,6 +3061,25 @@ export function recordPlaybackHeartbeat(userId, data = {}) {
   };
 
   livePlaybackTracker.set(Number(userId), entry);
+
+  // Автоматически сохраняем в watch_history при воспроизведении от 5 секунд
+  if (entry.title && (entry.real_watched_seconds >= 5 || entry.time_seconds >= 5)) {
+    try {
+      logWatchProgress(userId, {
+        media_id: entry.media_id,
+        source: entry.source,
+        title: entry.title,
+        poster_url: entry.poster_url,
+        media_type: entry.media_type,
+        season: entry.season || 1,
+        episode: entry.episode || 1,
+        time_seconds: entry.time_seconds,
+        real_watched_seconds: entry.real_watched_seconds,
+        duration_seconds: entry.duration_seconds
+      });
+    } catch (_) {}
+  }
+
   return entry;
 }
 
@@ -3306,6 +3317,10 @@ export function getAdminUsersOverview() {
       Number(settingsObj._updated_at) || 0
     );
 
+    const isLiveWatching = Boolean(watchingNow && watchingNow.is_live);
+    const isRecentlyActive = Boolean(nowMs - lastActiveAt < 3 * 60 * 1000); // 3 мин
+    const isOnline = isLiveWatching || isRecentlyActive;
+
     return {
       id: u.id,
       username: u.username,
@@ -3314,6 +3329,8 @@ export function getAdminUsersOverview() {
       role: u.role || 'user',
       created_at: u.created_at,
       last_active_at: lastActiveAt,
+      is_online: isOnline,
+      is_live_watching: isLiveWatching,
       active_sessions_count: userSessions.length,
       custom_lists_count: customLists.length,
       status_counts: userStatusCounts,
