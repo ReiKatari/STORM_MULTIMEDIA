@@ -2425,6 +2425,28 @@ async function transformImageWithSharp(imgObj, req) {
   }
 }
 
+// Ultra-fast in-memory hot poster cache (< 0.5ms response time, zero disk I/O)
+const hotImageBufferCache = new Map();
+const MAX_HOT_IMAGES = 500;
+
+function getHotImage(key) {
+  if (!hotImageBufferCache.has(key)) return null;
+  const val = hotImageBufferCache.get(key);
+  hotImageBufferCache.delete(key);
+  hotImageBufferCache.set(key, val);
+  return val;
+}
+
+function setHotImage(key, buffer, contentType) {
+  if (!buffer || !key) return;
+  if (hotImageBufferCache.has(key)) hotImageBufferCache.delete(key);
+  hotImageBufferCache.set(key, { buffer, contentType });
+  if (hotImageBufferCache.size > MAX_HOT_IMAGES) {
+    const oldestKey = hotImageBufferCache.keys().next().value;
+    hotImageBufferCache.delete(oldestKey);
+  }
+}
+
 app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
   try {
     const rawUrl = req.query.url || '';
@@ -2462,16 +2484,27 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
 
       const ifNoneMatch = req.headers['if-none-match'];
       if (ifNoneMatch && (ifNoneMatch === `"${diskHash}"` || ifNoneMatch === diskHash)) {
-        if (fs.existsSync(diskCacheFilePath)) {
+        if (hotImageBufferCache.has(diskHash) || (diskCacheFilePath && fs.existsSync(diskCacheFilePath))) {
           return res.status(304).end();
         }
       }
 
-      if (fs.existsSync(diskCacheFilePath)) {
+      const hot = getHotImage(diskHash);
+      if (hot) {
+        res.setHeader('Content-Type', hot.contentType);
+        res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400, immutable');
+        res.setHeader('ETag', `"${diskHash}"`);
+        res.setHeader('X-Storm-Image-Cache', 'HIT-RAM');
+        return res.send(hot.buffer);
+      }
+
+      if (diskCacheFilePath && fs.existsSync(diskCacheFilePath)) {
         try {
           const fileBuf = await fs.promises.readFile(diskCacheFilePath);
-          res.setHeader('Content-Type', extMimeMap[ext] || `image/${ext}`);
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          const cType = extMimeMap[ext] || `image/${ext}`;
+          setHotImage(diskHash, fileBuf, cType);
+          res.setHeader('Content-Type', cType);
+          res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400, immutable');
           res.setHeader('ETag', `"${diskHash}"`);
           res.setHeader('X-Storm-Image-Cache', 'HIT-DISK');
           return res.send(fileBuf);
@@ -2485,8 +2518,9 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
       const img = await fetchImageBuffer(normalizedUrl, 5000);
       if (img) {
         const optimized = await transformImageWithSharp(img, req);
+        setHotImage(diskHash, optimized.buffer, optimized.contentType);
         res.set('Content-Type', optimized.contentType);
-        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        res.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400, immutable');
         if (diskHash) res.set('ETag', `"${diskHash}"`);
         res.set('X-Storm-Image-Cache', 'MISS');
         if (optimized.buffer && diskCacheFilePath) {
@@ -2501,8 +2535,9 @@ app.get(['/api/media/image-proxy', '/api/proxy/image'], async (req, res) => {
       const resolvedImg = await resolveUniversalMediaPosterBuffer(title, orig);
       if (resolvedImg) {
         const optimized = await transformImageWithSharp(resolvedImg, req);
+        setHotImage(diskHash, optimized.buffer, optimized.contentType);
         res.set('Content-Type', optimized.contentType);
-        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        res.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400, immutable');
         if (diskHash) res.set('ETag', `"${diskHash}"`);
         res.set('X-Storm-Image-Cache', 'MISS');
         if (optimized.buffer && diskCacheFilePath) {
@@ -3499,62 +3534,61 @@ app.get('/api/media/catalog', async (req, res) => {
     const cachedEntry = memoryCatalogCache.get(cacheKey);
     const now = Date.now();
 
-    // Stale-While-Revalidate: отдаем кэш мгновенно (< 3ms)
+    // Stale-While-Revalidate: отдаем кэш мгновенно (< 3ms) при любом наличии данных
     if (cachedEntry && Array.isArray(cachedEntry.items) && cachedEntry.items.length > 0) {
       const isStale = now - (cachedEntry.timestamp || 0) > MEMORY_CATALOG_FRESH_TTL;
-      const isExpired = now - (cachedEntry.timestamp || 0) > MEMORY_CATALOG_MAX_STALE_TTL;
 
-      if (isStale && !cachedEntry.isRevalidating && !isExpired) {
+      if (isStale && !cachedEntry.isRevalidating) {
         cachedEntry.isRevalidating = true;
-        // Фоновая тихая ревалидация свежих данных
-        executeCatalogFetch(category, page, source, extraFilters).then(fresh => {
-          if (fresh && fresh.items && fresh.items.length > 0) {
-            memoryCatalogCache.set(cacheKey, {
-              items: fresh.items,
-              totalItems: fresh.totalItems,
-              totalPages: fresh.totalPages,
-              timestamp: Date.now(),
-              isRevalidating: false
-            });
-          } else {
+        // Фоновая тихая ревалидация свежих данных через setImmediate
+        setImmediate(() => {
+          executeCatalogFetch(category, page, source, extraFilters).then(fresh => {
+            if (fresh && fresh.items && fresh.items.length > 0) {
+              memoryCatalogCache.set(cacheKey, {
+                items: fresh.items,
+                totalItems: fresh.totalItems,
+                totalPages: fresh.totalPages,
+                timestamp: Date.now(),
+                isRevalidating: false
+              });
+            } else {
+              cachedEntry.isRevalidating = false;
+            }
+          }).catch(() => {
             cachedEntry.isRevalidating = false;
-          }
-        }).catch(() => {
-          cachedEntry.isRevalidating = false;
+          });
         });
       }
 
-      if (!isExpired) {
-        let finalItems = cachedEntry.items;
-        const activeUserId = req.user?.id || null;
-        finalItems = finalItems.map(item => {
-          const bookmark = activeUserId ? getBookmark(activeUserId, item.id, item.source, item.title, item.original_title) : null;
-          const bStatus = bookmark?.status || item.user_status || null;
-          const bPct = bookmark?.progress_percent || item.progress_percent || 0.0;
-          const userWatched = Boolean(['completed', 'watching', 'on_hold', 'dropped'].includes(String(bStatus || '').toLowerCase()) || Number(bPct) > 0);
-          return {
-            ...item,
-            is_upcoming: userWatched ? false : item.is_upcoming,
-            is4K: userWatched && item.is_upcoming ? true : item.is4K,
-            quality: userWatched && item.quality === 'Ожидается' ? '4K Ultra HD' : item.quality,
-            user_status: bStatus,
-            progress_percent: bPct,
-            episodes_watched: bookmark?.episodes_watched || item.episodes_watched || 0,
-            total_episodes: bookmark?.total_episodes || item.total_episodes || 0
-          };
-        });
+      let finalItems = cachedEntry.items;
+      const activeUserId = req.user?.id || null;
+      finalItems = finalItems.map(item => {
+        const bookmark = activeUserId ? getBookmark(activeUserId, item.id, item.source, item.title, item.original_title) : null;
+        const bStatus = bookmark?.status || item.user_status || null;
+        const bPct = bookmark?.progress_percent || item.progress_percent || 0.0;
+        const userWatched = Boolean(['completed', 'watching', 'on_hold', 'dropped'].includes(String(bStatus || '').toLowerCase()) || Number(bPct) > 0);
+        return {
+          ...item,
+          is_upcoming: userWatched ? false : item.is_upcoming,
+          is4K: userWatched && item.is_upcoming ? true : item.is4K,
+          quality: userWatched && item.quality === 'Ожидается' ? '4K Ultra HD' : item.quality,
+          user_status: bStatus,
+          progress_percent: bPct,
+          episodes_watched: bookmark?.episodes_watched || item.episodes_watched || 0,
+          total_episodes: bookmark?.total_episodes || item.total_episodes || 0
+        };
+      });
 
-        return res.json({
-          category,
-          page,
-          source,
-          total_items: cachedEntry.totalItems,
-          total_pages: cachedEntry.totalPages,
-          items: finalItems,
-          from_cache: true,
-          is_stale: isStale
-        });
-      }
+      return res.json({
+        category,
+        page,
+        source,
+        total_items: cachedEntry.totalItems,
+        total_pages: cachedEntry.totalPages,
+        items: finalItems,
+        from_cache: true,
+        is_stale: isStale
+      });
     }
 
     // Если кэша еще нет или он полностью истек (холодный запрос)

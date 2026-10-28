@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.3.9';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.9';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.9';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.9';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.9';
-import { getStatusIconSvg } from './status-icons.js?v=1.3.9';
-import { initFormFactorEngine } from './form-factor.js?v=1.3.9';
+import { initTheme, setTheme } from './theme.js?v=1.4.0';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.4.0';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.4.0';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.4.0';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.4.0';
+import { getStatusIconSvg } from './status-icons.js?v=1.4.0';
+import { initFormFactorEngine } from './form-factor.js?v=1.4.0';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.3.9';
@@ -1048,10 +1048,17 @@ export function switchTab(tab, options = {}) {
     b.classList.toggle('active', isActive);
   });
 
-  // При смене вкладки используем память, постоянный кэш или проверенный базовый каталог
+  // Мгновенный переключатель вкладок: 0ms отдача из памяти без мерцания скелетона
   const targetCategory = tab === 'home' ? 'popular' : tab;
   const targetKey = `${targetCategory}_1_${currentSource}`;
-  if (!clientTabCache.has(targetKey)) {
+  if (clientTabCache.has(targetKey)) {
+    const cached = clientTabCache.get(targetKey);
+    const items = Array.isArray(cached) ? cached : (cached?.items || []);
+    if (items.length > 0) {
+      rawCatalogItems = items;
+      renderFilteredCatalog();
+    }
+  } else {
     const persistent = getPersistentTabCache(targetKey);
     if (persistent && Array.isArray(persistent.items) && persistent.items.length > 0) {
       clientTabCache.set(targetKey, persistent);
@@ -2276,13 +2283,14 @@ export function getPosterSrcset(posterUrl) {
   return '';
 }
 
-export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
+export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '', isHighPriority = false) {
   const rawClean = unwrapRawImageUrl(posterUrl || '');
   const safePoster = getSafePosterUrl(posterUrl, title);
   const cleanTitle = escapeHtml(title || '');
   const safeRawAttr = escapeHtml(rawClean || '');
   const classAttr = extraClass ? ` class="${extraClass}"` : '';
-  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}" loading="lazy" decoding="async" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
+  const priorityAttr = isHighPriority ? ' fetchpriority="high"' : ' loading="lazy"';
+  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}"${priorityAttr} decoding="async" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
 }
 
 /**
@@ -2796,7 +2804,29 @@ async function loadCurrentTab() {
   }
 
   if (currentTab === 'bookmarks') {
-    renderSkeletonGrid();
+    // Мгновенный рендер из локального кэша закладок без ожидания сетевого ответа
+    const memBookmarks = (typeof getMemoryBookmarksCache === 'function') ? getMemoryBookmarksCache() : [];
+    if (memBookmarks && memBookmarks.length > 0) {
+      const rawItems = memBookmarks.map(b => ({
+        id: b.media_id || b.id,
+        source: b.source,
+        title: b.title,
+        original_title: b.original_title,
+        poster: getSafePosterUrl(b.poster_url || b.poster, b.title),
+        media_type: b.media_type,
+        year: b.year || '',
+        user_status: b.status,
+        is_favorite: (b.is_favorite === 1 || b.is_favorite === true || b.status === 'favorite') ? 1 : 0,
+        progress_percent: b.progress_percent,
+        episodes_watched: b.episodes_watched,
+        total_episodes: b.total_episodes,
+        updated_at: b.updated_at
+      }));
+      rawCatalogItems = deduplicateMediaList(rawItems);
+      renderFilteredCatalog();
+    } else {
+      renderSkeletonGrid();
+    }
     try {
       const [bookmarks, customLists] = await Promise.all([
         fetchUserBookmarks().catch(() => []),
@@ -5242,6 +5272,8 @@ function renderHomeView(items) {
 // -------------------------------------------------------------
 // РЕНДЕРИНГ ЭЛЕМЕНТОВ В 4 РЕЖИМАХ ОТОБРАЖЕНИЯ
 // -------------------------------------------------------------
+let _stormGridRenderGeneration = 0;
+
 function renderMediaItems(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
@@ -6949,15 +6981,40 @@ export function renderFilteredCatalog() {
 
   if (currentTab === 'bookmarks') {
     const isFav = it => it.user_status === 'favorite' || it.status === 'favorite' || it.is_favorite === 1 || it.is_favorite === true || it.isFavorite === true;
+    const isWontWatch = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'wont_watch' || s === 'wontwatch' || s === 'abandoned';
+    };
+    const isHold = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'hold' || s === 'on_hold';
+    };
+    const isPlan = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'plan' || s === 'planned';
+    };
+    const isCompleted = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'completed' || s === 'watched';
+    };
+    const isDropped = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'dropped';
+    };
+    const isWatching = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'watching';
+    };
+
     const counts = {
       all: rawCatalogItems.length,
-      watching: rawCatalogItems.filter(it => it.user_status === 'watching').length,
+      watching: rawCatalogItems.filter(isWatching).length,
       favorite: rawCatalogItems.filter(isFav).length,
-      plan: rawCatalogItems.filter(it => it.user_status === 'plan' || it.user_status === 'planned').length,
-      completed: rawCatalogItems.filter(it => it.user_status === 'completed').length,
-      hold: rawCatalogItems.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold').length,
-      dropped: rawCatalogItems.filter(it => it.user_status === 'dropped').length,
-      wont_watch: rawCatalogItems.filter(it => it.user_status === 'wont_watch').length,
+      plan: rawCatalogItems.filter(isPlan).length,
+      completed: rawCatalogItems.filter(isCompleted).length,
+      hold: rawCatalogItems.filter(isHold).length,
+      dropped: rawCatalogItems.filter(isDropped).length,
+      wont_watch: rawCatalogItems.filter(isWontWatch).length,
       history: getFullWatchHistoryList().length,
       lists: cachedCustomLists.length
     };
@@ -6980,11 +7037,19 @@ export function renderFilteredCatalog() {
 
     if (currentBookmarkSubTab !== 'all') {
       if (currentBookmarkSubTab === 'plan') {
-        items = items.filter(it => it.user_status === 'plan' || it.user_status === 'planned');
+        items = items.filter(isPlan);
       } else if (currentBookmarkSubTab === 'hold') {
-        items = items.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold');
+        items = items.filter(isHold);
       } else if (currentBookmarkSubTab === 'favorite') {
         items = items.filter(isFav);
+      } else if (currentBookmarkSubTab === 'completed') {
+        items = items.filter(isCompleted);
+      } else if (currentBookmarkSubTab === 'dropped') {
+        items = items.filter(isDropped);
+      } else if (currentBookmarkSubTab === 'watching') {
+        items = items.filter(isWatching);
+      } else if (currentBookmarkSubTab === 'wont_watch' || currentBookmarkSubTab === 'wontwatch') {
+        items = items.filter(isWontWatch);
       } else {
         items = items.filter(it => it.user_status === currentBookmarkSubTab);
       }

@@ -435,7 +435,7 @@ export function resolveMediaUserStatus(item) {
   if (!item) return null;
   const directStatus = item.user_status || item.bookmark_status;
   if (directStatus && directStatus !== 'none') return normalizeStatus(directStatus);
-  if (item.status && ['completed', 'watching', 'planned', 'plan', 'favorite', 'on_hold', 'hold', 'dropped', 'wont_watch'].includes(item.status)) {
+  if (item.status && ['completed', 'watched', 'watching', 'planned', 'plan', 'favorite', 'on_hold', 'hold', 'dropped', 'wont_watch', 'wontwatch', 'abandoned'].includes(item.status)) {
     return normalizeStatus(item.status);
   }
 

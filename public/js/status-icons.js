@@ -15,10 +15,11 @@ export const STATUS_LIST = [
 
 export function normalizeStatus(status) {
   if (!status) return 'not_started';
-  const s = String(status).toLowerCase();
+  const s = String(status).toLowerCase().replace(/-/g, '_');
   if (s === 'plan') return 'planned';
   if (s === 'hold') return 'on_hold';
   if (s === 'watched') return 'completed';
+  if (s === 'wontwatch' || s === 'abandoned') return 'wont_watch';
   return s;
 }
 

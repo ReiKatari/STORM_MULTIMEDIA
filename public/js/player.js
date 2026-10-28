@@ -4193,7 +4193,7 @@ function renderQuickBarDropdowns() {
           p.dataset.currentSeason = '';
         }
         document.querySelectorAll('.quick-status-custom-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
-      });
+      }, { passive: true });
     }
 
     seasonList.querySelectorAll('.quick-dropdown-item').forEach(item => {
