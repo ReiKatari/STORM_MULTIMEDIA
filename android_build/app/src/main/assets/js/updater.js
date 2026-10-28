@@ -4,9 +4,11 @@
    https://github.com/ReiKatari/STORM_MULTIMEDIA/releases
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.0';
+import { showToast } from './auth.js?v=1.3.1';
 
-export const CURRENT_APP_VERSION = '1.1.2';
+export const CURRENT_APP_VERSION = '1.2.0';
+export const STORM_GAMES_WORLD_REPO = 'https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA';
+export const STORM_GAMES_WORLD_API = 'https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA';
 
 export function getActiveAppVersion() {
   let ver = CURRENT_APP_VERSION;
@@ -224,8 +226,11 @@ export function showUpdateModal(release, latestVersion) {
           <span>📦 Установочный пакет Android: <strong>${escapeHtml(apkAsset.name)}</strong></span>
           <span>${apkSizeMb}</span>
         </div>` : ''}
-        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
           <button type="button" class="storm-btn storm-btn-secondary" id="storm-update-later-btn" style="padding: 10px 18px; border-radius: 10px; font-size: 13.5px;">Позже</button>
+          <a href="https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA" target="_blank" rel="noopener" class="storm-btn storm-btn-secondary" style="padding: 10px 16px; border-radius: 10px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; border-color: rgba(0,210,255,0.4);">
+            <span>🌐</span> Зеркало STORM GIT
+          </a>
           <a href="${downloadUrl}" class="storm-btn storm-btn-primary" id="storm-update-download-btn" target="_blank" rel="noopener" style="padding: 10px 22px; border-radius: 10px; font-size: 13.5px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
             <span>📥</span> Скачать обновление
           </a>

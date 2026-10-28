@@ -11343,10 +11343,10 @@ app.get('/api/media/skip-times', async (req, res) => {
 });
 
 // ==========================================
-// 12. ПРОВЕРКА ОБНОВЛЕНИЙ (GITHUB RELEASES API PROXY)
+// 12. ПРОВЕРКА ОБНОВЛЕНИЙ (STORM GAMES WORLD GIT + GITHUB RELEASES DUAL MIRROR)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.1.2';
+  let currentAppVersion = '1.2.0';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -11365,8 +11365,9 @@ app.get('/api/updates/check', async (req, res) => {
     }
     return 0;
   };
+
   try {
-    const cached = getCache('system', 'github_latest_release');
+    const cached = getCache('system', 'latest_update_release');
     if (cached && cached.latestVersion) {
       return res.json({
         ...cached,
@@ -11375,58 +11376,121 @@ app.get('/api/updates/check', async (req, res) => {
       });
     }
 
-    const response = await fetch('https://api.github.com/repos/ReiKatari/STORM_MULTIMEDIA/releases/latest', {
-      headers: {
-        'User-Agent': 'ReiKatari-STORM-Multimedia',
-        'Accept': 'application/vnd.github.v3+json'
-      },
-      signal: AbortSignal.timeout(6000)
-    });
+    let stormGamesWorldData = null;
+    let githubData = null;
 
-    if (!response.ok) {
-      return res.status(response.status).json({
+    // Зеркало 1: STORM GAMES WORLD GIT API (https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA)
+    try {
+      const sgwRes = await fetch('https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA', {
+        headers: {
+          'User-Agent': 'STORM-Multimedia-Client/1.2.0 (+https://stormgamesworld.ru)',
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (sgwRes.ok) {
+        const repoObj = await sgwRes.json();
+        const latestRel = (repoObj?.releases || []).find(r => r.isLatest) || repoObj?.releases?.[0];
+        if (latestRel && latestRel.version) {
+          const apkAsset = (latestRel.assets || []).find(a => a.name && a.name.endsWith('.apk'));
+          stormGamesWorldData = {
+            version: String(latestRel.version).replace(/^v/i, '').trim(),
+            releaseName: latestRel.title || `STORM MULTIMEDIA ${latestRel.version}`,
+            body: latestRel.notes || '',
+            publishedAt: latestRel.createdAt,
+            downloadUrl: apkAsset?.downloadUrl || `https://stormgamesworld.ru/api/programs/git?repo=STORM_MULTIMEDIA&action=download_asset&releaseId=${latestRel.id}&assetId=${apkAsset?.id || ''}`,
+            htmlUrl: 'https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA',
+            assets: (latestRel.assets || []).map(a => ({
+              name: a.name,
+              size: a.size,
+              downloadUrl: a.downloadUrl || `https://stormgamesworld.ru/api/programs/git?repo=STORM_MULTIMEDIA&action=download_asset&releaseId=${latestRel.id}&assetId=${a.id}`
+            }))
+          };
+        }
+      }
+    } catch (e) {
+      // Игнорируем временный сбой зеркала STORM GAMES WORLD
+    }
+
+    // Зеркало 2: GitHub Releases API
+    try {
+      const ghRes = await fetch('https://api.github.com/repos/ReiKatari/STORM_MULTIMEDIA/releases/latest', {
+        headers: {
+          'User-Agent': 'ReiKatari-STORM-Multimedia',
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (ghRes.ok) {
+        const release = await ghRes.json();
+        const tag = String(release.tag_name || '').replace(/^v/i, '').trim();
+        const apkAsset = (release.assets || []).find(a => a.name && a.name.endsWith('.apk'));
+        githubData = {
+          version: tag,
+          releaseName: release.name || `Релиз ${tag}`,
+          body: release.body || '',
+          publishedAt: release.published_at,
+          downloadUrl: apkAsset?.browser_download_url || release.html_url,
+          htmlUrl: release.html_url || 'https://github.com/ReiKatari/STORM_MULTIMEDIA/releases',
+          assets: (release.assets || []).map(a => ({
+            name: a.name,
+            size: a.size,
+            downloadUrl: a.browser_download_url
+          }))
+        };
+      }
+    } catch (e) {
+      // Игнорируем временный сбой зеркала GitHub
+    }
+
+    // Выбираем самую актуальную версию между зеркалами
+    let chosen = stormGamesWorldData || githubData;
+    let chosenMirror = stormGamesWorldData ? 'stormgamesworld' : 'github';
+
+    if (stormGamesWorldData && githubData) {
+      if (compareVerFast(githubData.version, stormGamesWorldData.version) > 0) {
+        chosen = githubData;
+        chosenMirror = 'github';
+      }
+    }
+
+    if (!chosen) {
+      return res.status(503).json({
         success: false,
-        error: `GitHub API error: ${response.status}`,
+        error: 'Не удалось связаться с серверами обновлений (STORM GAMES WORLD и GitHub)',
         currentVersion: currentAppVersion
       });
     }
 
-    const release = await response.json();
-    const tag = String(release.tag_name || '').replace(/^v/i, '').trim();
-    const apkAsset = (release.assets || []).find(a => a.name && a.name.endsWith('.apk'));
-    const downloadUrl = apkAsset?.browser_download_url || release.html_url;
-
-    const compareVer = (v1, v2) => {
-      const p1 = String(v1 || '').split('.').map(n => parseInt(n, 10) || 0);
-      const p2 = String(v2 || '').split('.').map(n => parseInt(n, 10) || 0);
-      const len = Math.max(p1.length, p2.length);
-      for (let i = 0; i < len; i++) {
-        const n1 = p1[i] || 0;
-        const n2 = p2[i] || 0;
-        if (n1 > n2) return 1;
-        if (n1 < n2) return -1;
-      }
-      return 0;
-    };
-
     const result = {
       success: true,
-      latestVersion: tag,
+      latestVersion: chosen.version,
       currentVersion: currentAppVersion,
-      updateAvailable: compareVer(tag, currentAppVersion) > 0,
-      releaseName: release.name || `Релиз ${tag}`,
-      body: release.body || '',
-      publishedAt: release.published_at,
-      downloadUrl,
-      htmlUrl: release.html_url,
-      assets: (release.assets || []).map(a => ({
-        name: a.name,
-        size: a.size,
-        downloadUrl: a.browser_download_url
-      }))
+      updateAvailable: compareVerFast(chosen.version, currentAppVersion) > 0,
+      releaseName: chosen.releaseName,
+      body: chosen.body,
+      publishedAt: chosen.publishedAt,
+      downloadUrl: chosen.downloadUrl,
+      htmlUrl: chosen.htmlUrl,
+      sourceMirror: chosenMirror,
+      mirrors: {
+        stormGamesWorld: {
+          name: 'STORM GAMES WORLD GIT',
+          url: 'https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA',
+          apiUrl: 'https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA',
+          downloadUrl: stormGamesWorldData?.downloadUrl || 'https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA'
+        },
+        github: {
+          name: 'GitHub Releases',
+          url: 'https://github.com/ReiKatari/STORM_MULTIMEDIA/releases',
+          apiUrl: 'https://api.github.com/repos/ReiKatari/STORM_MULTIMEDIA/releases/latest',
+          downloadUrl: githubData?.downloadUrl || 'https://github.com/ReiKatari/STORM_MULTIMEDIA/releases'
+        }
+      },
+      assets: chosen.assets
     };
 
-    setCache('system', 'github_latest_release', result, 300); // 5 минут кэша
+    setCache('system', 'latest_update_release', result, 300); // 5 минут кэша
     res.json(result);
   } catch (err) {
     res.status(500).json({
