@@ -60,6 +60,9 @@ import {
   getUserFamilyProfiles,
   saveUserFamilyProfiles,
   getAdminUsersOverview,
+  recordUserActivity,
+  recordPlaybackHeartbeat,
+  clearPlaybackHeartbeat,
   deleteUserAccountById,
   getCache,
   setCache,
@@ -1143,7 +1146,10 @@ function authMiddleware(req, res, next) {
       req.user = validUser;
       req.token = token;
       const ua = String(req.headers['user-agent'] || '');
-      touchSessionActivity(token, req.ip || '', parseDeviceNameFromUserAgent(ua));
+      const rawIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').split(',')[0].trim();
+      const devName = parseDeviceNameFromUserAgent(ua);
+      touchSessionActivity(token, { ip: rawIp, userAgent: ua, deviceName: devName });
+      recordUserActivity(validUser.id);
     } else {
       req.user = null;
       req.token = null;
@@ -1652,6 +1658,9 @@ app.get('/api/admin/users-overview', requireAuth, (req, res) => {
       return res.status(403).json({ error: 'Доступ разрешен только администратору ReiKatari (ReiKatari@outlook.com)' });
     }
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     const overview = getAdminUsersOverview();
     res.json(overview);
   } catch (err) {
@@ -10864,6 +10873,15 @@ const handleRemoveBookmark = (req, res) => {
 };
 app.delete('/api/bookmarks/remove', requireAuth, handleRemoveBookmark);
 app.post('/api/bookmarks/remove', requireAuth, handleRemoveBookmark);
+
+app.post('/api/telemetry/heartbeat', requireAuth, (req, res) => {
+  try {
+    const heartbeat = recordPlaybackHeartbeat(req.user.id, req.body);
+    res.json({ success: true, telemetry: heartbeat });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/media/progress', requireAuth, (req, res) => {
   try {

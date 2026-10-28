@@ -73,6 +73,15 @@ export async function initMariaDb(force = false) {
               await candidatePool.query("ALTER TABLE watch_history ADD COLUMN real_watched_seconds INT DEFAULT 0");
               console.log('[MariaDB 10] Добавлена колонка watch_history.real_watched_seconds');
             }
+            const [sessCols] = await candidatePool.query("SHOW COLUMNS FROM sessions LIKE 'last_active_at'");
+            if (!sessCols || sessCols.length === 0) {
+              await candidatePool.query("ALTER TABLE sessions ADD COLUMN last_active_at BIGINT NULL");
+              await candidatePool.query("ALTER TABLE sessions ADD COLUMN ip_address VARCHAR(64) NULL");
+              await candidatePool.query("ALTER TABLE sessions ADD COLUMN user_agent VARCHAR(512) NULL");
+              await candidatePool.query("ALTER TABLE sessions ADD COLUMN device_name VARCHAR(128) NULL");
+              await candidatePool.query("ALTER TABLE sessions ADD COLUMN created_at BIGINT NULL");
+              console.log('[MariaDB 10] Добавлены колонки расширенной телеметрии в sessions');
+            }
             await candidatePool.query(`
               CREATE TABLE IF NOT EXISTS release_subscriptions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -349,13 +358,27 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
     const [mSessions] = await (pool || activePool).query('SELECT * FROM sessions WHERE expires_at > ?', [now]);
     if (mSessions && mSessions.length > 0) {
       const upsertSession = sqliteDb.prepare(`
-        INSERT INTO sessions (token, user_id, expires_at)
-        VALUES (?, ?, ?)
+        INSERT INTO sessions (token, user_id, expires_at, ip_address, user_agent, device_name, last_active_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(token) DO UPDATE SET
-          expires_at = excluded.expires_at
+          expires_at = excluded.expires_at,
+          ip_address = COALESCE(excluded.ip_address, sessions.ip_address),
+          user_agent = COALESCE(excluded.user_agent, sessions.user_agent),
+          device_name = COALESCE(excluded.device_name, sessions.device_name),
+          last_active_at = COALESCE(excluded.last_active_at, sessions.last_active_at),
+          created_at = COALESCE(sessions.created_at, excluded.created_at)
       `);
       for (const s of mSessions) {
-        upsertSession.run(s.token, s.user_id, Number(s.expires_at));
+        upsertSession.run(
+          s.token,
+          s.user_id,
+          Number(s.expires_at),
+          s.ip_address || null,
+          s.user_agent || null,
+          s.device_name || null,
+          s.last_active_at ? Number(s.last_active_at) : null,
+          s.created_at ? Number(s.created_at) : null
+        );
       }
     }
 
@@ -737,6 +760,18 @@ export function mariaSaveSession(token, userId, expiresAt) {
      VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at)`,
     [token, userId, expiresAt]
+  );
+}
+
+export function mariaTouchSessionActivity(token, lastActiveAt, ip = null, ua = null, deviceName = null) {
+  return enqueueResilientMariaDbWrite(
+    `UPDATE sessions SET
+       last_active_at = ?,
+       ip_address = COALESCE(?, ip_address),
+       user_agent = COALESCE(?, user_agent),
+       device_name = COALESCE(?, device_name)
+     WHERE token = ?`,
+    [lastActiveAt, ip || null, ua || null, deviceName || null, token]
   );
 }
 

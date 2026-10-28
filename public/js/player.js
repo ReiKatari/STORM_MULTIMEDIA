@@ -10424,10 +10424,52 @@ let activeTrackingHasReached50 = false;
 let activeTrackingStorageKey = '';
 let activeRealStorageKey = '';
 
+export function sendPlaybackHeartbeat(isEnd = false) {
+  try {
+    const token = localStorage.getItem('storm_token') || sessionStorage.getItem('storm_token');
+    if (!token || token.startsWith('offline_') || token.startsWith('guest_')) return;
+    const media = currentMedia;
+    if (!media || !media.title) return;
+
+    const isSeries = checkIfMediaIsSeries(media);
+    const mType = media.media_type || (isSeries ? 'series' : 'movie');
+    const isMovie = mType === 'movie' || mType === 'cartoon' || mType === 'anime-movie';
+    const dur = activeTrackingDurationSeconds > 0 ? activeTrackingDurationSeconds : (isMovie ? 5400 : 2700);
+    const curTime = activeTrackingWatchedSeconds || 0;
+    const pct = dur > 0 ? Math.min(100, Math.round((curTime / dur) * 100)) : 0;
+
+    const payload = {
+      media_id: media.id || activeTrackingMediaId,
+      source: media.source || 'player',
+      title: media.title,
+      poster_url: media.poster || media.poster_url || '',
+      media_type: isMovie ? (media.media_type || 'movie') : (media.media_type || 'series'),
+      season: isMovie ? null : activeTrackingSeason,
+      episode: isMovie ? null : activeTrackingEpisode,
+      time_seconds: curTime,
+      real_watched_seconds: activeRealWatchedSeconds,
+      duration_seconds: dur,
+      progress_percent: pct,
+      is_playing: !isEnd
+    };
+
+    fetch('/api/telemetry/heartbeat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+  } catch (_) {}
+}
+
 export function stopInvisibleEpisodeWatchTracker() {
   if (episodeWatchTrackerInterval) {
     clearInterval(episodeWatchTrackerInterval);
     episodeWatchTrackerInterval = null;
+    sendPlaybackHeartbeat(true);
   }
 }
 
@@ -10553,6 +10595,11 @@ export function startInvisibleEpisodeWatchTracker(media, seasonNum = 1, episodeN
       activeRealWatchedSeconds += 1;
       activeTrackingWatchedSeconds += 1;
       check50PercentWatchCondition(activeRealWatchedSeconds, activeTrackingDurationSeconds);
+    }
+
+    // Телеметрия воспроизведения для панели администратора каждые 15 сек
+    if (activeRealWatchedSeconds > 0 && activeRealWatchedSeconds % 15 === 0) {
+      sendPlaybackHeartbeat(false);
     }
 
     // Сохраняем прогресс каждые 5 секунд

@@ -459,7 +459,8 @@ function renderMetricsAndCharts() {
     { key: 'completed', label: 'Просмотрено', color: '#10b981', count: sb.completed || 0 },
     { key: 'favorite', label: 'Любимое', color: '#ff3366', count: sb.favorite || 0 },
     { key: 'hold', label: 'Отложено', color: '#f59e0b', count: sb.hold || 0 },
-    { key: 'dropped', label: 'Брошено', color: '#64748b', count: sb.dropped || 0 }
+    { key: 'dropped', label: 'Брошено', color: '#64748b', count: sb.dropped || 0 },
+    { key: 'wont_watch', label: 'Не буду смотреть', color: '#ef4444', count: sb.wont_watch || 0 }
   ];
 
   const statusBarsEl = document.getElementById('admin-chart-status-bars');
@@ -618,10 +619,13 @@ function filterAndRenderUsers() {
     if (u.watching_now) {
       const wn = u.watching_now;
       const progress = Math.round(wn.progress_percent || 0);
-      const epInfo = wn.season && wn.episode ? `(S${wn.season} • E${wn.episode})` : '';
+      const isMovie = !wn.media_type || wn.media_type === 'movie' || wn.media_type === 'cartoon' || wn.media_type === 'anime-movie';
+      const epInfo = (!isMovie && wn.season && wn.episode) ? `(S${wn.season} • E${wn.episode})` : '';
       const activeBadge = wn.is_active
         ? '<span class="admin-live-pulse-badge">Смотрит сейчас</span>'
-        : '<span class="admin-last-view-badge">Недавний просмотр</span>';
+        : (wn.is_bookmark_fallback
+            ? '<span class="admin-last-view-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);">В закладках</span>'
+            : '<span class="admin-last-view-badge">Недавний просмотр</span>');
 
       watchingHtml = `
         <div class="admin-watching-box">
@@ -641,8 +645,17 @@ function filterAndRenderUsers() {
     }
 
     const sc = u.status_counts || {};
+    const parts = [];
+    if (sc.watching > 0) parts.push(`Смотрит: ${sc.watching}`);
+    if (sc.plan > 0) parts.push(`План: ${sc.plan}`);
+    if (sc.completed > 0) parts.push(`Готово: ${sc.completed}`);
+    if (sc.wont_watch > 0) parts.push(`Отказ: ${sc.wont_watch}`);
+    if (sc.dropped > 0) parts.push(`Брошено: ${sc.dropped}`);
+    if (sc.hold > 0) parts.push(`Отложено: ${sc.hold}`);
+    if (sc.favorite > 0) parts.push(`Любимое: ${sc.favorite}`);
+    const bmDetails = parts.length > 0 ? parts.join(' • ') : `Закладок: ${u.bookmarks_count || 0}`;
     const bmSubInfo = (u.bookmarks_count || 0) > 0
-      ? `<div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;">Смотрит: ${sc.watching || 0} • План: ${sc.plan || 0} • Готово: ${sc.completed || 0}</div>`
+      ? `<div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;">${bmDetails}</div>`
       : `<div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;">Коллекций: ${u.custom_lists_count || 0}</div>`;
 
     return `
@@ -689,7 +702,7 @@ function filterAndRenderUsers() {
 
         <td>
           <div style="font-size: 13px; font-weight: 800; color: var(--accent);">${formatDurationReadable(u.total_hours, u.total_minutes)}</div>
-          <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">Просмотров: ${u.history_count || 0}</div>
+          <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">Просмотров: ${u.total_views || u.history_count || 0}</div>
         </td>
 
         <td style="text-align: right; white-space: nowrap;">
@@ -760,7 +773,8 @@ function renderLiveSessionsView() {
   const watcherCards = activeWatchers.map(u => {
     const wn = u.watching_now;
     const progress = Math.round(wn.progress_percent || 0);
-    const epInfo = wn.season && wn.episode ? `Сезон ${wn.season}, Серия ${wn.episode}` : 'Полнометражный релиз';
+    const isMovie = !wn.media_type || wn.media_type === 'movie' || wn.media_type === 'cartoon' || wn.media_type === 'anime-movie';
+    const epInfo = (!isMovie && wn.season && wn.episode) ? `Сезон ${wn.season}, Серия ${wn.episode}` : 'Полнометражный релиз';
     const posterSrc = wn.poster_url || wn.poster || 'assets/favicon.svg';
     const avatarSrc = u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(u.username)}`;
 
@@ -987,8 +1001,8 @@ function openUserDetailsModal(user) {
   if (avatar) avatar.src = user.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.username)}`;
   if (uname) uname.textContent = user.username;
   if (uemail) uemail.textContent = `${user.email} • Зарегистрирован: ${formatDate(user.created_at)}`;
-  if (hCount) hCount.textContent = user.history?.length || 0;
-  if (bCount) bCount.textContent = user.bookmarks?.length || 0;
+  if (hCount) hCount.textContent = user.total_views || user.history_count || user.history?.length || 0;
+  if (bCount) bCount.textContent = user.bookmarks_count || user.bookmarks?.length || 0;
 
   if (hList) {
     if (!user.history || user.history.length === 0) {
@@ -996,7 +1010,8 @@ function openUserDetailsModal(user) {
     } else {
       hList.innerHTML = user.history.map(h => {
         const progress = Math.round(h.progress_percent || 0);
-        const ep = h.season && h.episode ? `Сезон ${h.season}, Серия ${h.episode}` : '';
+        const isMovie = h.media_type === 'movie' || h.media_type === 'cartoon' || h.media_type === 'anime-movie';
+        const ep = (!isMovie && h.season && h.episode) ? `Сезон ${h.season}, Серия ${h.episode}` : '';
         return `
           <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px;">
             <div>
@@ -1021,10 +1036,13 @@ function openUserDetailsModal(user) {
       const statusMap = {
         'watching': 'Смотрю',
         'plan': 'В планах',
+        'planned': 'В планах',
         'completed': 'Просмотрено',
         'hold': 'Отложено',
         'dropped': 'Брошено',
-        'favorite': 'Любимое'
+        'favorite': 'Любимое',
+        'wont_watch': 'Не буду смотреть',
+        'wontwatch': 'Не буду смотреть'
       };
       bList.innerHTML = user.bookmarks.map(b => {
         const statusLabel = statusMap[b.status] || b.status;

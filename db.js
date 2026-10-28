@@ -40,7 +40,8 @@ import {
   mariaSaveWatchHistoryBatch,
   mariaSaveReleaseSubscription,
   mariaDeleteReleaseSubscription,
-  closeMariaDbPool
+  closeMariaDbPool,
+  mariaTouchSessionActivity
 } from './mariadb.js';
 
 export {
@@ -634,7 +635,16 @@ export function createSession(userId, meta = {}) {
   } catch {
     db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
   }
-  mariaSaveSession(token, userId, expiresAt);
+  mariaSaveSessionExtended({
+    token,
+    user_id: userId,
+    expires_at: expiresAt,
+    ip_address: ip,
+    user_agent: ua,
+    device_name: dev,
+    last_active_at: now,
+    created_at: now
+  });
   const user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(userId);
 
   return {
@@ -686,6 +696,8 @@ export function getUserByToken(token) {
 
   const user = db.prepare('SELECT id, username, email, avatar, role, created_at, settings_json FROM users WHERE id = ?').get(session.user_id);
   if (!user) return null;
+
+  userLastActiveMap.set(Number(user.id), Date.now());
 
   return {
     ...user,
@@ -1438,6 +1450,7 @@ export function removeBookmark(userId, mediaId, source, title = '') {
 
 // История и прогресс просмотра (Правило: минимум 10 минут = 600 секунд РЕАЛЬНОГО времени просмотра без перелистывания)
 export function logWatchProgress(userId, data) {
+  try { recordPlaybackHeartbeat(userId, data); } catch (_) {}
   const {
     media_id,
     source = 'fanfilm4k',
@@ -2898,6 +2911,57 @@ export function deleteUserAccountById(userId) {
   return true;
 }
 
+export const userLastActiveMap = new Map();
+export const livePlaybackTracker = new Map();
+
+export function recordUserActivity(userId) {
+  if (!userId) return;
+  userLastActiveMap.set(Number(userId), Date.now());
+}
+
+export function recordPlaybackHeartbeat(userId, data = {}) {
+  if (!userId) return null;
+  const now = Date.now();
+  userLastActiveMap.set(Number(userId), now);
+
+  const rawTitle = String(data.title || '').trim();
+  if (!rawTitle) return null;
+
+  const rawMediaType = String(data.media_type || '').toLowerCase();
+  const isMovie = rawMediaType === 'movie' || rawMediaType === 'cartoon' || rawMediaType === 'anime-movie';
+  const season = isMovie ? null : (parseInt(data.season, 10) || null);
+  const episode = isMovie ? null : (parseInt(data.episode, 10) || null);
+
+  const entry = {
+    user_id: Number(userId),
+    media_id: String(data.media_id || ''),
+    source: String(data.source || 'player'),
+    title: rawTitle,
+    poster_url: String(data.poster_url || data.poster || ''),
+    media_type: isMovie ? (rawMediaType || 'movie') : (rawMediaType || 'series'),
+    season,
+    episode,
+    time_seconds: Math.max(0, Math.round(Number(data.time_seconds || 0))),
+    real_watched_seconds: Math.max(0, Math.round(Number(data.real_watched_seconds || 0))),
+    duration_seconds: Math.max(0, Math.round(Number(data.duration_seconds || 0))),
+    progress_percent: Math.min(100, Math.max(0, Math.round(Number(data.progress_percent || 0)))),
+    is_playing: data.is_playing !== false,
+    updated_at: now
+  };
+
+  livePlaybackTracker.set(Number(userId), entry);
+  return entry;
+}
+
+export function clearPlaybackHeartbeat(userId) {
+  if (!userId) return;
+  const curr = livePlaybackTracker.get(Number(userId));
+  if (curr) {
+    curr.is_playing = false;
+    curr.updated_at = Date.now();
+  }
+}
+
 export function getAdminUsersOverview() {
   cleanupMockAndTestUsers();
   try {
@@ -2924,7 +2988,12 @@ export function getAdminUsersOverview() {
 
   const customListsStmt = db.prepare('SELECT id, title, created_at FROM custom_lists WHERE user_id = ?');
   const nowMs = Date.now();
-  const activeSessionsStmt = db.prepare('SELECT token, user_id, expires_at FROM sessions WHERE user_id = ? AND expires_at > ?');
+  const activeSessionsStmt = db.prepare(`
+    SELECT token, user_id, expires_at, ip_address, user_agent, device_name, last_active_at, created_at
+    FROM sessions
+    WHERE user_id = ? AND expires_at > ?
+    ORDER BY COALESCE(last_active_at, expires_at) DESC
+  `);
 
   const statusBreakdown = {
     watching: 0,
@@ -2932,7 +3001,8 @@ export function getAdminUsersOverview() {
     completed: 0,
     favorite: 0,
     hold: 0,
-    dropped: 0
+    dropped: 0,
+    wont_watch: 0
   };
 
   const typeBreakdown = {
@@ -2960,22 +3030,30 @@ export function getAdminUsersOverview() {
 
     for (const s of userSessions) {
       const meta = sessionMetaMap[s.token.slice(0, 16)] || {};
+      const devName = s.device_name || meta.deviceName || (s.user_agent ? parseDeviceNameFromUserAgent(s.user_agent) : 'Web Browser (STORM Client)');
+      const ipAddr = s.ip_address || meta.ipAddress || '192.168.1.x';
+      const sessCreatedAt = Number(s.created_at || meta.createdAt || u.created_at || 0);
+      const sessLastActive = Number(s.last_active_at || meta.lastActiveAt || sessCreatedAt || 0);
+
       activeSessionsList.push({
         token_prefix: s.token.slice(0, 12),
         user_id: u.id,
         username: u.username,
         avatar: u.avatar,
         role: u.role || 'user',
-        device: meta.deviceName || 'Web Browser (STORM Client)',
-        ip: meta.ipAddress || '192.168.1.x',
-        created_at: meta.createdAt || u.created_at,
+        device: devName,
+        ip: ipAddr,
+        created_at: sessCreatedAt,
+        last_active_at: sessLastActive,
         expires_at: s.expires_at
       });
     }
 
-    const userStatusCounts = { watching: 0, plan: 0, completed: 0, favorite: 0, hold: 0, dropped: 0 };
+    const userStatusCounts = { watching: 0, plan: 0, completed: 0, favorite: 0, hold: 0, dropped: 0, wont_watch: 0 };
     for (const b of bookmarks) {
-      const st = String(b.status || 'plan').toLowerCase();
+      let st = String(b.status || 'plan').toLowerCase().trim();
+      if (st === 'planned') st = 'plan';
+      if (st === 'wontwatch') st = 'wont_watch';
       if (st in statusBreakdown) statusBreakdown[st]++;
       if (st in userStatusCounts) userStatusCounts[st]++;
 
@@ -3010,29 +3088,104 @@ export function getAdminUsersOverview() {
       }
     }
 
-    const totalSeconds = history.reduce((sum, h) => sum + (h.time_seconds || 0), 0);
-    totalSecondsAllUsers += totalSeconds;
-    const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
-    const totalMinutes = Math.round(totalSeconds / 60);
+    // Подсчет времени в эфире: суммируем текущую историю просмотров + завершенные релизы (для которых запись в watch_history удалена согласно правилу 9)
+    const historySeconds = history.reduce((sum, h) => sum + (h.time_seconds || 0), 0);
+    const completedBookmarks = bookmarks.filter(b => {
+      const st = String(b.status || '').toLowerCase().trim();
+      return st === 'completed';
+    });
+    const historyMediaKeys = new Set(history.map(h => `${h.media_id}_${h.source}`));
+    const prunedCompleted = completedBookmarks.filter(b => !historyMediaKeys.has(`${b.media_id}_${b.source}`));
+    const estimatedCompletedSeconds = prunedCompleted.length * 5400; // в среднем 1.5 часа на завершенный фильм/тайтл
+
+    const userTotalSeconds = historySeconds + estimatedCompletedSeconds;
+    totalSecondsAllUsers += userTotalSeconds;
+    const totalHours = Math.round((userTotalSeconds / 3600) * 10) / 10;
+    const totalMinutes = Math.round(userTotalSeconds / 60);
+    const totalViews = history.length + prunedCompleted.length;
 
     const latestItem = history.length > 0 ? history[0] : null;
-    const isCurrentlyWatching = Boolean(latestItem && (nowMs - latestItem.updated_at < 3600 * 1000 * 6));
+
+    // Онлайн-телеметрия активного плеера
+    const liveTelemetry = livePlaybackTracker.get(u.id);
+    const hasLiveHeartbeat = Boolean(
+      liveTelemetry &&
+      liveTelemetry.title &&
+      liveTelemetry.is_playing !== false &&
+      (nowMs - liveTelemetry.updated_at < 90000)
+    );
+
+    let watchingNow = null;
+    if (hasLiveHeartbeat) {
+      const isMovie = liveTelemetry.media_type === 'movie' || liveTelemetry.media_type === 'cartoon' || liveTelemetry.media_type === 'anime-movie';
+      watchingNow = {
+        title: liveTelemetry.title,
+        poster_url: liveTelemetry.poster_url,
+        media_type: liveTelemetry.media_type || (isMovie ? 'movie' : 'series'),
+        season: isMovie ? null : liveTelemetry.season,
+        episode: isMovie ? null : liveTelemetry.episode,
+        progress_percent: liveTelemetry.progress_percent,
+        time_seconds: liveTelemetry.time_seconds,
+        duration_seconds: liveTelemetry.duration_seconds,
+        updated_at: liveTelemetry.updated_at,
+        is_active: true,
+        is_live: true
+      };
+    } else if (latestItem) {
+      const isMovie = latestItem.media_type === 'movie' || latestItem.media_type === 'cartoon' || latestItem.media_type === 'anime-movie';
+      watchingNow = {
+        title: latestItem.title,
+        poster_url: latestItem.poster_url,
+        media_type: latestItem.media_type || (isMovie ? 'movie' : 'series'),
+        season: isMovie ? null : latestItem.season,
+        episode: isMovie ? null : latestItem.episode,
+        progress_percent: latestItem.progress_percent,
+        time_seconds: latestItem.time_seconds,
+        duration_seconds: latestItem.duration_seconds,
+        updated_at: latestItem.updated_at,
+        is_active: Boolean(nowMs - latestItem.updated_at < 3600 * 1000 * 3),
+        is_live: false
+      };
+    } else {
+      // Fallback на последний тайтл из закладок, если история пуста
+      const watchingBookmark = bookmarks.find(b => b.status === 'watching') || (bookmarks.length > 0 ? bookmarks[0] : null);
+      if (watchingBookmark) {
+        const isMovie = watchingBookmark.media_type === 'movie' || watchingBookmark.media_type === 'cartoon' || watchingBookmark.media_type === 'anime-movie';
+        watchingNow = {
+          title: watchingBookmark.title,
+          poster_url: watchingBookmark.poster_url,
+          media_type: watchingBookmark.media_type || (isMovie ? 'movie' : 'series'),
+          season: null,
+          episode: null,
+          progress_percent: watchingBookmark.progress_percent || (watchingBookmark.status === 'completed' ? 100 : 0),
+          time_seconds: 0,
+          duration_seconds: 0,
+          updated_at: watchingBookmark.updated_at,
+          is_active: false,
+          is_live: false,
+          is_bookmark_fallback: true
+        };
+      }
+    }
 
     const lastBookmarkAt = bookmarks.length > 0 ? (bookmarks[0].updated_at || 0) : 0;
     const lastHistoryAt = latestItem ? (latestItem.updated_at || 0) : 0;
-    const lastActiveAt = Math.max(u.created_at || 0, lastBookmarkAt, lastHistoryAt, Number(settingsObj._updated_at) || 0);
+    const sessionLastActive = userSessions.reduce((max, s) => {
+      const act = Number(s.last_active_at || s.created_at || 0);
+      return Math.max(max, act);
+    }, 0);
+    const inMemLastActive = userLastActiveMap.get(u.id) || 0;
+    const liveTelemetryAt = liveTelemetry ? Number(liveTelemetry.updated_at || 0) : 0;
 
-    const watchingNow = latestItem ? {
-      title: latestItem.title,
-      poster_url: latestItem.poster_url,
-      season: latestItem.season,
-      episode: latestItem.episode,
-      progress_percent: latestItem.progress_percent,
-      time_seconds: latestItem.time_seconds,
-      duration_seconds: latestItem.duration_seconds,
-      updated_at: latestItem.updated_at,
-      is_active: isCurrentlyWatching
-    } : null;
+    const lastActiveAt = Math.max(
+      Number(u.created_at) || 0,
+      lastBookmarkAt,
+      lastHistoryAt,
+      sessionLastActive,
+      inMemLastActive,
+      liveTelemetryAt,
+      Number(settingsObj._updated_at) || 0
+    );
 
     return {
       id: u.id,
@@ -3047,9 +3200,10 @@ export function getAdminUsersOverview() {
       status_counts: userStatusCounts,
       watching_now: watchingNow,
       history_count: history.length,
-      history: history.slice(0, 25),
+      total_views: totalViews,
+      history: history.slice(0, 50),
       bookmarks_count: bookmarks.length,
-      bookmarks: bookmarks.slice(0, 30),
+      bookmarks: bookmarks.slice(0, 200),
       total_hours: totalHours,
       total_minutes: totalMinutes
     };
@@ -3059,6 +3213,7 @@ export function getAdminUsersOverview() {
   const activeNowCount = resultUsers.filter(u => u.watching_now && u.watching_now.is_active).length;
   const totalBookmarksCount = resultUsers.reduce((sum, u) => sum + u.bookmarks_count, 0);
   const totalHistoryCount = resultUsers.reduce((sum, u) => sum + u.history_count, 0);
+  const totalViewsAllUsers = resultUsers.reduce((sum, u) => sum + (u.total_views || u.history_count), 0);
   const topTitles = Array.from(titlePopMap.values())
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
@@ -3070,7 +3225,7 @@ export function getAdminUsersOverview() {
       active_sessions: activeSessionsList.length,
       total_bookmarks: totalBookmarksCount,
       total_custom_lists: totalCustomLists,
-      total_history_views: totalHistoryCount,
+      total_history_views: totalViewsAllUsers,
       total_watch_hours: Math.round((totalSecondsAllUsers / 3600) * 10) / 10,
       total_watch_minutes: Math.round(totalSecondsAllUsers / 60),
       status_breakdown: statusBreakdown,
@@ -3081,6 +3236,7 @@ export function getAdminUsersOverview() {
     users: resultUsers
   };
 }
+
 
 export function purgeUserData(userId) {
   if (!userId) return false;
@@ -3149,6 +3305,7 @@ export function touchSessionActivity(token, meta = {}) {
         device_name = COALESCE(?, device_name)
       WHERE token = ?
     `).run(now, ip, ua, dev, token);
+    mariaTouchSessionActivity(token, now, ip, ua, dev);
   } catch (_) {}
 }
 
