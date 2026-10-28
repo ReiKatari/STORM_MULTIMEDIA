@@ -1879,11 +1879,14 @@ export function getContinueWatching(userId, limit = 12) {
     const canonicalType = resolveCanonicalMediaType(row.title, '', '', '', row);
     const canonicalYr = resolveCanonicalYear(row.title, '', row.poster_url, '', row.year);
     const canonicalGenres = resolveCanonicalGenres(row.title, canonicalType, '', null);
+    const isMovie = canonicalType === 'movie' || canonicalType === 'anime-movie' || canonicalType === 'cartoon';
     return {
       ...row,
       media_type: canonicalType,
       year: canonicalYr,
-      genres: canonicalGenres
+      genres: canonicalGenres,
+      season: isMovie ? 1 : (row.season || 1),
+      episode: isMovie ? 1 : (row.episode || 1)
     };
   });
 }

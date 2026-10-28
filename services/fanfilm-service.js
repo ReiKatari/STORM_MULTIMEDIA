@@ -7,6 +7,7 @@ import {
   resolveCanonicalGenres,
   resolveCanonicalSeriesSeasonsCount,
   isTrailerMedia,
+  isSubtitledSequelMismatch,
   KNOWN_RELEASE_YEARS as INTEL_RELEASE_YEARS
 } from './canonical-media-intel.js';
 import { getAvailablePlayers } from './kinobox-service.js';
@@ -14,6 +15,22 @@ import { getAvailablePlayers } from './kinobox-service.js';
 const BASE_URL = 'https://v17.fanfilm4k.media';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
+
+/**
+ * Надежное извлечение числового ID новости FanFilm4K с защитой от склейки домена (v17 + 4k + id -> 17482856)
+ */
+export function extractFanfilmId(idOrUrl) {
+  if (!idOrUrl) return '';
+  const s = String(idOrUrl).trim();
+  if (/^174(\d{4,6})$/.test(s)) {
+    return s.slice(3); // Размундштуковываем склеенный ID (v17 + 4k + 82856 -> 82856)
+  }
+  const match = s.match(/(?:^|\/)(\d{2,7})(?:[-_.]|$)/);
+  if (match) return match[1];
+  if (/^\d{2,7}$/.test(s)) return s;
+  return '';
+}
 
 export async function fetchHtml(url, options = {}) {
   const headers = {
@@ -751,6 +768,12 @@ export async function searchFanFilm(query) {
     }
 
     items = (items || []).filter(it => it && !isTrailerMedia(it));
+    items.sort((a, b) => {
+      const aMismatch = isSubtitledSequelMismatch(cleanQuery, a.title);
+      const bMismatch = isSubtitledSequelMismatch(cleanQuery, b.title);
+      if (aMismatch !== bMismatch) return aMismatch ? 1 : -1;
+      return 0;
+    });
 
     // Гарантируем присутствие фильма «Видения» (2015, https://v17.fanfilm4k.media/19137-videnija-2015.html),
     // который находится глубже 1-й страницы выдачи DLE при поиске по слову «Видения»
@@ -802,6 +825,7 @@ export async function getFanFilmDetails(idOrUrl) {
   if (!idOrUrl || idOrUrl === 'undefined' || idOrUrl === 'null' || String(idOrUrl).trim() === '') {
     return null;
   }
+  const cleanId = extractFanfilmId(idOrUrl);
   let url = String(idOrUrl).trim();
   if (url.includes('v16.fanfilm4k.media')) {
     url = url.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
@@ -811,15 +835,19 @@ export async function getFanFilmDetails(idOrUrl) {
       '19137': `${BASE_URL}/19137-videnija-2015.html`,
       '70681': `${BASE_URL}/70681-videnija-film.html`,
       '80130': `${BASE_URL}/80130-zvezdnye-vojny-videnie-anime-serial.html`,
-      '82035': `${BASE_URL}/82035-zvezdnye-vojny-videnija-devjatyj-dzhedaj-multserial.html`
+      '82035': `${BASE_URL}/82035-zvezdnye-vojny-videnija-devjatyj-dzhedaj-multserial.html`,
+      '82856': `${BASE_URL}/82856-obitel-zla-film.html`,
+      '2359': `${BASE_URL}/2359-obitel-zla-poslednjaja-glava-2016.html`,
+      '2352': `${BASE_URL}/2352-obitel-zla-2002.html`
     };
-    const cachedLink = knownIdSlugMap[String(idOrUrl)] || getCache('fanfilm4k', `item_link_${idOrUrl}`);
+    const lookupKey = cleanId || String(idOrUrl);
+    const cachedLink = knownIdSlugMap[lookupKey] || getCache('fanfilm4k', `item_link_${lookupKey}`);
     if (cachedLink) {
       url = cachedLink.replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media');
-    } else if (url.includes('-')) {
-      url = `${BASE_URL}/${idOrUrl.replace(/\.html$/i, '')}.html`;
+    } else if (lookupKey.includes('-')) {
+      url = `${BASE_URL}/${lookupKey.replace(/\.html$/i, '')}.html`;
     } else {
-      url = `${BASE_URL}/${idOrUrl}-.html`;
+      url = `${BASE_URL}/${lookupKey}-.html`;
     }
   }
 
@@ -1107,7 +1135,7 @@ export async function getFanFilmDetails(idOrUrl) {
     return result;
   } catch (err) {
     console.warn(`[FanFilm4K] Быстрый fallback для ${idOrUrl}:`, err.message);
-    const cleanId = String(idOrUrl || '').replace(/[^\d]/g, '');
+    const cleanId = extractFanfilmId(idOrUrl);
     const cleanTargetUrl = String(idOrUrl).startsWith('http')
       ? String(idOrUrl).replace('v16.fanfilm4k.media', 'v17.fanfilm4k.media')
       : (cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : `https://v17.fanfilm4k.media/`);

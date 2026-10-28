@@ -1,3 +1,4 @@
+import { isSubtitledSequelMismatch } from './canonical-media-intel.js';
 import https from 'node:https';
 import http from 'node:http';
 import { getCache, setCache } from '../db.js';
@@ -692,6 +693,15 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
   });
 
   for (const item of candidates) {
+    // 0. Строгая проверка на расхождение базового названия и подзаголовка сиквела/спин-оффа
+    if (isSubtitledSequelMismatch(rawTitle, item.title, rawOrig, item.original_title)) {
+      continue;
+    }
+    // 0.1. Строгая проверка типа медиа: фильм не может соответствовать сериалу и наоборот
+    if (is_series !== undefined) {
+      if (Boolean(is_series) && !item.is_series) continue;
+      if (!Boolean(is_series) && item.is_series) continue;
+    }
     let titleScore = 0;
     const cTitle = norm(item.title);
     const cOrig = norm(item.original_title);
@@ -730,9 +740,8 @@ export async function resolveLiftMatch({ lift_id, title, original_title, year, i
 
     if (targetYear && cYear) {
       const diff = Math.abs(targetYear - cYear);
-      if (!is_series && hasExactYearAndTitleCandidate && diff > 0) continue;
-      if (!is_series && diff > 1) continue;
-      if (is_series && diff > 5 && titleScore < 130) continue;
+      if (hasExactYearAndTitleCandidate && diff > 0) continue;
+      if (diff > 1) continue;
     }
 
     let score = titleScore;

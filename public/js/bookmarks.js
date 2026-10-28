@@ -1000,22 +1000,6 @@ export function detectClientMediaType(item) {
   const link = String(item.link || item.url || item.fanfilm_4k_url || '').toLowerCase();
   const src = String(item.source || item.provider || '').toLowerCase();
 
-  // 0. Обитель зла: Мутация - строго фильм, не анимация!
-  if (t.includes('обитель зла') && (t.includes('мутация') || t.includes('мутиция'))) {
-    return 'movie';
-  }
-
-  // Дюна и Уличный боец (2026) - строго художественные фильмы
-  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть') ||
-      t === 'уличный боец' || t.startsWith('уличный боец ') || t === 'street fighter' || t.startsWith('street fighter ')) {
-    return 'movie';
-  }
-
-  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
-  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
-    return 'series';
-  }
-
   // 1. Известные анимационные фильмы (Вырождение, Вендетта и др.)
   const knownAnimatedMovies = [
     'обитель зла: вендетта', 'обитель зла вендетта', 'resident evil: vendetta',
@@ -1030,6 +1014,28 @@ export function detectClientMediaType(item) {
     'шрек', 'shrek', 'ледниковый период', 'ice age', 'гадкий я', 'despicable me',
     'тайна коко', 'coco', 'валли', 'wall-e', 'вверх', 'up', 'рататуй', 'ratatouille'
   ];
+
+  // 0. Обитель зла (художественные фильмы 2026, 2002, Последняя глава, Мутация и др. - строго movie, НЕ сериал)
+  if (t === 'обитель зла' || t === 'resident evil' ||
+      (t.startsWith('обитель зла') && !t.includes('сериал') && !t.includes('бесконечная тьма') && !t.includes('сезон'))) {
+    const hasRealMultiEp = Array.isArray(item?.seasons) && item.seasons.length > 0 && Array.isArray(item.seasons[0]?.episodes) && item.seasons[0].episodes.length > 1;
+    if (!hasRealMultiEp && (!item?.total_episodes || Number(item.total_episodes) <= 1)) {
+      return (typeof knownAnimatedMovies !== 'undefined' && knownAnimatedMovies.some(m => t.includes(m))) ? 'cartoon' : 'movie';
+    }
+  }
+
+  // Дюна и Уличный боец (2026) - строго художественные фильмы
+  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть') ||
+      t === 'уличный боец' || t.startsWith('уличный боец ') || t === 'street fighter' || t.startsWith('street fighter ')) {
+    return 'movie';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
+    return 'series';
+  }
+
+
   if (knownAnimatedMovies.some(m => t === m || t.startsWith(m + ' ') || t.includes(m))) {
     return 'cartoon';
   }
@@ -1166,7 +1172,13 @@ export function detectClientMediaType(item) {
     return 'series';
   }
 
-  if (knownSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
+  if (knownSeries.some(s => {
+    if (t === s) return true;
+    if (s.length <= 5) {
+      return t.startsWith(s + ' ') || t.endsWith(' ' + s) || t.includes(' ' + s + ' ') || t.startsWith(s + ':') || t.includes(' ' + s + ':');
+    }
+    return t.startsWith(s + ' ') || t.includes(s);
+  })) {
     return 'series';
   }
 
@@ -1459,15 +1471,16 @@ export function getLocalContinueWatching() {
       const cleanYr = detectClientYear(item);
       const s = parseInt(item.season, 10) || 1;
       const ep = parseInt(item.episode, 10) || 1;
-      const isSeries = cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1;
+      const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
+      const isSeries = !isMovie && (cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1);
       const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
       return {
         ...item,
         media_type: cleanType,
         year: cleanYr || item.year,
-        season: s,
-        episode: ep,
-        next_up: nextUpText || item.next_up || ''
+        season: isMovie ? 1 : s,
+        episode: isMovie ? 1 : ep,
+        next_up: nextUpText
       };
     });
 
@@ -1500,7 +1513,8 @@ export function saveLocalWatchProgress(data) {
 
   const cleanMediaType = detectClientMediaType(data);
   const cleanYear = detectClientYear(data) || data.year || '';
-  const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1;
+  const isMovie = cleanMediaType === 'movie' || cleanMediaType === 'cartoon' || cleanMediaType === 'anime-movie';
+  const isSeries = !isMovie && (cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1);
 
   // Расчет общего прогресса по всем сезонам сериала
   let seriesOverallPercent = pct;
@@ -1576,9 +1590,9 @@ export function saveLocalWatchProgress(data) {
       poster: data.poster_url || data.poster || '',
       media_type: cleanMediaType,
       year: cleanYear,
-      season: s,
-      episode: ep,
-      total_episodes: totalEp || 1,
+      season: isMovie ? 1 : s,
+      episode: isMovie ? 1 : ep,
+      total_episodes: isMovie ? 1 : (totalEp || 1),
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: sec,
       real_watched_seconds: realSec,
@@ -1702,7 +1716,8 @@ export async function fetchContinueWatching() {
     const s = parseInt(item.season, 10) || 1;
     const ep = parseInt(item.episode, 10) || 1;
     const cleanType = detectClientMediaType(item);
-    const isSeries = cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1;
+    const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
+    const isSeries = !isMovie && (cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1);
     const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
     return {
       ...item,
@@ -1714,9 +1729,9 @@ export async function fetchContinueWatching() {
       year: detectClientYear(item) || item.year || '',
       progress_percent: typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0,
       user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
-      season: s,
-      episode: ep,
-      next_up: nextUpText || item.next_up || ''
+      season: isMovie ? 1 : s,
+      episode: isMovie ? 1 : ep,
+      next_up: nextUpText
     };
   });
   result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));

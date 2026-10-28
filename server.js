@@ -106,6 +106,7 @@ import {
   searchFanFilm,
   getFanFilmDetails,
   resolveMediaYear,
+  extractFanfilmId,
   FANFILM_PINNED_CAROUSEL_IDS,
   fetchHtml
 } from './services/fanfilm-service.js';
@@ -177,6 +178,7 @@ import {
   resolveCanonicalGenres,
   resolveCanonicalSeriesSeasonsCount,
   isTrailerMedia,
+  isSubtitledSequelMismatch,
   isMediaUpcomingOrUnreleased
 } from './services/canonical-media-intel.js';
 
@@ -3985,7 +3987,7 @@ async function executeUnifiedSearch(query, source = 'all') {
   // Синтезируем полный объединенный список плееров для каждой карточки, гарантируя FanFilm4K на первом месте
   for (const it of items) {
     const title = it.title || '';
-    const cleanId = String(it.id || '').replace(/[^\d]/g, '');
+    const cleanId = extractFanfilmId(it.id || it.fanfilm_4k_url || it.link);
     const resolvedFf = resolveFanFilmUrl(title, it.year);
     const fanfilmUrl = it.fanfilm_4k_url || resolvedFf || (it.source === 'fanfilm4k' && cleanId ? `https://v17.fanfilm4k.media/${cleanId}-.html` : (it.is_upcoming ? '' : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(title)}`));
 
@@ -5114,6 +5116,8 @@ app.get('/api/media/item', async (req, res) => {
       }
     } else {
       let targetLookup = String(url || id || '').replace(/^ff_/, '').trim();
+      const cleanFanfilmId = extractFanfilmId(targetLookup || id || url);
+      if (cleanFanfilmId) targetLookup = cleanFanfilmId;
       if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || targetLookup.includes('undefined')) {
         targetLookup = resolveFanFilmUrl(req.query.title || '', req.query.year || '') || targetLookup || '';
       }
@@ -5148,8 +5152,11 @@ app.get('/api/media/item', async (req, res) => {
               const ffFound = await searchFanFilm(req.query.title);
               const bestFf = (ffFound || []).find(f => {
                 const candYr = parseInt(f.year || '', 10);
-                if (!isSeriesReqCheck && reqYrCheck >= 1920 && candYr >= 1920 && Math.abs(reqYrCheck - candYr) > 1) return false;
-                return scoreMediaCandidate(f.title || '', '', req.query.title, req.query.year || '', '', '') >= 200;
+                if (reqYrCheck >= 1920 && candYr >= 1920 && Math.abs(reqYrCheck - candYr) > 1) return false;
+                if (isSubtitledSequelMismatch(req.query.title, f.title)) return false;
+                if (isSeriesReqCheck && (f.media_type === 'movie' || f.category === 'Фильм')) return false;
+                if (!isSeriesReqCheck && (f.media_type === 'series' || f.category === 'Сериал')) return false;
+                return scoreMediaCandidate(f.title || '', '', req.query.title, req.query.year || '', isSeriesReqCheck ? '1' : '', '', candYr) >= 200;
               });
               if (bestFf && (bestFf.link || bestFf.url)) {
                 mediaDetails = await getFanFilmDetails(bestFf.link || bestFf.url);
@@ -5182,7 +5189,7 @@ app.get('/api/media/item', async (req, res) => {
       }
     } else {
       const itemTitle = req.query.title || 'Видео';
-      const cleanRawId = String(id || '').replace(/[^\d]/g, '');
+      const cleanRawId = extractFanfilmId(id || url || req.query.fanfilm_4k_url || '');
       const hasNumericId = cleanRawId && /^\d{2,7}$/.test(cleanRawId) && source === 'fanfilm4k';
       const rawFanfilmUrl = req.query.fanfilm_4k_url || (url && String(url).startsWith('http') ? url : (hasNumericId ? `https://v17.fanfilm4k.media/${cleanRawId}-.html` : `https://v17.fanfilm4k.media/index.php?do=search&subaction=search&story=${encodeURIComponent(itemTitle)}`));
       mediaDetails = {
@@ -5217,7 +5224,7 @@ app.get('/api/media/item', async (req, res) => {
 
     // Всегда гарантируем наличие fanfilm_4k_url и плеера для fanfilm4k источника
     if (source === 'fanfilm4k') {
-      const cleanRawId = String(id || mediaDetails.id || '').replace(/[^\d]/g, '');
+      const cleanRawId = extractFanfilmId(id || mediaDetails.id || mediaDetails.fanfilm_4k_url || '');
       const hasNumericId = cleanRawId && /^\d{2,7}$/.test(cleanRawId);
       if (!mediaDetails.fanfilm_4k_url) {
         mediaDetails.fanfilm_4k_url = req.query.fanfilm_4k_url || (url && String(url).startsWith('http') ? url : (hasNumericId ? `https://v17.fanfilm4k.media/${cleanRawId}-.html` : ''));
@@ -5330,7 +5337,11 @@ app.get('/api/media/item', async (req, res) => {
               if (it.media_type === 'series' || it.media_type === 'tv' || it.media_type === 'anime-series') return false;
               if (targetMovieYr >= 1920 && it.year && Math.abs(targetMovieYr - Number(it.year)) > 1) return false;
             }
-            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || req.query.year || '', isSeries ? '1' : '', '');
+            if (isSeries && (it.media_type === 'movie' || it.media_type === 'anime-movie')) return false;
+            if (isSubtitledSequelMismatch(cleanSearchTitle || mediaDetails.title, it.title || it.original_title || '')) return false;
+            const candYr = parseInt(it.year || '', 10);
+            if (targetMovieYr >= 1920 && candYr >= 1920 && Math.abs(targetMovieYr - candYr) > 1) return false;
+            const sc = scoreMediaCandidate(it.title || it.original_title || '', '', cleanSearchTitle || mediaDetails.title, mediaDetails.year || req.query.year || '', isSeries ? '1' : '', '', candYr);
             return sc >= 200;
           });
           const pool = validItems;
@@ -5444,6 +5455,10 @@ app.get('/api/media/item', async (req, res) => {
         mediaDetails.year = resolvedPremiereData.year || mediaDetails.year;
         mediaDetails.premiere = resolvedPremiereData.premiere || mediaDetails.premiere;
         mediaDetails.release_date = resolvedPremiereData.release_date || mediaDetails.release_date;
+      }
+      const confirmedYr = String(mediaDetails.premiere || mediaDetails.release_date || '').match(/\b(19\d\d|20\d\d)\b/)?.[1];
+      if (confirmedYr) {
+        mediaDetails.year = confirmedYr;
       }
     } catch (e) {
       console.warn('Ошибка resolveMediaPremiereAndYear:', e.message);
@@ -5651,12 +5666,13 @@ app.get('/api/media/item', async (req, res) => {
           ]);
           const targetYrForLift = parseInt(mediaDetails.year || req.query.year || '', 10);
           const liftCandYr = parseInt(liftInfo?.year || '', 10);
-          const isLiftYearValid = isSeries || !targetYrForLift || !liftCandYr || Math.abs(targetYrForLift - liftCandYr) <= 1;
-          if (isLiftYearValid) {
+          const isLiftYearValid = !targetYrForLift || !liftCandYr || Math.abs(targetYrForLift - liftCandYr) <= 1;
+          const isLiftTypeValid = !liftInfo || (isSeries ? Boolean(liftInfo.is_series || liftInfo.seasons?.length) : !liftInfo.is_series);
+          if (isLiftYearValid && isLiftTypeValid) {
             mediaDetails.lift_id = matchedLiftId;
             mediaDetails.is_upcoming = false;
           }
-          if (liftInfo && isLiftYearValid) {
+          if (liftInfo && isLiftYearValid && isLiftTypeValid) {
             if (isSeries && !isExplicitMovieReq && liftInfo.seasons?.length && (!mediaDetails.seasons || mediaDetails.seasons.length === 0)) {
               mediaDetails.seasons = liftInfo.seasons;
             }
@@ -7052,6 +7068,11 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
   const normCand = normalizeMatchText(candidateTitle);
   if ((!normTarget && !normOrig) || !normCand) return -1;
 
+  // 0. Строгая проверка на расхождение базового названия и подзаголовка сиквела/спин-оффа
+  if (isSubtitledSequelMismatch(cleanTitle, candidateTitle, originalTitle, '')) {
+    return -1;
+  }
+
   // 1. Строго отклоняем некинематографические категории RuTube (Авто-мото, Видеоигры, Спорт, Охота, Хобби, Таро и т.д.)
   const catNorm = String(categoryName || '').toLowerCase().trim();
   if (catNorm && /(?:авто[- ]?мото|видеоигр|спорт|охота|рыбалк|путешеств|строительств|ремонт|сад\s+и\s+огород|техник|оборудован|кулинар|еда\b|животн|лайфстайл|хобби|красот|новости|сми\b|наука|обучени|образован|бизнес|финанс|недвижимост|эзотерик|астролог|интервью|подкаст|политик|экономик|религи|психолог|дизайн)/i.test(catNorm)) {
@@ -7147,11 +7168,14 @@ function scoreMediaCandidate(candidateTitle = '', candidateDesc = '', cleanTitle
 
   const reqYear = parseInt(year, 10);
   if (reqYear >= 1920 && reqYear <= 2030) {
-    const yearMatches = String(candidateTitle).match(/\b(19\d\d|20\d\d)\b/g) || [];
+    if (pubYear > 0 && Math.abs(pubYear - reqYear) > 1) {
+      return -1;
+    }
+    const yearMatches = String(candidateTitle + ' ' + (candidateDesc || '').slice(0, 100)).match(/\b(19\d\d|20\d\d)\b/g) || [];
     for (const ym of yearMatches) {
       if (normTarget.includes(ym) || (normOrig && normOrig.includes(ym))) continue;
       const cy = parseInt(ym, 10);
-      if (Math.abs(cy - reqYear) > 1) {
+      if (cy >= 1920 && cy <= 2030 && Math.abs(cy - reqYear) > 1) {
         return -1;
       }
     }

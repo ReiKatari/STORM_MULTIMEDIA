@@ -50,6 +50,30 @@ export const KNOWN_RELEASE_YEARS = {
   'стюарт блум не смог спасти вселенную': '2025',
   'обитель зла мутация': '2025',
   'обитель зла: мутация': '2025',
+  'обитель зла': '2026',
+  'resident evil': '2026',
+  'обитель зла 2026': '2026',
+  'resident evil 2026': '2026',
+  'обитель зла 2002': '2002',
+  'обитель зла 2 апокалипсис': '2004',
+  'обитель зла: апокалипсис': '2004',
+  'обитель зла 3 вымирание': '2007',
+  'обитель зла: вымирание': '2007',
+  'обитель зла 4 жизнь после смерти': '2010',
+  'обитель зла: жизнь после смерти': '2010',
+  'обитель зла 5 возмездие': '2012',
+  'обитель зла: возмездие': '2012',
+  'обитель зла последняя глава': '2016',
+  'обитель зла: последняя глава': '2016',
+  'обитель зла 6 последняя глава': '2016',
+  'обитель зла 6: последняя глава': '2016',
+  'resident evil the final chapter': '2016',
+  'обитель зла раккун сити': '2021',
+  'обитель зла: раккун сити': '2021',
+  'обитель зла бесконечная тьма': '2021',
+  'обитель зла: бесконечная тьма': '2021',
+  'обитель зла остров смерти': '2023',
+  'обитель зла: остров смерти': '2023',
   'человек бензопила фильм история резе': '2025',
   'человек-бензопила. фильм: история резе': '2025',
   'человек бензопила история резе': '2025',
@@ -571,6 +595,95 @@ function normalizeTitle(title = '') {
  * Интеллектуальное определение типа медиа
  * @returns {'series' | 'movie' | 'anime-series' | 'anime-movie' | 'cartoon-series' | 'cartoon' | 'show'}
  */
+
+const GENERIC_TITLE_TAGS = new Set([
+  'фильм', 'movie', 'сериал', 'series', 'сезон', 'season', 'тв', 'tv',
+  '4k', 'uhd', 'fhd', 'hd', '1080p', '720p', 'дубляж', 'dub', 'версия',
+  'edition', 'extended', 'cut', 'remastered', 'red', 'head', 'sound', 'rhs'
+]);
+
+function normalizeMatchTextForMismatch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[«»"'`]/g, '')
+    .replace(/[:—–-]/g, ' ')
+    .replace(/\s*[\(\[]?\s*(?:постер|4[kк]|uhd|fhd|сериал|фильм|\d+\s*сезон|сезон\s*\d+|19\d\d|20\d\d).*?[\)\]]?/gi, ' ')
+    .replace(/[^a-zа-я0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Проверка расхождения базового названия франшизы и подзаголовка сиквела/спин-оффа
+ * Гарантирует: "Обитель зла" НИКОГДА не сопоставляется с "Обитель зла: Последняя глава", "Обитель зла 6", "Синистер. Обитель зла" и т.д.
+ * И наоборот: если в целевом запросе указан подзаголовок, он обязан совпасть.
+ */
+export function isSubtitledSequelMismatch(targetTitle = '', candTitle = '', targetOrig = '', candOrig = '') {
+  const checkPair = (tRaw, cRaw) => {
+    const t = normalizeMatchTextForMismatch(tRaw);
+    const c = normalizeMatchTextForMismatch(cRaw);
+    if (!t || !c) return false;
+    if (t === c) return false;
+
+    const tWords = t.split(' ').filter(w => !GENERIC_TITLE_TAGS.has(w));
+    const cWords = c.split(' ').filter(w => !GENERIC_TITLE_TAGS.has(w));
+    const tClean = tWords.join(' ');
+    const cClean = cWords.join(' ');
+    if (tClean === cClean) return false;
+
+    // 1. Номерные сиквелы (2..9, ii..x, часть N, part N)
+    const sequelPattern = /(?:^|\s)(?:[2-9]|ii|iii|iv|v|vi|vii|viii|ix|x|часть\s*[2-9]|part\s*[2-9])(?:\s|$)/i;
+    const tHasSequel = sequelPattern.test(t);
+    const cHasSequel = sequelPattern.test(c);
+    if (!tHasSequel && cHasSequel) {
+      const tNoSeq = tClean.replace(sequelPattern, ' ').replace(/\s+/g, ' ').trim();
+      const cNoSeq = cClean.replace(sequelPattern, ' ').replace(/\s+/g, ' ').trim();
+      if (tNoSeq !== cNoSeq) return true;
+    } else if (tHasSequel && !cHasSequel) {
+      const tNoSeq = tClean.replace(sequelPattern, ' ').replace(/\s+/g, ' ').trim();
+      const cNoSeq = cClean.replace(sequelPattern, ' ').replace(/\s+/g, ' ').trim();
+      if (tNoSeq !== cNoSeq) return true;
+    }
+
+    // 2. Кандидат начинается с целевого названия, но содержит дополнительные слова подзаголовка
+    if (cClean.startsWith(tClean + ' ')) {
+      const extra = cClean.slice(tClean.length).trim().split(' ').filter(w => !GENERIC_TITLE_TAGS.has(w));
+      if (extra.length > 0) return true;
+    }
+
+    // 3. Целевое название начинается с кандидата, но целевое имеет подзаголовок, а кандидат - голый
+    if (tClean.startsWith(cClean + ' ')) {
+      const missing = tClean.slice(cClean.length).trim().split(' ').filter(w => !GENERIC_TITLE_TAGS.has(w));
+      if (missing.length > 0) return true;
+    }
+
+    // 4. Кандидат содержит целевое название с посторонними словами в начале (Синистер. Обитель зла, Паранормальные явления: Обитель зла)
+    if (cClean.includes(' ' + tClean) || cClean.endsWith(' ' + tClean)) {
+      return true;
+    }
+
+    // 5. Разные подзаголовки при одинаковой франшизе (например: Обитель зла: Последняя глава vs Обитель зла: Возмездие)
+    if (tWords.length >= 2 && cWords.length >= 2) {
+      if (tWords[0] === cWords[0] && tWords[1] === cWords[1]) {
+        const tSub = tWords.slice(2).filter(w => !sequelPattern.test(w) && !/^\d+$/.test(w)).join(' ');
+        const cSub = cWords.slice(2).filter(w => !sequelPattern.test(w) && !/^\d+$/.test(w)).join(' ');
+        if (tSub !== cSub) return true;
+      }
+    }
+
+    return false;
+  };
+
+  const ruMismatch = checkPair(targetTitle, candTitle);
+  if (ruMismatch) return true;
+  if (targetOrig && candOrig) {
+    const enMismatch = checkPair(targetOrig, candOrig);
+    if (enMismatch) return true;
+  }
+  return false;
+}
+
 export function resolveCanonicalMediaType(title = '', link = '', category = '', genres = '', item = {}) {
   const norm = normalizeTitle(title);
   const linkStr = String(link || '').toLowerCase();
@@ -583,9 +696,13 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
     return 'series';
   }
 
-  // 0. Обитель зла: Мутация - строго художественный фильм (movie), не анимация и не сериал!
-  if (norm.includes('обитель зла') && (norm.includes('мутация') || norm.includes('мутиция'))) {
-    return 'movie';
+  // 0. Обитель зла (художественные фильмы 2026, 2002, Последняя глава, Мутация и др. - строго movie, НЕ сериал)
+  if (norm === 'обитель зла' || norm === 'resident evil' ||
+      (norm.startsWith('обитель зла') && !norm.includes('сериал') && !norm.includes('бесконечная тьма') && !norm.includes('сезон'))) {
+    const hasRealMultiEp = Array.isArray(item?.seasons) && item.seasons.length > 0 && Array.isArray(item.seasons[0]?.episodes) && item.seasons[0].episodes.length > 1;
+    if (!hasRealMultiEp && (!item?.total_episodes || Number(item.total_episodes) <= 1)) {
+      return KNOWN_ANIMATED_MOVIES.some(m => norm.includes(m)) ? 'cartoon' : 'movie';
+    }
   }
 
   // Дюна и Уличный боец (2026) - строго художественные фильмы (movie), ни в коем случае не сериалы!
@@ -641,8 +758,11 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
     return hasEpisodes ? 'cartoon-series' : 'cartoon';
   }
 
-  // 3. Строгая проверка на сериал по объекту, флагу или реестру известных сериалов
-  if (item.isSeries || item.is_series || item.media_type === 'series' || item.type === 'series' || item.type === 'tv') {
+  // 3. Строгая проверка на сериал по объекту, флагу или реестру известных сериалов (с защитой от ложной классификации полнометражных фильмов)
+  const isKnownMovieTitle = norm === 'обитель зла' || norm === 'resident evil' || norm === 'дюна' || norm === 'уличный боец';
+  const hasMovieDuration = Number(item.duration_seconds || item.time_seconds || 0) >= 3600;
+  const isExplicitFilmObj = item.category === 'Фильм' || isKnownMovieTitle || hasMovieDuration;
+  if (!isExplicitFilmObj && (item.isSeries || item.is_series || item.media_type === 'series' || item.type === 'series' || item.type === 'tv')) {
     return 'series';
   }
 
@@ -669,7 +789,13 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
     return 'series';
   }
 
-  if (KNOWN_SERIES.some(s => norm === s || norm.startsWith(s + ' ') || norm.includes(s))) {
+  if (KNOWN_SERIES.some(s => {
+    if (norm === s) return true;
+    if (s.length <= 5) {
+      return norm.startsWith(s + ' ') || norm.endsWith(' ' + s) || norm.includes(' ' + s + ' ') || norm.startsWith(s + ':') || norm.includes(' ' + s + ':');
+    }
+    return norm.startsWith(s + ' ') || norm.includes(s);
+  })) {
     return 'series';
   }
 

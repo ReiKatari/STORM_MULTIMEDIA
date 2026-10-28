@@ -7356,9 +7356,13 @@ export function renderInPlayerVoiceSheet(sheet) {
 export function checkIfMediaIsSeries(media) {
   if (!media) return false;
   const titleLower = String(media.title || media.name || '').toLowerCase();
-  // Анимационные и художественные фильмы серии "Обитель зла" (Мутация, Вендетта, Вырождение, Проклятие, Остров смерти) - строго фильмы
-  if (titleLower.includes('обитель зла') && (titleLower.includes('мутация') || titleLower.includes('вендетта') || titleLower.includes('вырождение') || titleLower.includes('проклятие') || titleLower.includes('остров смерти') || titleLower.includes('resident evil'))) {
-    return false;
+  // Художественные и анимационные фильмы франшизы "Обитель зла" (2026, 2002, Последняя глава, Мутация, Вендетта и др.) - строго фильмы
+  if (titleLower === 'обитель зла' || titleLower === 'resident evil' ||
+      (titleLower.includes('обитель зла') && !titleLower.includes('сериал') && !titleLower.includes('бесконечная тьма') && !titleLower.includes('сезон'))) {
+    const hasEpisodesList = Array.isArray(media.seasons) && media.seasons.length > 0 && Array.isArray(media.seasons[0]?.episodes) && media.seasons[0].episodes.length > 1;
+    if (!hasEpisodesList && (!media.total_episodes || Number(media.total_episodes) <= 1)) {
+      return false;
+    }
   }
 
   // Защита от мультфильмов со словом монстр/монстры (Корпорация монстров, Монстры на каникулах и др. - строго мультфильмы)

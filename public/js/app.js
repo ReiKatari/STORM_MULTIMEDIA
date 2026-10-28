@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.3.5';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.5';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.5';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.5';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.5';
-import { getStatusIconSvg } from './status-icons.js?v=1.3.5';
-import { initFormFactorEngine } from './form-factor.js?v=1.3.5';
+import { initTheme, setTheme } from './theme.js?v=1.3.6';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.6';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.6';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.6';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.6';
+import { getStatusIconSvg } from './status-icons.js?v=1.3.6';
+import { initFormFactorEngine } from './form-factor.js?v=1.3.6';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.3.5';
+const STORM_ASSET_VER = '1.3.6';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -3719,7 +3719,7 @@ function createRailCardHtml(item, idx, isWide = false, railId = '') {
   const primaryQualityBadge = isUpcoming
     ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
     : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
-  const secondaryContextBadge = item.next_up
+  const secondaryContextBadge = (!isExplicitMovie && item.next_up)
     ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
     : ((!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
       ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
@@ -5324,9 +5324,10 @@ function renderMediaItems(items) {
       const primaryQualityBadge = isUpcoming
         ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
         : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
-      const secondaryContextBadge = item.next_up
+      const isCardMovie = item.media_type === 'movie' || item.category === 'Фильм' || catLabel === 'Фильм';
+      const secondaryContextBadge = (!isCardMovie && item.next_up)
         ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
-        : ((item.media_type === 'series' || catLabel === 'Сериал')
+        : ((!isCardMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
           ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
           : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
 

@@ -1,3 +1,4 @@
+import { isSubtitledSequelMismatch } from './canonical-media-intel.js';
 /**
  * Сервис интеграции с The Movie Database (TMDB)
  * Мировая база кино, сериалов и мультфильмов с постерами в высоком разрешении
@@ -297,19 +298,22 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
       const searchRes = await searchTmdb(cleanTitle, 1);
       const isWantTv = mediaTypeHint === 'series' || mediaTypeHint === 'tv' || mediaTypeHint === 'cartoon-series' || mediaTypeHint === 'anime-series';
       const items = searchRes?.items || [];
+      const filteredItems = items.filter(it => !isSubtitledSequelMismatch(cleanTitle, it.title || it.name || ''));
 
       let match = null;
       if (yearHint) {
-        match = items.find(it => {
+        match = filteredItems.find(it => {
           const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
           const typeOk = isWantTv ? itIsTv : !itIsTv;
           return typeOk && it.year && Math.abs(parseInt(it.year, 10) - parseInt(yearHint, 10)) <= 1;
         });
       }
       if (!match) {
-        match = items.find(it => {
+        match = filteredItems.find(it => {
           const itIsTv = it.media_type === 'series' || it.media_type === 'tv';
-          return isWantTv ? itIsTv : !itIsTv;
+          const typeOk = isWantTv ? itIsTv : !itIsTv;
+          if (yearHint && it.year && Math.abs(parseInt(it.year, 10) - parseInt(yearHint, 10)) > 1) return false;
+          return typeOk;
         });
       }
 
@@ -319,7 +323,12 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
         match = (reacherRes?.items || []).find(it => it.media_type === 'series' || it.media_type === 'tv');
       }
 
-      if (!match) match = items[0];
+      if (!match && filteredItems.length > 0) {
+        const first = filteredItems[0];
+        if (!yearHint || !first.year || Math.abs(parseInt(first.year, 10) - parseInt(yearHint, 10)) <= 1) {
+          match = first;
+        }
+      }
       if (match && match.id) {
         return String(match.id).replace(/^tmdb_(?:up_|movie_|tv_|series_)?/i, '').trim();
       }
@@ -342,6 +351,7 @@ export async function getTmdbItemDetails(id, mediaTypeHint = '', titleHint = '',
 
   const matchesTitleHint = (candidateTitle, candidateOrig) => {
     if (!titleHint) return true;
+    if (isSubtitledSequelMismatch(titleHint, candidateTitle, '', candidateOrig)) return false;
     const normHint = String(titleHint)
       .toLowerCase()
       .replace(/ё/g, 'е')

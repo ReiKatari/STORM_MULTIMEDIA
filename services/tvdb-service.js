@@ -1,3 +1,4 @@
+import { isSubtitledSequelMismatch } from './canonical-media-intel.js';
 import { getCache, setCache } from '../db.js';
 import { KNOWN_RELEASE_YEARS, resolveMediaYear } from './fanfilm-service.js';
 
@@ -184,12 +185,16 @@ export async function resolveMediaPremiereAndYear({
     if (ym) resYear = ym[1];
   }
 
-  // Если дата была заполнена ошибочным годом, синхронизируем с подтвержденным годом
-  if (resYear && resReleaseDate && !resReleaseDate.startsWith(resYear) && !resReleaseDate.endsWith(resYear)) {
+  // Если в подтвержденной дате релиза указан год, он имеет высший приоритет над приблизительным
+  if (resReleaseDate) {
+    const ym = resReleaseDate.match(/\b(19\d\d|20\d\d)\b/);
+    if (ym) resYear = ym[1];
+  }
+  if (resYear && (!resReleaseDate || !resReleaseDate.includes(resYear))) {
     resReleaseDate = `${resYear}-01-01`;
-    if (!premiere || premiere.includes('2026')) {
-      resPremiere = `${resYear} год`;
-    }
+  }
+  if (resReleaseDate && (!resPremiere || resPremiere === 'Не указана' || resPremiere.includes('undefined'))) {
+    resPremiere = formatRussianDate(resReleaseDate);
   }
 
   // 3. Запрос в TheTVDB v4
@@ -234,17 +239,21 @@ export async function resolveMediaPremiereAndYear({
         if (tmdbRes.ok) {
           const data = await tmdbRes.json();
           if (data.results && data.results.length > 0) {
-            const first = (resYear
-              ? data.results.find(r => String(r.release_date || r.first_air_date || '').startsWith(resYear))
-              : data.results[0]) || null;
+            const validTmdb = data.results.filter(r => {
+              if (isSubtitledSequelMismatch(title, r.title || r.name || '')) return false;
+              if (resYear) {
+                const rYr = String(r.release_date || r.first_air_date || '').match(/\b(19\d\d|20\d\d)\b/)?.[1];
+                if (rYr && Math.abs(Number(rYr) - Number(resYear)) > 1) return false;
+              }
+              return true;
+            });
+            const first = validTmdb[0] || null;
             const dateStr = first ? (first.release_date || first.first_air_date || '') : '';
             if (dateStr) {
-              if (!resReleaseDate) resReleaseDate = dateStr;
-              if (!resPremiere || resPremiere === 'Не указана') resPremiere = formatRussianDate(dateStr);
-              if (!resYear) {
-                const ym = dateStr.match(/\b(19\d\d|20\d\d)\b/);
-                if (ym) resYear = ym[1];
-              }
+              resReleaseDate = dateStr;
+              resPremiere = formatRussianDate(dateStr);
+              const ym = dateStr.match(/\b(19\d\d|20\d\d)\b/);
+              if (ym) resYear = ym[1];
               break;
             }
           }
