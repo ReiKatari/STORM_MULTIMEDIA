@@ -721,6 +721,12 @@ function renderResumePromptBanner(resumeState) {
 function replaceIframeSrcNoHistory(iframe, newUrl) {
   if (!iframe || !newUrl) return;
   try {
+    // В полноэкранном режиме ни в коем случае не отсоединяем iframe от DOM, чтобы браузер не сбрасывал Fullscreen!
+    const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+    if (isFs) {
+      iframe.src = newUrl;
+      return iframe;
+    }
     const parent = iframe.parentNode;
     if (parent) {
       const fresh = iframe.cloneNode(false);
@@ -5458,54 +5464,74 @@ function playStreamUrl(url) {
       window._stormHls = null;
     }
 
-    container.innerHTML = `
-      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
-        <!-- Динамическая подсветка Ambilight -->
-        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+    let video = document.getElementById('storm-video-player');
+    let videoBox = container.querySelector('.player-video-box');
+    let bigPlayBtn = container.querySelector('#storm-video-big-play-btn');
 
-        <video id="storm-video-player" controls crossorigin="anonymous" preload="metadata" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
+    // ПЕРЕИСПОЛЬЗУЕМ существующий <video> элемент — гарантирует сохранение режима «На весь экран»!
+    if (!video || !videoBox) {
+      container.innerHTML = `
+        <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+          <!-- Динамическая подсветка Ambilight -->
+          <div id="player-ambilight-aura" class="ambilight-aura"></div>
 
-        <!-- Кнопка мгновенного старта воспроизведения на смартфонах и ПК -->
-        <div class="storm-video-big-play-btn" id="storm-video-big-play-btn" title="Воспроизвести">
-          <div class="big-play-icon">▶</div>
+          <video id="storm-video-player" controls crossorigin="anonymous" preload="metadata" style="width:100%;height:100%;background:#000;border-radius:12px;outline:none;position:relative;z-index:5;pointer-events:auto;" playsinline></video>
+
+          <!-- Кнопка мгновенного старта воспроизведения на смартфонах и ПК -->
+          <div class="storm-video-big-play-btn" id="storm-video-big-play-btn" title="Воспроизвести">
+            <div class="big-play-icon">▶</div>
+          </div>
+
+          <!-- Кнопки пропуска заставок -->
+          <button type="button" class="storm-skip-btn" id="skip-intro-btn" style="display: none;">
+            ⏭️ Пропустить заставку
+          </button>
+          <button type="button" class="storm-skip-btn" id="skip-outro-btn" style="display: none;">
+            ⏭️ Следующая серия
+          </button>
         </div>
+      `;
 
-        <!-- Кнопки пропуска заставок -->
-        <button type="button" class="storm-skip-btn" id="skip-intro-btn" style="display: none;">
-          ⏭️ Пропустить заставку
-        </button>
-        <button type="button" class="storm-skip-btn" id="skip-outro-btn" style="display: none;">
-          ⏭️ Следующая серия
-        </button>
-      </div>
-    `;
+      video = document.getElementById('storm-video-player');
+      videoBox = container.querySelector('.player-video-box');
+      bigPlayBtn = container.querySelector('#storm-video-big-play-btn');
 
-    const video = document.getElementById('storm-video-player');
-    const videoBox = container.querySelector('.player-video-box');
-    const bigPlayBtn = container.querySelector('#storm-video-big-play-btn');
+      if (videoBox) {
+        mountInPlayerOverlay(videoBox);
+      }
 
-    if (videoBox) {
-      mountInPlayerOverlay(videoBox);
-    }
-
-    if (bigPlayBtn && video) {
-      bigPlayBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        video.play().catch(() => {});
-        bigPlayBtn.classList.add('is-hidden');
-      });
-      video.addEventListener('play', () => {
-        bigPlayBtn.classList.add('is-hidden');
-        videoBox.classList.add('is-playing');
-      });
-      video.addEventListener('pause', () => {
-        bigPlayBtn.classList.remove('is-hidden');
-        videoBox.classList.remove('is-playing');
-      });
-      video.addEventListener('playing', () => {
-        bigPlayBtn.classList.add('is-hidden');
-        videoBox.classList.add('is-playing');
-      });
+      if (bigPlayBtn && video) {
+        bigPlayBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          video.play().catch(() => {});
+          bigPlayBtn.classList.add('is-hidden');
+        });
+        video.addEventListener('play', () => {
+          bigPlayBtn.classList.add('is-hidden');
+          videoBox.classList.add('is-playing');
+        });
+        video.addEventListener('pause', () => {
+          bigPlayBtn.classList.remove('is-hidden');
+          videoBox.classList.remove('is-playing');
+        });
+        video.addEventListener('playing', () => {
+          bigPlayBtn.classList.add('is-hidden');
+          videoBox.classList.add('is-playing');
+        });
+      }
+    } else {
+      // Видеоэлемент уже в DOM — мягкий сброс состояния без размонтирования Fullscreen узла
+      try {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        delete video.dataset.hasEndedTriggered;
+      } catch (_) {}
+      if (bigPlayBtn) bigPlayBtn.classList.add('is-hidden');
+      const skipIntroBtn = container.querySelector('#skip-intro-btn');
+      if (skipIntroBtn) skipIntroBtn.style.display = 'none';
+      const skipOutroBtn = container.querySelector('#skip-outro-btn');
+      if (skipOutroBtn) skipOutroBtn.style.display = 'none';
     }
 
     // Настраиваем HLS с поддержкой ленивой загрузки, авто-проксирования и резервного переключения
@@ -5809,24 +5835,52 @@ function setupVideoFeatures(video, wrapper) {
   // 7. Покадровая навигация (Thumbnail Scrubbing)
   setupThumbnailScrubbing(video);
 
-  // 8. Автоматический динамический прогресс просмотра
+  // 8. Автоматический динамический прогресс просмотра (с троттлингом DOM-записей для 4K)
   let lastSyncTime = 0;
+  let lastUiUpdateTime = 0;
+  let lastRenderedPercent = -1;
   video.addEventListener('timeupdate', () => {
-    if (video.duration && !isNaN(video.duration)) {
-      if (isFinite(video.duration) && video.duration > 30) {
-        const durEl = document.querySelector('#cinema-side-info [data-info="duration"]');
-        const expected = formatDurationDisplay(video.duration);
-        if (durEl && expected && durEl.textContent.trim() !== expected) {
-          updateSidebarDuration(video.duration);
-        }
+    const curTime = video.currentTime;
+    const dur = video.duration;
+    if (!dur || isNaN(dur)) return;
+
+    // Автопереключение серии при окончании HLS-потока (когда стрим останавливается за 0.8-1.5 сек до duration)
+    if (dur > 30 && curTime >= dur - 1.2 && !video.dataset.hasEndedTriggered) {
+      const isSeries = checkIfMediaIsSeries(currentMedia);
+      if (isSeries && isAutoNextEnabled()) {
+        video.dataset.hasEndedTriggered = 'true';
+        setTimeout(() => { delete video.dataset.hasEndedTriggered; }, 6000);
+        showToast('Серия завершена. Запуск следующей серии...', 'info');
+        setTimeout(() => {
+          playInPlayerNextEpisode();
+        }, 800);
+        return;
       }
-      const percent = Math.min(100, Math.round((video.currentTime / video.duration) * 100));
-      currentProgressPercent = percent;
-      currentWatchTimeSeconds = Math.round(video.currentTime);
+    }
+
+    const now = Date.now();
+    // Троттлинг DOM-записей (не чаще 1 раза в 250 мс для экономии GPU/CPU в 4K)
+    if (now - lastUiUpdateTime < 250) return;
+    lastUiUpdateTime = now;
+
+    if (isFinite(dur) && dur > 30) {
+      const durEl = document.querySelector('#cinema-side-info [data-info="duration"]');
+      const expected = formatDurationDisplay(dur);
+      if (durEl && expected && durEl.textContent.trim() !== expected) {
+        updateSidebarDuration(dur);
+      }
+    }
+    const percent = Math.min(100, Math.round((curTime / dur) * 100));
+    currentProgressPercent = percent;
+    currentWatchTimeSeconds = Math.round(curTime);
+
+    if (percent !== lastRenderedPercent) {
+      lastRenderedPercent = percent;
       const slider = document.getElementById('player-progress-slider');
       const label = document.getElementById('player-progress-label');
-      if (slider) slider.value = percent;
+      if (slider && slider.value != percent) slider.value = percent;
       if (label) label.textContent = `${percent}%`;
+    }
 
       const activeSeasonForSync = Math.max(1, Number(quickBarActiveSeason || activeTrackingSeason || currentMedia?.season || 1));
       const activeEpisodeForSync = Math.max(1, Number(quickBarActiveEpisode || activeTrackingEpisode || currentEpisodeIndex || currentMedia?.episode || 1));
@@ -5843,7 +5897,6 @@ function setupVideoFeatures(video, wrapper) {
         }
       }
 
-      const now = Date.now();
       if (now - lastSyncTime >= 10000 && currentMedia) {
         lastSyncTime = now;
         saveMediaResumeSnapshot({
@@ -5854,7 +5907,6 @@ function setupVideoFeatures(video, wrapper) {
           forceSync: true
         });
       }
-    }
   });
 
   // 9. Сохранение и автоприменение скорости воспроизведения
@@ -7722,94 +7774,156 @@ export function playEpisodeByNumber(epNum, seasonNum = null) {
   return false;
 }
 
-export function playInPlayerNextEpisode() {
+export async function playInPlayerNextEpisode() {
   if (!checkIfMediaIsSeries(currentMedia)) {
     showToast('Это фильм, следующая серия недоступна', 'info');
     return;
   }
 
-  // 1. Быстрая панель FanFilm / Kodik / серверов
-  if (quickBarSeriesData && quickBarSeriesData.seasons && quickBarSeriesData.seasons.length > 0) {
-    const curSeason = Number(quickBarActiveSeason) || 1;
-    const curEp = Number(quickBarActiveEpisode) || 1;
-    const curSeasonObj = quickBarSeriesData.seasons.find(s => Number(s.season) === curSeason) || quickBarSeriesData.seasons[0];
+  const curSeason = Number(quickBarActiveSeason || currentMedia?.season || 1);
+  const curEp = Number(quickBarActiveEpisode || currentEpisodeIndex || currentMedia?.episode || 1);
+
+  // 1. Быстрая панель серверов (FanFilm / RuTube / Kodik / VK)
+  if (quickBarSeriesData && Array.isArray(quickBarSeriesData.seasons) && quickBarSeriesData.seasons.length > 0) {
+    const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => Number(s.season) === curSeason);
+    const curSeasonObj = curSeasonIdx >= 0 ? quickBarSeriesData.seasons[curSeasonIdx] : quickBarSeriesData.seasons[0];
+
     if (curSeasonObj?.episodes && curSeasonObj.episodes.length > 0) {
       const curEpIdx = curSeasonObj.episodes.findIndex(e => Number(e.episode) === curEp);
+
+      // Сценарий 1: Следующая серия в текущем сезоне
       if (curEpIdx >= 0 && curEpIdx < curSeasonObj.episodes.length - 1) {
         const nextEp = Number(curSeasonObj.episodes[curEpIdx + 1].episode);
+        showToast(`▶ Сезон ${curSeason} • Серия ${nextEp}`, 'info');
         selectQuickEpisode(nextEp);
         updateInPlayerEpisodeInfo();
+        highlightActiveEpisodeInGrid(nextEp);
         return;
-      } else {
-        const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => Number(s.season) === curSeason);
-        if (curSeasonIdx >= 0 && curSeasonIdx < quickBarSeriesData.seasons.length - 1) {
-          const nextSeasonObj = quickBarSeriesData.seasons[curSeasonIdx + 1];
-          const nextSeason = Number(nextSeasonObj.season);
-          const firstEp = Number(nextSeasonObj.episodes?.[0]?.episode || 1);
-          selectQuickSeason(nextSeason);
-          selectQuickEpisode(firstEp);
-          updateInPlayerEpisodeInfo();
-          return;
-        }
+      }
+
+      // Сценарий 2: Досмотрена последняя серия сезона -> переключаем на 1 серию следующего сезона!
+      if (curSeasonIdx >= 0 && curSeasonIdx < quickBarSeriesData.seasons.length - 1) {
+        const nextSeasonObj = quickBarSeriesData.seasons[curSeasonIdx + 1];
+        const nextSeason = Number(nextSeasonObj.season);
+        const firstEp = Number(nextSeasonObj.episodes?.[0]?.episode || 1);
+        showToast(`🎉 Сезон ${curSeason} завершен! Запуск Сезона ${nextSeason} (Серия ${firstEp})...`, 'success');
+        await selectQuickSeason(nextSeason);
+        selectQuickEpisode(firstEp);
+        updateInPlayerEpisodeInfo();
+        highlightActiveEpisodeInGrid(firstEp);
+        return;
       }
     }
   }
 
   // 2. AniXart
   if (currentEpisodes && currentEpisodes.length > 0) {
-    const curEp = Number(currentEpisodeIndex) || 1;
     const curIdx = currentEpisodes.findIndex(e => Number(e.position || e.ordinal || 1) === curEp);
     if (curIdx >= 0 && curIdx < currentEpisodes.length - 1) {
       const nextEp = currentEpisodes[curIdx + 1];
       const nextEpNum = Number(nextEp.position || nextEp.ordinal || (curIdx + 2));
       currentEpisodeIndex = nextEpNum;
+      showToast(`▶ Серия ${nextEpNum}`, 'info');
       playAnixartEpisode(nextEp);
       updateInPlayerEpisodeInfo();
+      highlightActiveEpisodeInGrid(nextEpNum);
       return;
     }
-  }
-
-  // 3. AniLibria
-  if (currentMedia?.episodes && currentMedia.episodes.length > 0) {
-    const curEp = Number(currentEpisodeIndex) || 1;
-    const curIdx = currentMedia.episodes.findIndex(e => Number(e.ordinal || 1) === curEp);
-    if (curIdx >= 0 && curIdx < currentMedia.episodes.length - 1) {
-      const nextEp = currentMedia.episodes[curIdx + 1];
-      const nextEpNum = Number(nextEp.ordinal || (curIdx + 2));
-      currentEpisodeIndex = nextEpNum;
-      const streamUrl = nextEp.hls_1080 || nextEp.hls_720 || nextEp.hls_480;
-      if (streamUrl) playStreamUrl(streamUrl);
-      loadSkipTimes(currentMedia.id, nextEpNum);
-      updateInPlayerEpisodeInfo();
-      return;
-    }
-  }
-
-  // 4. Сетка серий TMDB / базовых сериалов
-  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
-  if (gridEl) {
-    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
-    const nextCard = activeCard ? activeCard.nextElementSibling : gridEl.querySelector('.series-episode-card');
-    if (nextCard && nextCard.classList.contains('series-episode-card')) {
-      const nextEpNum = parseInt(nextCard.dataset.epNum, 10);
-      if (nextEpNum && !isNaN(nextEpNum)) {
-        playEpisodeByNumber(nextEpNum);
-        updateInPlayerEpisodeInfo();
+    // Проверяем следующий сезон AniXart
+    if (quickBarSeriesData?.seasons && quickBarSeriesData.seasons.length > 1) {
+      const curSeasonIdx = quickBarSeriesData.seasons.findIndex(s => Number(s.season) === curSeason);
+      if (curSeasonIdx >= 0 && curSeasonIdx < quickBarSeriesData.seasons.length - 1) {
+        const nextSeasonObj = quickBarSeriesData.seasons[curSeasonIdx + 1];
+        showToast(`🎉 Сезон ${curSeason} завершен! Запуск Сезона ${nextSeasonObj.season}...`, 'success');
+        await selectQuickSeason(Number(nextSeasonObj.season));
         return;
       }
     }
   }
 
-  // 5. Общий переход по порядковому номеру
-  const curEpNum = Number(currentEpisodeIndex || quickBarActiveEpisode || 1);
-  const nextEpNum = curEpNum + 1;
-  const switched = playEpisodeByNumber(nextEpNum);
+  // 3. AniLibria
+  if (currentMedia?.source === 'anilibria') {
+    const seasonObj = (currentMedia.seasons || []).find(s => Number(s.season_number) === curSeason);
+    const epsPool = (seasonObj && Array.isArray(seasonObj.episodes) && seasonObj.episodes.length > 0)
+      ? seasonObj.episodes
+      : (currentMedia.episodes || []);
+    const curIdx = epsPool.findIndex(e => Number(e.ordinal || e.episode_number || 1) === curEp);
+    if (curIdx >= 0 && curIdx < epsPool.length - 1) {
+      const nextEp = epsPool[curIdx + 1];
+      const nextEpNum = Number(nextEp.ordinal || nextEp.episode_number || (curIdx + 2));
+      showToast(`▶ Сезон ${curSeason} • Серия ${nextEpNum}`, 'info');
+      playEpisodeByNumber(nextEpNum, curSeason);
+      return;
+    }
+    // Проверяем следующий сезон AniLibria
+    if (Array.isArray(currentMedia.seasons) && currentMedia.seasons.length > 1) {
+      const sIdx = currentMedia.seasons.findIndex(s => Number(s.season_number) === curSeason);
+      if (sIdx >= 0 && sIdx < currentMedia.seasons.length - 1) {
+        const nextSObj = currentMedia.seasons[sIdx + 1];
+        const nextSNum = Number(nextSObj.season_number);
+        showToast(`🎉 Сезон ${curSeason} завершен! Запуск Сезона ${nextSNum}...`, 'success');
+        playEpisodeByNumber(1, nextSNum);
+        return;
+      }
+    }
+  }
+
+  // 4. Сетка серий TMDB / DOM серий
+  const gridEl = document.getElementById('series-episodes-grid') || document.getElementById('episodes-grid');
+  if (gridEl) {
+    const activeCard = gridEl.querySelector('.series-episode-card.active, .episode-btn.active');
+    const nextCard = activeCard ? activeCard.nextElementSibling : null;
+    if (nextCard && (nextCard.classList.contains('series-episode-card') || nextCard.classList.contains('episode-btn'))) {
+      const nextEpNum = parseInt(nextCard.dataset.epNum || nextCard.dataset.episode, 10);
+      if (nextEpNum && !isNaN(nextEpNum)) {
+        showToast(`▶ Сезон ${curSeason} • Серия ${nextEpNum}`, 'info');
+        playEpisodeByNumber(nextEpNum, curSeason);
+        return;
+      }
+    }
+  }
+
+  // 5. Проверка следующего сезона в DOM (#series-seasons-tabs) или currentMedia.seasons
+  const seasonTabs = Array.from(document.querySelectorAll('#series-seasons-tabs .season-tab'));
+  if (seasonTabs.length > 1) {
+    const curTabIdx = seasonTabs.findIndex(t => Number(t.dataset.season) === curSeason);
+    if (curTabIdx >= 0 && curTabIdx < seasonTabs.length - 1) {
+      const nextTab = seasonTabs[curTabIdx + 1];
+      const nextSNum = Number(nextTab.dataset.season);
+      showToast(`🎉 Сезон ${curSeason} завершен! Запуск Сезона ${nextSNum}...`, 'success');
+      nextTab.click();
+      setTimeout(() => {
+        playEpisodeByNumber(1, nextSNum);
+      }, 300);
+      return;
+    }
+  } else if (Array.isArray(currentMedia?.seasons) && currentMedia.seasons.length > 1) {
+    const sIdx = currentMedia.seasons.findIndex(s => Number(s.season_number) === curSeason);
+    if (sIdx >= 0 && sIdx < currentMedia.seasons.length - 1) {
+      const nextSNum = Number(currentMedia.seasons[sIdx + 1].season_number);
+      showToast(`🎉 Сезон ${curSeason} завершен! Запуск Сезона ${nextSNum}...`, 'success');
+      renderSeriesSeasons(currentMedia, nextSNum, 1);
+      playEpisodeByNumber(1, nextSNum);
+      return;
+    }
+  } else if (Number(currentMedia?.total_seasons || 1) > curSeason) {
+    const nextSNum = curSeason + 1;
+    showToast(`🎉 Сезон ${curSeason} завершен! Запуск Сезона ${nextSNum}...`, 'success');
+    renderSeriesSeasons(currentMedia, nextSNum, 1);
+    playEpisodeByNumber(1, nextSNum);
+    return;
+  }
+
+  // 6. Порядковый переход по номеру серии
+  const nextEpNum = curEp + 1;
+  const switched = playEpisodeByNumber(nextEpNum, curSeason);
   if (switched) {
     updateInPlayerEpisodeInfo();
     return;
   }
 
-  showToast('Это последняя серия сезона', 'info');
+  // Все сезоны и серии действительно завершены
+  showToast('🏆 Все серии и сезоны сериала просмотрены!', 'success');
   if (currentMedia && currentMedia.id) {
     currentMedia.user_status = 'completed';
     saveBookmarkStatus(currentMedia, 'completed');
@@ -11695,18 +11809,26 @@ function playAnixartEpisode(episode) {
   const isInternalAnix = typeof streamUrl === 'string' && streamUrl.startsWith('/api/player/');
   const anixSandbox = isInternalAnix ? '' : 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-downloads"';
 
-  container.innerHTML = `
-    <div class="player-video-box" style="position:relative;width:100%;height:100%;">
-      <div id="player-ambilight-aura" class="ambilight-aura"></div>
-      <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="fullscreen; picture-in-picture; encrypted-media; display-capture" ${anixSandbox} scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
-    </div>
-  `;
+  const existingIframe = container.querySelector('.cinema-player-iframe');
+  const existingVBox = container.querySelector('.player-video-box');
+
+  if (existingIframe && existingVBox) {
+    // ПЕРЕИСПОЛЬЗУЕМ существующий iframe — гарантирует сохранение режима Fullscreen!
+    replaceIframeSrcNoHistory(existingIframe, streamUrl);
+  } else {
+    container.innerHTML = `
+      <div class="player-video-box" style="position:relative;width:100%;height:100%;">
+        <div id="player-ambilight-aura" class="ambilight-aura"></div>
+        <iframe class="cinema-player-iframe" src="${streamUrl}" referrerpolicy="no-referrer" allow="fullscreen; picture-in-picture; encrypted-media; display-capture" ${anixSandbox} scrolling="no" style="position:relative;z-index:5;pointer-events:auto;width:100%;height:100%;border:none;border-radius:12px;"></iframe>
+      </div>
+    `;
 
     const vBox = container.querySelector('.player-video-box');
     if (vBox) {
       mountInPlayerOverlay(vBox);
       mountCleanViewOverlay(vBox);
     }
+  }
 
     const iframeEl = container.querySelector('.cinema-player-iframe');
     if (iframeEl) {

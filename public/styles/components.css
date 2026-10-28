@@ -150,7 +150,7 @@
   border-color: var(--accent) !important;
   color: #ffffff !important;
   box-shadow: 0 0 18px var(--accent-glow), 0 3px 0 rgba(0, 0, 0, 0.5) !important;
-  animation: ambilightBtnGlow 2s infinite alternate;
+  animation: none;
 }
 
 @keyframes ambilightBtnGlow {
@@ -569,7 +569,7 @@ input[type="checkbox"]::after {
 }
 
 .storm-status-svg.storm-status-anim .storm-svg-radar {
-  animation: stormRadarWave 2.2s infinite ease-in-out;
+  animation: none;
   transform-origin: center;
 }
 
@@ -593,7 +593,7 @@ input[type="checkbox"]::after {
 }
 
 .storm-status-svg.storm-status-anim .storm-svg-heart {
-  animation: stormHeartPulse 2s infinite ease-in-out;
+  animation: none;
   transform-origin: center;
 }
 
@@ -610,7 +610,7 @@ input[type="checkbox"]::after {
 }
 
 .storm-status-svg.storm-status-anim .storm-svg-pause-bar {
-  animation: stormPauseBreathe 2s infinite ease-in-out;
+  animation: none;
   transform-origin: center;
 }
 
@@ -625,7 +625,7 @@ input[type="checkbox"]::after {
 }
 
 .storm-status-svg.storm-status-anim .storm-svg-bookmark {
-  animation: stormBookmarkHover 2.5s infinite ease-in-out;
+  animation: none;
   transform-origin: center;
 }
 
@@ -641,7 +641,7 @@ input[type="checkbox"]::after {
 
 .storm-status-svg.storm-status-anim.storm-status-completed .storm-svg-check,
 .storm-status-svg.storm-status-anim .storm-svg-check {
-  animation: stormCheckShine 2.5s infinite ease-in-out;
+  animation: none;
 }
 
 /* Эффект ховера */
@@ -1036,7 +1036,7 @@ button:active .storm-status-svg {
   border: none;
   cursor: pointer;
   box-shadow: 0 0 20px var(--accent-glow);
-  animation: stormSkipPulse 1.8s infinite;
+  animation: none;
   transition: transform 0.15s ease;
 }
 
@@ -13204,4 +13204,14 @@ body.tv-mode #media-render-container.view-grid {
   align-items: center;
   gap: 7px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
+/* 4K GPU Optimization: Zero backdrop-filter blur across components */
+.storm-card, .media-card, .storm-badge, .media-card-badges,
+.storm-modal-window, .storm-modal-dialog,
+.inplayer-ctrl-btn, .media-play-icon,
+.player-inplayer-episodes-sheet, .player-inplayer-voice-sheet {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

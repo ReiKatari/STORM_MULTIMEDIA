@@ -695,8 +695,7 @@ body {
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  transform: translateZ(0);
-  will-change: transform, box-shadow;
+  /* GPU Optimized: No static will-change texture overhead */
   height: 100%;
   min-height: 100%;
   align-self: stretch;
@@ -893,7 +892,7 @@ body {
   filter: blur(8px);
   opacity: 0.35;
   z-index: -1;
-  animation: rotateRainbowAura 3s linear infinite;
+  animation: none;
   transition: opacity 0.3s ease, filter 0.3s ease, inset 0.3s ease;
 }
 
@@ -908,7 +907,7 @@ body {
   mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #fff calc(100% - 2px));
   opacity: 0.6;
   z-index: -1;
-  animation: rotateRainbowAura 3s linear infinite;
+  animation: none;
   transition: opacity 0.3s ease;
 }
 
@@ -7339,7 +7338,7 @@ body.tv-mode .custom-list-card:focus {
 .media-card-poster-wrap {
   background: linear-gradient(135deg, #0b101d 0%, #152238 50%, #0b101d 100%);
   background-size: 200% 200%;
-  animation: stormPosterPulse 4s ease infinite;
+  animation: none;
 }
 
 .media-card-poster {
@@ -7592,5 +7591,56 @@ body.tv-mode .custom-list-card:focus {
 
 body.storm-tab-hidden *,
 body.storm-player-open .ambient-canvas {
+  animation-play-state: paused !important;
+}
+
+
+/* ==========================================================================
+   4K GPU COMPOSITOR & DWM ZERO-OVERHEAD ACCELERATION
+   ========================================================================== */
+.storm-sticky-header-container,
+.storm-navbar,
+.storm-dock,
+.storm-bottom-nav,
+.storm-modal-backdrop,
+.storm-modal-window,
+.storm-modal-dialog,
+.media-card-status-badge,
+.media-card-watched-tag,
+.storm-badge,
+.storm-badge-rating,
+.media-card-remove-continue-btn,
+.media-card-menu-btn,
+.inplayer-ctrl-btn,
+.player-inplayer-episodes-sheet,
+.player-inplayer-voice-sheet {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* При открытом видеоплеере полностью отключаем композицию и перерисовку фонового каталога в 4K */
+body.cinema-open #catalog-container,
+body.cinema-open #hero-banner,
+body.cinema-open .catalog-main-content,
+body.cinema-open .storm-sticky-header-container,
+body.cinema-open .catalog-content,
+body.cinema-open .catalog-grid,
+body.cinema-open .catalog-rails-container,
+body.cinema-open .storm-footer {
+  content-visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.cinema-open * {
+  animation-play-state: paused !important;
+}
+
+body.cinema-open #cinema-modal,
+body.cinema-open #cinema-modal * {
+  animation-play-state: running !important;
+}
+
+/* При скрытой или свернутой вкладке браузера полностью останавливаем все CSS-анимации */
+body.storm-tab-hidden * {
   animation-play-state: paused !important;
 }
