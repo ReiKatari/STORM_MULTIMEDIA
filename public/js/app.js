@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.3.7';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.7';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.7';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.7';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.7';
-import { getStatusIconSvg } from './status-icons.js?v=1.3.7';
-import { initFormFactorEngine } from './form-factor.js?v=1.3.7';
+import { initTheme, setTheme } from './theme.js?v=1.3.8';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.3.8';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.3.8';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.3.8';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.3.8';
+import { getStatusIconSvg } from './status-icons.js?v=1.3.8';
+import { initFormFactorEngine } from './form-factor.js?v=1.3.8';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.3.7';
+const STORM_ASSET_VER = '1.3.8';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -3719,8 +3719,9 @@ function createRailCardHtml(item, idx, isWide = false, railId = '') {
   const primaryQualityBadge = isUpcoming
     ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
     : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
-  const secondaryContextBadge = (!isExplicitMovie && item.next_up)
-    ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
+  const nextBadgeText = item.next_up_badge || item.next_up;
+  const secondaryContextBadge = (!isExplicitMovie && nextBadgeText)
+    ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${nextBadgeText}</span>`
     : ((!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
       ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
       : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
@@ -5174,7 +5175,10 @@ function renderHomeView(items) {
 
       card.onclick = () => {
         if (carousel && carousel.dataset.isDragging === 'true') return;
-        openPlayerModal(item);
+        const opts = {};
+        if (item.season) opts.initialSeason = item.season;
+        if (item.episode) opts.initialEpisode = item.episode;
+        openPlayerModal(item, opts);
       };
 
       const bmBtn = card.querySelector('.media-card-bookmark-btn');
@@ -5325,8 +5329,9 @@ function renderMediaItems(items) {
         ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
         : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
       const isCardMovie = item.media_type === 'movie' || item.category === 'Фильм' || catLabel === 'Фильм';
-      const secondaryContextBadge = (!isCardMovie && item.next_up)
-        ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
+      const cardNextBadge = item.next_up_badge || item.next_up;
+      const secondaryContextBadge = (!isCardMovie && cardNextBadge)
+        ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${cardNextBadge}</span>`
         : ((!isCardMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
           ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
           : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
@@ -5398,7 +5403,13 @@ function renderMediaItems(items) {
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
       card._mediaItem = items[idx];
-      card.onclick = () => openPlayerModal(items[idx]);
+      card.onclick = () => {
+        const it = items[idx];
+        const opts = {};
+        if (it?.season) opts.initialSeason = it.season;
+        if (it?.episode) opts.initialEpisode = it.episode;
+        openPlayerModal(it, opts);
+      };
 
       const bmBtn = card.querySelector('.media-card-bookmark-btn');
       if (bmBtn) {
@@ -5586,7 +5597,7 @@ function renderMediaItems(items) {
             return `
             <tr data-idx="${idx}" class="storm-focusable" tabindex="0" role="button" style="cursor:pointer;">
               <td class="td-center">${getMediaCardImgHtml(poster, item.title, 'media-table-thumb')}</td>
-              <td><strong>${formattedTitle}</strong>${item.next_up ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up}</span>` : ''}</td>
+              <td><strong>${formattedTitle}</strong>${(item.next_up_badge || item.next_up) ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up_badge || item.next_up}</span>` : ''}</td>
               <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
               <td class="td-center">${getMediaYear(item) || '—'}</td>
               <td class="td-center" style="font-weight: 700; color: var(--color-amber);">${item.rating ? `★ ${item.rating}` : '—'}</td>

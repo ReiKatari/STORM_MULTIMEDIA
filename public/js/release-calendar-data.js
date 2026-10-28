@@ -3637,7 +3637,7 @@ export const DEFAULT_CURRENT_WEEK = [
     "id": "shiki_63140_ep2",
     "title": "Шальной последний босс явился!",
     "original_title": "Yasei no Last Boss ga Arawareta!",
-    "poster": "/api/media/image-proxy?title=%D0%A8%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE%D0%B9%20%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B9%20%D0%B1%D0%BE%D1%81%D1%81%20%D1%8F%D0%B2%D0%B8%D0%BB%D1%81%D1%8F!&orig=Yasei%20no%20Last%20Boss%20ga%20Arawareta!&v=2",
+    "poster": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg",
     "year": "2026",
     "season": 2,
     "episode": 2,

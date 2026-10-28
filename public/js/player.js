@@ -173,9 +173,54 @@ function saveMediaResumeSnapshot(override = {}) {
           duration_seconds: durationSeconds,
           time_seconds: timeSeconds,
           real_watched_seconds: realWatchedSeconds,
-          progress_percent: pct
+          progress_percent: pct,
+          is_series: isSeries
         });
       } catch (_) {}
+
+      // Для сериалов при достижении >= 90% серии сразу отправляем следующую серию в Продолжить просмотр
+      if (pct >= 90 && isSeries) {
+        const totalEp = (Array.isArray(currentEpisodes) && currentEpisodes.length > 0) ? currentEpisodes.length : (currentMedia.total_episodes || 1);
+        const totalSeasons = Number(currentMedia.total_seasons || 1);
+        const hasNextInSeason = totalEp > 0 && episode < totalEp;
+        const hasNextSeason = totalSeasons > season;
+
+        let nextS = season;
+        let nextE = episode + 1;
+        let hasNext = true;
+
+        if (!hasNextInSeason) {
+          if (hasNextSeason) {
+            nextS = season + 1;
+            nextE = 1;
+          } else {
+            hasNext = false;
+          }
+        }
+
+        if (hasNext) {
+          try {
+            syncWatchProgress({
+              media_id: mediaId,
+              source: snapshot.source,
+              title: cleanT,
+              poster_url: snapshot.poster_url,
+              media_type: snapshot.media_type,
+              year: snapshot.year,
+              season: nextS,
+              episode: nextE,
+              total_episodes: totalEp,
+              duration_seconds: durationSeconds,
+              time_seconds: 0,
+              real_watched_seconds: realWatchedSeconds,
+              progress_percent: 0,
+              is_series: true,
+              is_next_episode: true,
+              has_next_episode: true
+            });
+          } catch (_) {}
+        }
+      }
     }
   }
 }

@@ -1058,6 +1058,18 @@ export function mergeGuestDataIntoUser(userId, guestData) {
 }
 
 // Закладки и статусы
+export function isPlaceholderImage(url) {
+  if (!url || typeof url !== 'string') return true;
+  const lower = url.trim().toLowerCase();
+  return lower === '' ||
+    lower.includes('data:image/svg+xml') ||
+    lower.includes('placeholder') ||
+    lower.includes('missing_original') ||
+    lower.includes('no-poster') ||
+    lower.includes('noposter') ||
+    lower.includes('shikimori.one/assets/globals/missing');
+}
+
 export function normalizeBookmarkStatus(status) {
   if (!status) return 'watching';
   const s = String(status).toLowerCase().trim();
@@ -1486,12 +1498,32 @@ export function logWatchProgress(userId, data) {
     return { media_id, season, episode, time_seconds, real_watched_seconds, progress_percent: 100, status: existingBookmark.status };
   }
 
-  // СТРОГОЕ ПРАВИЛО: В «Продолжить просмотр» попадают ТОЛЬКО видео, просмотренные минимум 10 минут (600 сек) реального времени (не перелистыванием)
-  if (real_watched_seconds < 600 || time_seconds < 600) {
-    return { media_id, season, episode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
+  const cleanMediaType = resolveCanonicalMediaType(title, '', '', '', { season, episode, total_episodes, media_type });
+  const isMovieType = cleanMediaType === 'movie' || cleanMediaType === 'anime-movie' || cleanMediaType === 'cartoon';
+  const safeSeason = isMovieType ? 1 : (parseInt(season, 10) || 1);
+  const safeEpisode = isMovieType ? 1 : (parseInt(episode, 10) || 1);
+  const safeTotalEpisodes = isMovieType ? 1 : (parseInt(total_episodes, 10) || 1);
+  const cleanYear = resolveCanonicalYear(title, '', poster_url, '', year);
+  const now = Date.now();
+  const isSeries = !isMovieType && (cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || (safeTotalEpisodes > 1) || (safeSeason > 1) || Boolean(data.is_series));
+
+  const existingHistory = db.prepare('SELECT * FROM watch_history WHERE user_id = ? AND (media_id = ? OR title = ?)').get(userId, String(media_id), cleanT);
+  const cumulativeReal = Math.max(real_watched_seconds, Number(existingHistory?.real_watched_seconds || 0));
+
+  // Проверка минимального порога (10 минут реального просмотра)
+  if (isMovieType) {
+    if (progressPercent < 90.0 && (real_watched_seconds < 600 || time_seconds < 600)) {
+      return { media_id, season: safeSeason, episode: safeEpisode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
+    }
+  } else {
+    // Для сериалов и аниме-сериалов: достаточно 10 минут накопленного времени на всем сериале, либо статуса watching
+    const isSeriesEligible = (cumulativeReal >= 600) || (existingBookmark?.status === 'watching') || (safeSeason > 1 || safeEpisode > 1) || Boolean(existingHistory);
+    if (!isSeriesEligible && time_seconds < 600 && real_watched_seconds < 600) {
+      return { media_id, season: safeSeason, episode: safeEpisode, time_seconds, real_watched_seconds, progress_percent: progressPercent, status: existingBookmark?.status || null };
+    }
   }
 
-  // Если пользователь ранее удалил запись из «Продолжить просмотр», снимаем флаг удаления при новом реальном просмотре >= 10 мин
+  // Если пользователь ранее удалил запись из «Продолжить просмотр», снимаем флаг удаления при новом реальном просмотре
   try {
     const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
     if (uRow && uRow.settings_json) {
@@ -1512,42 +1544,8 @@ export function logWatchProgress(userId, data) {
     }
   } catch (_) {}
 
-  const cleanMediaType = resolveCanonicalMediaType(title, '', '', '', { season, episode, total_episodes, media_type });
-  const isMovieType = cleanMediaType === 'movie' || cleanMediaType === 'anime-movie' || cleanMediaType === 'cartoon';
-  const safeSeason = isMovieType ? 1 : (parseInt(season, 10) || 1);
-  const safeEpisode = isMovieType ? 1 : (parseInt(episode, 10) || 1);
-  const safeTotalEpisodes = isMovieType ? 1 : (parseInt(total_episodes, 10) || 1);
-  const cleanYear = resolveCanonicalYear(title, '', poster_url, '', year);
-  const now = Date.now();
-
-  // Синхронизируем прогресс с закладкой:
-  const episodesWatched = safeEpisode;
-  let overallPercent = progressPercent;
-
-  const isSeries = !isMovieType && (cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || (safeTotalEpisodes > 1) || (safeSeason > 1));
-  if (isSeries) {
-    const tNorm = String(title || '').toLowerCase();
-    const isReacher = tNorm.includes('джек ричер') || tNorm.includes('ричер') || tNorm.includes('reacher');
-    if (isReacher) {
-      if (season >= 4 && episode >= 7) {
-        overallPercent = 96.0;
-      } else {
-        const totalReacherEps = 32;
-        const epsDone = ((season - 1) * 8) + (episode - 1);
-        overallPercent = Math.min(99.0, Math.max(1.0, Math.round(((epsDone + (progressPercent / 100)) / totalReacherEps) * 1000) / 10));
-      }
-    } else if (total_episodes > 1 || season > 1) {
-      const epsPerSeason = total_episodes > 0 ? total_episodes : 8;
-      const totalSeasons = Math.max(season, 1);
-      const totalAll = totalSeasons * epsPerSeason;
-      const epsDone = ((season - 1) * epsPerSeason) + (episode - 1);
-      overallPercent = Math.min(99.0, Math.max(1.0, Math.round(((epsDone + (progressPercent / 100)) / totalAll) * 1000) / 10));
-    }
-  }
-
-  const isFullyWatched = (!isSeries && progressPercent >= 90.0) || overallPercent >= 95.0 || (total_episodes > 0 && episodesWatched >= total_episodes && progressPercent >= 90.0);
-
-  if (isFullyWatched) {
+  // 1. Полнометражные фильмы: прогресс >= 90% завершает фильм
+  if (isMovieType && progressPercent >= 90.0) {
     setBookmark(userId, {
       media_id,
       source,
@@ -1555,24 +1553,84 @@ export function logWatchProgress(userId, data) {
       poster_url: poster_url || existingBookmark?.poster_url,
       media_type: media_type || existingBookmark?.media_type,
       status: 'completed',
-      episodes_watched: total_episodes || episodesWatched,
-      total_episodes: total_episodes || existingBookmark?.total_episodes || 1,
+      episodes_watched: 1,
+      total_episodes: 1,
       progress_percent: 100.0,
       last_time_seconds: time_seconds
     });
     removeContinueWatchingItem(userId, media_id, source, title);
     return {
       media_id,
-      season,
-      episode,
+      season: 1,
+      episode: 1,
       time_seconds,
-      real_watched_seconds,
+      real_watched_seconds: cumulativeReal,
       progress_percent: 100.0,
       status: 'completed'
     };
   }
 
-  // Сохраняем в историю
+  // 2. Сериалы и аниме-сериалы: завершение серии переключает на следующую серию
+  const isFinalEpisode = isSeries && (
+    Boolean(data.is_final_episode) ||
+    (safeTotalEpisodes > 1 && safeEpisode >= safeTotalEpisodes && (data.has_next_season === false || (!data.next_season && safeSeason >= (data.total_seasons || 1))))
+  );
+
+  if (isSeries && isFinalEpisode && progressPercent >= 90.0) {
+    setBookmark(userId, {
+      media_id,
+      source,
+      title: title || existingBookmark?.title,
+      poster_url: poster_url || existingBookmark?.poster_url,
+      media_type: media_type || existingBookmark?.media_type,
+      status: 'completed',
+      episodes_watched: safeTotalEpisodes,
+      total_episodes: safeTotalEpisodes,
+      progress_percent: 100.0,
+      last_time_seconds: time_seconds
+    });
+    removeContinueWatchingItem(userId, media_id, source, title);
+    return {
+      media_id,
+      season: safeSeason,
+      episode: safeEpisode,
+      time_seconds,
+      real_watched_seconds: cumulativeReal,
+      progress_percent: 100.0,
+      status: 'completed'
+    };
+  }
+
+  let targetSeason = safeSeason;
+  let targetEpisode = safeEpisode;
+  let targetTime = time_seconds;
+  let targetProgress = progressPercent;
+
+  if (isSeries) {
+    // Обновляем статус закладки как 'watching'
+    setBookmark(userId, {
+      media_id,
+      source,
+      title: title || existingBookmark?.title,
+      poster_url: poster_url || existingBookmark?.poster_url,
+      media_type: media_type || existingBookmark?.media_type,
+      status: 'watching',
+      episodes_watched: Math.max(safeEpisode, Number(existingBookmark?.episodes_watched || 0)),
+      total_episodes: safeTotalEpisodes,
+      progress_percent: progressPercent,
+      last_time_seconds: time_seconds
+    });
+
+    if (progressPercent >= 90.0 || data.completed_episode) {
+      // Серия досмотрена! Переключаем «Продолжить просмотр» на следующую серию с 0:00
+      targetEpisode = (data.next_episode !== undefined) ? Number(data.next_episode) : (safeEpisode + 1);
+      targetSeason = (data.next_season !== undefined) ? Number(data.next_season) : safeSeason;
+      targetTime = 0;
+      targetProgress = 0;
+    }
+  }
+
+  // Сохраняем в watch_history
   const upsertHistory = db.prepare(`
     INSERT INTO watch_history (
       user_id, media_id, source, title, poster_url, media_type, year,
@@ -1581,9 +1639,10 @@ export function logWatchProgress(userId, data) {
     ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
       media_type = excluded.media_type,
       year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
+      poster_url = COALESCE(NULLIF(excluded.poster_url, ''), watch_history.poster_url),
       time_seconds = excluded.time_seconds,
-      real_watched_seconds = MAX(COALESCE(watch_history.real_watched_seconds, 0), excluded.real_watched_seconds),
-      duration_seconds = excluded.duration_seconds,
+      real_watched_seconds = excluded.real_watched_seconds,
+      duration_seconds = CASE WHEN excluded.duration_seconds > 0 THEN excluded.duration_seconds ELSE watch_history.duration_seconds END,
       progress_percent = excluded.progress_percent,
       updated_at = excluded.updated_at
   `);
@@ -1592,117 +1651,46 @@ export function logWatchProgress(userId, data) {
     userId,
     String(media_id),
     source,
-    title,
+    cleanT,
     poster_url,
     cleanMediaType,
     cleanYear,
-    safeSeason,
-    safeEpisode,
-    time_seconds,
-    real_watched_seconds,
+    targetSeason,
+    targetEpisode,
+    targetTime,
+    Math.max(600, cumulativeReal),
     duration_seconds,
-    overallPercent,
+    targetProgress,
     now
   );
-  try {
-    db.prepare('UPDATE watch_history SET device_name = ? WHERE user_id = ? AND media_id = ? AND source = ?').run(device_name, userId, String(media_id), source);
-  } catch (_) {}
-
-  if (existingBookmark) {
-    setBookmark(userId, {
-      media_id,
-      source,
-      title: title || existingBookmark.title,
-      poster_url: poster_url || existingBookmark.poster_url,
-      media_type: media_type || existingBookmark.media_type,
-      status: existingBookmark.status,
-      episodes_watched: episodesWatched,
-      total_episodes: total_episodes || existingBookmark.total_episodes || 1,
-      progress_percent: overallPercent,
-      last_time_seconds: time_seconds
-    });
-  }
 
   mariaSaveWatchHistory({
     user_id: userId,
     media_id: String(media_id),
     source,
-    title,
+    title: cleanT,
     poster_url,
     media_type: cleanMediaType,
     year: cleanYear,
-    season: safeSeason,
-    episode: safeEpisode,
-    time_seconds,
-    real_watched_seconds,
+    season: targetSeason,
+    episode: targetEpisode,
+    time_seconds: targetTime,
+    real_watched_seconds: Math.max(600, cumulativeReal),
     duration_seconds,
-    progress_percent: overallPercent,
+    progress_percent: targetProgress,
     updated_at: now
   });
 
   return {
     media_id,
-    season: safeSeason,
-    episode: safeEpisode,
-    time_seconds,
-    real_watched_seconds,
-    progress_percent: overallPercent,
-    status: existingBookmark?.status || null
+    season: targetSeason,
+    episode: targetEpisode,
+    time_seconds: targetTime,
+    real_watched_seconds: Math.max(600, cumulativeReal),
+    progress_percent: targetProgress,
+    status: 'watching',
+    next_up_badge: isSeries ? (targetTime === 0 ? `След.: С${targetSeason} • Э${targetEpisode}` : `С${targetSeason} • Э${targetEpisode}`) : null
   };
-}
-
-export function getLatestWatchProgressForMedia(userId, mediaId, source = '', title = '') {
-  if (!userId) return null;
-  try {
-    const cleanId = String(mediaId || '').trim();
-    const cleanTitle = String(title || '').trim().toLowerCase();
-    let row = null;
-    if (cleanId && source) {
-      row = db.prepare(`
-        SELECT * FROM watch_history
-        WHERE user_id = ? AND media_id = ? AND source = ?
-        ORDER BY updated_at DESC LIMIT 1
-      `).get(userId, cleanId, source);
-    }
-    if (!row && cleanId) {
-      row = db.prepare(`
-        SELECT * FROM watch_history
-        WHERE user_id = ? AND media_id = ?
-        ORDER BY updated_at DESC LIMIT 1
-      `).get(userId, cleanId);
-    }
-    if (!row && cleanTitle) {
-      row = db.prepare(`
-        SELECT * FROM watch_history
-        WHERE user_id = ? AND LOWER(TRIM(title)) = ?
-        ORDER BY updated_at DESC LIMIT 1
-      `).get(userId, cleanTitle);
-    }
-    return row || null;
-  } catch {
-    return null;
-  }
-}
-
-export function getWatchedHistoryEpisodesForMedia(userId, mediaId, source = '', title = '') {
-  if (!userId) return [];
-  try {
-    const cleanId = String(mediaId || '').trim();
-    const strippedId = cleanId.replace(/^[a-z]+_/, '');
-    const cleanTitle = String(title || '').trim().toLowerCase();
-    const rows = db.prepare(`
-      SELECT season, episode, progress_percent, time_seconds, duration_seconds, updated_at
-      FROM watch_history
-      WHERE user_id = ? AND (
-        (? != '' AND (media_id = ? OR media_id = ?))
-        OR (? != '' AND LOWER(TRIM(title)) = ?)
-      )
-      ORDER BY season ASC, episode ASC
-    `).all(userId, cleanId, cleanId, strippedId, cleanTitle, cleanTitle);
-    return rows || [];
-  } catch {
-    return [];
-  }
 }
 
 export function removeContinueWatchingItem(userId, mediaId, source = '', title = '') {
@@ -1813,32 +1801,95 @@ export function removeContinueWatchingItem(userId, mediaId, source = '', title =
   return true;
 }
 
-export function getContinueWatching(userId, limit = 12) {
+export function getLatestWatchProgressForMedia(userId, mediaId, source = '', title = '') {
+  if (!userId) return null;
+  try {
+    const cleanId = String(mediaId || '').trim();
+    const cleanTitle = String(title || '').trim().toLowerCase();
+    let row = null;
+    if (cleanId && source) {
+      row = db.prepare(`
+        SELECT * FROM watch_history
+        WHERE user_id = ? AND media_id = ? AND source = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(userId, cleanId, source);
+    }
+    if (!row && cleanId) {
+      row = db.prepare(`
+        SELECT * FROM watch_history
+        WHERE user_id = ? AND media_id = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(userId, cleanId);
+    }
+    if (!row && cleanTitle) {
+      row = db.prepare(`
+        SELECT * FROM watch_history
+        WHERE user_id = ? AND LOWER(TRIM(title)) = ?
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(userId, cleanTitle);
+    }
+    return row || null;
+  } catch {
+    return null;
+  }
+}
+
+export function getWatchedHistoryEpisodesForMedia(userId, mediaId, source = '', title = '') {
+  if (!userId) return [];
+  try {
+    const cleanId = String(mediaId || '').trim();
+    const strippedId = cleanId.replace(/^[a-z]+_/, '');
+    const cleanTitle = String(title || '').trim().toLowerCase();
+    const rows = db.prepare(`
+      SELECT season, episode, progress_percent, time_seconds, duration_seconds, updated_at
+      FROM watch_history
+      WHERE user_id = ? AND (
+        (? != '' AND (media_id = ? OR media_id = ?))
+        OR (? != '' AND LOWER(TRIM(title)) = ?)
+      )
+      ORDER BY season ASC, episode ASC
+    `).all(userId, cleanId, cleanId, strippedId, cleanTitle, cleanTitle);
+    return rows || [];
+  } catch {
+    return [];
+  }
+}
+
+export function getContinueWatching(userId, limit = 16) {
   const query = `
     SELECT w.* FROM watch_history w
     WHERE w.user_id = ?
-      AND w.time_seconds >= 600
-      AND COALESCE(w.real_watched_seconds, w.time_seconds, 0) >= 600
-      AND w.progress_percent < 90
+      AND (
+        (w.media_type IN ('movie', 'cartoon', 'anime-movie') AND w.time_seconds >= 600 AND COALESCE(w.real_watched_seconds, w.time_seconds, 0) >= 600 AND w.progress_percent < 90)
+        OR
+        (w.media_type NOT IN ('movie', 'cartoon', 'anime-movie') AND (COALESCE(w.real_watched_seconds, 0) >= 600 OR w.season > 1 OR w.episode > 1 OR w.time_seconds >= 600))
+      )
       AND (w.title NOT LIKE '%FANFILM4K%' AND w.title NOT LIKE '%ФАН4К%')
       AND (w.title NOT LIKE '%старик из деревни%' AND w.title NOT LIKE '%святым мечом%')
     ORDER BY w.updated_at DESC
   `;
   const allRows = db.prepare(query).all(userId);
 
-  // Загружаем все закладки пользователя для кириллической проверки статусов (completed, dropped, wont_watch)
-  const userBookmarks = db.prepare('SELECT media_id, source, title, original_title, status FROM bookmarks WHERE user_id = ?').all(userId);
+  // Загружаем все закладки пользователя для проверки статусов и подхвата активных аниме-сериалов
+  const userBookmarks = db.prepare('SELECT id, media_id, source, title, original_title, poster_url, media_type, year, status, episodes_watched, total_episodes, watched_episodes_json, updated_at FROM bookmarks WHERE user_id = ?').all(userId);
   const excludedById = new Set();
   const excludedByTitleKey = new Set();
   const bookmarkStatusByKey = new Map();
+  const bookmarkByNormKey = new Map();
 
   for (const b of userBookmarks) {
     const st = normalizeBookmarkStatus(b.status);
     const bId = String(b.media_id || '').trim();
     const bStripped = bId.replace(/^[a-z]+_/, '');
     const bKey = normalizeMediaKey(b.title, b.original_title);
-    if (bKey) bookmarkStatusByKey.set(bKey, st);
-    if (bId) bookmarkStatusByKey.set(`id:${bId}`, st);
+    if (bKey) {
+      bookmarkStatusByKey.set(bKey, st);
+      bookmarkByNormKey.set(bKey, b);
+    }
+    if (bId) {
+      bookmarkStatusByKey.set(`id:${bId}`, st);
+      bookmarkByNormKey.set(`id:${bId}`, b);
+    }
     if (['completed', 'dropped', 'wont_watch'].includes(st)) {
       if (bId) excludedById.add(bId);
       if (bStripped) excludedById.add(bStripped);
@@ -1846,7 +1897,7 @@ export function getContinueWatching(userId, limit = 12) {
     }
   }
 
-  // Загружаем список явно удаленных из «Продолжить просмотр» записей пользователя
+  // Загружаем список явно удаленных из «Продолжить просмотр» записей
   try {
     const uRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
     if (uRow && uRow.settings_json) {
@@ -1888,18 +1939,86 @@ export function getContinueWatching(userId, limit = 12) {
     }
   }
 
+  // Интеллектуальный синтез: подтягиваем активные сериалы/аниме-сериалы из закладок ('watching'), если их запись в истории ранее была сброшена
+  for (const b of userBookmarks) {
+    const st = normalizeBookmarkStatus(b.status);
+    const bId = String(b.media_id || '').trim();
+    const key = normalizeMediaKey(b.title, b.original_title) || `${b.source}_${bId}`;
+    const mType = resolveCanonicalMediaType(b.title, '', '', '', b);
+    const isMovie = mType === 'movie' || mType === 'cartoon' || mType === 'anime-movie';
+
+    if (st === 'watching' && !isMovie && !canonicalMap.has(key) && !excludedById.has(bId) && !excludedByTitleKey.has(key)) {
+      let epToWatch = 1;
+      let seaToWatch = 1;
+      try {
+        const wMeta = JSON.parse(b.watched_episodes_json || '{}');
+        const seasons = wMeta.seasons || {};
+        const seaKeys = Object.keys(seasons).map(Number).sort((a, b) => b - a);
+        if (seaKeys.length > 0) {
+          seaToWatch = seaKeys[0];
+          const eps = seasons[seaToWatch] || [];
+          if (Array.isArray(eps) && eps.length > 0) {
+            epToWatch = Math.max(...eps) + 1;
+          }
+        } else if (b.episodes_watched > 0) {
+          epToWatch = b.episodes_watched + 1;
+        }
+      } catch (_) {}
+
+      canonicalMap.set(key, {
+        id: b.id,
+        user_id: userId,
+        media_id: b.media_id,
+        source: b.source,
+        title: b.title,
+        original_title: b.original_title,
+        poster_url: b.poster_url,
+        media_type: mType,
+        year: b.year,
+        season: seaToWatch,
+        episode: epToWatch,
+        time_seconds: 0,
+        real_watched_seconds: 600,
+        duration_seconds: 1440,
+        progress_percent: 0,
+        updated_at: b.updated_at,
+        bookmark_status: 'watching',
+        is_synthesized: true
+      });
+    }
+  }
+
   return Array.from(canonicalMap.values()).slice(0, limit).map(row => {
     const canonicalType = resolveCanonicalMediaType(row.title, '', '', '', row);
     const canonicalYr = resolveCanonicalYear(row.title, '', row.poster_url, '', row.year);
     const canonicalGenres = resolveCanonicalGenres(row.title, canonicalType, '', null);
     const isMovie = canonicalType === 'movie' || canonicalType === 'anime-movie' || canonicalType === 'cartoon';
+    const isNext = !isMovie && (row.time_seconds === 0 || row.progress_percent === 0);
+    const badge = isMovie
+      ? null
+      : (isNext ? `След.: С${row.season || 1} • Э${row.episode || 1}` : `С${row.season || 1} • Э${row.episode || 1}`);
+
+    // Гарантируем реальный постер:
+    let safePoster = row.poster_url;
+    if (!safePoster || isPlaceholderImage(safePoster)) {
+      const bMatch = bookmarkByNormKey.get(normalizeMediaKey(row.title)) || bookmarkByNormKey.get(`id:${row.media_id}`);
+      if (bMatch?.poster_url && !isPlaceholderImage(bMatch.poster_url)) {
+        safePoster = bMatch.poster_url;
+      }
+    }
+
     return {
       ...row,
+      poster: safePoster,
+      poster_url: safePoster,
       media_type: canonicalType,
       year: canonicalYr,
       genres: canonicalGenres,
       season: isMovie ? 1 : (row.season || 1),
-      episode: isMovie ? 1 : (row.episode || 1)
+      episode: isMovie ? 1 : (row.episode || 1),
+      is_series: !isMovie,
+      is_next_episode: isNext,
+      next_up_badge: badge
     };
   });
 }

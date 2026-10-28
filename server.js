@@ -1799,6 +1799,14 @@ function normalizeImageUrl(url) {
     clean = clean.replace('shikimori.one/', 'shikimori.io/');
   }
 
+  // fanfilm4k CDN normalization (rewrite v14-v16 to v17 and fix relative upload paths)
+  if (clean.startsWith('/uploads/posts/') || clean.startsWith('uploads/posts/')) {
+    clean = 'https://v17.fanfilm4k.media/' + clean.replace(/^\/+/, '');
+  }
+  if (clean.includes('.fanfilm4k.media/')) {
+    clean = clean.replace(/v1[4-6]\.fanfilm4k\.media/g, 'v17.fanfilm4k.media');
+  }
+
   // Поддержка как коротких кодов static.anixart.tv, так и UUID-постеров s3.anixmirai.com с обязательным расширением .jpg
   const anixMatch = clean.match(/(?:s\d*\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
   if (anixMatch) {
@@ -2279,7 +2287,15 @@ export const KNOWN_VERIFIED_POSTERS = {
   [normPosterKey('провожающая в последний путь фрирен золотая земля')]: 'https://image.tmdb.org/t/p/w500/dqZENchTd7lp5zht7BdlqM7RBhD.jpg',
   [normPosterKey('о моем перерождении в слизь')]: 'https://image.tmdb.org/t/p/w500/jQb1z04cI12k0f2P6xCFncP9xG.jpg',
   [normPosterKey('монолог фармацевта')]: 'https://image.tmdb.org/t/p/w500/e3ojpANrFnmJCyeBNTinJcmathR.jpg',
-  [normPosterKey('дракон раджа')]: 'https://shikimori.io/system/animes/original/52357.jpg'
+  [normPosterKey('дракон раджа')]: 'https://shikimori.io/system/animes/original/52357.jpg',
+  [normPosterKey('обитель зла')]: 'https://image.tmdb.org/t/p/w500/vLl5tcuabARqGBefccSsYAYXdgA.jpg',
+  [normPosterKey('resident evil')]: 'https://image.tmdb.org/t/p/w500/vLl5tcuabARqGBefccSsYAYXdgA.jpg',
+  [normPosterKey('шальной последний босс явился')]: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg',
+  [normPosterKey('шальной последний босс явился!')]: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg',
+  [normPosterKey('yasei no last boss ga arawareta')]: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg',
+  [normPosterKey('yasei no last boss ga arawareta!')]: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg',
+  [normPosterKey('дикий последний босс появился')]: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg',
+  [normPosterKey('a wild last boss appeared')]: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx180523-FjvW1XByUNMK.jpg'
 };
 
 // Фоновый предпрогрев популярных постеров

@@ -1538,19 +1538,31 @@ export function saveLocalWatchProgress(data) {
   }
 
   // Плекс и Эмби модель прогресса просмотра:
+  let isNextEpTransition = false;
   if (pct >= 90) {
     if (isSeries) {
       try {
         localStorage.setItem(`storm_ep_watched_${data.media_id}_s${s}_e${ep}`, '1');
       } catch (_) {}
 
-      // Если есть следующая серия, переводим Next Up на серию (ep + 1) с 0%
-      if (totalEp > 0 && ep < totalEp) {
+      const totalSeasons = Number(data.total_seasons || 1);
+      const hasNextInSeason = totalEp > 0 && ep < totalEp;
+      const hasNextSeason = totalSeasons > s || data.has_next_season;
+
+      // Если есть следующая серия или сезон, переводим Next Up на следующую серию с 0%
+      if (hasNextInSeason) {
         ep = ep + 1;
         pct = 0;
         sec = 0;
+        isNextEpTransition = true;
+      } else if (hasNextSeason || data.has_next_episode) {
+        s = s + 1;
+        ep = 1;
+        pct = 0;
+        sec = 0;
+        isNextEpTransition = true;
       } else {
-        // Все серии завершены — статус completed, исключаем из Continue Watching
+        // Действительно все вышедшие сезоны и серии завершены
         try {
           localStorage.setItem(`storm_status_${data.media_id}`, 'completed');
           localStorage.setItem(`storm_status_title_${cleanTitle.toLowerCase()}`, 'completed');
@@ -1573,8 +1585,9 @@ export function saveLocalWatchProgress(data) {
     }
   }
 
-  const realSec = typeof data.real_watched_seconds === 'number' ? data.real_watched_seconds : 0;
-  if (realSec < 600 || sec < 600) return;
+  const realSec = typeof data.real_watched_seconds === 'number' ? data.real_watched_seconds : (data.time_seconds || 0);
+  if (!isSeries && (realSec < 600 || sec < 600)) return;
+  if (isSeries && !isNextEpTransition && !data.is_next_episode && !data.is_synthesized && (data.user_status !== 'watching') && realSec < 600 && sec < 600) return;
 
   try {
     setDismissedFromContinueWatching(data.media_id, cleanTitle, false);
@@ -1629,7 +1642,9 @@ export async function syncWatchProgress(data) {
   const realSec = Number(data.real_watched_seconds || 0);
   const timeSec = Number(data.time_seconds ?? data.progress_seconds ?? 0);
   const pct = Number(data.progress_percent || 0);
-  if ((realSec < 600 || timeSec < 600) && pct < 90) return;
+  const isSeries = Boolean(data.is_series || (data.season && data.season > 1) || (data.episode && data.episode > 1) || data.is_next_episode || data.has_next_episode);
+  if (!isSeries && (realSec < 600 || timeSec < 600) && pct < 90) return;
+  if (isSeries && !data.is_next_episode && !data.has_next_episode && (realSec < 600 && timeSec < 600) && pct < 90) return;
   // Всегда сохраняем локально, гарантируя фиксацию для гостей и локального режима
   saveLocalWatchProgress(data);
 
@@ -1707,18 +1722,34 @@ export async function fetchContinueWatching() {
     if (item.bookmark_status === 'completed' || item.user_status === 'completed' || item.status === 'completed' ||
         item.bookmark_status === 'dropped' || item.user_status === 'dropped' || item.status === 'dropped' ||
         item.bookmark_status === 'wont_watch' || item.user_status === 'wont_watch' || item.status === 'wont_watch') return false;
-    if (item.progress_percent && item.progress_percent >= 90) return false;
+
+    const cleanType = detectClientMediaType(item);
+    const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
+    const isSeries = !isMovie && (item.is_series || cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || (item.season && item.season > 1) || (item.episode && item.episode > 1));
+
+    if (isMovie && item.progress_percent && item.progress_percent >= 90) return false;
+
     const sec = Number(item.time_seconds || 0);
     const realSec = Number(item.real_watched_seconds ?? item.time_seconds ?? 0);
-    if (sec < 600 || realSec < 600) return false;
+
+    // Если это фильм: строго проверяем 10 минут реального непрерывного воспроизведения
+    if (isMovie) {
+      if (sec < 600 || realSec < 600) return false;
+    } else {
+      // Для сериалов: проверяем кумулятивное время >= 600 сек, статус watching или флаг следующей серии
+      const isWatching = item.user_status === 'watching' || item.bookmark_status === 'watching';
+      const isNextEp = item.is_next_episode || item.is_synthesized;
+      if (!isWatching && !isNextEp && realSec < 600 && sec < 600) return false;
+    }
     return true;
   }).map(item => {
     const s = parseInt(item.season, 10) || 1;
     const ep = parseInt(item.episode, 10) || 1;
     const cleanType = detectClientMediaType(item);
     const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
-    const isSeries = !isMovie && (cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1);
-    const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
+    const isSeries = !isMovie && (item.is_series || cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1);
+    const isNext = !isMovie && (item.is_next_episode || item.time_seconds === 0 || item.progress_percent === 0);
+    const nextUpText = isMovie ? '' : (item.next_up_badge || (isNext ? `След.: С${s} • Э${ep}` : `С${s} • Э${ep}`));
     return {
       ...item,
       id: item.media_id || item.id,
@@ -1731,7 +1762,10 @@ export async function fetchContinueWatching() {
       user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
       season: isMovie ? 1 : s,
       episode: isMovie ? 1 : ep,
-      next_up: nextUpText
+      is_series: isSeries,
+      is_next_episode: isNext,
+      next_up: nextUpText,
+      next_up_badge: nextUpText
     };
   });
   result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
