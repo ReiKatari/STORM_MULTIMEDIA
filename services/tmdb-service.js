@@ -186,20 +186,93 @@ function formatTmdbItem(item, mediaTypeHint = null) {
 /**
  * Получение каталога TMDB по категориям (по умолчанию от новых к старым по дате выхода)
  */
-export async function getTmdbCatalog(category = 'popular', page = 1) {
+const TMDB_MOVIE_GENRE_MAP = {
+  'ужасы': 27,
+  'хоррор': 27,
+  'боевик': 28,
+  'приключения': 12,
+  'мультфильм': 16,
+  'комедия': 35,
+  'криминал': 80,
+  'документальный': 99,
+  'драма': 18,
+  'семейный': 10751,
+  'фэнтези': 14,
+  'история': 36,
+  'исторический': 36,
+  'музыка': 10402,
+  'мюзикл': 10402,
+  'детектив': 9648,
+  'мелодрама': 10749,
+  'фантастика': 878,
+  'научная фантастика': 878,
+  'телефильм': 10770,
+  'триллер': 53,
+  'военный': 10752,
+  'вестерн': 37,
+  'биография': 36,
+  'спорт': 18
+};
+
+const TMDB_TV_GENRE_MAP = {
+  'боевик': 10759,
+  'приключения': 10759,
+  'мультфильм': 16,
+  'комедия': 35,
+  'криминал': 80,
+  'документальный': 99,
+  'драма': 18,
+  'семейный': 10751,
+  'детский': 10762,
+  'для детей': 10762,
+  'детектив': 9648,
+  'фантастика': 10765,
+  'фэнтези': 10765,
+  'вестерн': 37,
+  'военный': 10768,
+  'ужасы': 9648,
+  'триллер': 9648,
+  'мелодрама': 18
+};
+
+const TMDB_COUNTRY_MAP = {
+  'россия': 'RU',
+  'ссср': 'SU',
+  'сша': 'US',
+  'япония': 'JP',
+  'корея': 'KR',
+  'южная корея': 'KR',
+  'китай': 'CN',
+  'франция': 'FR',
+  'великобритания': 'GB',
+  'германия': 'DE',
+  'италия': 'IT',
+  'индия': 'IN',
+  'турция': 'TR',
+  'испания': 'ES',
+  'канада': 'CA'
+};
+
+export async function getTmdbCatalog(category = 'popular', page = 1, extraFilters = {}) {
   const pageNum = parseInt(page, 10) || 1;
-  const cacheKey = `catalog_v6_${category}_page_${pageNum}`;
+  const isTvCategory = category === 'series' || category === 'cartoon-series' || category === 'anime-series';
+  const filterSig = Object.entries(extraFilters)
+    .filter(([, v]) => v !== '' && v !== undefined && v !== 'all' && v !== 0 && v !== false)
+    .map(([k, v]) => `${k}:${v}`)
+    .sort()
+    .join('|');
+  const cacheKey = filterSig ? `catalog_v7_${category}_page_${pageNum}_${filterSig}` : `catalog_v7_${category}_page_${pageNum}`;
   const cached = getCache('tmdb', cacheKey);
   if (cached && Array.isArray(cached.items) && cached.items.length > 0) return cached;
 
   try {
     const todayIso = new Date().toISOString().slice(0, 10);
-    let endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=10`;
+    let endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=5`;
 
     if (category === 'movies') {
-      endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=10`;
+      endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'series') {
-      endpoint = `/discover/tv?sort_by=first_air_date.desc&first_air_date.lte=${todayIso}&vote_count.gte=10`;
+      endpoint = `/discover/tv?sort_by=first_air_date.desc&first_air_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'new') {
       endpoint = '/movie/now_playing';
     } else if (category === 'cartoons') {
@@ -211,14 +284,77 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
     } else if (category === 'anime-series') {
       endpoint = `/discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc&first_air_date.lte=${todayIso}&vote_count.gte=5`;
     } else if (category === 'popular') {
-      endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=15`;
+      endpoint = `/discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=${todayIso}&vote_count.gte=10`;
+    }
+
+    // Если endpoint discover - внедряем параметры фильтрации
+    if (endpoint.startsWith('/discover/')) {
+      // 1. Жанр
+      if (extraFilters.genre && extraFilters.genre !== 'all') {
+        const cleanG = String(extraFilters.genre).toLowerCase().trim();
+        const genreId = isTvCategory ? (TMDB_TV_GENRE_MAP[cleanG] || TMDB_MOVIE_GENRE_MAP[cleanG]) : (TMDB_MOVIE_GENRE_MAP[cleanG] || TMDB_TV_GENRE_MAP[cleanG]);
+        if (genreId) {
+          if (endpoint.includes('with_genres=')) {
+            endpoint = endpoint.replace(/with_genres=([^&]+)/, (m, g) => `with_genres=${g},${genreId}`);
+          } else {
+            endpoint += `&with_genres=${genreId}`;
+          }
+        }
+      }
+
+      // 2. Год выпуска
+      const rawYear = extraFilters.year || '';
+      if (rawYear && rawYear !== 'all') {
+        if (rawYear === '1980_down' || rawYear === 'pre_1980') {
+          endpoint += isTvCategory ? '&first_air_date.lte=1979-12-31' : '&primary_release_date.lte=1979-12-31';
+        } else if (rawYear.includes('-') || rawYear.includes('_')) {
+          const parts = rawYear.split(/[-_]/).map(p => parseInt(p, 10));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            const dateGte = `${parts[0]}-01-01`;
+            const dateLte = `${parts[1]}-12-31`;
+            endpoint += isTvCategory ? `&first_air_date.gte=${dateGte}&first_air_date.lte=${dateLte}` : `&primary_release_date.gte=${dateGte}&primary_release_date.lte=${dateLte}`;
+          }
+        } else {
+          const yNum = parseInt(rawYear, 10);
+          if (!isNaN(yNum)) {
+            endpoint += isTvCategory ? `&first_air_date_year=${yNum}` : `&primary_release_year=${yNum}`;
+          }
+        }
+      }
+
+      // 3. Страна производства
+      if (extraFilters.country && extraFilters.country !== 'all') {
+        const cleanCountry = String(extraFilters.country).toLowerCase().trim();
+        if (cleanCountry === 'foreign') {
+          endpoint += '&without_origin_country=RU&without_original_language=ru';
+        } else {
+          const cCode = TMDB_COUNTRY_MAP[cleanCountry];
+          if (cCode) {
+            endpoint += `&with_origin_country=${cCode}`;
+          }
+        }
+      }
+
+      // 4. Минимальный рейтинг
+      const rMin = parseFloat(extraFilters.rating) || 0;
+      if (rMin > 0) {
+        endpoint += `&vote_average.gte=${rMin}`;
+      }
+
+      // 5. Сортировка
+      if (extraFilters.sort === 'popular') {
+        endpoint = endpoint.replace(/sort_by=[^&]+/, 'sort_by=popularity.desc');
+      } else if (extraFilters.sort === 'rating') {
+        endpoint = endpoint.replace(/sort_by=[^&]+/, 'sort_by=vote_average.desc') + '&vote_count.gte=30';
+      } else if (extraFilters.sort === 'title') {
+        endpoint = endpoint.replace(/sort_by=[^&]+/, 'sort_by=original_title.asc');
+      }
     }
 
     const sep = endpoint.includes('?') ? '&' : '?';
     const url = `${TMDB_BASE}${endpoint}${sep}api_key=${TMDB_API_KEY}&language=ru-RU&page=${pageNum}`;
 
     const res = await tmdbFetch(url);
-
     if (!res.ok) {
       throw new Error(`TMDB error status: ${res.status}`);
     }
@@ -226,8 +362,10 @@ export async function getTmdbCatalog(category = 'popular', page = 1) {
     const data = await res.json();
     let items = (data.results || []).map(i => formatTmdbItem(i, category)).filter(Boolean);
 
-    // Сортировка по дате выхода по умолчанию
-    items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+    // Если сортировка не задана явно как rating или title, сортируем по дате выхода
+    if (!extraFilters.sort || extraFilters.sort === 'newest') {
+      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
+    }
 
     const result = {
       items,

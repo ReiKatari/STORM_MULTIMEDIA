@@ -2977,8 +2977,8 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       const tmdbPage1 = page * 2 - 1;
       const tmdbPage2 = page * 2;
       const [res1, res2] = await Promise.allSettled([
-        getTmdbCatalog(normCategory, tmdbPage1),
-        getTmdbCatalog(normCategory, tmdbPage2)
+        getTmdbCatalog(normCategory, tmdbPage1, extraFilters),
+        getTmdbCatalog(normCategory, tmdbPage2, extraFilters)
       ]);
       const items1 = res1.status === 'fulfilled' ? res1.value?.items || [] : [];
       const items2 = res2.status === 'fulfilled' ? res2.value?.items || [] : [];
@@ -3091,8 +3091,8 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         fetchedTotal = fetchedItems.length;
       } else if (normCategory === 'cartoon-series' || normCategory === 'cartoons') {
         const promises = [
-          getTmdbCatalog(normCategory, page * 2 - 1),
-          getTmdbCatalog(normCategory, page * 2),
+          getTmdbCatalog(normCategory, page * 2 - 1, extraFilters),
+          getTmdbCatalog(normCategory, page * 2, extraFilters),
           Promise.race([
             getFanFilmCatalog(normCategory, page),
             new Promise(resolve => setTimeout(() => resolve({ items: [] }), 2500))
@@ -3116,14 +3116,20 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
         const tmdbTotalPages = Math.min(250, Math.ceil((tmdbRes1?.total_pages || 500) / 2));
         fetchedTotal = Math.max(fetchedItems.length, tmdbTotalPages * 20);
       } else if (normCategory === 'movies' || normCategory === 'series') {
-        const [fanfilmRes, tmdbRes, liftRes] = await Promise.allSettled([
+        const tmdbP1 = page * 2 - 1;
+        const tmdbP2 = page * 2;
+        const [fanfilmRes, tmdbRes1, tmdbRes2, liftRes] = await Promise.allSettled([
           Promise.race([
             getFanFilmCatalog(normCategory, page),
             new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 2500))
           ]),
           Promise.race([
-            getTmdbCatalog(normCategory, page),
-            new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0 }), 3000))
+            getTmdbCatalog(normCategory, tmdbP1, extraFilters),
+            new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0, total_items: 0 }), 3000))
+          ]),
+          Promise.race([
+            getTmdbCatalog(normCategory, tmdbP2, extraFilters),
+            new Promise(resolve => setTimeout(() => resolve({ items: [], total_pages: 0, total_items: 0 }), 3000))
           ]),
           Promise.race([
             getLiftCatalog({ category: normCategory, page, limit: 20, ...extraFilters }),
@@ -3131,7 +3137,9 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
           ])
         ]);
         const ffItems = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.items || [] : [];
-        const tmdbItems = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.items || [] : [];
+        const t1 = tmdbRes1.status === 'fulfilled' ? tmdbRes1.value : null;
+        const t2 = tmdbRes2.status === 'fulfilled' ? tmdbRes2.value : null;
+        const tmdbItems = [...(t1?.items || []), ...(t2?.items || [])];
         const liftItems = liftRes.status === 'fulfilled' ? (Array.isArray(liftRes.value) ? liftRes.value : (liftRes.value?.items || [])) : [];
         fetchedItems = interleaveSources([
           ffItems,
@@ -3139,9 +3147,28 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
           tmdbItems
         ]);
         const ffPages = fanfilmRes.status === 'fulfilled' ? fanfilmRes.value?.total_pages : 0;
-        const tmdbPages = tmdbRes.status === 'fulfilled' ? tmdbRes.value?.total_pages : 0;
-        const realPages = Math.max(ffPages || 0, tmdbPages || 0) || (normCategory === 'movies' ? 718 : 162);
-        fetchedTotal = realPages * Math.max(20, fetchedItems.length || 56);
+        const tmdbRawPages = Math.max(t1?.total_pages || 0, t2?.total_pages || 0);
+        const tmdbPages = tmdbRawPages > 0 ? Math.ceil(tmdbRawPages / 2) : 0;
+        const tmdbTotal = Math.max(t1?.total_items || 0, t2?.total_items || 0);
+
+        const hasFilterActive = Boolean(
+          (extraFilters.genre && extraFilters.genre !== 'all') ||
+          (extraFilters.country && extraFilters.country !== 'all') ||
+          (extraFilters.year && extraFilters.year !== 'all') ||
+          extraFilters.rating > 0 ||
+          extraFilters.quality ||
+          (extraFilters.q && extraFilters.q.trim().length >= 2) ||
+          extraFilters.kpMin ||
+          extraFilters.imdbMin
+        );
+
+        if (hasFilterActive) {
+          const realPages = tmdbPages || ffPages || (fetchedItems.length > 0 ? 1 : 0);
+          fetchedTotal = tmdbTotal || (realPages * Math.max(20, fetchedItems.length || 36));
+        } else {
+          const realPages = Math.max(ffPages || 0, tmdbPages || 0) || (normCategory === 'movies' ? 718 : 162);
+          fetchedTotal = realPages * Math.max(20, fetchedItems.length || 56);
+        }
       } else if (normCategory === 'new') {
         const [fRes, tmdbRes, liftRes, aRes, libRes, sRes] = await Promise.allSettled([
           Promise.race([
@@ -3345,32 +3372,52 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
     items = Array.from(catalogDedupMap.values());
     await verifyItemsDigitalStreamAvailability(items);
 
-    // Дополнительная фильтрация по странам и двойным рейтингам КП / IMDb / году
-    if (extraFilters.country) {
-      const wantCountry = String(extraFilters.country).toLowerCase();
+    // 1. Фильтрация по жанру
+    if (extraFilters.genre && extraFilters.genre !== 'all') {
+      const wantG = String(extraFilters.genre).toLowerCase().trim();
       items = items.filter(it => {
+        const gList = Array.isArray(it.genres) ? it.genres : (typeof it.genres === 'string' ? it.genres.split(/[,/]/) : []);
+        const hay = `${gList.join(' ')} ${it.category || ''} ${it.description || ''}`.toLowerCase();
+        return hay.includes(wantG);
+      });
+    }
+
+    // 2. Фильтрация по странам
+    if (extraFilters.country && extraFilters.country !== 'all') {
+      const wantCountry = String(extraFilters.country).toLowerCase().trim();
+      items = items.filter(it => {
+        if (wantCountry === 'foreign') {
+          const isRu = (c) => /росси|ссср|russia|ussr/i.test(String(c));
+          if (Array.isArray(it.countries)) return !it.countries.some(isRu);
+          return !isRu(it.country);
+        }
         if (!Array.isArray(it.countries) || it.countries.length === 0) return it.source === 'lift';
-        return it.countries.some(c => String(c).toLowerCase().includes(wantCountry));
+        return it.countries.some(c => String(c).toLowerCase().includes(wantCountry) || (wantCountry === 'россия' && /росси|ссср/i.test(String(c))));
       });
     }
     if (extraFilters.exceptCountry) {
-      const exCountry = String(extraFilters.exceptCountry).toLowerCase();
+      const exCountry = String(extraFilters.exceptCountry).toLowerCase().trim();
       items = items.filter(it => {
         if (!Array.isArray(it.countries) || it.countries.length === 0) return true;
         return !it.countries.some(c => String(c).toLowerCase().includes(exCountry));
       });
     }
-    if (extraFilters.kpMin !== undefined && extraFilters.kpMin !== '') {
-      const minKp = parseFloat(extraFilters.kpMin);
-      if (!isNaN(minKp) && minKp > 0) {
-        items = items.filter(it => (parseFloat(it.rating_kp || it.rating) || 0) >= minKp);
-      }
-    }
-    if (extraFilters.imdbMin !== undefined && extraFilters.imdbMin !== '') {
-      const minImdb = parseFloat(extraFilters.imdbMin);
-      if (!isNaN(minImdb) && minImdb > 0) {
-        items = items.filter(it => (parseFloat(it.rating_imdb || it.rating) || 0) >= minImdb);
-      }
+
+    // 3. Фильтрация по году
+    const rawFilterYear = extraFilters.year || '';
+    if (rawFilterYear && rawFilterYear !== 'all') {
+      items = items.filter(it => {
+        const y = parseInt(it.year, 10);
+        if (isNaN(y)) return false;
+        if (rawFilterYear === '1980_down' || rawFilterYear === 'pre_1980') return y < 1980;
+        if (rawFilterYear.includes('-') || rawFilterYear.includes('_')) {
+          const parts = rawFilterYear.split(/[-_]/).map(p => parseInt(p, 10));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            return y >= parts[0] && y <= parts[1];
+          }
+        }
+        return String(y) === String(rawFilterYear);
+      });
     }
     if (extraFilters.yearFrom !== undefined && extraFilters.yearFrom !== '') {
       const yFrom = parseInt(extraFilters.yearFrom, 10);
@@ -3385,35 +3432,104 @@ async function executeCatalogFetch(category, page = 1, source = 'all', extraFilt
       }
     }
 
+    // 4. Фильтрация по рейтингу
+    const filterRating = parseFloat(extraFilters.rating) || 0;
+    if (filterRating > 0) {
+      items = items.filter(it => {
+        const r = parseFloat(it.rating_kp || it.rating_imdb || it.rating);
+        return !isNaN(r) && r >= filterRating;
+      });
+    }
+    if (extraFilters.kpMin !== undefined && extraFilters.kpMin !== '') {
+      const minKp = parseFloat(extraFilters.kpMin);
+      if (!isNaN(minKp) && minKp > 0) {
+        items = items.filter(it => (parseFloat(it.rating_kp || it.rating) || 0) >= minKp);
+      }
+    }
+    if (extraFilters.imdbMin !== undefined && extraFilters.imdbMin !== '') {
+      const minImdb = parseFloat(extraFilters.imdbMin);
+      if (!isNaN(minImdb) && minImdb > 0) {
+        items = items.filter(it => (parseFloat(it.rating_imdb || it.rating) || 0) >= minImdb);
+      }
+    }
+
+    // 5. Фильтрация по 4K
+    if (extraFilters.quality === '4k' || extraFilters.only4k) {
+      items = items.filter(it => it.is4K === true || (it.quality && String(it.quality).includes('4K')));
+    }
+
+    // 6. Фильтрация по поисковой строке
+    if (extraFilters.q && extraFilters.q.trim().length >= 2) {
+      const qWords = extraFilters.q.toLowerCase().trim().split(/\s+/);
+      items = items.filter(it => {
+        const searchHay = `${it.title || ''} ${it.original_title || ''} ${it.year || ''} ${Array.isArray(it.genres) ? it.genres.join(' ') : (it.genres || '')}`.toLowerCase();
+        return qWords.every(w => searchHay.includes(w));
+      });
+    }
+
     const curCalYear = new Date().getFullYear();
     items.forEach(it => {
       if (!it.poster || isPlaceholderImage(it.poster)) {
         it.poster = `/api/media/image-proxy?title=${encodeURIComponent(it.title || '')}&orig=${encodeURIComponent(it.original_title || '')}`;
       }
     });
-    items.sort((a, b) => {
-      const ya = parseInt(a.year, 10) || 0;
-      const yb = parseInt(b.year, 10) || 0;
-      const aFuture = ya > curCalYear || Boolean(a.is_upcoming);
-      const bFuture = yb > curCalYear || Boolean(b.is_upcoming);
-      if (aFuture !== bFuture) return aFuture ? 1 : -1;
-      return yb - ya;
-    });
+
+    // 7. Сортировка
+    if (extraFilters.sort === 'rating') {
+      items.sort((a, b) => (parseFloat(b.rating_kp || b.rating_imdb || b.rating) || 0) - (parseFloat(a.rating_kp || a.rating_imdb || a.rating) || 0));
+    } else if (extraFilters.sort === 'popular') {
+      items.sort((a, b) => (parseFloat(b.popularity || b.rating) || 0) - (parseFloat(a.popularity || a.rating) || 0));
+    } else if (extraFilters.sort === 'title') {
+      items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+    } else {
+      items.sort((a, b) => {
+        const ya = parseInt(a.year, 10) || 0;
+        const yb = parseInt(b.year, 10) || 0;
+        const aFuture = ya > curCalYear || Boolean(a.is_upcoming);
+        const bFuture = yb > curCalYear || Boolean(b.is_upcoming);
+        if (aFuture !== bFuture) return aFuture ? 1 : -1;
+        return yb - ya;
+      });
+    }
   }
 
+  const hasAnyFilterActive = Boolean(
+    (extraFilters.genre && extraFilters.genre !== 'all') ||
+    (extraFilters.country && extraFilters.country !== 'all') ||
+    (extraFilters.year && extraFilters.year !== 'all') ||
+    extraFilters.rating > 0 ||
+    extraFilters.quality === '4k' ||
+    (extraFilters.q && extraFilters.q.trim().length >= 2) ||
+    extraFilters.kpMin ||
+    extraFilters.imdbMin
+  );
+
   let calculatedTotalPages = 1;
-  if (normCategory === 'movies') calculatedTotalPages = 718;
-  else if (normCategory === 'series') calculatedTotalPages = 162;
-  else if (normCategory === 'cartoons') calculatedTotalPages = 35;
-  else if (normCategory === 'cartoon-series') calculatedTotalPages = 20;
-  else if (normCategory === 'anime-movies') calculatedTotalPages = 50;
-  else if (normCategory === 'anime-series') calculatedTotalPages = 50;
-  else if (normCategory === 'new') calculatedTotalPages = 50;
-  else if (normCategory === 'popular' || normCategory === 'home') calculatedTotalPages = 500;
-  else if (totalItems > 0 && items.length > 0) {
-    calculatedTotalPages = Math.max(1, Math.ceil(totalItems / Math.max(20, items.length)));
+  if (hasAnyFilterActive) {
+    if (totalItems > 0 && items.length > 0) {
+      calculatedTotalPages = Math.min(250, Math.max(1, Math.ceil(totalItems / Math.max(20, items.length))));
+    } else if (items.length > 0) {
+      calculatedTotalPages = 1;
+      totalItems = items.length;
+    } else {
+      calculatedTotalPages = 1;
+      totalItems = 0;
+    }
   } else {
-    calculatedTotalPages = 50;
+    if (normCategory === 'movies') calculatedTotalPages = 718;
+    else if (normCategory === 'series') calculatedTotalPages = 162;
+    else if (normCategory === 'cartoons') calculatedTotalPages = 35;
+    else if (normCategory === 'cartoon-series') calculatedTotalPages = 20;
+    else if (normCategory === 'anime-movies') calculatedTotalPages = 50;
+    else if (normCategory === 'anime-series') calculatedTotalPages = 50;
+    else if (normCategory === 'new') calculatedTotalPages = 50;
+    else if (normCategory === 'popular' || normCategory === 'home') calculatedTotalPages = 500;
+    else if (totalItems > 0 && items.length > 0) {
+      calculatedTotalPages = Math.max(1, Math.ceil(totalItems / Math.max(20, items.length)));
+    } else {
+      calculatedTotalPages = 50;
+    }
+    totalItems = calculatedTotalPages * Math.max(20, items.length || 36);
   }
 
   // Неблокирующий фоновый предпрогрев обложек первой витрины в RAM (imageBinaryCache)
@@ -3509,21 +3625,25 @@ app.get('/api/lift/home-rails', async (req, res) => {
 
 app.get('/api/media/catalog', async (req, res) => {
   try {
-    let category = req.query.category || 'popular';
+    let category = req.query.category || req.query.type || 'popular';
     if (category === 'home') category = 'popular';
     const page = parseInt(req.query.page, 10) || 1;
     const source = req.query.source || 'all';
     const extraFilters = {
-      country: req.query.country || '',
-      exceptCountry: req.query.exceptCountry || '',
+      country: (req.query.country || '').trim(),
+      exceptCountry: (req.query.exceptCountry || '').trim(),
       kpMin: req.query.kpMin || '',
       kpMax: req.query.kpMax || '',
       imdbMin: req.query.imdbMin || '',
       imdbMax: req.query.imdbMax || '',
       yearFrom: req.query.yearFrom || '',
       yearTo: req.query.yearTo || '',
-      genre: req.query.genre || '',
-      sort: req.query.sort || ''
+      genre: (req.query.genre || '').trim(),
+      year: (req.query.year || '').trim(),
+      rating: parseFloat(req.query.rating || req.query.minRating) || 0,
+      quality: (req.query.quality || '').trim(),
+      q: (req.query.q || req.query.search || '').trim(),
+      sort: (req.query.sort || 'newest').trim()
     };
     const filterSig = Object.entries(extraFilters)
       .filter(([, v]) => v !== '' && v !== undefined)

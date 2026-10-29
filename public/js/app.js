@@ -52,13 +52,13 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.4.1';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.4.1';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.4.1';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.4.1';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.4.1';
-import { getStatusIconSvg } from './status-icons.js?v=1.4.1';
-import { initFormFactorEngine } from './form-factor.js?v=1.4.1';
+import { initTheme, setTheme } from './theme.js?v=1.4.2';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.4.2';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.4.2';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.4.2';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.4.2';
+import { getStatusIconSvg } from './status-icons.js?v=1.4.2';
+import { initFormFactorEngine } from './form-factor.js?v=1.4.2';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
 const STORM_ASSET_VER = '1.3.9';
@@ -286,6 +286,7 @@ let totalCatalogItems = 0;
 let totalCatalogPages = 1;
 let currentItems = [];
 let rawCatalogItems = [];
+let allSearchResults = [];
 let searchQuery = _initialNavState.searchQuery || '';
 let hoverPreviewTimer = null;
 let hoverCloseTimer = null;
@@ -1050,6 +1051,7 @@ export function switchTab(tab, options = {}) {
   if (searchInput && searchInput.value) {
     searchInput.value = '';
     searchQuery = '';
+    allSearchResults = [];
     const clearBtn = document.getElementById('search-clear-btn');
     if (clearBtn) clearBtn.classList.remove('is-visible');
   }
@@ -1314,12 +1316,8 @@ function initFilterSheet() {
       updateFilterBadge();
       closeFilterSheet();
 
-      if (currentSource !== prevSource || currentCountry !== prevCountry) {
-        currentPage = 1;
-        loadCurrentTab();
-      } else {
-        renderFilteredCatalog();
-      }
+      currentPage = 1;
+      loadCurrentTab();
     });
   }
 
@@ -1994,18 +1992,42 @@ function buildCountryCatalogQuery(countryVal = currentCountry) {
   return `&country=${encodeURIComponent(countryVal)}`;
 }
 
+
+export function buildCatalogQueryParams(category, page, source) {
+  const params = new URLSearchParams();
+  params.set('category', category);
+  params.set('page', String(page));
+  params.set('source', source || currentSource || 'all');
+  if (currentGenre && currentGenre !== 'all') params.set('genre', currentGenre);
+  if (currentCountry && currentCountry !== 'all') {
+    params.set('country', currentCountry);
+    if (currentCountry === 'foreign') params.set('exceptCountry', 'Россия');
+  }
+  if (currentYear && currentYear !== 'all') params.set('year', currentYear);
+  if (currentRating > 0) params.set('rating', String(currentRating));
+  if (currentSort && currentSort !== 'newest') params.set('sort', currentSort);
+  if (only4KQuickFilter) params.set('quality', '4k');
+  if (searchQuery && searchQuery.trim().length >= 2) params.set('q', searchQuery.trim());
+  return params;
+}
+
+export function getTabCacheKey(category, page, source) {
+  const p = buildCatalogQueryParams(category, page, source);
+  return `cat_v8_${category}_p${page}_s${source}_${p.toString()}`;
+}
+
 function scheduleNextPagePrefetch(cat, page, src) {
   clearTimeout(prefetchTimer);
   if (page >= totalCatalogPages) return;
   prefetchTimer = setTimeout(async () => {
-    const countrySuffix = currentCountry && currentCountry !== 'all' ? `_${currentCountry}` : '';
-    const nextKey = `${cat}_${page + 1}_${src}${countrySuffix}`;
+    const nextKey = getTabCacheKey(cat, page + 1, src);
     if (clientTabCache.has(nextKey)) return;
     try {
       const headers = {};
       const token = localStorage.getItem('storm_token');
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`/api/media/catalog?category=${cat}&page=${page + 1}&source=${src}${buildCountryCatalogQuery()}`, {
+      const params = buildCatalogQueryParams(cat, page + 1, src);
+      const res = await fetch(`/api/media/catalog?${params.toString()}`, {
         headers,
         signal: AbortSignal.timeout(8000)
       });
@@ -2014,8 +2036,8 @@ function scheduleNextPagePrefetch(cat, page, src) {
         if (data.items && data.items.length > 0) {
           clientTabCache.set(nextKey, {
             items: deduplicateMediaList(data.items),
-            totalItems: data.total_items || (totalCatalogPages * 20),
-            totalPages: data.total_pages || totalCatalogPages
+            totalItems: data.total_items || (data.total_pages * 20),
+            totalPages: data.total_pages || 1
           });
         }
       }
@@ -2772,6 +2794,17 @@ async function loadCurrentTab() {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
+  if (searchQuery && searchQuery.trim().length >= 2 && Array.isArray(allSearchResults) && allSearchResults.length > 0) {
+    const pageSize = 36;
+    totalCatalogItems = allSearchResults.length;
+    totalCatalogPages = Math.max(1, Math.ceil(totalCatalogItems / pageSize));
+    if (currentPage > totalCatalogPages) currentPage = 1;
+    const sliceStart = (currentPage - 1) * pageSize;
+    rawCatalogItems = allSearchResults.slice(sliceStart, sliceStart + pageSize);
+    renderFilteredCatalog();
+    return;
+  }
+
   if (currentTab !== 'home') {
     hideHeroShowcase();
   }
@@ -2883,40 +2916,106 @@ async function loadCurrentTab() {
     return;
   }
 
+  // 0. Если активен фильтр по пользовательским закладкам (Смотрю, В планах и т.д.)
+  if (currentStatusFilter && currentStatusFilter !== 'all') {
+    const memBookmarks = (typeof getMemoryBookmarksCache === 'function' ? getMemoryBookmarksCache() : []) || [];
+    const isTargetStatus = (b) => {
+      const s = String(b.status || b.user_status || '').toLowerCase().replace(/-/g, '_');
+      if (currentStatusFilter === 'plan' || currentStatusFilter === 'planned') return s === 'plan' || s === 'planned';
+      if (currentStatusFilter === 'hold' || currentStatusFilter === 'on_hold') return s === 'hold' || s === 'on_hold';
+      if (currentStatusFilter === 'completed' || currentStatusFilter === 'watched') return s === 'completed' || s === 'watched';
+      if (currentStatusFilter === 'wont_watch' || currentStatusFilter === 'wontwatch') return s === 'wont_watch' || s === 'wontwatch';
+      return s === currentStatusFilter;
+    };
+
+    let filtered = memBookmarks.filter(isTargetStatus);
+
+    // Фильтрация по текущему разделу каталога
+    if (['movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series'].includes(currentTab)) {
+      filtered = filtered.filter(b => {
+        const mType = String(b.media_type || '').toLowerCase();
+        if (currentTab === 'movies') return mType === 'movie' || mType === 'movies';
+        if (currentTab === 'series') return mType === 'series' || mType === 'tv';
+        if (currentTab === 'cartoons') return mType === 'cartoon' || mType === 'cartoons';
+        if (currentTab === 'cartoon-series') return mType === 'cartoon-series';
+        if (currentTab === 'anime-movies') return mType === 'anime-movie' || mType === 'anime-movies';
+        if (currentTab === 'anime-series') return mType === 'anime-series';
+        return true;
+      });
+    }
+
+    if (currentGenre && currentGenre !== 'all') {
+      const targetG = currentGenre.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const gStr = Array.isArray(b.genres) ? b.genres.join(' ') : String(b.genres || '');
+        return gStr.toLowerCase().includes(targetG);
+      });
+    }
+
+    const pageSize = 36;
+    totalCatalogItems = filtered.length;
+    totalCatalogPages = Math.max(1, Math.ceil(totalCatalogItems / pageSize));
+    if (currentPage > totalCatalogPages) currentPage = 1;
+    const sliceStart = (currentPage - 1) * pageSize;
+    rawCatalogItems = filtered.slice(sliceStart, sliceStart + pageSize).map(b => ({
+      id: b.media_id || b.id,
+      source: b.source,
+      title: b.title,
+      original_title: b.original_title,
+      poster: getSafePosterUrl(b.poster_url || b.poster, b.title),
+      media_type: b.media_type,
+      year: b.year || '',
+      user_status: b.status,
+      is_favorite: (b.is_favorite === 1 || b.is_favorite === true || b.status === 'favorite') ? 1 : 0,
+      progress_percent: b.progress_percent,
+      episodes_watched: b.episodes_watched,
+      total_episodes: b.total_episodes,
+      updated_at: b.updated_at
+    }));
+    renderFilteredCatalog();
+    return;
+  }
+
   // Каталог медиа - мгновенная отдача из кэша + фоновое обновление
   let category = currentTab;
   if (currentTab === 'home') category = 'popular';
   const defPages = CATEGORY_DEFAULT_PAGES[category] || 100;
-  if (currentPage > defPages) {
-    currentPage = defPages;
-  }
-  const countrySuffix = currentCountry && currentCountry !== 'all' ? `_${currentCountry}` : '';
-  const cacheKey = `${category}_${currentPage}_${currentSource}${countrySuffix}`;
+  const cacheKey = getTabCacheKey(category, currentPage, currentSource);
   const loadSeq = ++activeTabLoadSeq;
+
+  const hasFilterActive = Boolean(
+    (currentGenre && currentGenre !== 'all') ||
+    (currentCountry && currentCountry !== 'all') ||
+    (currentYear && currentYear !== 'all') ||
+    currentRating > 0 ||
+    (currentSort && currentSort !== 'newest') ||
+    only4KQuickFilter ||
+    (searchQuery && searchQuery.trim().length >= 2)
+  );
 
   if (clientTabCache.has(cacheKey)) {
     const cached = clientTabCache.get(cacheKey);
     let items = Array.isArray(cached) ? cached : (cached?.items || []);
-    if (currentPage > 1) {
+    if (currentPage > 1 && !hasFilterActive) {
       items = filterPageDuplicates(items, category, currentPage);
     }
     rawCatalogItems = items;
-    totalCatalogPages = Math.min(defPages, cached?.totalPages || defPages);
+    totalCatalogPages = cached?.totalPages || 1;
     totalCatalogItems = cached?.totalItems || (totalCatalogPages * 20);
     renderFilteredCatalog();
     scheduleNextPagePrefetch(category, currentPage, currentSource);
   } else {
-    const persistent = currentPage === 1 ? getPersistentTabCache(cacheKey) : null;
+    const persistent = (currentPage === 1 && !hasFilterActive) ? getPersistentTabCache(cacheKey) : null;
     if (persistent && Array.isArray(persistent.items) && persistent.items.length > 0) {
       clientTabCache.set(cacheKey, persistent);
       rawCatalogItems = persistent.items;
-      totalCatalogPages = Math.min(defPages, persistent.totalPages || defPages);
+      totalCatalogPages = persistent.totalPages || defPages;
       totalCatalogItems = persistent.totalItems || (totalCatalogPages * 20);
       renderFilteredCatalog();
       scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
-      const baseline = getBaselineCatalog(category);
-      if (baseline && baseline.length > 0 && currentCountry === 'all') {
+      const baseline = (!hasFilterActive && currentCountry === 'all') ? getBaselineCatalog(category) : null;
+      if (baseline && baseline.length > 0) {
         rawCatalogItems = baseline;
         renderFilteredCatalog();
       } else {
@@ -2931,7 +3030,8 @@ async function loadCurrentTab() {
     const token = localStorage.getItem('storm_token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}${buildCountryCatalogQuery()}`, {
+    const params = buildCatalogQueryParams(category, currentPage, currentSource);
+    const res = await fetch(`/api/media/catalog?${params.toString()}`, {
       headers,
       signal: AbortSignal.timeout(12000)
     });
@@ -2939,66 +3039,65 @@ async function loadCurrentTab() {
     if (loadSeq !== activeTabLoadSeq) return; // Устаревший запрос отменён
 
     const fetchedItems = data.items || [];
-    totalCatalogPages = Math.min(defPages, data.total_pages || defPages);
-    totalCatalogItems = data.total_items || (totalCatalogPages * 20);
+    totalCatalogPages = data.total_pages || 1;
+    totalCatalogItems = data.total_items || (totalCatalogPages * (fetchedItems.length || 20));
 
     if (fetchedItems.length > 0) {
       let cleanList = deduplicateMediaList(fetchedItems);
-      if (currentPage > 1) {
+      if (currentPage > 1 && !hasFilterActive) {
         cleanList = filterPageDuplicates(cleanList, category, currentPage);
       }
       const wasEquivalent = areMediaListsEquivalent(rawCatalogItems, cleanList);
       rawCatalogItems = cleanList;
       clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-      if (currentPage === 1) {
+      if (currentPage === 1 && !hasFilterActive) {
         setPersistentTabCache(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
       }
-      if (!wasEquivalent) {
+      if (!wasEquivalent || rawCatalogItems.length !== cleanList.length) {
         renderFilteredCatalog();
       }
       scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
-      // Если по текущему источнику 0 элементов, пробуем сводный каталог
-      try {
-        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all${buildCountryCatalogQuery()}`, {
-          headers,
-          signal: AbortSignal.timeout(8000)
-        });
-        const retryData = await retryRes.json();
-        if (loadSeq !== activeTabLoadSeq) return;
+      // Если по текущему источнику 0 элементов, пробуем сводный каталог 'all'
+      if (currentSource !== 'all') {
+        try {
+          const retryParams = buildCatalogQueryParams(category, currentPage, 'all');
+          const retryRes = await fetch(`/api/media/catalog?${retryParams.toString()}`, {
+            headers,
+            signal: AbortSignal.timeout(8000)
+          });
+          const retryData = await retryRes.json();
+          if (loadSeq !== activeTabLoadSeq) return;
 
-        if (retryData.items && retryData.items.length > 0) {
-          let retryList = deduplicateMediaList(retryData.items);
-          if (currentPage > 1) {
-            retryList = filterPageDuplicates(retryList, category, currentPage);
+          if (retryData.items && retryData.items.length > 0) {
+            const retryList = deduplicateMediaList(retryData.items);
+            totalCatalogPages = retryData.total_pages || 1;
+            totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
+            rawCatalogItems = retryList;
+            renderFilteredCatalog();
+            clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
+            scheduleNextPagePrefetch(category, currentPage, currentSource);
+            return;
           }
-          rawCatalogItems = retryList;
-          totalCatalogPages = Math.min(defPages, retryData.total_pages || defPages);
-          totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
-          clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-          if (currentPage === 1) {
-            setPersistentTabCache(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-          }
-          renderFilteredCatalog();
-          scheduleNextPagePrefetch(category, currentPage, currentSource);
-          return;
+        } catch (retryErr) {
+          console.warn('Fallback catalog error:', retryErr);
         }
-      } catch {}
-
-      if (loadSeq !== activeTabLoadSeq) return;
-      if (!rawCatalogItems || rawCatalogItems.length === 0) {
-        if (currentPage > totalCatalogPages) {
-          currentPage = totalCatalogPages;
-          loadCurrentTab();
-          return;
-        }
-        renderFilteredCatalog();
       }
+
+      rawCatalogItems = [];
+      totalCatalogPages = 1;
+      totalCatalogItems = 0;
+      renderFilteredCatalog();
     }
   } catch (err) {
     if (loadSeq !== activeTabLoadSeq) return;
+    console.warn('Network catalog error:', err);
     if (!rawCatalogItems || rawCatalogItems.length === 0) {
-      renderFilteredCatalog();
+      const baseline = (!hasFilterActive && currentCountry === 'all') ? getBaselineCatalog(category) : null;
+      if (baseline && baseline.length > 0) {
+        rawCatalogItems = baseline;
+        renderFilteredCatalog();
+      }
     }
   }
 }
@@ -5710,15 +5809,19 @@ function renderCatalogPagination(shownCount) {
   const host = document.getElementById('storm-pagination-host');
   if (!host) return;
 
-  const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-  if (['home', 'continue', 'bookmarks', 'offline'].includes(currentTab) || isSearching) {
+  if (currentTab === 'offline') {
     host.innerHTML = '';
     host.style.display = 'none';
     return;
   }
 
-  const totalPages = Math.max(1, totalCatalogPages);
-  const totalCount = Math.max(shownCount, totalCatalogItems);
+  let totalPages = Math.max(1, totalCatalogPages);
+  let totalCount = Math.max(shownCount, totalCatalogItems);
+
+  if (inPageQuickQuery && inPageQuickQuery.trim().length > 0) {
+    totalCount = shownCount;
+    totalPages = 1;
+  }
 
   // Ограничиваем количество кнопок на узких мобильных экранах
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 500;
@@ -5805,7 +5908,7 @@ function goToPage(pageNum) {
   saveCurrentNavState();
 
   const category = currentTab === 'home' ? 'popular' : currentTab;
-  const cacheKey = `${category}_${currentPage}_${currentSource}`;
+  const cacheKey = getTabCacheKey(category, currentPage, currentSource);
   if (!clientTabCache.has(cacheKey)) {
     rawCatalogItems = [];
     renderSkeletonGrid();
@@ -6001,10 +6104,12 @@ export async function executeSearch(query = null) {
         }
       }
 
-      rawCatalogItems = deduplicateMediaList(items);
-      totalCatalogItems = rawCatalogItems.length;
-      totalCatalogPages = 1;
+      allSearchResults = deduplicateMediaList(items);
+      totalCatalogItems = allSearchResults.length;
+      const searchPageSize = 36;
+      totalCatalogPages = Math.max(1, Math.ceil(totalCatalogItems / searchPageSize));
       currentPage = 1;
+      rawCatalogItems = allSearchResults.slice(0, searchPageSize);
       renderFilteredCatalog();
       if (document.body.classList.contains('tv-mode') && typeof window.stormFocusFirstCatalogCard === 'function') {
         setTimeout(() => window.stormFocusFirstCatalogCard(), 60);
@@ -6436,7 +6541,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentGenre,
     onSelect: (id) => {
       currentGenre = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6452,6 +6559,7 @@ export function initFilterDropdowns() {
     onSelect: (id) => {
       currentCountry = id;
       currentPage = 1;
+      syncDesktopFilterLabels();
       loadCurrentTab();
     }
   });
@@ -6484,7 +6592,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentYear,
     onSelect: (id) => {
       currentYear = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6512,7 +6622,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentRating,
     onSelect: (id) => {
       currentRating = parseFloat(id) || 0;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6538,7 +6650,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentStatusFilter,
     onSelect: (id) => {
       currentStatusFilter = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6560,7 +6674,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentSort,
     onSelect: (id) => {
       currentSort = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6628,13 +6744,11 @@ export function resetAllFilters() {
     el.classList.toggle('is-active', el.dataset.value === 'newest');
   });
 
+  only4KQuickFilter = false;
+  inPageQuickQuery = '';
+  currentPage = 1;
   updateFilterBadge();
-  if (prevSource !== 'all' || prevCountry !== 'all') {
-    currentPage = 1;
-    loadCurrentTab();
-  } else {
-    renderFilteredCatalog();
-  }
+  loadCurrentTab();
 }
 
 export function escapeHtml(str) {
@@ -7425,7 +7539,8 @@ export function renderQuickCatalogBar(shownCount = 0) {
   if (toggle4kBtn) {
     toggle4kBtn.onclick = () => {
       only4KQuickFilter = !only4KQuickFilter;
-      renderFilteredCatalog();
+      currentPage = 1;
+      loadCurrentTab();
     };
   }
 
@@ -7452,8 +7567,9 @@ export function renderQuickCatalogBar(shownCount = 0) {
       pill.onclick = () => {
         const gId = pill.dataset.qgenre || 'all';
         currentGenre = gId;
+        currentPage = 1;
         syncDesktopFilterLabels();
-        renderFilteredCatalog();
+        loadCurrentTab();
       };
     });
   }
@@ -7727,34 +7843,15 @@ export async function applyGenreFilter(genre) {
   if (!genre) return;
   const cleanGenre = genre.trim();
   currentGenre = cleanGenre.toLowerCase();
-  currentCountry = 'all';
+  currentPage = 1;
 
-  const genreLabel = document.getElementById('filter-genre-label');
-  if (genreLabel) {
-    genreLabel.textContent = cleanGenre.charAt(0).toUpperCase() + cleanGenre.slice(1);
-  }
-  document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
-    el.classList.toggle('is-active', el.dataset.value === currentGenre);
-  });
+  syncDesktopFilterLabels();
+  updateFilterBadge();
 
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) resetBtn.style.display = 'inline-flex';
 
-  renderFilteredCatalog();
-
-  if (currentItems.length < 3) {
-    try {
-      const res = await fetch(`/api/media/search?q=${encodeURIComponent(cleanGenre)}&source=all`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-          rawCatalogItems = deduplicateMediaList([...rawCatalogItems, ...data.items]);
-          renderFilteredCatalog();
-        }
-      }
-    } catch {}
-  }
-
+  loadCurrentTab();
   showToast(`Фильтр по жанру: ${cleanGenre.charAt(0).toUpperCase() + cleanGenre.slice(1)}`, 'info');
 }
 window.applyGenreFilter = applyGenreFilter;
@@ -7763,32 +7860,15 @@ export async function applyCountryFilter(country) {
   if (!country) return;
   const cleanCountry = country.trim();
   currentCountry = cleanCountry.toLowerCase();
-  currentGenre = 'all';
+  currentPage = 1;
 
-  const homeBtn = document.querySelector('.storm-tab-btn[data-tab="home"]');
-  if (homeBtn && currentTab !== 'home') {
-    currentTab = 'home';
-    document.querySelectorAll('.storm-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'home'));
-  }
+  syncDesktopFilterLabels();
+  updateFilterBadge();
 
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) resetBtn.style.display = 'inline-flex';
 
-  renderFilteredCatalog();
-
-  if (currentItems.length < 3) {
-    try {
-      const res = await fetch(`/api/media/search?q=${encodeURIComponent(cleanCountry)}&source=all`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-          rawCatalogItems = deduplicateMediaList([...rawCatalogItems, ...data.items]);
-          renderFilteredCatalog();
-        }
-      }
-    } catch {}
-  }
-
+  loadCurrentTab();
   showToast(`Фильтр по стране: ${cleanCountry.charAt(0).toUpperCase() + cleanCountry.slice(1)}`, 'info');
 }
 window.applyCountryFilter = applyCountryFilter;
