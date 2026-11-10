@@ -1,21 +1,88 @@
-import { trackClientAction } from './achievements.js?v=1.3.1';
+import { trackClientAction } from './achievements.js?v=1.6.3';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.3.1';
-import { t } from './i18n.js?v=1.3.1';
-import { normalizeStatus } from './status-icons.js?v=1.3.1';
+import { getToken, showToast } from './auth.js?v=1.6.3';
+import { t } from './i18n.js?v=1.6.3';
+import { normalizeStatus } from './status-icons.js?v=1.6.3';
 
 let memoryBookmarksCache = [];
+const bookmarksByIdMap = new Map();
+const bookmarksByStrippedIdMap = new Map();
+const bookmarksByCanonMap = new Map();
+const bookmarksByNormTitleMap = new Map();
+const canonTitleMemo = new Map();
+
+function memoizedCanonicalTitle(str) {
+  if (!str) return '';
+  let res = canonTitleMemo.get(str);
+  if (res === undefined) {
+    if (canonTitleMemo.size > 2000) canonTitleMemo.clear();
+    res = normalizeCanonicalTitleMatch(str);
+    canonTitleMemo.set(str, res);
+  }
+  return res;
+}
+
+function rebuildBookmarkIndexes(bookmarks) {
+  bookmarksByIdMap.clear();
+  bookmarksByStrippedIdMap.clear();
+  bookmarksByCanonMap.clear();
+  bookmarksByNormTitleMap.clear();
+  if (!Array.isArray(bookmarks)) return;
+  for (const b of bookmarks) {
+    if (!b) continue;
+    const bId = String(b.id || b.media_id || '').trim();
+    if (bId) {
+      bookmarksByIdMap.set(bId, b);
+      const bStripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
+      if (bStripped && bStripped !== bId) {
+        bookmarksByStrippedIdMap.set(bStripped, b);
+      }
+    }
+    const bTitle = String(b.title || '').trim();
+    if (bTitle) {
+      const bCanon = memoizedCanonicalTitle(bTitle);
+      if (bCanon) bookmarksByCanonMap.set(bCanon, b);
+      const bNorm = bTitle.toLowerCase().replace(/\u0451/g, '\u0435').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+      if (bNorm) bookmarksByNormTitleMap.set(bNorm, b);
+      const simpleLow = bTitle.toLowerCase().trim();
+      if (simpleLow) bookmarksByNormTitleMap.set(simpleLow, b);
+    }
+    const bOrig = String(b.original_title || '').trim();
+    if (bOrig) {
+      const bOrigCanon = memoizedCanonicalTitle(bOrig);
+      if (bOrigCanon && !bookmarksByCanonMap.has(bOrigCanon)) {
+        bookmarksByCanonMap.set(bOrigCanon, b);
+      }
+    }
+  }
+}
 
 export function setMemoryBookmarksCache(bookmarks = []) {
   if (Array.isArray(bookmarks)) {
     memoryBookmarksCache = bookmarks;
+    rebuildBookmarkIndexes(bookmarks);
     if (typeof window !== 'undefined') {
       window.__STORM_MEMORY_BOOKMARKS__ = bookmarks;
+      window.setMemoryBookmarksCache = setMemoryBookmarksCache;
     }
   }
+}
+
+if (typeof window !== 'undefined' && Array.isArray(window.__STORM_MEMORY_BOOKMARKS__)) {
+  setMemoryBookmarksCache(window.__STORM_MEMORY_BOOKMARKS__);
+} else if (typeof window !== 'undefined' && Array.isArray(window.__STORM_BOOTSTRAP_DATA__?.bookmarks)) {
+  setMemoryBookmarksCache(window.__STORM_BOOTSTRAP_DATA__.bookmarks);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storm:db-hydrated', (e) => {
+    if (Array.isArray(e.detail?.bookmarks)) {
+      setMemoryBookmarksCache(e.detail.bookmarks);
+    }
+  });
 }
 
 export function getMemoryBookmarksCache() {
@@ -441,41 +508,55 @@ export function resolveMediaUserStatus(item) {
 
   const id = String(item.id || item.media_id || '');
   const strippedId = id.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
-  let resolved = null;
-
-  if (id) {
-    const s = localStorage.getItem(`storm_status_${id}`) || (strippedId ? localStorage.getItem(`storm_status_${strippedId}`) : null);
-    if (s && s !== 'none') resolved = s;
-  }
-
   const rawTitle = String(item.title || '').trim();
   const origTitle = String(item.original_title || '').trim();
   const normTitle = rawTitle.toLowerCase().replace(/ё/g, 'е').replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
   const canonTitle = normalizeCanonicalTitleMatch(rawTitle);
   const canonOrig = normalizeCanonicalTitleMatch(origTitle);
 
-  if (!resolved && (normTitle || canonTitle)) {
-    const s = (normTitle && localStorage.getItem(`storm_status_title_${normTitle}`)) ||
+  // 1. ????????? ?????????: O(1) ????? ? ???-???????? ?????????? ???? ????????
+  if (bookmarksByIdMap.size > 0 || bookmarksByCanonMap.size > 0 || bookmarksByNormTitleMap.size > 0) {
+    let match = null;
+    if (id && bookmarksByIdMap.has(id)) {
+      match = bookmarksByIdMap.get(id);
+    } else if (strippedId && bookmarksByStrippedIdMap.has(strippedId)) {
+      match = bookmarksByStrippedIdMap.get(strippedId);
+    } else if (canonTitle && bookmarksByCanonMap.has(canonTitle)) {
+      match = bookmarksByCanonMap.get(canonTitle);
+    } else if (canonOrig && bookmarksByCanonMap.has(canonOrig)) {
+      match = bookmarksByCanonMap.get(canonOrig);
+    } else if (normTitle && bookmarksByNormTitleMap.has(normTitle)) {
+      match = bookmarksByNormTitleMap.get(normTitle);
+    }
+    if (match?.status && match.status !== 'none') {
+      const serverSt = normalizeStatus(match.status || match.user_status || '');
+      if (serverSt && serverSt !== 'none') {
+        // ????????????? localStorage: ????????? ?????????? ?????
+        try {
+          if (id) localStorage.setItem(`storm_status_${id}`, serverSt);
+          if (strippedId) localStorage.setItem(`storm_status_${strippedId}`, serverSt);
+          if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, serverSt);
+          if (canonTitle) localStorage.setItem(`storm_status_canon_${canonTitle}`, serverSt);
+        } catch (_) {}
+        return serverSt;
+      }
+    }
+  }
+
+  // 2. Проверка канонического названия в localStorage (название первично по отношению к разным ID источников)
+  let resolved = null;
+  if (canonTitle || normTitle) {
+    const s = (canonTitle && localStorage.getItem(`storm_status_canon_${canonTitle}`)) ||
+              (normTitle && localStorage.getItem(`storm_status_title_${normTitle}`)) ||
               (rawTitle && localStorage.getItem(`storm_status_title_${rawTitle.toLowerCase()}`)) ||
-              (canonTitle && localStorage.getItem(`storm_status_canon_${canonTitle}`)) ||
               (canonOrig && localStorage.getItem(`storm_status_canon_${canonOrig}`));
     if (s && s !== 'none') resolved = s;
   }
 
-  if (!resolved && memoryBookmarksCache.length > 0) {
-    const match = memoryBookmarksCache.find(b => {
-      const bId = String(b.id || b.media_id || '');
-      const bStripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
-      if (id && (bId === id || (strippedId && bStripped && strippedId === bStripped))) return true;
-      const bCanon = normalizeCanonicalTitleMatch(b.title || '');
-      const bOrigCanon = normalizeCanonicalTitleMatch(b.original_title || '');
-      if (canonTitle && (bCanon === canonTitle || (bOrigCanon && bOrigCanon === canonTitle))) return true;
-      if (canonOrig && (bOrigCanon === canonOrig || (bCanon && bCanon === canonOrig))) return true;
-      return false;
-    });
-    if (match?.status && match.status !== 'none') {
-      resolved = match.status;
-    }
+  // 3. Проверка по конкретному ID / strippedId в localStorage
+  if (!resolved && id) {
+    const s = localStorage.getItem(`storm_status_${id}`) || (strippedId ? localStorage.getItem(`storm_status_${strippedId}`) : null);
+    if (s && s !== 'none') resolved = s;
   }
 
   if (resolved) {
@@ -590,6 +671,10 @@ export async function fetchUserBookmarks(status = null, type = null) {
 
   // 1. Запрос к серверу (только для авторизованного пользователя)
   if (activeToken && !activeToken.startsWith('offline_') && !activeToken.startsWith('guest_')) {
+  if (!status && !type && window.__STORM_BOOTSTRAP_DATA__ && Array.isArray(window.__STORM_BOOTSTRAP_DATA__.bookmarks) && window.__STORM_BOOTSTRAP_DATA__.bookmarks.length > 0 && !window.__STORM_BOOKMARKS_DIRTY__) {
+    serverBookmarks = window.__STORM_BOOTSTRAP_DATA__.bookmarks;
+    serverAnswered = true;
+  } else {
   try {
     let url = '/api/bookmarks';
     const params = new URLSearchParams();
@@ -611,6 +696,7 @@ export async function fetchUserBookmarks(status = null, type = null) {
     }
   } catch (err) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
+  }
   }
   }
 
@@ -649,28 +735,33 @@ export async function fetchUserBookmarks(status = null, type = null) {
     }
   }
 
-  let combined = Array.from(mergedMap.values());
+  const allCombined = Array.from(mergedMap.values());
   if (!status && !type && serverAnswered) {
-    saveLocalBookmarksList(combined);
+    saveLocalBookmarksList(allCombined);
   }
 
+  // Кэш памяти ВСЕГДА хранит ВСЕ закладки, а не отфильтрованный срез!
+  if ((!status && !type && serverAnswered) || memoryBookmarksCache.length === 0) {
+    setMemoryBookmarksCache(allCombined);
+  }
+
+  let filtered = allCombined;
   if (status) {
     const normQuery = normalizeStatus(status);
     if (normQuery === 'favorite') {
-      combined = combined.filter(b => normalizeStatus(b.status) === 'favorite' || normalizeStatus(b.user_status) === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
+      filtered = filtered.filter(b => normalizeStatus(b.status) === 'favorite' || normalizeStatus(b.user_status) === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
     } else {
-      combined = combined.filter(b => normalizeStatus(b.status) === normQuery || normalizeStatus(b.user_status) === normQuery);
+      filtered = filtered.filter(b => normalizeStatus(b.status) === normQuery || normalizeStatus(b.user_status) === normQuery);
     }
   }
   if (type) {
-    combined = combined.filter(b => b.media_type === type);
+    filtered = filtered.filter(b => b.media_type === type);
   }
 
-  setMemoryBookmarksCache(combined);
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('storm:dynamic-state-sync', { detail: { bookmarksCount: combined.length } }));
+    window.dispatchEvent(new CustomEvent('storm:dynamic-state-sync', { detail: { bookmarksCount: allCombined.length } }));
   }
-  return combined;
+  return filtered;
 }
 
 export function normalizeContinueTitleKey(title = '') {
@@ -1022,6 +1113,14 @@ export function detectClientMediaType(item) {
     if (!hasRealMultiEp && (!item?.total_episodes || Number(item.total_episodes) <= 1)) {
       return (typeof knownAnimatedMovies !== 'undefined' && knownAnimatedMovies.some(m => t.includes(m))) ? 'cartoon' : 'movie';
     }
+  }
+
+  // Монстр Амазонки / Берегись Боюны (Beware Boiúna, 2026) - строго художественный фильм (movie)
+  if (t === 'монстр амазонки' || t.startsWith('монстр амазонки') ||
+      t === 'берегись боюны' || t.startsWith('берегись боюны') ||
+      t === 'beware boiuna' || t.startsWith('beware boiuna') ||
+      t === 'beware the boiuna' || t.startsWith('beware the boiuna')) {
+    return 'movie';
   }
 
   // Дюна и Уличный боец (2026) - строго художественные фильмы
@@ -1673,6 +1772,10 @@ export async function fetchContinueWatching() {
 
   let serverItems = [];
   let serverAnswered = false;
+  if (window.__STORM_BOOTSTRAP_DATA__ && Array.isArray(window.__STORM_BOOTSTRAP_DATA__.continueWatching) && !window.__STORM_CW_DIRTY__) {
+    serverItems = window.__STORM_BOOTSTRAP_DATA__.continueWatching;
+    serverAnswered = true;
+  } else {
   try {
     const res = await fetch('/api/media/continue-watching', {
       headers: buildAuthHeaders(false),
@@ -1691,6 +1794,7 @@ export async function fetchContinueWatching() {
     }
   } catch (err) {
     // При временном сетевом сбое используем только локальный кэш текущего владельца
+  }
   }
 
   const mergedMap = new Map();
@@ -1907,4 +2011,33 @@ export async function deleteCustomListApi(listId) {
     }
   } catch (err) {}
   return false;
+  // 1. ????????? ?????????: O(1) ????? ? ???-???????? ?????????? ???? ????????
+  if (bookmarksByIdMap.size > 0 || bookmarksByCanonMap.size > 0 || bookmarksByNormTitleMap.size > 0) {
+    let match = null;
+    if (id && bookmarksByIdMap.has(id)) {
+      match = bookmarksByIdMap.get(id);
+    } else if (strippedId && bookmarksByStrippedIdMap.has(strippedId)) {
+      match = bookmarksByStrippedIdMap.get(strippedId);
+    } else if (canonTitle && bookmarksByCanonMap.has(canonTitle)) {
+      match = bookmarksByCanonMap.get(canonTitle);
+    } else if (canonOrig && bookmarksByCanonMap.has(canonOrig)) {
+      match = bookmarksByCanonMap.get(canonOrig);
+    } else if (normTitle && bookmarksByNormTitleMap.has(normTitle)) {
+      match = bookmarksByNormTitleMap.get(normTitle);
+    }
+    if (match?.status && match.status !== 'none') {
+      const serverSt = normalizeStatus(match.status || match.user_status || '');
+      if (serverSt && serverSt !== 'none') {
+        // ????????????? localStorage: ????????? ?????????? ?????
+        try {
+          if (id) localStorage.setItem(`storm_status_${id}`, serverSt);
+          if (strippedId) localStorage.setItem(`storm_status_${strippedId}`, serverSt);
+          if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, serverSt);
+          if (canonTitle) localStorage.setItem(`storm_status_canon_${canonTitle}`, serverSt);
+        } catch (_) {}
+        return serverSt;
+      }
+    }
+  }
+
 }

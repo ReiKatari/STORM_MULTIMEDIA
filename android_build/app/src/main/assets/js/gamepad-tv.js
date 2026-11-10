@@ -4,8 +4,8 @@
    Leanback HUD 2.0 с динамическим авто-затуханием и полной навигацией во всех меню
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.2.0';
-import { trackClientAction } from './achievements.js?v=1.2.0';
+import { showToast } from './auth.js?v=1.3.1';
+import { trackClientAction } from './achievements.js?v=1.3.1';
 
 let isTvModeActive = false;
 let gamepadLoopId = null;
@@ -202,10 +202,14 @@ export function toggleTvMode(forceState = null) {
     }
   }
 
+  if (typeof window.stormOnTvModeChanged === 'function') {
+    try { window.stormOnTvModeChanged(isTvModeActive); } catch (_) {}
+  }
+
   if (isTvModeActive) {
-    showToast('📺 Активирован режим Smart TV (Leanback HUD 2.0)', 'info');
+    showToast('📺 Активирован режим Smart TV (удобная сетка для пульта)', 'info');
     renderTvHudBar();
-    focusInitialElement();
+    setTimeout(() => focusInitialElement(), 40);
     startGamepadPolling();
     trackClientAction('use_gamepad');
     playTvSelectSound();
@@ -778,16 +782,23 @@ function handleSpatialKeyboard(e) {
   const isPlayerOpen = Boolean(document.body.classList.contains('cinema-open') || (document.getElementById('cinema-modal') || document.getElementById('cinema-modal-backdrop'))?.classList.contains('is-open'));
   const isProfileOpen = Boolean(document.getElementById('profile-modal')?.classList.contains('is-open'));
 
+  if (e._stormEscHandled) return;
+
   // Проверяем, находится ли фокус прямо на текстовом поле ввода
-  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
-    // Разрешаем закрытие по Escape/Back
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+    // Разрешаем закрытие модального окна по Escape/Back
     if (e.key === 'Escape' || e.keyCode === 4 || e.keyCode === 27) {
       e.target.blur();
-      closeActiveModalOrBack();
+      if (typeof window.closeTopmostStormModalOnEscape === 'function' && window.closeTopmostStormModalOnEscape(e)) {
+        return;
+      }
+      if (isTvModeActive) {
+        closeActiveModalOrBack();
+      }
       return;
     }
-    // Нажатие стрелки вниз переводит фокус из поисковой строки в результаты каталога
-    if (e.key === 'ArrowDown' || e.keyCode === 20 || e.keyCode === 40) {
+    // Нажатие стрелки вниз переводит фокус из поисковой строки в результаты каталога (только в ТВ-режиме)
+    if (isTvModeActive && (e.key === 'ArrowDown' || e.keyCode === 20 || e.keyCode === 40)) {
       e.target.blur();
       e.preventDefault();
       moveFocus('down');
@@ -810,12 +821,11 @@ function handleSpatialKeyboard(e) {
     166, 167, 176, 177, 178, 179, 227, 228, 403, 404, 405, 406, 10009, 461
   ].includes(c);
 
-  // Если ТВ-режим не активен — обычная работа браузера на ПК (стрелки прокручивают страницу, Escape закрывает модалки)
+  // Если ТВ-режим не активен — Escape обрабатывается через closeTopmostStormModalOnEscape
   if (!isTvModeActive) {
     if (e.key === 'Escape' || e.keyCode === 27) {
-      if (document.querySelector('.storm-modal-backdrop.is-open')) {
-        e.preventDefault();
-        closeActiveModalOrBack();
+      if (typeof window.closeTopmostStormModalOnEscape === 'function') {
+        window.closeTopmostStormModalOnEscape(e);
       }
     }
     return;
@@ -1052,9 +1062,9 @@ function moveFocus(direction) {
   let bestCandidate = null;
   let bestDistance = Infinity;
 
-  // 1. Приоритетная последовательная навигация по горизонтальным каруселям и лентам (Plex и Emby Style)
+  // 1. Приоритетная последовательная навигация по сетке постеров, вкладкам и каруселям
   if (direction === 'left' || direction === 'right') {
-    const parentRail = currentFocusedElement.closest('.rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll');
+    const parentRail = currentFocusedElement.closest('#media-render-container.view-grid, .rail-carousel, .storm-tabs-inner, .bookmarks-subnav-container, .series-seasons-tabs, .player-series-quick-bar, .storm-quick-genres-container, .inplayer-season-chips-bar, .profile-tab-links, .cinema-cast-scroll');
     if (parentRail) {
       const railItems = focusables.filter(el => parentRail.contains(el));
       const currIdx = railItems.indexOf(currentFocusedElement);
@@ -1289,6 +1299,16 @@ function focusInitialElement() {
     focusInitialElementInContainer(openModal);
     return;
   }
+  const firstCard = document.querySelector('#media-render-container .media-card');
+  if (firstCard && firstCard.offsetParent !== null) {
+    setFocusTo(firstCard);
+    return;
+  }
+  const activeTab = document.querySelector('.storm-tab-btn.active');
+  if (activeTab && activeTab.offsetParent !== null) {
+    setFocusTo(activeTab);
+    return;
+  }
   const focusables = getFocusableElements();
   if (focusables.length > 0) {
     setFocusTo(focusables[0]);
@@ -1345,6 +1365,10 @@ function switchAdjacentTab(direction) {
 
 if (typeof window !== 'undefined') {
   window.toggleTvMode = toggleTvMode;
+  window.stormFocusFirstCatalogCard = () => {
+    const firstCard = document.querySelector('#media-render-container .media-card');
+    if (firstCard && firstCard.offsetParent !== null) setFocusTo(firstCard);
+  };
   window.updateTvHudContext = updateTvHudContext;
   window.pokeTvHud = pokeTvHud;
 }

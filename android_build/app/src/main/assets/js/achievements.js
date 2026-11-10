@@ -3,7 +3,7 @@
    Гибридный движок: 100% поддержка Гостевого (локального) и Облачного режимов
    ========================================================================== */
 
-import { getUser } from './auth.js?v=1.2.0';
+import { getUser } from './auth.js?v=1.3.1';
 
 export const ACHIEVEMENTS_CATALOG = [
   // 1. Киномарафон (Фильмы и сериалы)
@@ -90,6 +90,48 @@ export const ACHIEVEMENTS_CATALOG = [
 
 let cachedAchievements = [];
 const toastedIdsSession = new Set();
+let isAchievementsHydrated = false;
+
+function loadToastedAchievementsSet() {
+  try {
+    const raw = localStorage.getItem('storm_toasted_achievements_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(id => { if (id) toastedIdsSession.add(String(id)); });
+        return new Set(parsed.map(String));
+      }
+    }
+  } catch (_) {}
+  return new Set(toastedIdsSession);
+}
+
+function saveToastedAchievementsSet(setObj) {
+  try {
+    const arr = Array.from(setObj || toastedIdsSession).filter(Boolean);
+    localStorage.setItem('storm_toasted_achievements_v1', JSON.stringify(arr));
+  } catch (_) {}
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storm:db-hydrated', (e) => {
+    try {
+      const achList = e.detail?.achievements;
+      if (Array.isArray(achList)) {
+        const persisted = loadToastedAchievementsSet();
+        achList.forEach(a => {
+          if (a && a.id && (a.unlocked || (a.target > 0 && a.progress >= a.target))) {
+            toastedIdsSession.add(String(a.id));
+            persisted.add(String(a.id));
+          }
+        });
+        saveToastedAchievementsSet(persisted);
+        buildMergedCatalog(achList);
+      }
+      isAchievementsHydrated = true;
+    } catch (_) { isAchievementsHydrated = true; }
+  });
+}
 
 function loadLocalAchievementsState() {
   try {
@@ -112,9 +154,12 @@ function updateLocalAchievementProgress(stateObj, achievementId, amount = 1, isS
   const achMeta = ACHIEVEMENTS_CATALOG.find(a => a.id === achievementId);
   if (!achMeta) return null;
 
+  const achKey = String(achievementId);
   const target = achMeta.target || 1;
   const existing = stateObj[achievementId] || { progress: 0, unlocked: false, unlocked_at: null };
-  const wasUnlocked = Boolean(existing.unlocked);
+  const persistedToasted = loadToastedAchievementsSet();
+  const alreadyInCache = Array.isArray(cachedAchievements) && cachedAchievements.some(a => a && a.id === achievementId && a.unlocked);
+  const wasUnlocked = Boolean(existing.unlocked || toastedIdsSession.has(achKey) || persistedToasted.has(achKey) || alreadyInCache);
 
   let newProgress = isSet ? Math.max(existing.progress || 0, amount) : (existing.progress || 0) + amount;
   newProgress = Math.min(Math.max(0, newProgress), target);
@@ -141,12 +186,29 @@ function updateLocalAchievementProgress(stateObj, achievementId, amount = 1, isS
 
 function buildMergedCatalog(serverList = null) {
   const localMap = loadLocalAchievementsState();
+  const toastedSet = loadToastedAchievementsSet();
+  let toastedChanged = false;
   const serverMap = new Map();
-  if (Array.isArray(serverList)) {
+  const hasServerItems = Array.isArray(serverList) && serverList.length > 0;
+  if (hasServerItems) {
+    isAchievementsHydrated = true;
     serverList.forEach(item => {
-      if (item && item.id) serverMap.set(item.id, item);
+      if (item && item.id) {
+        serverMap.set(item.id, item);
+        if (item.unlocked || (item.target > 0 && item.progress >= item.target)) {
+          if (!toastedSet.has(String(item.id))) { toastedSet.add(String(item.id)); toastedChanged = true; }
+          toastedIdsSession.add(String(item.id));
+        }
+      }
     });
   }
+  for (const [achId, lVal] of Object.entries(localMap)) {
+    if (lVal && lVal.unlocked) {
+      toastedIdsSession.add(String(achId));
+      if (!toastedSet.has(String(achId))) { toastedSet.add(String(achId)); toastedChanged = true; }
+    }
+  }
+  if (toastedChanged) saveToastedAchievementsSet(toastedSet);
 
   let localChanged = false;
   const merged = ACHIEVEMENTS_CATALOG.map(ach => {
@@ -154,10 +216,10 @@ function buildMergedCatalog(serverList = null) {
     const lItem = localMap[ach.id];
     const target = ach.target || 1;
     const progress = Math.min(target, Math.max(sItem?.progress || 0, lItem?.progress || 0));
-    const unlocked = Boolean(sItem?.unlocked || lItem?.unlocked || progress >= target);
+    const unlocked = Boolean(sItem?.unlocked || lItem?.unlocked || toastedSet.has(String(ach.id)) || toastedIdsSession.has(String(ach.id)) || progress >= target);
     const unlocked_at = lItem?.unlocked_at || sItem?.unlocked_at || (unlocked ? Date.now() : null);
 
-    if (!lItem || lItem.progress !== progress || Boolean(lItem.unlocked) !== unlocked) {
+    if (hasServerItems && (!lItem || lItem.progress !== (unlocked ? target : progress) || Boolean(lItem.unlocked) !== unlocked)) {
       localMap[ach.id] = { progress: unlocked ? target : progress, target, unlocked, unlocked_at };
       localChanged = true;
     }
@@ -170,7 +232,7 @@ function buildMergedCatalog(serverList = null) {
     };
   });
 
-  if (localChanged) {
+  if (localChanged && hasServerItems) {
     saveLocalAchievementsState(localMap);
   }
   cachedAchievements = merged;
@@ -224,8 +286,12 @@ function formatAchievementDate(timestamp) {
 // 1. Показ красивого уведомления о полученном достижении (поверх всех модальных окон)
 export function showAchievementToast(achievement) {
   if (!achievement || !achievement.id) return;
-  if (toastedIdsSession.has(achievement.id)) return;
-  toastedIdsSession.add(achievement.id);
+  const achId = String(achievement.id);
+  const persistedSet = loadToastedAchievementsSet();
+  if (toastedIdsSession.has(achId) || persistedSet.has(achId)) return;
+  toastedIdsSession.add(achId);
+  persistedSet.add(achId);
+  saveToastedAchievementsSet(persistedSet);
 
   playAchievementSound();
 
@@ -593,46 +659,51 @@ function hasValidServerSession() {
 
 // 3. Отправка события прогресса (работает и для Гостя, и для Авторизованного профиля!)
 export async function trackClientAction(action, meta = {}) {
+  if (hasValidServerSession()) {
+    if (!isAchievementsHydrated || !cachedAchievements || cachedAchievements.length === 0) {
+      try { await fetchUserAchievements(true); } catch (_) {}
+      isAchievementsHydrated = true;
+    }
+    try {
+      const res = await fetch('/api/achievements/track', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('storm_token') || ''}`
+        },
+        body: JSON.stringify({ action, meta })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        evaluateLocalAction(action, meta);
+        if (data.unlocked && data.unlocked.length > 0) {
+          const stateObj = loadLocalAchievementsState();
+          data.unlocked.forEach(ach => {
+            if (!ach || !ach.id) return;
+            showAchievementToast(ach);
+            stateObj[ach.id] = {
+              progress: ach.target || 1,
+              target: ach.target || 1,
+              unlocked: true,
+              unlocked_at: ach.unlocked_at || Date.now()
+            };
+          });
+          saveLocalAchievementsState(stateObj);
+          buildMergedCatalog(cachedAchievements);
+          notifyAchievementsUpdated();
+          return data.unlocked;
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
   const localUnlocked = evaluateLocalAction(action, meta);
   if (localUnlocked.length > 0) {
     localUnlocked.forEach(ach => showAchievementToast(ach));
     notifyAchievementsUpdated();
   }
-
-  if (!hasValidServerSession()) {
-    return localUnlocked;
-  }
-
-  try {
-    const res = await fetch('/api/achievements/track', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('storm_token') || ''}`
-      },
-      body: JSON.stringify({ action, meta })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.unlocked && data.unlocked.length > 0) {
-        const stateObj = loadLocalAchievementsState();
-        data.unlocked.forEach(ach => {
-          stateObj[ach.id] = {
-            progress: ach.target || 1,
-            target: ach.target || 1,
-            unlocked: true,
-            unlocked_at: ach.unlocked_at || Date.now()
-          };
-          showAchievementToast(ach);
-        });
-        saveLocalAchievementsState(stateObj);
-        buildMergedCatalog(cachedAchievements);
-        notifyAchievementsUpdated();
-      }
-    }
-  } catch (_) {}
-
   return localUnlocked;
 }
 
@@ -810,10 +881,12 @@ export async function autoSyncAchievementsFromState() {
     if (usedXray) syncProgress('tech_xray', 1, true);
     if (localStorage.getItem('storm_tv_mode') === 'true') syncProgress('tech_gamepad', 1, true);
 
-    saveLocalAchievementsState(stateObj);
+    const persistedToasted = loadToastedAchievementsSet();
     if (newlyUnlocked.length > 0) {
-      newlyUnlocked.forEach(ach => showAchievementToast(ach));
+      newlyUnlocked.forEach(ach => { if (ach && ach.id) { toastedIdsSession.add(String(ach.id)); persistedToasted.add(String(ach.id)); } });
+      saveToastedAchievementsSet(persistedToasted);
     }
+    saveLocalAchievementsState(stateObj);
 
     if (hasValidServerSession()) {
       const clientState = {
@@ -841,7 +914,8 @@ export async function autoSyncAchievementsFromState() {
       if (res.ok) {
         const data = await res.json();
         if (data.unlocked && data.unlocked.length > 0) {
-          data.unlocked.forEach(ach => showAchievementToast(ach));
+          data.unlocked.forEach(ach => { if (ach && ach.id) { toastedIdsSession.add(String(ach.id)); persistedToasted.add(String(ach.id)); } });
+          saveToastedAchievementsSet(persistedToasted);
         }
         if (data.achievements) {
           return buildMergedCatalog(data.achievements);

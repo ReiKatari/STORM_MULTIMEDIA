@@ -2,13 +2,13 @@
 <html lang="ru" data-theme="STORM MIDNIGHT">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
-  <script src="/js/error-boundary.js?v=1.4.2"></script>
-  <script src="/js/db-state-engine.js?v=1.4.2"></script>
+  <script src="/js/error-boundary.js?v=1.6.3"></script>
+  <script src="/js/db-state-engine.js?v=1.6.3"></script>
   <script>
     (function() {
-      var VER = '1.2.0';
+      var VER = '1.5.0';
       window.__STORM_SW_MANAGED__ = true;
       try {
         var savedTheme = localStorage.getItem('storm_theme');
@@ -103,16 +103,16 @@
   <meta name="theme-color" content="#8b5cf6">
 
   <!-- Параллельная предзагрузка критического ядра ES-модулей витрины -->
-  <link rel="modulepreload" href="/js/app.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/theme.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/i18n.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/auth.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/bookmarks.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/status-icons.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/form-factor.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.4.2">
-  <link rel="modulepreload" href="/js/achievements.js?v=1.4.2">
+  <link rel="modulepreload" href="/js/app.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/theme.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/i18n.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/auth.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/bookmarks.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/status-icons.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/form-factor.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.6.3">
+  <link rel="modulepreload" href="/js/achievements.js?v=1.6.3">
 
   <!-- Подключение 10 динамических гарнитур STORM AURORA FLUID (Cyrillic + Latin) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -120,12 +120,12 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.min.css" media="print" onload="this.media='all'">
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.4.2">
-  <link rel="stylesheet" href="/styles/components.css?v=1.4.2">
-  <link rel="stylesheet" href="/styles/main.css?v=1.4.2">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.4.2" id="storm-tv-mode-css" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.6.3">
+  <link rel="stylesheet" href="/styles/components.css?v=1.6.3">
+  <link rel="stylesheet" href="/styles/main.css?v=1.6.3">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.6.3" id="storm-tv-mode-css" media="print" onload="this.media='all'">
   <script>try{if(localStorage.getItem('storm_tv_mode')==='true')document.getElementById('storm-tv-mode-css').media='all';}catch(_){}</script>
-  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.4.2"></noscript>
+  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.6.3"></noscript>
 </head>
 <body data-active-tab="home">
 
@@ -188,7 +188,7 @@
         </button>
 
         <!-- Кнопка Профилей семьи и детского режима -->
-        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-family-btn" title="Семейные профили и детский безопасный режим">
+        <button class="storm-btn storm-btn-secondary storm-btn-sm" id="header-family-btn" style="display: none;" title="Семейные профили и детский безопасный режим">
           <span id="active-profile-avatar-icon">👑</span> <span id="active-profile-name-label" class="btn-text">Семья</span>
         </button>
 
@@ -235,6 +235,7 @@
       <button class="storm-tab-btn" data-tab="anime-movies" data-i18n="tab_anime_movies">Аниме-фильмы</button>
       <button class="storm-tab-btn" data-tab="anime-series" data-i18n="tab_anime_series">Аниме-сериалы</button>
       <button class="storm-tab-btn storm-tab-continue" data-tab="continue" data-i18n="tab_continue">Продолжить просмотр</button>
+      <button class="storm-tab-btn storm-tab-history" data-tab="history" data-i18n="tab_history">История просмотров</button>
       <button class="storm-tab-btn storm-tab-bookmarks" data-tab="bookmarks" data-i18n="tab_bookmarks">Мои списки и закладки</button>
       <button class="storm-tab-btn storm-tab-offline" data-tab="offline" data-i18n="tab_offline" title="Сохраненные релизы в IndexedDB">Офлайн-просмотр</button>
     </div>
@@ -245,7 +246,6 @@
     <div class="storm-toolbar-left">
       <!-- Кнопка быстрого сворачивания фильтров (Smart TV и компактный вид) -->
       <button type="button" class="storm-btn storm-btn-secondary storm-filters-toggle-btn" id="storm-filters-toggle-btn" title="Свернуть или развернуть фильтры">
-        <span>⚡</span>
         <span id="storm-filters-toggle-label">Свернуть фильтры</span>
         <span class="storm-toggle-icon">▲</span>
       </button>
@@ -366,7 +366,7 @@
 
       <!-- Мобильная кнопка вызова шторки фильтров (Filter Bottom Sheet) -->
       <button type="button" class="storm-btn storm-btn-secondary mobile-filter-sheet-trigger" id="mobile-filter-sheet-trigger" title="Фильтры и сортировка">
-        <span>⚡</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         <span data-i18n="filters_toggle">Фильтры</span>
         <span class="filter-count-badge" id="mobile-filter-count" style="display: none;">0</span>
       </button>
@@ -375,10 +375,18 @@
     <div class="storm-toolbar-right">
       <!-- Группа 4 режимов отображения -->
       <div class="view-modes-group" title="Режим отображения">
-        <button class="view-mode-btn" data-view="grid" title="Сетка карточек">🎴</button>
-        <button class="view-mode-btn" data-view="compact-grid" title="Компактная сетка">📱</button>
-        <button class="view-mode-btn" data-view="detailed-list" title="Детальный список">📋</button>
-        <button class="view-mode-btn" data-view="table" title="Таблица">📑</button>
+        <button class="view-mode-btn" data-view="grid" title="Сетка карточек" aria-label="Сетка карточек">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </button>
+        <button class="view-mode-btn" data-view="compact-grid" title="Компактная сетка" aria-label="Компактная сетка">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="4" height="4"/><rect x="10" y="3" width="4" height="4"/><rect x="17" y="3" width="4" height="4"/><rect x="3" y="10" width="4" height="4"/><rect x="10" y="10" width="4" height="4"/><rect x="17" y="10" width="4" height="4"/><rect x="3" y="17" width="4" height="4"/><rect x="10" y="17" width="4" height="4"/><rect x="17" y="17" width="4" height="4"/></svg>
+        </button>
+        <button class="view-mode-btn" data-view="detailed-list" title="Детальный список" aria-label="Детальный список">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+        <button class="view-mode-btn" data-view="table" title="Таблица" aria-label="Таблица">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 9v12"/></svg>
+        </button>
       </div>
     </div>
   </div>
@@ -759,15 +767,28 @@
         <button type="button" class="storm-modal-close">✕</button>
       </div>
       <div class="storm-modal-body">
+        <!-- Переключатель режима Вход / Регистрация -->
+        <div id="auth-mode-tabs" style="display: flex; gap: 6px; background: var(--bg-tertiary, rgba(15, 23, 42, 0.7)); padding: 4px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));">
+          <button type="button" id="auth-tab-login" class="storm-btn storm-btn-primary storm-btn-sm" style="flex: 1; border-radius: 9px; font-weight: 700;" data-i18n="auth_login">Вход в аккаунт</button>
+          <button type="button" id="auth-tab-register" class="storm-btn storm-btn-secondary storm-btn-sm" style="flex: 1; border-radius: 9px; font-weight: 700;" data-i18n="auth_register">Регистрация</button>
+        </div>
+
         <!-- Форма входа -->
         <form id="login-form" novalidate>
+          <div id="auth-saved-accounts-box" style="display: none; margin-bottom: 14px; padding: 10px 12px; border-radius: 12px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(0, 210, 255, 0.25);">
+            <div style="font-size: 11px; font-weight: 800; color: var(--accent, #00d2ff); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">⚡ Быстрый вход в сохранённый аккаунт (1 клик)</div>
+            <div id="auth-saved-accounts-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+          </div>
           <div class="filter-group" style="margin-bottom: 14px;">
             <label data-i18n="auth_username">Имя пользователя или Email</label>
             <input type="text" class="storm-input" id="login-username" placeholder="Введите логин (например, ReiKatari)" autocomplete="username">
           </div>
-          <div class="filter-group" style="margin-bottom: 18px;">
-            <label data-i18n="auth_password">Пароль</label>
-            <input type="password" class="storm-input" id="login-password" placeholder="Введите пароль (необязательно для быстрого входа)" autocomplete="current-password">
+          <div class="filter-group" style="margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <label data-i18n="auth_password" style="margin-bottom: 0;">Пароль</label>
+              <a href="#" id="switch-to-recovery" style="font-size: 12px; color: var(--accent, #00d2ff); font-weight: 600; text-decoration: none;">Забыли пароль?</a>
+            </div>
+            <input type="password" class="storm-input" id="login-password" placeholder="Введите пароль" autocomplete="current-password">
           </div>
           <button type="submit" class="storm-btn storm-btn-primary" id="login-submit-btn" style="width: 100%; margin-bottom: 10px;" data-i18n="auth_login_submit">Войти в аккаунт</button>
           <button type="button" class="storm-btn storm-btn-secondary" id="open-tv-code-btn" style="width: 100%; margin-bottom: 10px;">📺 Войти по коду с ТВ</button>
@@ -814,6 +835,32 @@
           <button type="submit" class="storm-btn storm-btn-primary" id="register-submit-btn" style="width: 100%; margin-bottom: 14px;" data-i18n="auth_register_submit">Создать аккаунт</button>
           <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
             <span data-i18n="auth_have_account">Уже есть аккаунт?</span> <a href="#" id="switch-to-login" style="color: var(--accent); font-weight: 600; text-decoration: none;" data-i18n="auth_login">Войти</a>
+          </div>
+        </form>
+
+        <!-- Форма восстановления пароля (через резервный код, 2FA или Telegram-бота) -->
+        <form id="recovery-form" novalidate style="display: none;">
+          <div style="padding: 10px 12px; border-radius: 10px; background: rgba(0, 210, 255, 0.08); border: 1px solid rgba(0, 210, 255, 0.25); font-size: 12px; color: var(--text-secondary, #cbd5e1); margin-bottom: 14px; line-height: 1.45;">
+            🔑 Укажите ваш логин или Email, затем запросите <b>одноразовый код в Telegram-бот</b> либо введите один из ваших <b>резервных кодов восстановления</b> (или 6-значный код 2FA TOTP).
+          </div>
+          <div class="filter-group" style="margin-bottom: 12px;">
+            <label>Имя пользователя или Email</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" class="storm-input" id="rec-login" placeholder="Например, ReiKatari" autocomplete="username" style="flex: 1;">
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="rec-send-telegram-btn" title="Отправить одноразовый 6-значный код сброса в привязанный Telegram" style="white-space: nowrap;">✈️ Код в Telegram</button>
+            </div>
+          </div>
+          <div class="filter-group" style="margin-bottom: 12px;">
+            <label>Резервный код / Код из Telegram / 2FA TOTP</label>
+            <input type="text" class="storm-input" id="rec-code" placeholder="XXXX-XXXX или 6-значный код" style="font-family: monospace; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;" autocomplete="one-time-code">
+          </div>
+          <div class="filter-group" style="margin-bottom: 16px;">
+            <label>Новый пароль (не менее 6 символов)</label>
+            <input type="password" class="storm-input" id="rec-new-password" placeholder="Введите новый пароль" autocomplete="new-password">
+          </div>
+          <button type="submit" class="storm-btn storm-btn-primary" id="rec-submit-btn" style="width: 100%; margin-bottom: 12px;">🔑 Сбросить пароль и войти</button>
+          <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
+            <a href="#" id="recovery-back-to-login" style="color: var(--accent); font-weight: 600; text-decoration: none;">← Вернуться ко входу в аккаунт</a>
           </div>
         </form>
       </div>
@@ -886,6 +933,21 @@
                 <button type="button" class="profile-ach-jump-link" id="profile-jump-achievements-btn">Все достижения ➔</button>
               </div>
             </div>
+          </div>
+
+          <!-- Быстрое переключение между сохранёнными аккаунтами (Account Switcher) -->
+          <div class="profile-settings-card" id="profile-account-switcher-card" style="margin-bottom: 16px;">
+            <div class="profile-settings-card-header" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>🔄</span>
+                <span>Быстрое переключение аккаунтов (1 клик)</span>
+              </div>
+              <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-add-account-btn" style="font-size: 12px; padding: 5px 12px;">➕ Добавить аккаунт</button>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0; line-height: 1.45;">
+              Мгновенно переключайтесь между вашими учётными записями на этом устройстве без повторного ввода пароля.
+            </p>
+            <div id="profile-saved-accounts-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
 
           <!-- Заголовок интерактивной статистики -->
@@ -1289,10 +1351,15 @@
           </div>
 
           <!-- Проверка обновлений STORM MULTIMEDIA -->
-          <div class="profile-settings-card" style="margin-top: 12px; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+          <div class="profile-settings-card" style="margin-top: 12px; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
             <div>
               <div style="font-weight: 700; font-size: 13px;">Обновления и релизы</div>
-              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.1.2 • Официальный релиз</div>
+              <div style="font-size: 11px; color: var(--text-muted);" id="profile-app-version-label">STORM MULTIMEDIA 1.2.0 • Официальный релиз</div>
+              <div style="font-size: 10.5px; margin-top: 4px; display: flex; gap: 10px; align-items: center;">
+                <a href="https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none; font-weight: 600;">🌐 STORM GAMES WORLD GIT</a>
+                <span style="color: var(--text-muted); opacity: 0.5;">•</span>
+                <a href="https://github.com/ReiKatari/STORM_MULTIMEDIA/releases" target="_blank" rel="noopener" style="color: var(--text-secondary); text-decoration: none;">🐙 GitHub Releases</a>
+              </div>
             </div>
             <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-check-update-btn">
               <span>🔄</span> Проверить обновления
@@ -1317,11 +1384,15 @@
               </div>
             </div>
 
-            <!-- Выбор пресетов аватарок -->
+            <!-- Выбор пресетов аватарок и цветовой ауры -->
             <div style="margin-bottom: 16px;">
-              <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; display: block;">Фирменная коллекция аватарок STORM:</label>
-              <div class="profile-avatar-presets" id="avatar-presets-container">
+              <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; display: block;">Фирменная коллекция аватарок STORM (60 стильных образов):</label>
+              <div class="profile-avatar-presets" id="avatar-presets-container" style="max-height: 240px; overflow-y: auto; padding: 6px;">
                 <!-- Заполняется JS -->
+              </div>
+              <div style="margin-top: 12px;">
+                <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Цветовая аура аватара (20 стилей):</label>
+                <div class="family-bg-gradient-picker" id="profile-aura-presets-container"></div>
               </div>
             </div>
 
@@ -1426,6 +1497,34 @@
             </form>
           </div>
 
+          <!-- Восстановление пароля: Резервные коды и Telegram-бот -->
+          <div class="profile-settings-card" id="profile-recovery-settings-card" style="margin-bottom: 16px;">
+            <div class="profile-settings-card-header" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>🔑</span>
+                <span>Резервные коды восстановления и Telegram-бот</span>
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-copy-recovery-codes-btn" style="font-size: 11px; padding: 4px 10px;">📋 Копировать коды</button>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-regen-recovery-codes-btn" style="font-size: 11px; padding: 4px 10px;">🔄 Новые коды</button>
+              </div>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0; line-height: 1.5;">
+              Сохраните эти одноразовые резервные коды или привяжите ваш <b>Telegram Chat ID</b>, чтобы мгновенно сбросить пароль в случае утери доступа.
+            </p>
+            <div id="profile-recovery-codes-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 8px; margin-bottom: 14px; padding: 10px; border-radius: 10px; background: rgba(15, 23, 42, 0.65); border: 1px dashed rgba(0, 210, 255, 0.35); font-family: monospace; font-size: 13px; font-weight: 800; color: var(--accent, #00d2ff); text-align: center;">
+              Загрузка резервных кодов...
+            </div>
+            <div class="filter-group" style="margin-bottom: 0;">
+              <label style="font-size: 12px;">Привязанный Telegram Chat ID для сброса пароля и уведомлений:</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                <input type="text" class="storm-input" id="profile-recovery-tg-input" placeholder="Например: 123456789" style="flex: 1 1 180px;">
+                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="profile-save-recovery-tg-btn">💾 Сохранить</button>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="profile-test-recovery-tg-btn">✈️ Тест в Telegram</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Смена пароля аккаунта -->
           <div class="profile-settings-card">
             <div class="profile-settings-card-header">
@@ -1450,8 +1549,9 @@
           </div>
         </div>
 
-        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
-          <button class="storm-btn storm-btn-danger" style="width: 100%;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; flex-wrap: wrap;">
+          <button type="button" class="storm-btn storm-btn-secondary" style="flex: 1 1 220px;" id="profile-register-switch-btn">✨ Новый аккаунт / Сменить профиль</button>
+          <button type="button" class="storm-btn storm-btn-danger" style="flex: 1 1 220px;" id="profile-logout-btn" data-i18n="auth_logout">Выйти из аккаунта</button>
         </div>
       </div>
     </div>
@@ -1710,23 +1810,33 @@
   <!-- Мобильная нижняя панель навигации (Emby и Plex Bottom Navigation Dock) -->
   <nav class="storm-bottom-nav" id="storm-bottom-nav">
     <button type="button" class="storm-bottom-nav-item active" data-bottom-tab="home" id="bnav-home">
-      <span class="storm-bottom-nav-icon">🏠</span>
+      <span class="storm-bottom-nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </span>
       <span class="storm-bottom-nav-label" data-i18n="bottom_nav_home">Главная</span>
     </button>
     <button type="button" class="storm-bottom-nav-item" data-bottom-tab="catalog" id="bnav-catalog">
-      <span class="storm-bottom-nav-icon">🎬</span>
+      <span class="storm-bottom-nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+      </span>
       <span class="storm-bottom-nav-label" data-i18n="bottom_nav_catalog">Каталог</span>
     </button>
     <button type="button" class="storm-bottom-nav-item" data-bottom-tab="search" id="bnav-search">
-      <span class="storm-bottom-nav-icon">🔍</span>
+      <span class="storm-bottom-nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+      </span>
       <span class="storm-bottom-nav-label" data-i18n="bottom_nav_search">Поиск</span>
     </button>
     <button type="button" class="storm-bottom-nav-item" data-bottom-tab="bookmarks" id="bnav-bookmarks">
-      <span class="storm-bottom-nav-icon">📑</span>
+      <span class="storm-bottom-nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+      </span>
       <span class="storm-bottom-nav-label" data-i18n="bottom_nav_bookmarks">Закладки</span>
     </button>
     <button type="button" class="storm-bottom-nav-item" data-bottom-tab="more" id="bnav-more">
-      <span class="storm-bottom-nav-icon">⚙️</span>
+      <span class="storm-bottom-nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </span>
       <span class="storm-bottom-nav-label" data-i18n="bottom_nav_more">Ещё</span>
     </button>
   </nav>
@@ -1955,7 +2065,7 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.4.2"></script>
+  <script type="module" src="/js/app.js?v=1.6.3"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): резервное восстановление при обрыве мобильной сети -->
   <script>
@@ -1988,7 +2098,7 @@
           } else {
             var s = document.createElement('script');
             s.type = 'module';
-            s.src = '/js/app.js?v=1.4.2&retry=' + Date.now();
+            s.src = '/js/app.js?v=1.6.3&retry=' + Date.now();
             document.body.appendChild(s);
           }
         }

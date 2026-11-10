@@ -256,14 +256,13 @@ export function normalizeLiftImageUrl(url, title = '', orig = '') {
  */
 export function mapLiftTypeToStormType(liftType, serialStatus = '') {
   const t = Number(liftType || 0);
-  if (t === 2) return 'cartoons';
-  if (t === 3) return 'series';
-  if (t === 4) return 'series';
+  if (t === 2) return 'cartoon';
+  if (t === 3 || t === 4) return 'series';
   if (t === 5) return 'cartoon-series';
-  if (t === 6) return 'anime-movies';
+  if (t === 6) return 'anime-movie';
   if (t === 7) return 'anime-series';
   if (serialStatus && String(serialStatus).trim()) return 'series';
-  return 'movies';
+  return 'movie';
 }
 
 /**

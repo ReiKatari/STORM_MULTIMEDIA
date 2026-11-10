@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { StormLruCache } from '../services/lru-cache.js';
@@ -30,7 +31,7 @@ import {
   db
 } from '../db.js';
 
-describe('STORM MULTIMEDIA 1.2.0 — Automated Quality & Security Suite', () => {
+describe('STORM MULTIMEDIA 1.5.0 — Automated Quality & Security Suite', () => {
   after(async () => {
     try { flushWatchProgressBatch(); } catch (_) {}
     try { await closeMariaDbPool(); } catch (_) {}

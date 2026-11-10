@@ -1482,7 +1482,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    version: '1.2.0',
+    version: '1.5.0',
     l1Cache: l1Cache.getStats(),
     database: {
       connected: isMariaDbActive()
@@ -1729,7 +1729,7 @@ app.post('/api/profiles/save', requireAuth, (req, res) => {
   }
 });
 
-// Подключение модульных роутеров архитектуры 1.2.0 (Пункт 6.1)
+// Подключение модульных роутеров архитектуры 1.5.0 (Пункт 6.1)
 app.use(createAuthRouter({ requireAuth }));
 app.use(createUserMediaRouter({ requireAuth }));
 app.use(createAdminRouter({ requireAdmin }));
@@ -3605,14 +3605,76 @@ setInterval(async () => {
   } catch (_) {}
 }, 30 * 60 * 1000);
 
+// Кэш подборок Lift на стороне сервера с поддержкой stale-while-revalidate (<5 мс отдача)
+let cachedServerLiftHomeRails = null;
+let lastLiftHomeRailsFetchTs = 0;
+const LIFT_HOME_RAILS_TTL = 10 * 60 * 1000; // 10 минут
+
+async function refreshLiftHomeRailsServer(limit = 16) {
+  try {
+    const rawRails = await getLiftHomeRails(limit);
+    if (!rawRails) return cachedServerLiftHomeRails;
+    // Кросс-слияние с memoryCatalogCache, чтобы фильмы вроде «Одиссея» (82459 и lift_87624) имели и lift_id, и fanfilm_4k_url
+    const mergeItemWithCatalog = (it) => {
+      if (!it) return it;
+      const tNorm = String(it.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+      const yr = String(it.year || '').trim();
+      for (const entry of memoryCatalogCache.values()) {
+        if (entry && Array.isArray(entry.items)) {
+          const match = entry.items.find(catIt => {
+            if (!catIt) return false;
+            const cNorm = String(catIt.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+            const cYr = String(catIt.year || '').trim();
+            return (tNorm && cNorm && tNorm === cNorm && (!yr || !cYr || yr === cYr));
+          });
+          if (match) {
+            it.fanfilm_4k_url = match.fanfilm_4k_url || (match.source === 'fanfilm4k' ? (match.link || match.url) : it.fanfilm_4k_url);
+            if (it.fanfilm_4k_url) {
+              it.is4K = true;
+              it.is_4k = true;
+              it.quality = '4K Ultra HD';
+            }
+            if (match.id && String(match.id) !== String(it.id)) {
+              it._mergedIds = [String(it.id), String(match.id)];
+            }
+            break;
+          }
+        }
+      }
+      return it;
+    };
+
+    if (rawRails.foreignFilms) rawRails.foreignFilms.forEach(mergeItemWithCatalog);
+    if (rawRails.foreignSeries) rawRails.foreignSeries.forEach(mergeItemWithCatalog);
+    if (rawRails.ruFilms) rawRails.ruFilms.forEach(mergeItemWithCatalog);
+    if (rawRails.ruSeries) rawRails.ruSeries.forEach(mergeItemWithCatalog);
+
+    cachedServerLiftHomeRails = rawRails;
+    lastLiftHomeRailsFetchTs = Date.now();
+    return cachedServerLiftHomeRails;
+  } catch (e) {
+    console.warn('[Lift Home Rails] Ошибка фонового обновления:', e.message);
+    return cachedServerLiftHomeRails;
+  }
+}
+
 // Витрина 4 тематических подборок Lift (Зарубежные фильмы, Зарубежные сериалы, Российские фильмы, Российские сериалы)
 app.get('/api/lift/home-rails', async (req, res) => {
   try {
     const limit = Math.min(24, Math.max(6, parseInt(req.query.limit, 10) || 16));
-    const rails = await getLiftHomeRails(limit);
+    const now = Date.now();
+    if (cachedServerLiftHomeRails && (now - lastLiftHomeRailsFetchTs < LIFT_HOME_RAILS_TTL)) {
+      return res.json({ success: true, rails: cachedServerLiftHomeRails });
+    }
+    if (cachedServerLiftHomeRails) {
+      res.json({ success: true, rails: cachedServerLiftHomeRails });
+      refreshLiftHomeRailsServer(limit).catch(() => {});
+      return;
+    }
+    const rails = await refreshLiftHomeRailsServer(limit);
     res.json({
       success: true,
-      rails
+      rails: rails || { foreignFilms: [], foreignSeries: [], ruFilms: [], ruSeries: [] }
     });
   } catch (err) {
     console.warn('[Lift Home Rails] Ошибка загрузки подборок:', err.message);
@@ -3625,7 +3687,7 @@ app.get('/api/lift/home-rails', async (req, res) => {
 
 app.get('/api/media/catalog', async (req, res) => {
   try {
-    let category = req.query.category || req.query.type || 'popular';
+    let category = req.query.category || req.query.type || req.query.tab || 'popular';
     if (category === 'home') category = 'popular';
     const page = parseInt(req.query.page, 10) || 1;
     const source = req.query.source || 'all';
@@ -3646,7 +3708,7 @@ app.get('/api/media/catalog', async (req, res) => {
       sort: (req.query.sort || 'newest').trim()
     };
     const filterSig = Object.entries(extraFilters)
-      .filter(([, v]) => v !== '' && v !== undefined)
+      .filter(([k, v]) => v !== '' && v !== undefined && !(k === 'sort' && v === 'newest') && !(k === 'rating' && v === 0))
       .map(([k, v]) => `${k}:${v}`)
       .join('|');
 
@@ -3656,6 +3718,7 @@ app.get('/api/media/catalog', async (req, res) => {
 
     // Stale-While-Revalidate: отдаем кэш мгновенно (< 3ms) при любом наличии данных
     if (cachedEntry && Array.isArray(cachedEntry.items) && cachedEntry.items.length > 0) {
+      res.setHeader('X-Storm-Cache', 'HIT-L1');
       const isStale = now - (cachedEntry.timestamp || 0) > MEMORY_CATALOG_FRESH_TTL;
 
       if (isStale && !cachedEntry.isRevalidating) {
@@ -3921,12 +3984,35 @@ async function executeUnifiedSearch(query, source = 'all') {
     return true;
   });
 
-  const normalizeMediaKey = (t, isAnimeOrSer = false) => {
+  const splitCompoundTitle = (rawTitle) => {
+    if (!rawTitle || typeof rawTitle !== 'string') return { primary: '', alt: null, all: [] };
+    const str = rawTitle.trim();
+    if (/\b\d+\s*\/\s*\d+\b/.test(str) && !/\p{L}+\s*\/\s*\p{L}+/u.test(str)) {
+      return { primary: str, alt: null, all: [str] };
+    }
+    if (str.includes('/')) {
+      const parts = str.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
+      if (parts.length > 1) {
+        const hasLetters = parts.filter(p => /\p{L}/u.test(p));
+        if (hasLetters.length >= 2) {
+          return { primary: parts[0], alt: parts[1], all: parts };
+        }
+      }
+    }
+    return { primary: str, alt: null, all: [str] };
+  };
+
+  const normalizeMediaKey = (t, isAnimeOrSer = false, preferPrimary = true) => {
     if (!t) return '';
-    if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(String(t).trim()) || /^star\s+wars\s*:\s*visions/i.test(String(t).trim())) {
+    let titleStr = String(t);
+    if (preferPrimary) {
+      const comp = splitCompoundTitle(titleStr);
+      if (comp.primary) titleStr = comp.primary;
+    }
+    if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(titleStr.trim()) || /^star\s+wars\s*:\s*visions/i.test(titleStr.trim())) {
       return 'звездные войны видения';
     }
-    const base = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(t, true) || t) : t;
+    const base = isAnimeOrSer ? (normalizeAnimeFranchiseTitle(titleStr, true) || titleStr) : titleStr;
     return String(base)
       .replace(/&#\d+;/g, '')
       .replace(/&[a-z]+;/gi, '')
@@ -4051,19 +4137,36 @@ async function executeUnifiedSearch(query, source = 'all') {
       item.year = '2015';
     }
 
+    const compItem = splitCompoundTitle(item.title);
+    const itemAltNormKey = compItem.alt ? normalizeMediaKey(compItem.alt, false, false) : '';
+    const cleanPoster = (p) => {
+      if (!p) return '';
+      const match = String(p).match(/([^\/\?#]+\.(?:jpg|jpeg|png|webp))/i);
+      return match ? match[1].toLowerCase() : '';
+    };
+
     let dedupKey = isAnimeOrSeries ? normKey : `${normKey}_movie_${item.year || ''}`;
     for (const [k, ex] of mergedMap.entries()) {
-      const exNormKey = normalizeMediaKey(ex.title, false);
+      const exNormKey = normalizeMediaKey(ex.title, false, true);
+      const compEx = splitCompoundTitle(ex.title);
+      const exAltNormKey = compEx.alt ? normalizeMediaKey(compEx.alt, false, false) : '';
       const exOrigKey = normalizeOrigTitleKey(ex.original_title);
       const sameOrig = Boolean(itemOrigKey && exOrigKey && itemOrigKey.length >= 8 && itemOrigKey === exOrigKey);
-      const sameTitle = Boolean(exNormKey && exNormKey === normKey);
+      const sameTitle = Boolean(
+        (exNormKey && exNormKey === normKey) ||
+        (itemAltNormKey && itemAltNormKey === exNormKey) ||
+        (exAltNormKey && exAltNormKey === normKey) ||
+        (itemAltNormKey && exAltNormKey && itemAltNormKey === exAltNormKey)
+      );
       const yearDiffOk = !ex.year || !item.year || Math.abs((parseInt(ex.year, 10) || 0) - (parseInt(item.year, 10) || 0)) <= 1;
+      const samePoster = Boolean(cleanPoster(item.poster) && cleanPoster(item.poster) === cleanPoster(ex.poster));
       if (
         (ex.kp_id && item.kp_id && String(ex.kp_id) === String(item.kp_id)) ||
         (ex.tmdb_id && item.tmdb_id && String(ex.tmdb_id) === String(item.tmdb_id)) ||
         (ex.lift_id && item.lift_id && String(ex.lift_id) === String(item.lift_id)) ||
         (sameOrig && yearDiffOk) ||
-        (sameTitle && yearDiffOk)
+        (sameTitle && yearDiffOk) ||
+        (samePoster && yearDiffOk)
       ) {
         dedupKey = k;
         break;
@@ -4097,6 +4200,39 @@ async function executeUnifiedSearch(query, source = 'all') {
       mergedMap.set(dedupKey, initial);
     } else {
       const existing = mergedMap.get(dedupKey);
+
+      // Очистка названия от слэшей в пользу чистого канонического названия
+      const curCompItem = splitCompoundTitle(item.title);
+      const curCompEx = splitCompoundTitle(existing.title);
+      if (curCompEx.alt && !curCompItem.alt && curCompItem.primary) {
+        existing.title = curCompItem.primary;
+        existing.alt_title = curCompEx.alt;
+      } else if (!curCompEx.alt && curCompItem.alt) {
+        existing.alt_title = curCompItem.alt;
+      }
+      if (!existing.original_title && (item.original_title || curCompItem.alt)) {
+        existing.original_title = item.original_title || curCompItem.alt;
+      }
+
+      // Сохраняем наивысший рейтинг (например, 6.2 из FanFilm4K вместо 0 из Lift)
+      const itemR = parseFloat(item.rating) || 0;
+      const exR = parseFloat(existing.rating) || 0;
+      if (itemR > exR || (!exR && itemR > 0)) {
+        existing.rating = item.rating;
+      }
+      if (item.rating_kp && !existing.rating_kp) existing.rating_kp = item.rating_kp;
+      if (item.rating_imdb && !existing.rating_imdb) existing.rating_imdb = item.rating_imdb;
+
+      // Если один из источников опознал как фильм, а другой как сериал без серий — считаем фильмом
+      if (item.media_type === 'movie' || existing.media_type === 'movie') {
+        const hasRealMultiEp = (Array.isArray(item.seasons) && item.seasons.length > 1) ||
+                               (Array.isArray(existing.seasons) && existing.seasons.length > 1) ||
+                               (parseInt(item.total_episodes, 10) > 1) || (parseInt(existing.total_episodes, 10) > 1);
+        if (!hasRealMultiEp) {
+          existing.media_type = 'movie';
+          existing.category = 'Фильм';
+        }
+      }
 
       // Объединяем источники потоков в единую карточку
       if (item.source === 'lift' || item.lift_id) {
@@ -4851,7 +4987,7 @@ const itemDetailsCache = new Map();
 app.get('/api/media/item', async (req, res) => {
   try {
     const { id, source, url } = req.query;
-    const cacheKey = `v7_${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}_${req.query.media_type || ''}`;
+    const cacheKey = `v8_${id || ''}_${source || ''}_${req.query.title || ''}_${req.query.year || ''}_${req.query.media_type || ''}`;
     let cached = itemDetailsCache.get(cacheKey);
     let l2Cached = null;
     if (!cached || (Date.now() - cached.time >= 30 * 60 * 1000)) {
@@ -4899,6 +5035,51 @@ app.get('/api/media/item', async (req, res) => {
         }
       }
       mediaDetails = await getLiftDetails(cleanLiftId);
+      if (mediaDetails) {
+        const matchTitle = mediaDetails.title || req.query.title || '';
+        const matchYr = mediaDetails.year || req.query.year || '';
+        let knownFf = resolveFanFilmUrl(matchTitle, matchYr);
+        if (!knownFf) {
+          for (const entry of memoryCatalogCache.values()) {
+            if (entry && Array.isArray(entry.items)) {
+              const match = entry.items.find(catIt => {
+                if (!catIt || !catIt.fanfilm_4k_url) return false;
+                const cNorm = String(catIt.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+                const tNorm = String(matchTitle).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+                const cYr = String(catIt.year || '').trim();
+                return (tNorm && cNorm && tNorm === cNorm && (!matchYr || !cYr || matchYr === cYr));
+              });
+              if (match && match.fanfilm_4k_url) {
+                knownFf = match.fanfilm_4k_url;
+                break;
+              }
+            }
+          }
+        }
+        if (knownFf) {
+          mediaDetails.fanfilm_4k_url = knownFf;
+          mediaDetails.is4K = true;
+          mediaDetails.is_4k = true;
+          mediaDetails.quality = '4K Ultra HD';
+          mediaDetails.players = mediaDetails.players || [];
+          if (!mediaDetails.players.some(p => p.id === 'fanfilm4k_uhd')) {
+            const ffProxied = knownFf.startsWith('/api/player/fanfilm-embed') ? knownFf : `/api/player/fanfilm-embed?url=${encodeURIComponent(knownFf)}&title=${encodeURIComponent(matchTitle)}`;
+            mediaDetails.players.push({
+              id: 'fanfilm4k_uhd',
+              name: 'FanFilm 4K Ultra HD (HDR)',
+              type: 'iframe',
+              quality: '4K UHD',
+              badge: 'FANFILM 4K',
+              status: 'working',
+              status_label: '🟢 Онлайн',
+              audio_info: 'Многоканальный звук Dolby Digital и 4K Ultra HD',
+              speed: '💎 Премиум 4K CDN',
+              url: ffProxied,
+              is_recommended: false
+            });
+          }
+        }
+      }
     } else if (source === 'anixart' || String(id || '').startsWith('anix_')) {
       const cleanAnixId = String(id || '').replace('anix_', '');
       mediaDetails = await getAnixartReleaseDetails(cleanAnixId);
@@ -5297,6 +5478,30 @@ app.get('/api/media/item', async (req, res) => {
       let targetLookup = String(url || id || '').replace(/^ff_/, '').trim();
       const cleanFanfilmId = extractFanfilmId(targetLookup || id || url);
       if (cleanFanfilmId) targetLookup = cleanFanfilmId;
+
+      let knownUrl = (url && String(url).startsWith('http') && !url.includes('do=search')) ? url : null;
+      if (!knownUrl && req.query.fanfilm_4k_url && String(req.query.fanfilm_4k_url).startsWith('http')) {
+        knownUrl = req.query.fanfilm_4k_url;
+      }
+      if (!knownUrl && req.query.title) {
+        knownUrl = resolveFanFilmUrl(req.query.title, req.query.year || '');
+      }
+      if (!knownUrl && targetLookup) {
+        knownUrl = resolveFanFilmUrl(targetLookup, req.query.year || '');
+      }
+      if (!knownUrl && targetLookup) {
+        for (const entry of memoryCatalogCache.values()) {
+          if (entry && Array.isArray(entry.items)) {
+            const match = entry.items.find(it => it && (String(it.id) === targetLookup || (it.fanfilm_4k_url && it.fanfilm_4k_url.includes(targetLookup))));
+            if (match && match.fanfilm_4k_url) {
+              knownUrl = match.fanfilm_4k_url;
+              break;
+            }
+          }
+        }
+      }
+      if (knownUrl) targetLookup = knownUrl;
+
       if (!targetLookup || targetLookup === 'undefined' || targetLookup === 'null' || targetLookup.includes('undefined')) {
         targetLookup = resolveFanFilmUrl(req.query.title || '', req.query.year || '') || targetLookup || '';
       }
@@ -6032,6 +6237,10 @@ app.get('/api/media/item', async (req, res) => {
       players: allPlayers
     };
 
+    if (itemDetailsCache.size >= 150) {
+      const oldestKey = itemDetailsCache.keys().next().value;
+      if (oldestKey) itemDetailsCache.delete(oldestKey);
+    }
     itemDetailsCache.set(cacheKey, {
       data: fullMediaData,
       time: Date.now()
@@ -11534,7 +11743,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (STORM GAMES WORLD GIT + GITHUB RELEASES DUAL MIRROR)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.2.0';
+  let currentAppVersion = '1.5.0';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -11571,7 +11780,7 @@ app.get('/api/updates/check', async (req, res) => {
     try {
       const sgwRes = await fetch('https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA', {
         headers: {
-          'User-Agent': 'STORM-Multimedia-Client/1.2.0 (+https://stormgamesworld.ru)',
+          'User-Agent': 'STORM-Multimedia-Client/1.5.0 (+https://stormgamesworld.ru)',
           'Accept': 'application/json'
         },
         signal: AbortSignal.timeout(5000)
@@ -12507,15 +12716,26 @@ app.get('*', (req, res) => {
 
 // Запуск сервера с поддержкой WebSockets и фоновых демонов балансеров
 server.listen(PORT, () => {
-  logger.info('STORM MULTIMEDIA 1.2.0 Server started', { port: PORT });
+  logger.info('STORM MULTIMEDIA 1.5.0 Server started', { port: PORT });
   console.log(`====================================================`);
-  console.log(`🚀 STORM MULTIMEDIA 1.2.0 Сервер запущен на порту ${PORT}`);
+  console.log(`🚀 STORM MULTIMEDIA 1.5.0 Сервер запущен на порту ${PORT}`);
+  refreshLiftHomeRailsServer(16).catch(() => {});
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);
 
   startBalancerDaemons(async () => {
     try {
-      await executeCatalogFetch('popular', 1, 'all', {});
+      const fresh = await executeCatalogFetch('popular', 1, 'all', {});
+      if (fresh && fresh.items && fresh.items.length > 0) {
+        memoryCatalogCache.set('popular_1_all', {
+          items: fresh.items,
+          totalItems: fresh.totalItems,
+          totalPages: Math.max(1, Math.ceil(fresh.totalItems / 24)),
+          timestamp: Date.now(),
+          isRevalidating: false
+        });
+        console.log(`[L1 Pre-Warm] ??????? ??????? (popular_1_all) ??????? ???????? ? RAM: ${fresh.items.length} ???????`);
+      }
     } catch (_) {}
   });
 });

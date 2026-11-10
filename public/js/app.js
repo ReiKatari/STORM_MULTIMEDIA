@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.4.2';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.4.2';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.4.2';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.4.2';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.4.2';
-import { getStatusIconSvg } from './status-icons.js?v=1.4.2';
-import { initFormFactorEngine } from './form-factor.js?v=1.4.2';
+import { initTheme, setTheme } from './theme.js?v=1.6.3';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.3';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.3';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.3';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.3';
+import { getStatusIconSvg } from './status-icons.js?v=1.6.3';
+import { initFormFactorEngine } from './form-factor.js?v=1.6.3';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.3.9';
+const STORM_ASSET_VER = '1.6.3';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -340,6 +340,7 @@ export function isStormNativeApp() {
 }
 
 async function startStormApp() {
+  if (window.__STORM_APP_BOOTED__) return;
   window.__STORM_APP_BOOTED__ = true;
   try {
     if (isStormNativeApp()) {
@@ -401,11 +402,18 @@ async function startStormApp() {
   try { initAdminDashboard(); } catch (e) { console.warn('initAdminDashboard error:', e); }
 
 // 4. Постоянная телеметрия присутствия (Site-wide Presence Ping)
+let hasSentInitialPresence = false;
 function sendUserPresencePing() {
   try {
     const token = (typeof getToken === 'function' ? getToken() : null) || localStorage.getItem('storm_token') || sessionStorage.getItem('storm_token');
     if (!token || token.startsWith('offline_') || token.startsWith('guest_')) return;
     if (document.hidden) return;
+
+    if (!hasSentInitialPresence && window.__STORM_BOOTSTRAP_DATA__ && window.__STORM_BOOTSTRAP_DATA__.authenticated) {
+      hasSentInitialPresence = true;
+      return;
+    }
+    hasSentInitialPresence = true;
 
     fetch('/api/auth/me', {
       method: 'GET',
@@ -1112,9 +1120,59 @@ if (typeof window !== 'undefined') {
   window.closeAllActiveModals = closeAllActiveModals;
 }
 
+let isBottomNavScrollAutoHideInitialized = false;
+export function initBottomNavScrollAutoHide() {
+  const bottomNav = document.getElementById('storm-bottom-nav');
+  if (!bottomNav || isBottomNavScrollAutoHideInitialized) return;
+  isBottomNavScrollAutoHideInitialized = true;
+
+  let lastScrollY = window.scrollY || 0;
+  let ticking = false;
+  let isHidden = false;
+
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      if (window.innerWidth > 768 || document.body.classList.contains('tv-mode') || document.body.classList.contains('cinema-open')) {
+        if (isHidden) {
+          bottomNav.style.transform = '';
+          isHidden = false;
+        }
+        return;
+      }
+      const currentScrollY = window.scrollY || 0;
+      const scrollDiff = currentScrollY - lastScrollY;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+
+      if (currentScrollY <= 50 || currentScrollY >= maxScroll - 40) {
+        if (isHidden) {
+          bottomNav.style.transform = 'translate3d(0, 0, 0)';
+          isHidden = false;
+        }
+      } else if (scrollDiff > 8 && currentScrollY > 100) {
+        if (!isHidden) {
+          bottomNav.style.transform = 'translate3d(0, 110%, 0)';
+          isHidden = true;
+        }
+      } else if (scrollDiff < -6) {
+        if (isHidden) {
+          bottomNav.style.transform = 'translate3d(0, 0, 0)';
+          isHidden = false;
+        }
+      }
+      lastScrollY = Math.max(0, currentScrollY);
+    });
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+}
+
 function initBottomNav() {
   if (isBottomNavInitialized) return;
   isBottomNavInitialized = true;
+  initBottomNavScrollAutoHide();
 
   const syncBottomNavActive = (activeTab) => {
     document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
@@ -2330,14 +2388,19 @@ export function getPosterSrcset(posterUrl) {
   return '';
 }
 
-export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '', isHighPriority = false) {
+export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '', priorityMode = false) {
   const rawClean = unwrapRawImageUrl(posterUrl || '');
   const safePoster = getSafePosterUrl(posterUrl, title);
   const cleanTitle = escapeHtml(title || '');
   const safeRawAttr = escapeHtml(rawClean || '');
   const classAttr = extraClass ? ` class="${extraClass}"` : '';
-  const priorityAttr = isHighPriority ? ' fetchpriority="high"' : ' loading="lazy"';
-  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}"${priorityAttr} decoding="async" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
+  let priorityAttr = ' loading="lazy" decoding="async"';
+  if (priorityMode === 'high' || priorityMode === true) {
+    priorityAttr = ' fetchpriority="high" decoding="async"';
+  } else if (priorityMode === 'low') {
+    priorityAttr = ' loading="lazy" decoding="async" fetchpriority="low"';
+  }
+  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}"${priorityAttr} onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
 }
 
 /**
@@ -3103,6 +3166,21 @@ async function loadCurrentTab() {
 }
 
 // Нормализация названий медиа для надежного сопоставления и исключения дублей
+function splitCompoundTitle(rawTitle) {
+  if (!rawTitle || typeof rawTitle !== 'string') return { primary: '', alt: null };
+  const str = rawTitle.trim();
+  if (/\b\d+\s*\/\s*\d+\b/.test(str) && !/\p{L}+\s*\/\s*\p{L}+/u.test(str)) {
+    return { primary: str, alt: null };
+  }
+  if (str.includes('/')) {
+    const parts = str.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
+    if (parts.length > 1 && parts.filter(p => /\p{L}/u.test(p)).length >= 2) {
+      return { primary: parts[0], alt: parts[1] };
+    }
+  }
+  return { primary: str, alt: null };
+}
+
 function normalizeMediaTitle(title, originalTitle = '', isSeriesOrAnime = false) {
   if (!title && !originalTitle) return '';
   const clean = (t) => {
@@ -3307,19 +3385,33 @@ function deduplicateMediaList(items) {
     const origTitle = item.original_title || item.original_name || '';
     const itemType = detectClientMediaType(item) || item.media_type || '';
     const isSeriesOrAnime = itemType === 'series' || itemType === 'anime-series' || itemType === 'cartoon-series' || (['anilibria', 'anixart', 'shikimori'].includes(item.source) && itemType !== 'anime-movie' && itemType !== 'movie');
-    const itemTitle = isSeriesOrAnime ? cleanVideoTitle(rawItemTitle, true) : rawItemTitle;
+    const compound = splitCompoundTitle(rawItemTitle);
+    const primaryTitle = compound.primary;
+    const altTitle = compound.alt;
+    const itemTitle = isSeriesOrAnime ? cleanVideoTitle(primaryTitle || rawItemTitle, true) : (primaryTitle || rawItemTitle);
     if (isSeriesOrAnime && itemTitle) {
       item.title = itemTitle;
     }
     const itemYr = getMediaYear(item) || item.year || '';
-    const baseNormKey = normalizeMediaTitle(itemTitle, origTitle, isSeriesOrAnime);
+    const baseNormKey = normalizeMediaTitle(primaryTitle || itemTitle, origTitle, isSeriesOrAnime);
+    const altNormKey = altTitle ? normalizeMediaTitle(altTitle, '', isSeriesOrAnime) : '';
+    const fullNormKey = normalizeMediaTitle(rawItemTitle, origTitle, isSeriesOrAnime);
     const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle.replace(/\bmovie\s*\d*\s*:/gi, ' '), '', isSeriesOrAnime) : '';
     const normKey = (!isSeriesOrAnime && baseNormKey && itemYr) ? `${baseNormKey}_movie_${itemYr}` : baseNormKey;
     const origKey = (!isSeriesOrAnime && baseOrigKey && itemYr) ? `${baseOrigKey}_movie_${itemYr}` : baseOrigKey;
     const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
     const kpKey = (item.kp_id || item.kinopoisk_id) ? `kp_${item.kp_id || item.kinopoisk_id}` : '';
 
-    const candidateKeys = [normKey, baseNormKey, origKey, baseOrigKey, tmdbKey, kpKey].filter(Boolean);
+    // Poster filename match
+    const cleanPosterFn = (p) => {
+      if (!p) return '';
+      const m = String(p).match(/([^\/\?#]+\.(?:jpg|jpeg|png|webp))/i);
+      return m ? m[1].toLowerCase() : '';
+    };
+    const posterFn = cleanPosterFn(item.poster || item.poster_url);
+    const posterKey = posterFn ? `poster_${posterFn}_${itemYr || ''}` : '';
+
+    const candidateKeys = [normKey, baseNormKey, altNormKey, fullNormKey, origKey, baseOrigKey, tmdbKey, kpKey, posterKey].filter(Boolean);
     let key = '';
     for (const ck of candidateKeys) {
       if (itemMap.has(ck)) {
@@ -3348,7 +3440,25 @@ function deduplicateMediaList(items) {
       const rawFanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
         (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
       const fanfilmUrl = (rawFanfilmUrl && !String(rawFanfilmUrl).includes('do=search')) ? rawFanfilmUrl : null;
-      const mergedLiftId = item.lift_id || existing.lift_id || null;
+      const extractLiftId = (it) => {
+        if (!it) return null;
+        if (it.lift_id) return String(it.lift_id).replace(/^lift_/i, '');
+        if (it.source === 'lift' && it.id) return String(it.id).replace(/^lift_/i, '');
+        return null;
+      };
+      const mergedLiftId = extractLiftId(item) || extractLiftId(existing) || null;
+      const normalizeMType = (t) => {
+        const s = String(t || '').toLowerCase().trim();
+        if (s === 'movies' || s === 'films' || s === 'film') return 'movie';
+        if (s === 'shows' || s === 'serial') return 'series';
+        return s;
+      };
+      const mergedIds = Array.from(new Set([
+        ...(existing._mergedIds || [existing.id]),
+        ...(item._mergedIds || [item.id]),
+        existing.id,
+        item.id
+      ].filter(Boolean)));
       const hasAnyVerifiedStream = Boolean(
         fanfilmUrl ||
         mergedLiftId ||
@@ -3401,6 +3511,21 @@ function deduplicateMediaList(items) {
         user_status: existing.user_status || item.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       };
+
+      merged._mergedIds = mergedIds;
+      merged.lift_id = mergedLiftId;
+      merged.fanfilm_4k_url = fanfilmUrl;
+      merged.media_type = normalizeMType(merged.media_type);
+
+      // Привязываем все объединенные ID в aliasToKey для мгновенного нахождения
+      for (const mId of mergedIds) {
+        aliasToKey.set(String(mId), key);
+        aliasToKey.set(`id_${mId}`, key);
+      }
+      if (mergedLiftId) {
+        aliasToKey.set(String(mergedLiftId), key);
+        aliasToKey.set(`lift_${mergedLiftId}`, key);
+      }
 
       // Объединение плееров и ссылок на источники
       const mergedPlayers = [];
@@ -3889,7 +4014,7 @@ function createRailCardHtml(item, idx, isWide = false, railId = '') {
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          ${getMediaCardImgHtml(poster, item.title)}
+          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-card-badges">
             ${primaryQualityBadge}
             ${secondaryContextBadge}
@@ -4320,6 +4445,40 @@ function renderHomeView(items) {
     });
   }
 
+  const allLiftItems = cachedLiftHomeRails ? [
+    ...(cachedLiftHomeRails.foreignFilms || []),
+    ...(cachedLiftHomeRails.foreignSeries || []),
+    ...(cachedLiftHomeRails.ruFilms || []),
+    ...(cachedLiftHomeRails.ruSeries || [])
+  ] : [];
+
+  const unifiedPool = deduplicateMediaList([...items, ...allLiftItems]);
+  const canonicalMap = new Map();
+  for (const it of unifiedPool) {
+    const yr = getMediaYear(it) || it.year || '';
+    const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+    if (nKey) {
+      canonicalMap.set(nKey, it);
+      if (yr) canonicalMap.set(`${nKey}_${yr}`, it);
+    }
+    if (it.id) canonicalMap.set(String(it.id), it);
+    if (it._mergedIds) {
+      for (const mId of it._mergedIds) canonicalMap.set(String(mId), it);
+    }
+    if (it.lift_id) {
+      canonicalMap.set(`lift_${it.lift_id}`, it);
+      canonicalMap.set(String(it.lift_id), it);
+    }
+  }
+
+  items = deduplicateMediaList(items).map(it => {
+    const yr = getMediaYear(it) || it.year || '';
+    const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+    return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+           (nKey && canonicalMap.get(nKey)) ||
+           (it.id && canonicalMap.get(String(it.id))) ||
+           it;
+  });
   items = deduplicateMediaList(items);
   items.forEach(it => {
     const st = resolveMediaUserStatus(it);
@@ -5109,48 +5268,100 @@ function renderHomeView(items) {
 
   if (cachedLiftHomeRails) {
     if (Array.isArray(cachedLiftHomeRails.foreignFilms) && cachedLiftHomeRails.foreignFilms.length > 0) {
-      rails.push({
-        id: 'rail-lift-foreign-films',
-        icon: '🌎',
-        title: 'Популярные зарубежные фильмы',
-        category: 'movies',
-        country: 'foreign',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.foreignFilms).slice(0, 28)
+      const canonicalForeignFilms = deduplicateMediaList(
+        cachedLiftHomeRails.foreignFilms.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      ).filter(it => {
+        const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+        return !nKey || !trendingNormKeys.has(nKey);
       });
+
+      if (canonicalForeignFilms.length > 0) {
+        rails.push({
+          id: 'rail-lift-foreign-films',
+          icon: '🌎',
+          title: 'Популярные зарубежные фильмы',
+          category: 'movies',
+          country: 'foreign',
+          isWide: false,
+          items: canonicalForeignFilms.slice(0, 28)
+        });
+      }
     }
     if (Array.isArray(cachedLiftHomeRails.foreignSeries) && cachedLiftHomeRails.foreignSeries.length > 0) {
-      rails.push({
-        id: 'rail-lift-foreign-series',
-        icon: '📺',
-        title: 'Популярные зарубежные сериалы',
-        category: 'series',
-        country: 'foreign',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.foreignSeries).slice(0, 28)
-      });
+      const canonicalForeignSeries = deduplicateMediaList(
+        cachedLiftHomeRails.foreignSeries.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      );
+      if (canonicalForeignSeries.length > 0) {
+        rails.push({
+          id: 'rail-lift-foreign-series',
+          icon: '📺',
+          title: 'Популярные зарубежные сериалы',
+          category: 'series',
+          country: 'foreign',
+          isWide: false,
+          items: canonicalForeignSeries.slice(0, 28)
+        });
+      }
     }
     if (Array.isArray(cachedLiftHomeRails.ruFilms) && cachedLiftHomeRails.ruFilms.length > 0) {
-      rails.push({
-        id: 'rail-lift-ru-films',
-        icon: '🇷🇺',
-        title: 'Популярные российские фильмы',
-        category: 'movies',
-        country: 'Россия',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.ruFilms).slice(0, 28)
-      });
+      const canonicalRuFilms = deduplicateMediaList(
+        cachedLiftHomeRails.ruFilms.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      );
+      if (canonicalRuFilms.length > 0) {
+        rails.push({
+          id: 'rail-lift-ru-films',
+          icon: '🇷🇺',
+          title: 'Популярные российские фильмы',
+          category: 'movies',
+          country: 'Россия',
+          isWide: false,
+          items: canonicalRuFilms.slice(0, 28)
+        });
+      }
     }
     if (Array.isArray(cachedLiftHomeRails.ruSeries) && cachedLiftHomeRails.ruSeries.length > 0) {
-      rails.push({
-        id: 'rail-lift-ru-series',
-        icon: '🎬',
-        title: 'Популярные российские сериалы',
-        category: 'series',
-        country: 'Россия',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.ruSeries).slice(0, 28)
-      });
+      const canonicalRuSeries = deduplicateMediaList(
+        cachedLiftHomeRails.ruSeries.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      );
+      if (canonicalRuSeries.length > 0) {
+        rails.push({
+          id: 'rail-lift-ru-series',
+          icon: '🎬',
+          title: 'Популярные российские сериалы',
+          category: 'series',
+          country: 'Россия',
+          isWide: false,
+          items: canonicalRuSeries.slice(0, 28)
+        });
+      }
     }
   }
 
@@ -5500,7 +5711,7 @@ function renderMediaItems(items) {
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          ${getMediaCardImgHtml(poster, item.title)}
+          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-card-badges">
             ${primaryQualityBadge}
             ${secondaryContextBadge}
@@ -5641,7 +5852,7 @@ function renderMediaItems(items) {
       return `
       <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
         <div class="media-detailed-poster">
-          ${getMediaCardImgHtml(poster, item.title)}
+          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
             ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>' : ''}
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
@@ -8689,12 +8900,12 @@ document.addEventListener('pointerover', (e) => {
   currentPrefetchedCard = card;
   hoverPrefetchTimer = setTimeout(() => {
     triggerCardHoverPrefetch(card);
-  }, 220);
+  }, 120);
 }, { passive: true });
 
 document.addEventListener('pointerout', (e) => {
   const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
-  if (card && card === currentPrefetchedCard) {
+  if (card && card === currentPrefetchedCard && (!e.relatedTarget || !card.contains(e.relatedTarget))) {
     clearTimeout(hoverPrefetchTimer);
     currentPrefetchedCard = null;
   }
@@ -8707,7 +8918,7 @@ document.addEventListener('focusin', (e) => {
   currentPrefetchedCard = card;
   hoverPrefetchTimer = setTimeout(() => {
     triggerCardHoverPrefetch(card);
-  }, 220);
+  }, 120);
 }, { passive: true });
 
 // -------------------------------------------------------------
@@ -9376,8 +9587,14 @@ export function initStormCustomSelects() {
 
   const observer = new MutationObserver((mutations) => {
     for (const m of mutations) {
+      if (m.target && m.target.closest && (m.target.closest('#media-render-container') || m.target.closest('#lift-curated-rails-container') || m.target.closest('#hero-showcase-container'))) {
+        continue;
+      }
       for (const node of m.addedNodes) {
         if (node && node.nodeType === 1) {
+          if (node.closest && (node.closest('#media-render-container') || node.closest('#lift-curated-rails-container') || node.closest('#hero-showcase-container'))) {
+            continue;
+          }
           if (node.tagName === 'SELECT') {
             bindStormSelectElement(node);
           } else if (node.querySelectorAll) {

@@ -191,12 +191,13 @@ export function enqueueMariaDbWrite(sql, params = []) {
  * Синхронизация данных из MariaDB в локальный SQLite (на старте или по расписанию)
  */
 export async function syncFromMariaDbToSqlite(sqliteDb) {
-  if (!pool || !isConnected || syncInProgress) return;
+  if (process.env.NODE_ENV === 'test' || !pool || !isConnected || syncInProgress) return;
   syncInProgress = true;
   const activePool = pool;
 
   try {
     try { sqliteDb.pragma('foreign_keys = OFF'); } catch (_) {}
+    const staleThreshold = Date.now() - 60000;
     const MOCK_WHERE = `(
       LOWER(username) = 'stormtester'
       OR LOWER(username) LIKE 'e2e_%'
@@ -207,7 +208,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       OR LOWER(email) LIKE '%@storm-test.local'
       OR LOWER(email) LIKE '%@storm.test'
       OR LOWER(email) LIKE 'tester@%'
-    ) AND LOWER(username) != 'reikatari'`;
+    ) AND LOWER(username) != 'reikatari' AND created_at < ${staleThreshold}`;
     try {
       const [mockRows] = await (pool || activePool).query(`SELECT id FROM users WHERE ${MOCK_WHERE}`);
       const sqliteMockRows = sqliteDb.prepare(`SELECT id FROM users WHERE ${MOCK_WHERE}`).all();

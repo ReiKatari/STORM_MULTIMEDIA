@@ -640,11 +640,14 @@ function filterAndRenderUsers() {
       const progress = Math.round(wn.progress_percent || 0);
       const isMovie = !wn.media_type || wn.media_type === 'movie' || wn.media_type === 'cartoon' || wn.media_type === 'anime-movie';
       const epInfo = (!isMovie && wn.season && wn.episode) ? `(S${wn.season} • E${wn.episode})` : '';
+      const isCompleted = wn.status === 'completed' || wn.status_label === 'Просмотрено' || progress >= 90;
       const activeBadge = wn.is_active
         ? '<span class="admin-live-pulse-badge">Смотрит сейчас</span>'
-        : (wn.is_bookmark_fallback
-            ? '<span class="admin-last-view-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);">В закладках</span>'
-            : '<span class="admin-last-view-badge">Недавний просмотр</span>');
+        : (isCompleted
+            ? '<span class="admin-last-view-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);">Просмотрено</span>'
+            : (wn.is_bookmark_fallback
+                ? `<span class="admin-last-view-badge" style="background:rgba(0,210,255,0.15);color:#00d2ff;border-color:rgba(0,210,255,0.3);">${escapeHtml(wn.status_label || 'В закладках')}</span>`
+                : '<span class="admin-last-view-badge">Недавний просмотр</span>'));
 
       watchingHtml = `
         <div class="admin-watching-box">

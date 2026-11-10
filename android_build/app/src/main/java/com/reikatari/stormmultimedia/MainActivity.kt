@@ -1,7 +1,12 @@
 package com.reikatari.stormmultimedia
 
 import android.annotation.SuppressLint
+import android.app.UiModeManager
+import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import androidx.core.view.ViewCompat
 import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
@@ -44,8 +49,40 @@ class MainActivity : ComponentActivity() {
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
-    private val primaryUrl = "https://stormmultimedia.ru/"
+        private val primaryUrl = "https://stormmultimedia.ru/"
+    private val localLanUrl = "http://192.168.1.154:3900/"
     private val liftPrimaryIp = "89.42.231.205"
+
+    private val isTvDevice: Boolean by lazy {
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        if (uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return@lazy true
+        }
+        val pm = packageManager
+        pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+                pm.hasSystemFeature("android.hardware.type.television")
+    }
+
+    private fun probeUrlHealth(targetUrl: String, timeoutMs: Int): Boolean {
+        return try {
+            val url = URL(targetUrl)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = timeoutMs
+            conn.readTimeout = timeoutMs
+            conn.requestMethod = "GET"
+            conn.instanceFollowRedirects = true
+            if (conn is HttpsURLConnection && permissiveSslSocketFactory != null) {
+                conn.sslSocketFactory = permissiveSslSocketFactory
+                conn.hostnameVerifier = permissiveHostnameVerifier
+            }
+            conn.connect()
+            val code = conn.responseCode
+            conn.disconnect()
+            code in 200..399
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     private val permissiveSslSocketFactory by lazy {
         try {
@@ -102,6 +139,18 @@ class MainActivity : ComponentActivity() {
         rootLayout.addView(webView)
         rootLayout.addView(customViewContainer)
         setContentView(rootLayout)
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            val density = resources.displayMetrics.density
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val topCssPx = (bars.top / density).toInt()
+            val bottomCssPx = (bars.bottom / density).toInt()
+            val js = "document.documentElement.style.setProperty('--storm-safe-top', '${topCssPx}px'); document.documentElement.style.setProperty('--storm-safe-bottom', '${bottomCssPx}px');"
+            runOnUiThread {
+                webView.evaluateJavascript(js, null)
+            }
+            insets
+        }
 
         setupWebSettings()
         setupClients()
@@ -177,18 +226,38 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadAppContent() {
-        try {
-            val html = assets.open("index.html").bufferedReader().use { it.readText() }
-            webView.loadDataWithBaseURL(
-                "https://stormmultimedia.ru/",
-                html,
-                "text/html",
-                "UTF-8",
-                "https://stormmultimedia.ru/"
-            )
-        } catch (_: Exception) {
-            webView.loadUrl(primaryUrl)
-        }
+        Thread {
+            val isPrimaryReachable = probeUrlHealth("https://stormmultimedia.ru/api/health", 2500)
+            if (isPrimaryReachable) {
+                runOnUiThread {
+                    webView.loadUrl(primaryUrl)
+                }
+                return@Thread
+            }
+
+            val isLocalReachable = probeUrlHealth("http://192.168.1.154:3900/api/health", 1500)
+            if (isLocalReachable) {
+                runOnUiThread {
+                    webView.loadUrl(localLanUrl)
+                }
+                return@Thread
+            }
+
+            runOnUiThread {
+                try {
+                    val html = assets.open("index.html").bufferedReader().use { it.readText() }
+                    webView.loadDataWithBaseURL(
+                        "https://stormmultimedia.ru/",
+                        html,
+                        "text/html",
+                        "UTF-8",
+                        "https://stormmultimedia.ru/"
+                    )
+                } catch (_: Exception) {
+                    webView.loadUrl(primaryUrl)
+                }
+            }
+        }.start()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -204,17 +273,23 @@ class MainActivity : ComponentActivity() {
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-        settings.useWideViewPort = true
-        settings.loadWithOverviewMode = true
+        if (isTvDevice) {
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+        } else {
+            settings.useWideViewPort = false
+            settings.loadWithOverviewMode = false
+        }
         settings.textZoom = 100
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.1.2"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.5.0"
         } catch (_: Throwable) {
-            "1.1.2"
+            "1.5.0"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -854,7 +929,7 @@ class MainActivity : ComponentActivity() {
         val path = uri.path ?: "/api/"
 
         if (path == "/api/health" || path == "/api/player/health") {
-            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.1.2"}""")
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.5.0"}""")
         }
 
         if (path == "/api/media/image-proxy") {
@@ -1000,8 +1075,30 @@ class MainActivity : ComponentActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
-                    loadAppContent()
+                    try {
+                        val html = assets.open("index.html").bufferedReader().use { it.readText() }
+                        view?.loadDataWithBaseURL(
+                            "https://stormmultimedia.ru/",
+                            html,
+                            "text/html",
+                            "UTF-8",
+                            "https://stormmultimedia.ru/"
+                        )
+                    } catch (_: Throwable) {
+                        loadAppContent()
+                    }
                 }
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                val density = resources.displayMetrics.density
+                val rootInsets = ViewCompat.getRootWindowInsets(rootLayout)
+                val bars = rootInsets?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+                val topCssPx = if (bars != null) (bars.top / density).toInt() else 0
+                val bottomCssPx = if (bars != null) (bars.bottom / density).toInt() else 0
+                val js = "document.documentElement.style.setProperty('--storm-safe-top', '${topCssPx}px'); document.documentElement.style.setProperty('--storm-safe-bottom', '${bottomCssPx}px');"
+                view?.evaluateJavascript(js, null)
             }
 
             override fun shouldInterceptRequest(
@@ -1109,6 +1206,7 @@ class MainActivity : ComponentActivity() {
                                urlStr.contains("midroll")
 
                     val isWhitelisted = host.contains("stormmultimedia.ru") ||
+                                        host.contains("192.168.1.154") ||
                                        host.contains("tmdb.org") ||
                                        host.contains("themoviedb.org") ||
                                        host.contains("wsrv.nl") ||
@@ -1193,7 +1291,27 @@ class MainActivity : ComponentActivity() {
                     return
                 }
 
-                webView.evaluateJavascript("(function(){ return window.handleStormBackNavigation ? window.handleStormBackNavigation() : false; })();") { result ->
+                val checkJs = """
+                    (function() {
+                        if (typeof window.handleStormBackNavigation === 'function') {
+                            return window.handleStormBackNavigation();
+                        }
+                        var cinema = document.getElementById('cinema-modal');
+                        if (cinema && (cinema.classList.contains('is-open') || cinema.classList.contains('active') || document.body.classList.contains('cinema-open'))) {
+                            if (typeof window.closePlayerModal === 'function') window.closePlayerModal();
+                            else if (cinema.classList.contains('is-open')) cinema.classList.remove('is-open');
+                            return true;
+                        }
+                        var openModal = document.querySelector('.storm-modal-backdrop.is-open, .modal-backdrop.is-open');
+                        if (openModal) {
+                            openModal.classList.remove('is-open');
+                            return true;
+                        }
+                        return false;
+                    })();
+                """.trimIndent()
+
+                webView.evaluateJavascript(checkJs) { result ->
                     val handled = result?.equals("true", ignoreCase = true) == true
                     if (!handled) {
                         if (webView.canGoBack()) {
@@ -1211,9 +1329,9 @@ class MainActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.1.2"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.5.0"
             } catch (_: Throwable) {
-                "1.1.2"
+                "1.5.0"
             }
         }
 

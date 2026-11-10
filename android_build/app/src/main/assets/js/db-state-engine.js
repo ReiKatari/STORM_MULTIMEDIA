@@ -8,36 +8,116 @@
   if (window.__STORM_DB_STATE_ENGINE_ACTIVE__) return;
   window.__STORM_DB_STATE_ENGINE_ACTIVE__ = true;
 
-  // 1. Очистка любого локального дискового хранилища браузера и перехват в чистую RAM-память
+  // 1. Изолированное локальное хранилище для Гостя + синхронизируемое с БД хранилище для Авторизованного профиля
   const ramStore = new Map();
   window.__STORM_EPHEMERAL_RAM_STORE__ = ramStore;
+  const nativeLSRef = (() => {
+    try { return window.localStorage; } catch (_) { return null; }
+  })();
+  const GUEST_VAULT_KEY = 'storm_guest_local_vault_v1';
+  const AUTH_PERSIST_KEYS = ['storm_token', 'storm_user', 'storm_active_user_id', 'storm_vault_tokens', 'storm_explicit_guest_mode'];
+
+  function isRealAuthenticatedSession() {
+    const tok = String(ramStore.get('storm_token') || '').trim();
+    if (!tok || tok.startsWith('guest_') || tok.startsWith('offline_')) return false;
+    try {
+      const uRaw = ramStore.get('storm_user');
+      if (uRaw) {
+        const u = JSON.parse(uRaw);
+        if (!u || !u.id || Number(u.id) === 9999 || u.isGuest) return false;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  function loadGuestVaultFromDisk() {
+    if (!nativeLSRef) return {};
+    try {
+      const raw = nativeLSRef.getItem(GUEST_VAULT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  let guestVaultCache = loadGuestVaultFromDisk();
+  let guestVaultSaveTimer = null;
+
+  function persistGuestVaultToDisk() {
+    if (!nativeLSRef) return;
+    if (guestVaultSaveTimer) clearTimeout(guestVaultSaveTimer);
+    guestVaultSaveTimer = setTimeout(() => {
+      guestVaultSaveTimer = null;
+      try {
+        nativeLSRef.setItem(GUEST_VAULT_KEY, JSON.stringify(guestVaultCache));
+      } catch (_) {}
+    }, 80);
+  }
 
   try {
-    const nativeLS = window.localStorage;
-    if (nativeLS && nativeLS.length > 0) {
-      nativeLS.clear();
+    if (nativeLSRef && nativeLSRef.length > 0) {
+      for (const preserveKey of [...AUTH_PERSIST_KEYS, 'storm_toasted_achievements_v1', 'storm_local_achievements', 'storm_view_mode', 'storm_theme', 'storm_accent', 'storm_font', 'storm_ui_scale']) {
+        const val = nativeLSRef.getItem(preserveKey);
+        if (val !== null && val !== undefined) ramStore.set(preserveKey, val);
+      }
+      // Если сессия гостевая — восстанавливаем локальные данные гостя в память
+      if (!isRealAuthenticatedSession()) {
+        for (const [gk, gv] of Object.entries(guestVaultCache)) {
+          if (gv !== null && gv !== undefined && !AUTH_PERSIST_KEYS.includes(gk) && gk !== 'storm_family_profiles') {
+            ramStore.set(gk, String(gv));
+          }
+        }
+      }
     }
   } catch (_) {}
 
-  try {
-    const nativeSS = window.sessionStorage;
-    if (nativeSS && nativeSS.length > 0) {
-      nativeSS.clear();
+  window.getStormGuestVaultSnapshot = function() {
+    const merged = { ...loadGuestVaultFromDisk(), ...guestVaultCache };
+    if (!isRealAuthenticatedSession()) {
+      for (const [k, v] of ramStore.entries()) {
+        if (shouldPersistKeyToDatabase(k) && k !== 'storm_family_profiles') {
+          merged[k] = v;
+        }
+      }
     }
-  } catch (_) {}
+    return merged;
+  };
+
+  window.restoreStormGuestVaultToRam = function() {
+    guestVaultCache = loadGuestVaultFromDisk();
+    for (const [gk, gv] of Object.entries(guestVaultCache)) {
+      if (gv !== null && gv !== undefined && !AUTH_PERSIST_KEYS.includes(gk) && gk !== 'storm_family_profiles') {
+        ramStore.set(gk, String(gv));
+      }
+    }
+  };
+
+  window.clearStormGuestVaultSnapshot = function() {
+    guestVaultCache = {};
+    try {
+      if (nativeLSRef) nativeLSRef.removeItem(GUEST_VAULT_KEY);
+    } catch (_) {}
+  };
 
   let syncTimer = null;
   const dirtyKv = {};
 
   function shouldPersistKeyToDatabase(key) {
     if (!key || typeof key !== 'string') return false;
-    // Временные кэши каталогов не засоряют JSON настроек пользователя, так как каталог кэшируется в L1/L2 на сервере
     if (
       key.startsWith('storm_cat_cache_') ||
       key.startsWith('storm_sw_') ||
       key.startsWith('storm_mod_healed_') ||
+      key.startsWith('storm_lift_') ||
+      key.startsWith('storm_cal_') ||
+      key.startsWith('storm_catalog_') ||
+      key.startsWith('storm_search_') ||
+      key === 'storm_local_bookmarks' ||
       key === 'storm_token' ||
-      key === 'storm_user'
+      key === 'storm_user' ||
+      key === GUEST_VAULT_KEY
     ) {
       return false;
     }
@@ -45,9 +125,11 @@
   }
 
   function scheduleDatabaseSettingsSync() {
+    if (!isRealAuthenticatedSession()) return;
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = setTimeout(async () => {
       syncTimer = null;
+      if (!isRealAuthenticatedSession()) return;
       const keysToSync = Object.keys(dirtyKv);
       if (keysToSync.length === 0) return;
       const payloadKv = { ...dirtyKv };
@@ -67,7 +149,7 @@
     }, 350);
   }
 
-  // Переопределение методов Storage.prototype для работы строго в оперативной памяти (0 байт на диске)
+  // Переопределение window.localStorage: локальное сохранение для гостя и облачная синхронизация для аккаунта
   try {
     const ephemStorage = {
       getItem(key) {
@@ -78,17 +160,39 @@
         const k = String(key);
         const v = String(value);
         ramStore.set(k, v);
-        if (shouldPersistKeyToDatabase(k)) {
-          dirtyKv[k] = v;
-          scheduleDatabaseSettingsSync();
+        try {
+          if (nativeLSRef && (AUTH_PERSIST_KEYS.includes(k) || k === 'storm_view_mode' || k === 'storm_theme' || k === 'storm_accent')) {
+            nativeLSRef.setItem(k, v);
+          }
+        } catch (_) {}
+
+        if (isRealAuthenticatedSession()) {
+          if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
+            dirtyKv[k] = v;
+            scheduleDatabaseSettingsSync();
+          }
+        } else if (!window.__STORM_SUPPRESS_GUEST_VAULT_WRITE__ && shouldPersistKeyToDatabase(k) && k !== 'storm_family_profiles') {
+          guestVaultCache[k] = v;
+          persistGuestVaultToDisk();
         }
       },
       removeItem(key) {
         const k = String(key);
         ramStore.delete(k);
-        if (shouldPersistKeyToDatabase(k)) {
-          dirtyKv[k] = null;
-          scheduleDatabaseSettingsSync();
+        try {
+          if (nativeLSRef && AUTH_PERSIST_KEYS.includes(k)) {
+            nativeLSRef.removeItem(k);
+          }
+        } catch (_) {}
+
+        if (isRealAuthenticatedSession()) {
+          if (!window.__STORM_SUPPRESS_DB_SYNC__ && shouldPersistKeyToDatabase(k)) {
+            dirtyKv[k] = null;
+            scheduleDatabaseSettingsSync();
+          }
+        } else if (!window.__STORM_SUPPRESS_GUEST_VAULT_WRITE__ && shouldPersistKeyToDatabase(k)) {
+          delete guestVaultCache[k];
+          persistGuestVaultToDisk();
         }
       },
       clear() {
@@ -148,6 +252,7 @@
 
   window.queueStormWatchProgress = function queueStormWatchProgress(progressObj) {
     if (!progressObj || !progressObj.media_id) return;
+    if (Number(progressObj.real_watched_seconds || 0) < 600 || Number(progressObj.time_seconds ?? progressObj.progress_seconds ?? 0) < 600) return;
     const key = `${progressObj.source || 'fanfilm4k'}:${progressObj.media_id}:s${progressObj.season_number || 0}:e${progressObj.episode_number || 0}`;
     pendingProgressBatch.set(key, {
       ...progressObj,
@@ -158,6 +263,15 @@
         progressBatchTimer = null;
         flushClientProgressBatch();
       }, 5000);
+    }
+  };
+  window.cancelStormWatchProgressQueue = function(mediaId, title = '') {
+    const cleanId = String(mediaId || '').trim();
+    const normTitle = String(title || '').trim().toLowerCase().replace(/\u0451/g, '\u0435');
+    for (const [k, v] of pendingProgressBatch.entries()) {
+      const vId = String(v.media_id || '').trim();
+      const vTitle = String(v.title || '').trim().toLowerCase().replace(/\u0451/g, '\u0435');
+      if ((cleanId && vId === cleanId) || (normTitle && vTitle === normTitle)) pendingProgressBatch.delete(k);
     }
   };
 
@@ -175,7 +289,11 @@
     try {
       const headers = { 'X-Storm-Device': CLIENT_DEVICE_NAME };
       const token = ramStore.get('storm_token');
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && !String(token).startsWith('guest_') && !String(token).startsWith('offline_')) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else if (ramStore.get('storm_explicit_guest_mode') === '1' || String(token || '').startsWith('guest_')) {
+        headers['X-Storm-Guest-Mode'] = '1';
+      }
 
       const res = await fetch(`/api/user/bootstrap?device=${encodeURIComponent(CLIENT_DEVICE_NAME)}`, {
         headers,
@@ -186,6 +304,11 @@
       if (!data || !data.authenticated || !data.user) return null;
 
       window.__STORM_BOOTSTRAP_DATA__ = data;
+      if (data.token) ramStore.set('storm_token', String(data.token));
+      if (data.user) {
+        ramStore.set('storm_user', JSON.stringify(data.user));
+        if (data.user.id) ramStore.set('storm_active_user_id', String(data.user.id));
+      }
       if (data.kv && typeof data.kv === 'object') {
         for (const [k, v] of Object.entries(data.kv)) {
           if (v !== null && v !== undefined) {
@@ -194,6 +317,46 @@
         }
       }
 
+      if (Array.isArray(data.bookmarks)) {
+        window.__STORM_MEMORY_BOOKMARKS__ = data.bookmarks;
+        if (typeof window.setMemoryBookmarksCache === 'function') {
+          window.setMemoryBookmarksCache(data.bookmarks);
+        }
+        for (const b of data.bookmarks) {
+          if (!b) continue;
+          const bId = String(b.media_id || b.id || '').trim();
+          const bStatus = String(b.status || b.user_status || '').trim().toLowerCase();
+          if (bId && bStatus && bStatus !== 'none') {
+            ramStore.set(`storm_status_${bId}`, bStatus);
+            const stripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
+            if (stripped && stripped !== bId) {
+              ramStore.set(`storm_status_${stripped}`, bStatus);
+            }
+          }
+          const normT = String(b.title || '').trim().toLowerCase().replace(/ё/g, 'е');
+          if (normT && bStatus && bStatus !== 'none') {
+            ramStore.set(`storm_status_title_${normT}`, bStatus);
+            const canonT = normT.replace(/[^\p{L}\p{N}]+/gu, '');
+            if (canonT) ramStore.set(`storm_status_canon_${canonT}`, bStatus);
+          }
+        }
+      }
+
+      if (Array.isArray(data.achievements)) {
+        try {
+          const localAch = JSON.parse(ramStore.get('storm_local_achievements') || '{}');
+          const toastedList = JSON.parse(ramStore.get('storm_toasted_achievements_v1') || '[]');
+          const toastedSet = new Set(Array.isArray(toastedList) ? toastedList.map(String) : []);
+          for (const a of data.achievements) {
+            if (!a || !a.id) continue;
+            const isUnl = Boolean(a.unlocked || (a.target > 0 && a.progress >= a.target));
+            localAch[a.id] = { progress: isUnl ? (a.target || 1) : (a.progress || 0), target: a.target || 1, unlocked: isUnl, unlocked_at: a.unlocked_at || (isUnl ? Date.now() : null) };
+            if (isUnl) toastedSet.add(String(a.id));
+          }
+          ramStore.set('storm_local_achievements', JSON.stringify(localAch));
+          ramStore.set('storm_toasted_achievements_v1', JSON.stringify(Array.from(toastedSet)));
+        } catch (_) {}
+      }
       const s = data.settings || {};
       const theme = ramStore.get('storm_theme') || s.theme;
       if (theme) document.documentElement.setAttribute('data-theme', theme);
@@ -206,7 +369,7 @@
         document.documentElement.style.setProperty('--storm-ui-scale', String(scale));
       }
 
-      if (data.handoff && data.handoff.media_id && data.handoff.progress_seconds > 30) {
+      if (data.handoff && data.handoff.media_id && data.handoff.progress_seconds >= 600) {
         renderSeamlessHandoffBanner(data.handoff);
       }
 
@@ -218,6 +381,15 @@
   }
 
   window.hydrateStateFromDatabase = hydrateStateFromDatabase;
+  window.resetStormDirtySettingsQueue = function() {
+    if (syncTimer) {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+    }
+    for (const k of Object.keys(dirtyKv)) {
+      delete dirtyKv[k];
+    }
+  };
 
   // 4. Баннер бесшовной эстафеты просмотра между устройствами (Пункт 4.5)
   function renderSeamlessHandoffBanner(handoff) {
@@ -532,8 +704,10 @@
       modal.querySelector('#storm-ext-tracks-close')?.addEventListener('click', () => {
         modal.style.display = 'none';
       });
-      modal.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') modal.style.display = 'none';
+      window.addEventListener('keydown', (e) => {
+        if ((e.key === 'Escape' || e.keyCode === 27) && modal.style.display !== 'none') {
+          modal.style.display = 'none';
+        }
       });
 
       const rangeEl = modal.querySelector('#storm-sub-offset-range');

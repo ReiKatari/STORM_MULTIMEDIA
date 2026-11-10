@@ -197,7 +197,12 @@ export const KNOWN_FANFILM_URLS = {
   "visions 2023": "https://v17.fanfilm4k.media/70681-videnija-film.html",
   "звездные войны видения": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html",
   "звездные войны видение": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html",
-  "star wars visions": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html"
+  "star wars visions": "https://v17.fanfilm4k.media/80130-zvezdnye-vojny-videnie-anime-serial.html",
+  "одиссея 2026": "https://v17.fanfilm4k.media/82459-odisseja-film.html",
+  "the odyssey 2026": "https://v17.fanfilm4k.media/82459-odisseja-film.html",
+  "одиссея": "https://v17.fanfilm4k.media/82459-odisseja-film.html",
+  "the odyssey": "https://v17.fanfilm4k.media/82459-odisseja-film.html",
+  "82459": "https://v17.fanfilm4k.media/82459-odisseja-film.html"
 };
 
 export function resolveFanFilmUrl(title, year = '') {

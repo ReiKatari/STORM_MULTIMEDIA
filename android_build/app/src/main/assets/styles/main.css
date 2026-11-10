@@ -1,3 +1,8 @@
+:root {
+  --storm-safe-top: env(safe-area-inset-top, 0px);
+  --storm-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* ==========================================================================
    STORM MULTIMEDIA - ОСНОВНЫЕ СТИЛИ МАКЕТА И РЕЖИМОВ ОТОБРАЖЕНИЯ
    ========================================================================== */
@@ -418,9 +423,14 @@ body {
 .storm-tabs-bar {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
+  overflow-x: auto !important;
+  white-space: nowrap !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+  scroll-snap-type: x proximity !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 [data-theme="STORM DAY"] .storm-tabs-bar {
@@ -429,40 +439,44 @@ body {
 }
 
 .storm-tabs-bar::-webkit-scrollbar {
-  display: none;
+  display: none !important;
 }
 
 .storm-tabs-inner {
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: 5px 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 5px 16px !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
 }
 
-/* Стилизованные объемные плашки */
+/* Стилизованные объемные плашки: запрет сжатия и усечения названий на всех экранах */
 .storm-tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5.5px 13px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 3px 6px var(--shadow-color);
-  transform: translateY(0);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  overflow: hidden;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5.5px 13px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 8px !important;
+  color: var(--text-secondary) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  scroll-snap-align: start !important;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 3px 6px var(--shadow-color) !important;
+  transform: translateY(0) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  position: relative !important;
 }
 
 .storm-tab-btn:hover {
@@ -685,8 +699,8 @@ body {
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  transform: translateZ(0);
-  will-change: transform, box-shadow;
+  /* 60/120 FPS Isolation & Smoothness */
+  contain: layout style paint;
   height: 100%;
   min-height: 100%;
   align-self: stretch;
@@ -696,9 +710,9 @@ body {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: var(--card-shadow);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.22s ease;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.18s ease,
+              opacity 0.18s ease;
   position: relative;
 }
 
@@ -883,7 +897,7 @@ body {
   filter: blur(8px);
   opacity: 0.35;
   z-index: -1;
-  animation: rotateRainbowAura 3s linear infinite;
+  animation: none;
   transition: opacity 0.3s ease, filter 0.3s ease, inset 0.3s ease;
 }
 
@@ -898,7 +912,7 @@ body {
   mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #fff calc(100% - 2px));
   opacity: 0.6;
   z-index: -1;
-  animation: rotateRainbowAura 3s linear infinite;
+  animation: none;
   transition: opacity 0.3s ease;
 }
 
@@ -2350,48 +2364,7 @@ body.cinema-open {
   margin-bottom: 20px;
 }
 
-/* -------------------------------------------------------------
-   МОБИЛЬНАЯ НАВИГАЦИОННАЯ ПАНЕЛЬ (BOTTOM BAR)
-   ------------------------------------------------------------- */
-.storm-mobile-bottom-bar {
-  display: none;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--bg-secondary);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid var(--border-color);
-  padding: 6px 12px;
-  z-index: 3200 !important;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
-}
-
-[data-theme="STORM DAY"] .storm-mobile-bottom-bar {
-  background: rgba(255, 255, 255, 0.96);
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.storm-mobile-nav-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 0;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.storm-mobile-nav-item.active {
-  color: var(--accent);
-}
+/* Устаревший .storm-mobile-bottom-bar удален: используется #storm-bottom-nav */
 
 /* -------------------------------------------------------------
    ПОДВАЛ САЙТА (FOOTER)
@@ -3120,8 +3093,8 @@ body.drawer-open {
   }
 
   .storm-nav-actions #header-remote-btn,
+  .storm-nav-actions #form-factor-switcher-btn,
   .storm-nav-actions #toggle-tv-mode-btn,
-  .storm-nav-actions #header-rooms-btn,
   .storm-nav-actions #header-family-btn,
   .storm-nav-actions #header-sync-btn,
   .storm-nav-actions #header-profile-btn {
@@ -3129,9 +3102,12 @@ body.drawer-open {
   }
 
   .storm-nav-actions #header-recommender-btn,
-  .storm-nav-actions #header-calendar-btn {
-    width: 34px !important;
-    height: 34px !important;
+  .storm-nav-actions #header-calendar-btn,
+  .storm-nav-actions #header-rooms-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
     padding: 0 !important;
     display: inline-flex !important;
     align-items: center !important;
@@ -3142,8 +3118,25 @@ body.drawer-open {
   }
 
   .storm-nav-actions #header-recommender-btn .btn-text,
-  .storm-nav-actions #header-calendar-btn .btn-text {
+  .storm-nav-actions #header-calendar-btn .btn-text,
+  .storm-nav-actions #header-rooms-btn .btn-text {
     display: none !important;
+  }
+
+  .user-profile-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+  }
+
+  .storm-search-input {
+    min-height: 40px !important;
   }
 
   #mobile-menu-toggle-btn,
@@ -3392,21 +3385,31 @@ body.drawer-open {
     to { transform: translateY(0); opacity: 1; }
   }
 
-  /* 5. Эталонная 2-колоночная сетка медиа-карточек (Flagship 2-Col Grid) */
+  /* 5. Эталонная сетка медиа-карточек (2-col <= 520px, 3-col 521-768px) */
   .storm-main-container {
     width: 100% !important;
     max-width: 100% !important;
-    padding: 10px 10px 80px 10px !important;
+    padding: 10px 12px 92px !important;
     margin: 0 !important;
     box-sizing: border-box !important;
   }
 
   .media-container.view-grid {
     display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px !important;
     width: 100% !important;
     max-width: 100% !important;
+  }
+
+  @media (max-width: 520px) {
+    .storm-main-container {
+      padding: 10px 12px 92px !important;
+    }
+    .media-container.view-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 10px !important;
+    }
   }
 
   .media-card {
@@ -3419,7 +3422,15 @@ body.drawer-open {
   }
 
   .media-card:active {
-    transform: scale(0.96) !important;
+    transform: scale(0.975) !important;
+  }
+
+  .media-card-menu-btn {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   .media-card-poster {
@@ -3479,7 +3490,12 @@ body.drawer-open {
 
   /* 6. Полноэкранный кинотеатральный мобильный плеер (Mobile Cinema Sheet) */
   #cinema-modal.storm-modal-backdrop {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
     background: #000000 !important;
     align-items: stretch !important;
     justify-content: stretch !important;
@@ -3487,10 +3503,9 @@ body.drawer-open {
   }
 
   #cinema-modal .cinema-modal-dialog {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100% !important;
-    max-height: 100% !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
     border: none !important;
     margin: 0 !important;
@@ -3500,6 +3515,10 @@ body.drawer-open {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
+  }
+
+  #cinema-modal .cinema-player-container {
+    padding-top: max(0px, var(--storm-safe-top, 0px)) !important;
   }
 
   #cinema-modal .storm-modal-header {
@@ -3561,16 +3580,16 @@ body.drawer-open {
     #cinema-modal .storm-modal-tool-btn,
     #cinema-modal .storm-modal-fullscreen-btn,
     #cinema-modal .storm-modal-close {
-      width: 32px !important;
-      height: 32px !important;
-      min-width: 32px !important;
-      max-width: 32px !important;
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
+      min-height: 44px !important;
       padding: 0 !important;
-      font-size: 14px !important;
+      font-size: 16px !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
-      border-radius: 8px !important;
+      border-radius: 10px !important;
       flex-shrink: 0 !important;
       box-sizing: border-box !important;
     }
@@ -3603,10 +3622,11 @@ body.drawer-open {
     }
     #cinema-modal .storm-modal-fullscreen-btn,
     #cinema-modal .storm-modal-close {
-      width: 30px !important;
-      height: 30px !important;
-      min-width: 30px !important;
-      font-size: 13px !important;
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
+      min-height: 44px !important;
+      font-size: 16px !important;
     }
   }
 
@@ -3621,10 +3641,11 @@ body.drawer-open {
     }
     #cinema-modal .storm-modal-fullscreen-btn,
     #cinema-modal .storm-modal-close {
-      width: 28px !important;
-      height: 28px !important;
-      min-width: 28px !important;
-      font-size: 12px !important;
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
+      min-height: 44px !important;
+      font-size: 16px !important;
     }
   }
 
@@ -3700,13 +3721,19 @@ body.drawer-open {
   #cinema-modal .player-series-quick-bar {
     order: 1 !important;
     padding: 8px 12px !important;
-    overflow: visible !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
     scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
     display: flex !important;
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
     gap: 8px !important;
     position: relative !important;
     z-index: 4 !important;
+  }
+
+  #cinema-modal .player-series-quick-bar > * {
+    flex-shrink: 0 !important;
   }
 
   #cinema-modal #player-fallback-bar {
@@ -4844,15 +4871,11 @@ body.drawer-open {
   #cinema-modal #cinema-reviews-container,
   #cinema-modal #cinema-modal-screenshots-container,
   #cinema-modal .player-xray-panel,
-  .storm-bottom-nav,
-  .storm-mobile-bottom-bar {
+  .storm-bottom-nav {
     display: none !important;
   }
 
-  .storm-mobile-bottom-bar {
-    display: none !important;
   }
-}
 
 /* Адаптивная сетка карточек в альбомном режиме смартфона и планшета */
 @media (max-width: 1024px) and (orientation: landscape) {
@@ -5194,6 +5217,8 @@ body[data-active-tab="home"] #hero-showcase-container {
 .storm-media-rail {
   position: relative;
   width: 100%;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
 }
 
 .rail-header {
@@ -5360,8 +5385,7 @@ body[data-active-tab="home"] #hero-showcase-container {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: rgba(10, 14, 22, 0.75);
-  backdrop-filter: blur(10px);
+  background: rgba(15, 12, 31, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #ffffff;
   font-size: 15px;
@@ -5370,7 +5394,7 @@ body[data-active-tab="home"] #hero-showcase-container {
   justify-content: center;
   cursor: pointer;
   z-index: 5;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.18s ease, border-color 0.18s ease;
   opacity: 0.88;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
@@ -5384,14 +5408,15 @@ body[data-active-tab="home"] #hero-showcase-container {
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 0 12px var(--accent-glow);
 }
 
-/* 4. EMBY И PLEX BOTTOM NAVIGATION DOCK ДЛЯ МОБИЛЬНЫХ И ПРИЛОЖЕНИЯ */
+/* 4. EMBY И PLEX BOTTOM NAVIGATION DOCK ДЛЯ МОБИЛЬНЫХ И ПРИЛОЖЕНИЯ (STORM AURORA FLUID) */
 .storm-bottom-nav {
   display: none;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 /* В приложении и на экранах до 1024px нижний блок управления ВСЕГДА закреплен у нижнего края */
 body.is-native-app {
-  padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(66px + max(env(safe-area-inset-bottom, 0px), var(--storm-safe-bottom, 0px))) !important;
 }
 
 body.is-native-app .storm-bottom-nav {
@@ -5403,27 +5428,28 @@ body.is-native-app .storm-bottom-nav {
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
-  height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+  height: calc(58px + max(env(safe-area-inset-bottom, 0px), var(--storm-safe-bottom, 0px))) !important;
   border-radius: 18px 18px 0 0 !important;
   border-top: 1px solid var(--border-color) !important;
   border-left: none !important;
   border-right: none !important;
   border-bottom: none !important;
-  background: var(--dock-bg) !important;
+  background: var(--dock-bg, rgba(13, 11, 24, 0.94)) !important;
   backdrop-filter: blur(28px) saturate(200%) !important;
   -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
-  box-shadow: var(--dock-shadow), 0 -4px 28px rgba(0, 0, 0, 0.65) !important;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.12) inset !important;
   z-index: 9999 !important;
   justify-content: space-around !important;
   align-items: center !important;
-  padding: 3px 6px max(4px, env(safe-area-inset-bottom, 0px)) 6px !important;
+  padding: 4px 8px calc(8px + max(env(safe-area-inset-bottom, 0px), var(--storm-safe-bottom, 0px))) 8px !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 @media (max-width: 1024px) {
   body:not(.tv-mode) {
-    padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(66px + max(env(safe-area-inset-bottom, 0px), var(--storm-safe-bottom, 0px))) !important;
   }
 
   .storm-bottom-nav {
@@ -5435,22 +5461,23 @@ body.is-native-app .storm-bottom-nav {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(58px + max(env(safe-area-inset-bottom, 0px), var(--storm-safe-bottom, 0px))) !important;
     border-radius: 18px 18px 0 0 !important;
     border-top: 1px solid var(--border-color) !important;
     border-left: none !important;
     border-right: none !important;
     border-bottom: none !important;
-    background: var(--dock-bg) !important;
+    background: var(--dock-bg, rgba(13, 11, 24, 0.94)) !important;
     backdrop-filter: blur(28px) saturate(200%) !important;
     -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
-    box-shadow: var(--dock-shadow), 0 -4px 28px rgba(0, 0, 0, 0.65) !important;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.12) inset !important;
     z-index: 9999 !important;
     justify-content: space-around !important;
     align-items: center !important;
-    padding: 3px 6px max(4px, env(safe-area-inset-bottom, 0px)) 6px !important;
+    padding: 4px 8px calc(8px + max(env(safe-area-inset-bottom, 0px), var(--storm-safe-bottom, 0px))) 8px !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, box-shadow 0.2s ease !important;
   }
 }
 
@@ -5485,28 +5512,36 @@ body.tv-mode .storm-bottom-nav {
     align-items: center !important;
     justify-content: center !important;
     height: 100% !important;
-    padding: 6px 0 !important;
+    padding: 4px 0 !important;
     background: transparent !important;
-    border: none !important;
-    border-radius: 22px !important;
+    border: 1px solid transparent !important;
+    border-radius: 14px !important;
     color: var(--text-muted) !important;
     cursor: pointer !important;
-    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease, background 0.2s ease !important;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease, background 0.2s ease, box-shadow 0.2s ease !important;
     position: relative !important;
     outline: none !important;
     user-select: none !important;
-    min-height: 48px !important;
+    min-height: 44px !important;
   }
 
   .storm-bottom-nav-item:active {
-    transform: scale(0.92) !important;
+    transform: scale(0.94) !important;
   }
 
   .storm-bottom-nav-icon {
-    font-size: 20px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     line-height: 1 !important;
     margin-bottom: 2px !important;
     transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease !important;
+  }
+
+  .storm-bottom-nav-icon svg {
+    display: block !important;
+    width: 22px !important;
+    height: 22px !important;
   }
 
   .storm-bottom-nav-label {
@@ -5520,11 +5555,14 @@ body.tv-mode .storm-bottom-nav {
 
   .storm-bottom-nav-item.active {
     color: var(--accent) !important;
-    background: var(--accent-subtle) !important;
+    background: var(--accent-subtle, rgba(0, 210, 255, 0.12)) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 2px 14px var(--accent-glow, rgba(0, 210, 255, 0.3)), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+    transform: translateY(-2px) !important;
   }
 
   .storm-bottom-nav-item.active .storm-bottom-nav-icon {
-    transform: scale(1.12) !important;
+    transform: scale(1.1) !important;
     filter: drop-shadow(0 2px 8px var(--accent-glow)) !important;
     animation: dockTabPop 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
@@ -7329,7 +7367,7 @@ body.tv-mode .custom-list-card:focus {
 .media-card-poster-wrap {
   background: linear-gradient(135deg, #0b101d 0%, #152238 50%, #0b101d 100%);
   background-size: 200% 200%;
-  animation: stormPosterPulse 4s ease infinite;
+  animation: none;
 }
 
 .media-card-poster {
@@ -7543,9 +7581,11 @@ body.tv-mode .custom-list-card:focus {
    ========================================================================= */
 .media-card {
   transform: translate3d(0, 0, 0);
-  will-change: transform;
   contain: layout paint;
   backface-visibility: hidden;
+}
+.media-card:hover {
+  will-change: transform;
 }
 
 .media-card-poster,
@@ -7582,5 +7622,56 @@ body.tv-mode .custom-list-card:focus {
 
 body.storm-tab-hidden *,
 body.storm-player-open .ambient-canvas {
+  animation-play-state: paused !important;
+}
+
+
+/* ==========================================================================
+   4K GPU COMPOSITOR & DWM ZERO-OVERHEAD ACCELERATION
+   ========================================================================== */
+.storm-sticky-header-container,
+.storm-navbar,
+.storm-dock,
+.storm-bottom-nav,
+.storm-modal-backdrop,
+.storm-modal-window,
+.storm-modal-dialog,
+.media-card-status-badge,
+.media-card-watched-tag,
+.storm-badge,
+.storm-badge-rating,
+.media-card-remove-continue-btn,
+.media-card-menu-btn,
+.inplayer-ctrl-btn,
+.player-inplayer-episodes-sheet,
+.player-inplayer-voice-sheet {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* При открытом видеоплеере полностью отключаем композицию и перерисовку фонового каталога в 4K */
+body.cinema-open #catalog-container,
+body.cinema-open #hero-banner,
+body.cinema-open .catalog-main-content,
+body.cinema-open .storm-sticky-header-container,
+body.cinema-open .catalog-content,
+body.cinema-open .catalog-grid,
+body.cinema-open .catalog-rails-container,
+body.cinema-open .storm-footer {
+  content-visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.cinema-open * {
+  animation-play-state: paused !important;
+}
+
+body.cinema-open #cinema-modal,
+body.cinema-open #cinema-modal * {
+  animation-play-state: running !important;
+}
+
+/* При скрытой или свернутой вкладке браузера полностью останавливаем все CSS-анимации */
+body.storm-tab-hidden * {
   animation-play-state: paused !important;
 }

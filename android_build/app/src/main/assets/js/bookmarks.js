@@ -1,21 +1,88 @@
-import { trackClientAction } from './achievements.js?v=1.2.0';
+import { trackClientAction } from './achievements.js?v=1.6.3';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.2.0';
-import { t } from './i18n.js?v=1.2.0';
-import { normalizeStatus } from './status-icons.js?v=1.2.0';
+import { getToken, showToast } from './auth.js?v=1.6.3';
+import { t } from './i18n.js?v=1.6.3';
+import { normalizeStatus } from './status-icons.js?v=1.6.3';
 
 let memoryBookmarksCache = [];
+const bookmarksByIdMap = new Map();
+const bookmarksByStrippedIdMap = new Map();
+const bookmarksByCanonMap = new Map();
+const bookmarksByNormTitleMap = new Map();
+const canonTitleMemo = new Map();
+
+function memoizedCanonicalTitle(str) {
+  if (!str) return '';
+  let res = canonTitleMemo.get(str);
+  if (res === undefined) {
+    if (canonTitleMemo.size > 2000) canonTitleMemo.clear();
+    res = normalizeCanonicalTitleMatch(str);
+    canonTitleMemo.set(str, res);
+  }
+  return res;
+}
+
+function rebuildBookmarkIndexes(bookmarks) {
+  bookmarksByIdMap.clear();
+  bookmarksByStrippedIdMap.clear();
+  bookmarksByCanonMap.clear();
+  bookmarksByNormTitleMap.clear();
+  if (!Array.isArray(bookmarks)) return;
+  for (const b of bookmarks) {
+    if (!b) continue;
+    const bId = String(b.id || b.media_id || '').trim();
+    if (bId) {
+      bookmarksByIdMap.set(bId, b);
+      const bStripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
+      if (bStripped && bStripped !== bId) {
+        bookmarksByStrippedIdMap.set(bStripped, b);
+      }
+    }
+    const bTitle = String(b.title || '').trim();
+    if (bTitle) {
+      const bCanon = memoizedCanonicalTitle(bTitle);
+      if (bCanon) bookmarksByCanonMap.set(bCanon, b);
+      const bNorm = bTitle.toLowerCase().replace(/\u0451/g, '\u0435').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+      if (bNorm) bookmarksByNormTitleMap.set(bNorm, b);
+      const simpleLow = bTitle.toLowerCase().trim();
+      if (simpleLow) bookmarksByNormTitleMap.set(simpleLow, b);
+    }
+    const bOrig = String(b.original_title || '').trim();
+    if (bOrig) {
+      const bOrigCanon = memoizedCanonicalTitle(bOrig);
+      if (bOrigCanon && !bookmarksByCanonMap.has(bOrigCanon)) {
+        bookmarksByCanonMap.set(bOrigCanon, b);
+      }
+    }
+  }
+}
 
 export function setMemoryBookmarksCache(bookmarks = []) {
   if (Array.isArray(bookmarks)) {
     memoryBookmarksCache = bookmarks;
+    rebuildBookmarkIndexes(bookmarks);
     if (typeof window !== 'undefined') {
       window.__STORM_MEMORY_BOOKMARKS__ = bookmarks;
+      window.setMemoryBookmarksCache = setMemoryBookmarksCache;
     }
   }
+}
+
+if (typeof window !== 'undefined' && Array.isArray(window.__STORM_MEMORY_BOOKMARKS__)) {
+  setMemoryBookmarksCache(window.__STORM_MEMORY_BOOKMARKS__);
+} else if (typeof window !== 'undefined' && Array.isArray(window.__STORM_BOOTSTRAP_DATA__?.bookmarks)) {
+  setMemoryBookmarksCache(window.__STORM_BOOTSTRAP_DATA__.bookmarks);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storm:db-hydrated', (e) => {
+    if (Array.isArray(e.detail?.bookmarks)) {
+      setMemoryBookmarksCache(e.detail.bookmarks);
+    }
+  });
 }
 
 export function getMemoryBookmarksCache() {
@@ -441,41 +508,55 @@ export function resolveMediaUserStatus(item) {
 
   const id = String(item.id || item.media_id || '');
   const strippedId = id.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
-  let resolved = null;
-
-  if (id) {
-    const s = localStorage.getItem(`storm_status_${id}`) || (strippedId ? localStorage.getItem(`storm_status_${strippedId}`) : null);
-    if (s && s !== 'none') resolved = s;
-  }
-
   const rawTitle = String(item.title || '').trim();
   const origTitle = String(item.original_title || '').trim();
   const normTitle = rawTitle.toLowerCase().replace(/ё/g, 'е').replace(/\s*[\(\[]?\s*(?:4[kк]|uhd|сериал|фильм|\d+\s*сезон).*?[\)\]]?/gi, ' ').trim();
   const canonTitle = normalizeCanonicalTitleMatch(rawTitle);
   const canonOrig = normalizeCanonicalTitleMatch(origTitle);
 
-  if (!resolved && (normTitle || canonTitle)) {
-    const s = (normTitle && localStorage.getItem(`storm_status_title_${normTitle}`)) ||
+  // 1. ????????? ?????????: O(1) ????? ? ???-???????? ?????????? ???? ????????
+  if (bookmarksByIdMap.size > 0 || bookmarksByCanonMap.size > 0 || bookmarksByNormTitleMap.size > 0) {
+    let match = null;
+    if (id && bookmarksByIdMap.has(id)) {
+      match = bookmarksByIdMap.get(id);
+    } else if (strippedId && bookmarksByStrippedIdMap.has(strippedId)) {
+      match = bookmarksByStrippedIdMap.get(strippedId);
+    } else if (canonTitle && bookmarksByCanonMap.has(canonTitle)) {
+      match = bookmarksByCanonMap.get(canonTitle);
+    } else if (canonOrig && bookmarksByCanonMap.has(canonOrig)) {
+      match = bookmarksByCanonMap.get(canonOrig);
+    } else if (normTitle && bookmarksByNormTitleMap.has(normTitle)) {
+      match = bookmarksByNormTitleMap.get(normTitle);
+    }
+    if (match?.status && match.status !== 'none') {
+      const serverSt = normalizeStatus(match.status || match.user_status || '');
+      if (serverSt && serverSt !== 'none') {
+        // ????????????? localStorage: ????????? ?????????? ?????
+        try {
+          if (id) localStorage.setItem(`storm_status_${id}`, serverSt);
+          if (strippedId) localStorage.setItem(`storm_status_${strippedId}`, serverSt);
+          if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, serverSt);
+          if (canonTitle) localStorage.setItem(`storm_status_canon_${canonTitle}`, serverSt);
+        } catch (_) {}
+        return serverSt;
+      }
+    }
+  }
+
+  // 2. Проверка канонического названия в localStorage (название первично по отношению к разным ID источников)
+  let resolved = null;
+  if (canonTitle || normTitle) {
+    const s = (canonTitle && localStorage.getItem(`storm_status_canon_${canonTitle}`)) ||
+              (normTitle && localStorage.getItem(`storm_status_title_${normTitle}`)) ||
               (rawTitle && localStorage.getItem(`storm_status_title_${rawTitle.toLowerCase()}`)) ||
-              (canonTitle && localStorage.getItem(`storm_status_canon_${canonTitle}`)) ||
               (canonOrig && localStorage.getItem(`storm_status_canon_${canonOrig}`));
     if (s && s !== 'none') resolved = s;
   }
 
-  if (!resolved && memoryBookmarksCache.length > 0) {
-    const match = memoryBookmarksCache.find(b => {
-      const bId = String(b.id || b.media_id || '');
-      const bStripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
-      if (id && (bId === id || (strippedId && bStripped && strippedId === bStripped))) return true;
-      const bCanon = normalizeCanonicalTitleMatch(b.title || '');
-      const bOrigCanon = normalizeCanonicalTitleMatch(b.original_title || '');
-      if (canonTitle && (bCanon === canonTitle || (bOrigCanon && bOrigCanon === canonTitle))) return true;
-      if (canonOrig && (bOrigCanon === canonOrig || (bCanon && bCanon === canonOrig))) return true;
-      return false;
-    });
-    if (match?.status && match.status !== 'none') {
-      resolved = match.status;
-    }
+  // 3. Проверка по конкретному ID / strippedId в localStorage
+  if (!resolved && id) {
+    const s = localStorage.getItem(`storm_status_${id}`) || (strippedId ? localStorage.getItem(`storm_status_${strippedId}`) : null);
+    if (s && s !== 'none') resolved = s;
   }
 
   if (resolved) {
@@ -590,6 +671,10 @@ export async function fetchUserBookmarks(status = null, type = null) {
 
   // 1. Запрос к серверу (только для авторизованного пользователя)
   if (activeToken && !activeToken.startsWith('offline_') && !activeToken.startsWith('guest_')) {
+  if (!status && !type && window.__STORM_BOOTSTRAP_DATA__ && Array.isArray(window.__STORM_BOOTSTRAP_DATA__.bookmarks) && window.__STORM_BOOTSTRAP_DATA__.bookmarks.length > 0 && !window.__STORM_BOOKMARKS_DIRTY__) {
+    serverBookmarks = window.__STORM_BOOTSTRAP_DATA__.bookmarks;
+    serverAnswered = true;
+  } else {
   try {
     let url = '/api/bookmarks';
     const params = new URLSearchParams();
@@ -611,6 +696,7 @@ export async function fetchUserBookmarks(status = null, type = null) {
     }
   } catch (err) {
     console.warn('Серверные закладки недоступны, используем локальный кэш:', err.message);
+  }
   }
   }
 
@@ -649,28 +735,33 @@ export async function fetchUserBookmarks(status = null, type = null) {
     }
   }
 
-  let combined = Array.from(mergedMap.values());
+  const allCombined = Array.from(mergedMap.values());
   if (!status && !type && serverAnswered) {
-    saveLocalBookmarksList(combined);
+    saveLocalBookmarksList(allCombined);
   }
 
+  // Кэш памяти ВСЕГДА хранит ВСЕ закладки, а не отфильтрованный срез!
+  if ((!status && !type && serverAnswered) || memoryBookmarksCache.length === 0) {
+    setMemoryBookmarksCache(allCombined);
+  }
+
+  let filtered = allCombined;
   if (status) {
     const normQuery = normalizeStatus(status);
     if (normQuery === 'favorite') {
-      combined = combined.filter(b => normalizeStatus(b.status) === 'favorite' || normalizeStatus(b.user_status) === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
+      filtered = filtered.filter(b => normalizeStatus(b.status) === 'favorite' || normalizeStatus(b.user_status) === 'favorite' || b.is_favorite === 1 || b.is_favorite === true);
     } else {
-      combined = combined.filter(b => normalizeStatus(b.status) === normQuery || normalizeStatus(b.user_status) === normQuery);
+      filtered = filtered.filter(b => normalizeStatus(b.status) === normQuery || normalizeStatus(b.user_status) === normQuery);
     }
   }
   if (type) {
-    combined = combined.filter(b => b.media_type === type);
+    filtered = filtered.filter(b => b.media_type === type);
   }
 
-  setMemoryBookmarksCache(combined);
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('storm:dynamic-state-sync', { detail: { bookmarksCount: combined.length } }));
+    window.dispatchEvent(new CustomEvent('storm:dynamic-state-sync', { detail: { bookmarksCount: allCombined.length } }));
   }
-  return combined;
+  return filtered;
 }
 
 export function normalizeContinueTitleKey(title = '') {
@@ -735,9 +826,14 @@ export function removeFromLocalContinueWatching(mediaId, title = '', source = ''
     const cleanId = String(mediaId || '').trim();
 
     setDismissedFromContinueWatching(cleanId, title, true);
-
+    if (typeof window !== 'undefined' && typeof window.cancelStormWatchProgressQueue === 'function') {
+      try { window.cancelStormWatchProgressQueue(cleanId, title); } catch {}
+    }
     if (cleanId) {
-      try { localStorage.removeItem(`storm_resume_state_${cleanId}`); } catch {}
+      try {
+        localStorage.removeItem(`storm_resume_state_${cleanId}`);
+        localStorage.removeItem(`storm_real_watchtime_${cleanId}`);
+      } catch {}
     }
     if (tKey) {
       try { localStorage.removeItem(`storm_resume_state_title_${tKey}`); } catch {}
@@ -995,22 +1091,6 @@ export function detectClientMediaType(item) {
   const link = String(item.link || item.url || item.fanfilm_4k_url || '').toLowerCase();
   const src = String(item.source || item.provider || '').toLowerCase();
 
-  // 0. Обитель зла: Мутация - строго фильм, не анимация!
-  if (t.includes('обитель зла') && (t.includes('мутация') || t.includes('мутиция'))) {
-    return 'movie';
-  }
-
-  // Дюна и Уличный боец (2026) - строго художественные фильмы
-  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть') ||
-      t === 'уличный боец' || t.startsWith('уличный боец ') || t === 'street fighter' || t.startsWith('street fighter ')) {
-    return 'movie';
-  }
-
-  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
-  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
-    return 'series';
-  }
-
   // 1. Известные анимационные фильмы (Вырождение, Вендетта и др.)
   const knownAnimatedMovies = [
     'обитель зла: вендетта', 'обитель зла вендетта', 'resident evil: vendetta',
@@ -1025,6 +1105,36 @@ export function detectClientMediaType(item) {
     'шрек', 'shrek', 'ледниковый период', 'ice age', 'гадкий я', 'despicable me',
     'тайна коко', 'coco', 'валли', 'wall-e', 'вверх', 'up', 'рататуй', 'ratatouille'
   ];
+
+  // 0. Обитель зла (художественные фильмы 2026, 2002, Последняя глава, Мутация и др. - строго movie, НЕ сериал)
+  if (t === 'обитель зла' || t === 'resident evil' ||
+      (t.startsWith('обитель зла') && !t.includes('сериал') && !t.includes('бесконечная тьма') && !t.includes('сезон'))) {
+    const hasRealMultiEp = Array.isArray(item?.seasons) && item.seasons.length > 0 && Array.isArray(item.seasons[0]?.episodes) && item.seasons[0].episodes.length > 1;
+    if (!hasRealMultiEp && (!item?.total_episodes || Number(item.total_episodes) <= 1)) {
+      return (typeof knownAnimatedMovies !== 'undefined' && knownAnimatedMovies.some(m => t.includes(m))) ? 'cartoon' : 'movie';
+    }
+  }
+
+  // Монстр Амазонки / Берегись Боюны (Beware Boiúna, 2026) - строго художественный фильм (movie)
+  if (t === 'монстр амазонки' || t.startsWith('монстр амазонки') ||
+      t === 'берегись боюны' || t.startsWith('берегись боюны') ||
+      t === 'beware boiuna' || t.startsWith('beware boiuna') ||
+      t === 'beware the boiuna' || t.startsWith('beware the boiuna')) {
+    return 'movie';
+  }
+
+  // Дюна и Уличный боец (2026) - строго художественные фильмы
+  if (t === 'дюна' || t.startsWith('дюна:') || t.startsWith('дюна ') || t.includes('дюна: часть') || t.includes('дюна часть') ||
+      t === 'уличный боец' || t.startsWith('уличный боец ') || t === 'street fighter' || t.startsWith('street fighter ')) {
+    return 'movie';
+  }
+
+  // Кэрри (2026) - сериал от Майка Флэнагана для Prime Video
+  if (t === 'кэрри' || t.startsWith('кэрри ') || t.startsWith('кэрри:') || t === 'carrie' || t.startsWith('carrie ') || t.startsWith('carrie:')) {
+    return 'series';
+  }
+
+
   if (knownAnimatedMovies.some(m => t === m || t.startsWith(m + ' ') || t.includes(m))) {
     return 'cartoon';
   }
@@ -1051,12 +1161,21 @@ export function detectClientMediaType(item) {
   }
 
   // Аниме
+  const origLow = String(item.original_title || item.original_name || '').toLowerCase().replace(/ё/g, 'е');
   if (src === 'anilibria' || src === 'anixart' || src === 'shikimori' ||
       cat.includes('anime') || link.includes('anime') ||
+      item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.media_type === 'anime-series' ||
+      t.includes('перерождении в слизь') || t.includes('перерождение в слизь') || origLow.includes('tensei shitara slime') || origLow.includes('tensura nikki') ||
       t.includes('перекуре за супермаркетом') || t.includes('дандадан') || t.includes('клинок, рассекающий') ||
       t.includes('атака титанов') || t.includes('аркейн') || t.includes('поднятие уровня') || t.includes('магическая битва') ||
       t.includes('персонажи в клетке') || t.includes('кафе из другого мира')) {
-    if (t.includes('фильм') || cat === 'anime-movies' || item.media_type === 'anime-movie') {
+    const isPromoSpec = /\bmovie\b.*\bspecials?\b/i.test(origLow) || /спецвыпуск/i.test(t);
+    if (!isPromoSpec && (
+        t.includes('фильм') || t.includes('movie') || origLow.includes('movie') || origLow.includes('gekijouban') ||
+        t.includes('резе') || t.includes('reze') || t.includes('алые узы') || t.includes('слезы синего моря') ||
+        origLow.includes('guren no kizuna') || origLow.includes('soukai no namida') ||
+        cat === 'anime-movies' || cat === 'anime-movie' || cat === 'аниме-фильм' ||
+        item.media_type === 'anime-movie' || item.media_type === 'anime-movies' || item.kind === 'movie' || item.is_movie)) {
       return 'anime-movie';
     }
     return 'anime-series';
@@ -1152,7 +1271,13 @@ export function detectClientMediaType(item) {
     return 'series';
   }
 
-  if (knownSeries.some(s => t === s || t.startsWith(s + ' ') || t.includes(s))) {
+  if (knownSeries.some(s => {
+    if (t === s) return true;
+    if (s.length <= 5) {
+      return t.startsWith(s + ' ') || t.endsWith(' ' + s) || t.includes(' ' + s + ' ') || t.startsWith(s + ':') || t.includes(' ' + s + ':');
+    }
+    return t.startsWith(s + ' ') || t.includes(s);
+  })) {
     return 'series';
   }
 
@@ -1428,31 +1553,33 @@ export function getLocalContinueWatching() {
 
       // 3. Если прогресс 90% или более и это фильм, считается просмотренным
       const pct = typeof item.progress_percent === 'number' ? item.progress_percent : 0;
-      const cleanType = detectClientMediaType(item);
-      const isMovie = cleanType === 'movie' || cleanType === 'anime-movie' || cleanType === 'cartoon';
-      if (pct >= 90 && isMovie) {
+      if (pct >= 90) {
         hasChanges = true;
         return false;
       }
 
       const sec = typeof item.time_seconds === 'number' ? item.time_seconds : 0;
-      const ep = parseInt(item.episode, 10) || 1;
-      const sNum = parseInt(item.season, 10) || 1;
-      return (pct >= 0.5 && sec >= 10) || (sec >= 15) || (pct >= 3.0) || (ep > 1) || (sNum > 1);
+      const realSec = typeof item.real_watched_seconds === 'number' ? item.real_watched_seconds : sec;
+      if (sec < 600 || realSec < 600) {
+        hasChanges = true;
+        return false;
+      }
+      return true;
     }).map(item => {
       const cleanType = detectClientMediaType(item);
       const cleanYr = detectClientYear(item);
       const s = parseInt(item.season, 10) || 1;
       const ep = parseInt(item.episode, 10) || 1;
-      const isSeries = cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1;
+      const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
+      const isSeries = !isMovie && (cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1);
       const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
       return {
         ...item,
         media_type: cleanType,
         year: cleanYr || item.year,
-        season: s,
-        episode: ep,
-        next_up: nextUpText || item.next_up || ''
+        season: isMovie ? 1 : s,
+        episode: isMovie ? 1 : ep,
+        next_up: nextUpText
       };
     });
 
@@ -1485,7 +1612,8 @@ export function saveLocalWatchProgress(data) {
 
   const cleanMediaType = detectClientMediaType(data);
   const cleanYear = detectClientYear(data) || data.year || '';
-  const isSeries = cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1;
+  const isMovie = cleanMediaType === 'movie' || cleanMediaType === 'cartoon' || cleanMediaType === 'anime-movie';
+  const isSeries = !isMovie && (cleanMediaType === 'series' || cleanMediaType === 'anime-series' || cleanMediaType === 'cartoon-series' || cleanMediaType === 'tv' || s > 1 || ep > 1);
 
   // Расчет общего прогресса по всем сезонам сериала
   let seriesOverallPercent = pct;
@@ -1509,19 +1637,31 @@ export function saveLocalWatchProgress(data) {
   }
 
   // Плекс и Эмби модель прогресса просмотра:
+  let isNextEpTransition = false;
   if (pct >= 90) {
     if (isSeries) {
       try {
         localStorage.setItem(`storm_ep_watched_${data.media_id}_s${s}_e${ep}`, '1');
       } catch (_) {}
 
-      // Если есть следующая серия, переводим Next Up на серию (ep + 1) с 0%
-      if (totalEp > 0 && ep < totalEp) {
+      const totalSeasons = Number(data.total_seasons || 1);
+      const hasNextInSeason = totalEp > 0 && ep < totalEp;
+      const hasNextSeason = totalSeasons > s || data.has_next_season;
+
+      // Если есть следующая серия или сезон, переводим Next Up на следующую серию с 0%
+      if (hasNextInSeason) {
         ep = ep + 1;
         pct = 0;
         sec = 0;
+        isNextEpTransition = true;
+      } else if (hasNextSeason || data.has_next_episode) {
+        s = s + 1;
+        ep = 1;
+        pct = 0;
+        sec = 0;
+        isNextEpTransition = true;
       } else {
-        // Все серии завершены — статус completed, исключаем из Continue Watching
+        // Действительно все вышедшие сезоны и серии завершены
         try {
           localStorage.setItem(`storm_status_${data.media_id}`, 'completed');
           localStorage.setItem(`storm_status_title_${cleanTitle.toLowerCase()}`, 'completed');
@@ -1544,12 +1684,12 @@ export function saveLocalWatchProgress(data) {
     }
   }
 
-  if (pct < 0.5 && sec < 10 && ep <= 1 && s <= 1) return;
+  const realSec = typeof data.real_watched_seconds === 'number' ? data.real_watched_seconds : (data.time_seconds || 0);
+  if (!isSeries && (realSec < 600 || sec < 600)) return;
+  if (isSeries && !isNextEpTransition && !data.is_next_episode && !data.is_synthesized && (data.user_status !== 'watching') && realSec < 600 && sec < 600) return;
 
   try {
-    if (sec >= 15 || pct >= 3) {
-      setDismissedFromContinueWatching(data.media_id, cleanTitle, false);
-    }
+    setDismissedFromContinueWatching(data.media_id, cleanTitle, false);
     const list = getLocalContinueWatching();
     const now = Date.now();
     const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
@@ -1562,11 +1702,12 @@ export function saveLocalWatchProgress(data) {
       poster: data.poster_url || data.poster || '',
       media_type: cleanMediaType,
       year: cleanYear,
-      season: s,
-      episode: ep,
-      total_episodes: totalEp || 1,
+      season: isMovie ? 1 : s,
+      episode: isMovie ? 1 : ep,
+      total_episodes: isMovie ? 1 : (totalEp || 1),
       duration_seconds: data.duration_seconds || 7200,
       time_seconds: sec,
+      real_watched_seconds: realSec,
       progress_percent: isSeries ? seriesOverallPercent : pct,
       episode_progress_percent: pct,
       series_progress_percent: seriesOverallPercent,
@@ -1597,6 +1738,12 @@ export function saveLocalWatchProgress(data) {
 
 export async function syncWatchProgress(data) {
   if (!data) return;
+  const realSec = Number(data.real_watched_seconds || 0);
+  const timeSec = Number(data.time_seconds ?? data.progress_seconds ?? 0);
+  const pct = Number(data.progress_percent || 0);
+  const isSeries = Boolean(data.is_series || (data.season && data.season > 1) || (data.episode && data.episode > 1) || data.is_next_episode || data.has_next_episode);
+  if (!isSeries && (realSec < 600 || timeSec < 600) && pct < 90) return;
+  if (isSeries && !data.is_next_episode && !data.has_next_episode && (realSec < 600 && timeSec < 600) && pct < 90) return;
   // Всегда сохраняем локально, гарантируя фиксацию для гостей и локального режима
   saveLocalWatchProgress(data);
 
@@ -1625,6 +1772,10 @@ export async function fetchContinueWatching() {
 
   let serverItems = [];
   let serverAnswered = false;
+  if (window.__STORM_BOOTSTRAP_DATA__ && Array.isArray(window.__STORM_BOOTSTRAP_DATA__.continueWatching) && !window.__STORM_CW_DIRTY__) {
+    serverItems = window.__STORM_BOOTSTRAP_DATA__.continueWatching;
+    serverAnswered = true;
+  } else {
   try {
     const res = await fetch('/api/media/continue-watching', {
       headers: buildAuthHeaders(false),
@@ -1643,6 +1794,7 @@ export async function fetchContinueWatching() {
     }
   } catch (err) {
     // При временном сетевом сбое используем только локальный кэш текущего владельца
+  }
   }
 
   const mergedMap = new Map();
@@ -1674,14 +1826,34 @@ export async function fetchContinueWatching() {
     if (item.bookmark_status === 'completed' || item.user_status === 'completed' || item.status === 'completed' ||
         item.bookmark_status === 'dropped' || item.user_status === 'dropped' || item.status === 'dropped' ||
         item.bookmark_status === 'wont_watch' || item.user_status === 'wont_watch' || item.status === 'wont_watch') return false;
-    if (item.progress_percent && item.progress_percent >= 90) return false;
+
+    const cleanType = detectClientMediaType(item);
+    const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
+    const isSeries = !isMovie && (item.is_series || cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || (item.season && item.season > 1) || (item.episode && item.episode > 1));
+
+    if (isMovie && item.progress_percent && item.progress_percent >= 90) return false;
+
+    const sec = Number(item.time_seconds || 0);
+    const realSec = Number(item.real_watched_seconds ?? item.time_seconds ?? 0);
+
+    // Если это фильм: строго проверяем 10 минут реального непрерывного воспроизведения
+    if (isMovie) {
+      if (sec < 600 || realSec < 600) return false;
+    } else {
+      // Для сериалов: проверяем кумулятивное время >= 600 сек, статус watching или флаг следующей серии
+      const isWatching = item.user_status === 'watching' || item.bookmark_status === 'watching';
+      const isNextEp = item.is_next_episode || item.is_synthesized;
+      if (!isWatching && !isNextEp && realSec < 600 && sec < 600) return false;
+    }
     return true;
   }).map(item => {
     const s = parseInt(item.season, 10) || 1;
     const ep = parseInt(item.episode, 10) || 1;
     const cleanType = detectClientMediaType(item);
-    const isSeries = cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1;
-    const nextUpText = isSeries ? `С${s} • Э${ep}` : '';
+    const isMovie = cleanType === 'movie' || cleanType === 'cartoon' || cleanType === 'anime-movie';
+    const isSeries = !isMovie && (item.is_series || cleanType === 'series' || cleanType === 'anime-series' || cleanType === 'cartoon-series' || cleanType === 'tv' || s > 1 || ep > 1);
+    const isNext = !isMovie && (item.is_next_episode || item.time_seconds === 0 || item.progress_percent === 0);
+    const nextUpText = isMovie ? '' : (item.next_up_badge || (isNext ? `След.: С${s} • Э${ep}` : `С${s} • Э${ep}`));
     return {
       ...item,
       id: item.media_id || item.id,
@@ -1692,9 +1864,12 @@ export async function fetchContinueWatching() {
       year: detectClientYear(item) || item.year || '',
       progress_percent: typeof item.progress_percent === 'number' ? Math.round(item.progress_percent) : 0,
       user_status: item.bookmark_status || item.user_status || (item.status && item.status !== 'watching' ? item.status : item.bookmark_status) || null,
-      season: s,
-      episode: ep,
-      next_up: nextUpText || item.next_up || ''
+      season: isMovie ? 1 : s,
+      episode: isMovie ? 1 : ep,
+      is_series: isSeries,
+      is_next_episode: isNext,
+      next_up: nextUpText,
+      next_up_badge: nextUpText
     };
   });
   result.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
@@ -1836,4 +2011,33 @@ export async function deleteCustomListApi(listId) {
     }
   } catch (err) {}
   return false;
+  // 1. ????????? ?????????: O(1) ????? ? ???-???????? ?????????? ???? ????????
+  if (bookmarksByIdMap.size > 0 || bookmarksByCanonMap.size > 0 || bookmarksByNormTitleMap.size > 0) {
+    let match = null;
+    if (id && bookmarksByIdMap.has(id)) {
+      match = bookmarksByIdMap.get(id);
+    } else if (strippedId && bookmarksByStrippedIdMap.has(strippedId)) {
+      match = bookmarksByStrippedIdMap.get(strippedId);
+    } else if (canonTitle && bookmarksByCanonMap.has(canonTitle)) {
+      match = bookmarksByCanonMap.get(canonTitle);
+    } else if (canonOrig && bookmarksByCanonMap.has(canonOrig)) {
+      match = bookmarksByCanonMap.get(canonOrig);
+    } else if (normTitle && bookmarksByNormTitleMap.has(normTitle)) {
+      match = bookmarksByNormTitleMap.get(normTitle);
+    }
+    if (match?.status && match.status !== 'none') {
+      const serverSt = normalizeStatus(match.status || match.user_status || '');
+      if (serverSt && serverSt !== 'none') {
+        // ????????????? localStorage: ????????? ?????????? ?????
+        try {
+          if (id) localStorage.setItem(`storm_status_${id}`, serverSt);
+          if (strippedId) localStorage.setItem(`storm_status_${strippedId}`, serverSt);
+          if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, serverSt);
+          if (canonTitle) localStorage.setItem(`storm_status_canon_${canonTitle}`, serverSt);
+        } catch (_) {}
+        return serverSt;
+      }
+    }
+  }
+
 }

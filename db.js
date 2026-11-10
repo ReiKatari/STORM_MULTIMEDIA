@@ -101,15 +101,18 @@ process.once('SIGTERM', () => { flushSqliteWal(); process.exit(0); });
 process.once('SIGINT', () => { flushSqliteWal(); process.exit(0); });
 
 // Автоматическая инициализация MariaDB 10 (Synology NAS phpMyAdmin)
-initMariaDb().then(() => {
-  syncFromMariaDbToSqlite(db);
-  // Периодическая фоновая синхронизация каждые 30 секунд для подхвата правок из phpMyAdmin
-  setInterval(() => {
+const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT || process.execArgv.includes('--test') || process.argv.some(a => a.includes('test')));
+if (!isTestRunner) {
+  initMariaDb().then(() => {
     syncFromMariaDbToSqlite(db);
-  }, 30000).unref();
-}).catch(err => {
-  console.warn('[MariaDB 10] Инициализация:', err.message);
-});
+    // Периодическая фоновая синхронизация каждые 30 секунд для подхвата правок из phpMyAdmin
+    setInterval(() => {
+      syncFromMariaDbToSqlite(db);
+    }, 30000).unref();
+  }).catch(err => {
+    console.warn('[MariaDB 10] Инициализация:', err.message);
+  });
+}
 
 // Настройка оптимизации SQLite (WAL режим, synchronous = NORMAL)
 db.exec(`
@@ -1321,6 +1324,39 @@ export function setBookmark(userId, data) {
       mariaDeleteBookmark(userId, null, null, extraRows);
     }
 
+    // Синхронизируем kv_store пользователя, чтобы старые storm_status_* ключи не перетирали статус
+    try {
+      const userRow = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId);
+      if (userRow && userRow.settings_json) {
+        const uSettings = JSON.parse(userRow.settings_json || '{}');
+        const kv = uSettings.kv_store || {};
+        let kvModified = false;
+        const normT = (title || '').trim().toLowerCase().replace(/ё/g, 'е');
+        const canonT = normalizeMediaKey(title, original_title);
+        const allAssociatedIds = new Set([
+          String(media_id),
+          String(media_id).replace(/^[a-z]+_/, ''),
+          ...duplicateRows.map(r => String(r.media_id)),
+          ...duplicateRows.map(r => String(r.media_id).replace(/^[a-z]+_/, ''))
+        ]);
+        for (const [k, v] of Object.entries(kv)) {
+          if (k.startsWith('storm_status_')) {
+            const suffix = k.replace('storm_status_', '');
+            if (allAssociatedIds.has(suffix) || suffix === `title_${normT}` || suffix === `canon_${canonT}`) {
+              if (kv[k] !== status) {
+                kv[k] = status;
+                kvModified = true;
+              }
+            }
+          }
+        }
+        if (kvModified) {
+          uSettings.kv_store = kv;
+          db.prepare('UPDATE users SET settings_json = ? WHERE id = ?').run(JSON.stringify(uSettings), userId);
+        }
+      }
+    } catch (_) {}
+
     if (['completed', 'dropped', 'wont_watch'].includes(status)) {
       removeContinueWatchingItem(userId, String(media_id), source, title);
     }
@@ -1622,12 +1658,14 @@ export function logWatchProgress(userId, data) {
     }
   }
 
+  const cleanDevice = String(data.device_name || data.device || 'Web').trim();
+
   // Сохраняем в watch_history
   const upsertHistory = db.prepare(`
     INSERT INTO watch_history (
       user_id, media_id, source, title, poster_url, media_type, year,
-      season, episode, time_seconds, real_watched_seconds, duration_seconds, progress_percent, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      season, episode, time_seconds, real_watched_seconds, duration_seconds, progress_percent, device_name, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, media_id, source, season, episode) DO UPDATE SET
       media_type = excluded.media_type,
       year = COALESCE(NULLIF(excluded.year, ''), watch_history.year),
@@ -1636,6 +1674,7 @@ export function logWatchProgress(userId, data) {
       real_watched_seconds = excluded.real_watched_seconds,
       duration_seconds = CASE WHEN excluded.duration_seconds > 0 THEN excluded.duration_seconds ELSE watch_history.duration_seconds END,
       progress_percent = excluded.progress_percent,
+      device_name = COALESCE(NULLIF(excluded.device_name, ''), watch_history.device_name),
       updated_at = excluded.updated_at
   `);
 
@@ -1653,6 +1692,7 @@ export function logWatchProgress(userId, data) {
     cumulativeReal,
     duration_seconds,
     targetProgress,
+    cleanDevice,
     now
   );
 
@@ -3277,24 +3317,61 @@ export function getAdminUsersOverview() {
         is_live: false
       };
     } else {
-      // Fallback на последний тайтл из закладок, если история пуста
-      const watchingBookmark = bookmarks.find(b => b.status === 'watching') || (bookmarks.length > 0 ? bookmarks[0] : null);
-      if (watchingBookmark) {
-        const isMovie = watchingBookmark.media_type === 'movie' || watchingBookmark.media_type === 'cartoon' || watchingBookmark.media_type === 'anime-movie';
+      // 1. Проверяем сохраненный прогресс воспроизведения из kv_store (storm_resume_state_*)
+      let resumeStateItem = null;
+      const kvStore = settingsObj.kv_store || {};
+      let latestResumeTs = 0;
+      for (const [k, v] of Object.entries(kvStore)) {
+        if (k.startsWith('storm_resume_state_') && !k.startsWith('storm_resume_state_title_') && v) {
+          try {
+            const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+            const ts = Number(parsed.updated_at || 0);
+            if (parsed.title && ts > latestResumeTs) {
+              latestResumeTs = ts;
+              resumeStateItem = parsed;
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (resumeStateItem && (nowMs - latestResumeTs < 3600 * 1000 * 24 * 30)) {
+        const isMovie = resumeStateItem.media_type === 'movie' || resumeStateItem.media_type === 'cartoon' || resumeStateItem.media_type === 'anime-movie';
         watchingNow = {
-          title: watchingBookmark.title,
-          poster_url: watchingBookmark.poster_url,
-          media_type: watchingBookmark.media_type || (isMovie ? 'movie' : 'series'),
-          season: null,
-          episode: null,
-          progress_percent: watchingBookmark.progress_percent || (watchingBookmark.status === 'completed' ? 100 : 0),
-          time_seconds: 0,
-          duration_seconds: 0,
-          updated_at: watchingBookmark.updated_at,
-          is_active: false,
-          is_live: false,
-          is_bookmark_fallback: true
+          title: resumeStateItem.title,
+          poster_url: resumeStateItem.poster_url,
+          media_type: resumeStateItem.media_type || (isMovie ? 'movie' : 'series'),
+          season: isMovie ? null : resumeStateItem.season,
+          episode: isMovie ? null : resumeStateItem.episode,
+          progress_percent: resumeStateItem.progress_percent || 0,
+          time_seconds: resumeStateItem.time_seconds || 0,
+          duration_seconds: resumeStateItem.duration_seconds || 0,
+          updated_at: latestResumeTs,
+          is_active: Boolean(nowMs - latestResumeTs < 3600 * 1000 * 3),
+          is_live: false
         };
+      } else {
+        // 2. Fallback на самый последний обновленный тайтл из закладок (ORDER BY updated_at DESC)
+        const latestBookmark = bookmarks.length > 0 ? bookmarks[0] : null;
+        if (latestBookmark) {
+          const isMovie = latestBookmark.media_type === 'movie' || latestBookmark.media_type === 'cartoon' || latestBookmark.media_type === 'anime-movie';
+          const isComp = latestBookmark.status === 'completed';
+          watchingNow = {
+            title: latestBookmark.title,
+            poster_url: latestBookmark.poster_url,
+            media_type: latestBookmark.media_type || (isMovie ? 'movie' : 'series'),
+            season: null,
+            episode: null,
+            status: latestBookmark.status,
+            status_label: isComp ? 'Просмотрено' : (latestBookmark.status === 'watching' ? 'Смотрю' : 'В планах'),
+            progress_percent: isComp ? 100 : (Number(latestBookmark.progress_percent) || 0),
+            time_seconds: 0,
+            duration_seconds: 0,
+            updated_at: latestBookmark.updated_at,
+            is_active: false,
+            is_live: false,
+            is_bookmark_fallback: true
+          };
+        }
       }
     }
 

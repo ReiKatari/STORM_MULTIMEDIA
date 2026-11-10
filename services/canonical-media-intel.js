@@ -696,6 +696,14 @@ export function resolveCanonicalMediaType(title = '', link = '', category = '', 
     return 'series';
   }
 
+  // Монстр Амазонки / Берегись Боюны (Beware Boiúna, 2026) - строго художественный фильм (movie)
+  if (norm === 'монстр амазонки' || norm.startsWith('монстр амазонки') ||
+      norm === 'берегись боюны' || norm.startsWith('берегись боюны') ||
+      norm === 'beware boiuna' || norm.startsWith('beware boiuna') ||
+      norm === 'beware the boiuna' || norm.startsWith('beware the boiuna')) {
+    return 'movie';
+  }
+
   // 0. Обитель зла (художественные фильмы 2026, 2002, Последняя глава, Мутация и др. - строго movie, НЕ сериал)
   if (norm === 'обитель зла' || norm === 'resident evil' ||
       (norm.startsWith('обитель зла') && !norm.includes('сериал') && !norm.includes('бесконечная тьма') && !norm.includes('сезон'))) {

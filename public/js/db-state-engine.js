@@ -110,6 +110,11 @@
       key.startsWith('storm_cat_cache_') ||
       key.startsWith('storm_sw_') ||
       key.startsWith('storm_mod_healed_') ||
+      key.startsWith('storm_lift_') ||
+      key.startsWith('storm_cal_') ||
+      key.startsWith('storm_catalog_') ||
+      key.startsWith('storm_search_') ||
+      key === 'storm_local_bookmarks' ||
       key === 'storm_token' ||
       key === 'storm_user' ||
       key === GUEST_VAULT_KEY
@@ -308,6 +313,31 @@
         for (const [k, v] of Object.entries(data.kv)) {
           if (v !== null && v !== undefined) {
             ramStore.set(k, String(v));
+          }
+        }
+      }
+
+      if (Array.isArray(data.bookmarks)) {
+        window.__STORM_MEMORY_BOOKMARKS__ = data.bookmarks;
+        if (typeof window.setMemoryBookmarksCache === 'function') {
+          window.setMemoryBookmarksCache(data.bookmarks);
+        }
+        for (const b of data.bookmarks) {
+          if (!b) continue;
+          const bId = String(b.media_id || b.id || '').trim();
+          const bStatus = String(b.status || b.user_status || '').trim().toLowerCase();
+          if (bId && bStatus && bStatus !== 'none') {
+            ramStore.set(`storm_status_${bId}`, bStatus);
+            const stripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
+            if (stripped && stripped !== bId) {
+              ramStore.set(`storm_status_${stripped}`, bStatus);
+            }
+          }
+          const normT = String(b.title || '').trim().toLowerCase().replace(/ё/g, 'е');
+          if (normT && bStatus && bStatus !== 'none') {
+            ramStore.set(`storm_status_title_${normT}`, bStatus);
+            const canonT = normT.replace(/[^\p{L}\p{N}]+/gu, '');
+            if (canonT) ramStore.set(`storm_status_canon_${canonT}`, bStatus);
           }
         }
       }

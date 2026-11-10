@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.2.0';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.2.0';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession } from './auth.js?v=1.2.0';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.2.0';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.2.0';
-import { getStatusIconSvg } from './status-icons.js?v=1.2.0';
-import { initFormFactorEngine } from './form-factor.js?v=1.2.0';
+import { initTheme, setTheme } from './theme.js?v=1.6.3';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.3';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.3';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.3';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.3';
+import { getStatusIconSvg } from './status-icons.js?v=1.6.3';
+import { initFormFactorEngine } from './form-factor.js?v=1.6.3';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.2.0';
+const STORM_ASSET_VER = '1.6.3';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -188,9 +188,87 @@ const checkForUpdates = (...args) => (_updaterModPromise ||= import(`./updater.j
 let _achModPromise = null;
 const trackClientAction = (action, meta) => (_achModPromise ||= import(`./achievements.js?v=${STORM_ASSET_VER}`)).then(m => m.trackClientAction?.(action, meta)).catch(() => {});
 
-let currentTab = 'home';
+const STORM_NAV_STATE_KEY = 'storm_nav_state_v1';
+const STORM_FULL_HISTORY_KEY = 'storm_full_watch_history_v1';
+
+function loadSavedNavState() {
+  try {
+    const raw = sessionStorage.getItem(STORM_NAV_STATE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (_) {}
+  return {};
+}
+
+function saveCurrentNavState() {
+  try {
+    sessionStorage.setItem(STORM_NAV_STATE_KEY, JSON.stringify({
+      tab: currentTab || 'home',
+      page: currentPage || 1,
+      bookmarkSubTab: currentBookmarkSubTab || 'all',
+      searchQuery: searchQuery || ''
+    }));
+  } catch (_) {}
+}
+
+export function getFullWatchHistoryList() {
+  try {
+    const raw = localStorage.getItem(STORM_FULL_HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+export function recordStormWatchHistoryItem(mediaItem, extra = {}) {
+  if (!mediaItem || (!mediaItem.id && !mediaItem.media_id) || !mediaItem.title) return;
+  try {
+    const list = getFullWatchHistoryList();
+    const idStr = String(mediaItem.media_id || mediaItem.id);
+    const titleStr = String(mediaItem.title || '').trim();
+    if (!titleStr || titleStr.includes('FANFILM4K')) return;
+    const normTitle = titleStr.toLowerCase().replace(/ё/g, 'е').trim();
+    const entry = {
+      id: idStr,
+      media_id: idStr,
+      source: mediaItem.source || 'tmdb',
+      title: titleStr,
+      original_title: mediaItem.original_title || '',
+      poster: mediaItem.poster || mediaItem.poster_url || '',
+      media_type: mediaItem.media_type || 'movie',
+      year: mediaItem.year || '',
+      season: extra.season || mediaItem.season || 1,
+      episode: extra.episode || mediaItem.episode || 1,
+      progress_percent: typeof extra.progress_percent === 'number' ? extra.progress_percent : (mediaItem.progress_percent || 0),
+      viewed_at: Date.now()
+    };
+    const filtered = list.filter(x => x && String(x.id || x.media_id) !== idStr && String(x.title || '').toLowerCase().replace(/ё/g, 'е').trim() !== normTitle);
+    filtered.unshift(entry);
+    localStorage.setItem(STORM_FULL_HISTORY_KEY, JSON.stringify(filtered.slice(0, 200)));
+  } catch (_) {}
+}
+
+export function clearStormWatchHistoryList() {
+  try {
+    localStorage.removeItem(STORM_FULL_HISTORY_KEY);
+  } catch (_) {}
+}
+
+if (typeof window !== 'undefined') {
+  window.recordStormWatchHistoryItem = recordStormWatchHistoryItem;
+  window.getFullWatchHistoryList = getFullWatchHistoryList;
+  window.clearStormWatchHistoryList = clearStormWatchHistoryList;
+}
+
+const _initialNavState = loadSavedNavState();
+let currentTab = _initialNavState.tab || 'home';
 let currentViewMode = localStorage.getItem('storm_view_mode') || 'grid';
-let currentCardDensity = localStorage.getItem('storm_card_density') || 'normal';
+let currentCardDensity = localStorage.getItem('storm_card_density') || 'standard';
+if (currentCardDensity === 'normal') currentCardDensity = 'standard';
+let isHomeCustomViewActive = (currentViewMode !== 'grid');
 let inPageQuickQuery = '';
 let only4KQuickFilter = false;
 let currentSource = 'all';
@@ -200,15 +278,16 @@ let currentCountry = 'all';
 let currentYear = 'all';
 let currentRating = 0;
 let currentStatusFilter = 'all';
-let currentBookmarkSubTab = 'all';
+let currentBookmarkSubTab = _initialNavState.bookmarkSubTab || 'all';
 let cachedCustomLists = [];
 let activeViewingCustomList = null;
-let currentPage = 1;
+let currentPage = _initialNavState.page || 1;
 let totalCatalogItems = 0;
 let totalCatalogPages = 1;
 let currentItems = [];
 let rawCatalogItems = [];
-let searchQuery = '';
+let allSearchResults = [];
+let searchQuery = _initialNavState.searchQuery || '';
 let hoverPreviewTimer = null;
 let hoverCloseTimer = null;
 let cachedContinueHistory = null;
@@ -216,41 +295,32 @@ let isBottomNavInitialized = false;
 
 export const clientTabCache = new Map();
 
+const _stormSessionTabCache = new Map();
 try {
-  if (localStorage.getItem('storm_cat_cache_rev') !== 'v6') {
-    localStorage.setItem('storm_cat_cache_rev', 'v6');
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('storm_cat_cache_v5_')) {
-        localStorage.removeItem(k);
-      }
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && (k.startsWith('storm_cat_cache_') || k.startsWith('storm_cal_'))) {
+      localStorage.removeItem(k);
     }
   }
 } catch (_) {}
 
 export function getPersistentTabCache(key) {
-  try {
-    const raw = localStorage.getItem(`storm_cat_cache_v6_${key}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      return parsed;
-    }
-  } catch {}
+  const cached = _stormSessionTabCache.get(key);
+  if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
+    return cached;
+  }
   return null;
 }
 
 export function setPersistentTabCache(key, data) {
-  try {
-    if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
-    const toSave = {
-      items: data.items.slice(0, 30),
-      totalItems: data.totalItems || data.items.length,
-      totalPages: data.totalPages || 1,
-      timestamp: Date.now()
-    };
-    localStorage.setItem(`storm_cat_cache_v6_${key}`, JSON.stringify(toSave));
-  } catch {}
+  if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+  _stormSessionTabCache.set(key, {
+    items: data.items.slice(0, 30),
+    totalItems: data.totalItems || data.items.length,
+    totalPages: data.totalPages || 1,
+    timestamp: Date.now()
+  });
 }
 
 export async function refreshContinueWatchingCache() {
@@ -270,6 +340,7 @@ export function isStormNativeApp() {
 }
 
 async function startStormApp() {
+  if (window.__STORM_APP_BOOTED__) return;
   window.__STORM_APP_BOOTED__ = true;
   try {
     if (isStormNativeApp()) {
@@ -282,9 +353,23 @@ async function startStormApp() {
   try { initTheme(); } catch (e) { console.warn('initTheme error:', e); }
   try { applyTranslations(); } catch (e) { console.warn('applyTranslations error:', e); }
 
-  // 2. Мгновенная отрисовка каталога (baseline кэш или сохраненный снимок) до второстепенных модулей
+  // 2. Мгновенная отрисовка каталога (восстановление вкладки и поиска после F5 без сброса на главную)
   try {
-    loadCurrentTab();
+    document.querySelectorAll('.storm-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === currentTab);
+    });
+    document.querySelectorAll('.storm-mobile-nav-item').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === currentTab);
+    });
+    if (searchQuery && searchQuery.trim().length >= 2) {
+      const sInput = document.getElementById('global-search-input');
+      if (sInput) sInput.value = searchQuery;
+      const clearBtn = document.getElementById('search-clear-btn');
+      if (clearBtn) clearBtn.classList.add('is-visible');
+      executeSearch(searchQuery);
+    } else {
+      loadCurrentTab();
+    }
   } catch (e) {
     console.warn('Initial loadCurrentTab error:', e);
   }
@@ -315,6 +400,38 @@ async function startStormApp() {
   try { initLanguageSwitcher(); } catch (e) { console.warn('initLanguageSwitcher error:', e); }
   try { initNewCyberFeatures(); } catch (e) { console.warn('initNewCyberFeatures error:', e); }
   try { initAdminDashboard(); } catch (e) { console.warn('initAdminDashboard error:', e); }
+
+// 4. Постоянная телеметрия присутствия (Site-wide Presence Ping)
+let hasSentInitialPresence = false;
+function sendUserPresencePing() {
+  try {
+    const token = (typeof getToken === 'function' ? getToken() : null) || localStorage.getItem('storm_token') || sessionStorage.getItem('storm_token');
+    if (!token || token.startsWith('offline_') || token.startsWith('guest_')) return;
+    if (document.hidden) return;
+
+    if (!hasSentInitialPresence && window.__STORM_BOOTSTRAP_DATA__ && window.__STORM_BOOTSTRAP_DATA__.authenticated) {
+      hasSentInitialPresence = true;
+      return;
+    }
+    hasSentInitialPresence = true;
+
+    fetch('/api/auth/me', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      credentials: 'same-origin'
+    }).catch(() => {});
+  } catch (_) {}
+}
+
+sendUserPresencePing();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) sendUserPresencePing();
+}, { passive: true });
+window.addEventListener('focus', () => sendUserPresencePing(), { passive: true });
+setInterval(sendUserPresencePing, 60 * 1000);
+
   try { initDynamicMediaIsland(); } catch (e) { console.warn('initDynamicMediaIsland error:', e); }
   try { updateFamilyProfileHeader(); } catch (e) { console.warn('updateFamilyProfileHeader error:', e); }
 
@@ -326,15 +443,30 @@ async function startStormApp() {
     ]).then(() => {
       lastRenderedHomeKey = '';
       syncAllRenderedCardsDynamicState();
-      if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
-      } else if (rawCatalogItems.length > 0) {
+      if (rawCatalogItems.length > 0) {
         renderFilteredCatalog();
       }
     }).catch(() => {});
   } catch (_) {}
 
   try {
+    window.addEventListener('storm:db-hydrated', () => {
+      const savedMode = localStorage.getItem('storm_view_mode');
+      if (savedMode && ['grid', 'compact-grid', 'detailed-list', 'table'].includes(savedMode) && savedMode !== currentViewMode) {
+        currentViewMode = savedMode;
+        if (savedMode !== 'grid') isHomeCustomViewActive = true;
+        document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
+        const c = document.getElementById('media-render-container');
+        if (c) c.className = `media-container view-${currentViewMode}`;
+        if (rawCatalogItems.length > 0) renderFilteredCatalog();
+      }
+      const savedDensity = localStorage.getItem('storm_card_density');
+      if (savedDensity && ['large', 'standard', 'compact'].includes(savedDensity)) {
+        currentCardDensity = savedDensity;
+        document.body.dataset.cardDensity = currentCardDensity;
+      }
+    });
+
     onAuthChanged(() => {
       try { updateFamilyProfileHeader(); } catch (_) {}
       try { updateMobileDrawerUser(); } catch (_) {}
@@ -346,8 +478,6 @@ async function startStormApp() {
         syncAllRenderedCardsDynamicState();
         if (currentTab === 'bookmarks' || currentTab === 'continue') {
           loadCurrentTab();
-        } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-          renderHomeView(rawCatalogItems);
         } else {
           renderFilteredCatalog();
         }
@@ -359,7 +489,9 @@ async function startStormApp() {
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
+      const isHidden = document.hidden || document.visibilityState === 'hidden';
+      document.body.classList.toggle('storm-tab-hidden', isHidden);
+      if (!isHidden) {
         Promise.allSettled([refreshContinueWatchingCache(), fetchUserBookmarks()])
           .then(() => syncAllRenderedCardsDynamicState())
           .catch(() => {});
@@ -395,8 +527,6 @@ async function startStormApp() {
 
       if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
-      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
       } else {
         renderFilteredCatalog();
       }
@@ -416,8 +546,6 @@ async function startStormApp() {
 
       if (!isSearching && (currentTab === 'bookmarks' || currentTab === 'continue')) {
         loadCurrentTab();
-      } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-        renderHomeView(rawCatalogItems);
       } else {
         renderFilteredCatalog();
       }
@@ -427,10 +555,47 @@ async function startStormApp() {
       await refreshContinueWatchingCache();
       const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
       if (!isSearching) {
-        if (currentTab === 'continue') {
+        if (currentTab === 'history') {
+    renderSkeletonGrid();
+    const serverHistory = await fetchContinueWatching().catch(() => []);
+    const localHistory = getFullWatchHistoryList();
+    const combinedHistory = [];
+    const seenHistKeys = new Set();
+    const pushHistItem = (h) => {
+      if (!h || (!h.media_id && !h.id) || !h.title) return;
+      const tStr = String(h.title || '').trim();
+      if (!tStr || tStr.includes('FANFILM4K') || tStr.includes('ФАН4К –')) return;
+      const nKey = normalizeMediaTitle(tStr, h.original_title || '');
+      const idKey = String(h.media_id || h.id);
+      if ((nKey && seenHistKeys.has(nKey)) || seenHistKeys.has(idKey)) return;
+      if (nKey) seenHistKeys.add(nKey);
+      seenHistKeys.add(idKey);
+      combinedHistory.push({
+        id: idKey,
+        source: h.source || 'tmdb',
+        title: tStr,
+        original_title: h.original_title || '',
+        poster: getSafePosterUrl(h.poster_url || h.poster, tStr),
+        media_type: h.media_type || 'movie',
+        year: h.year || '',
+        progress_percent: Math.round(h.progress_percent || 0),
+        user_status: h.user_status || h.bookmark_status || null,
+        season: h.season || 1,
+        episode: h.episode || 1,
+        viewed_at: h.viewed_at || (h.updated_at ? new Date(h.updated_at).getTime() : 0)
+      });
+    };
+    localHistory.forEach(pushHistItem);
+    (serverHistory || []).forEach(pushHistItem);
+    rawCatalogItems = combinedHistory;
+    renderFilteredCatalog();
+    return;
+  }
+
+  if (currentTab === 'continue') {
           loadCurrentTab();
         } else if (currentTab === 'home' && rawCatalogItems.length > 0) {
-          renderHomeView(rawCatalogItems);
+          renderFilteredCatalog();
         }
       }
     });
@@ -455,7 +620,18 @@ async function initDeepLinking() {
   try {
     const params = new URLSearchParams(window.location.search);
     const mediaId = params.get('media');
-    if (!mediaId) return;
+    if (!mediaId) {
+      try {
+        const rawActive = sessionStorage.getItem('storm_active_cinema_media');
+        if (rawActive) {
+          const parsedActive = JSON.parse(rawActive);
+          if (parsedActive && (parsedActive.id || parsedActive.title)) {
+            openPlayerModal(parsedActive);
+          }
+        }
+      } catch (_) {}
+      return;
+    }
 
     const source = params.get('source') || 'tmdb';
     const season = params.get('season');
@@ -531,12 +707,19 @@ function initViewModes() {
       document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
       currentViewMode = mode;
       localStorage.setItem('storm_view_mode', mode);
+      if (mode !== 'grid') {
+        isHomeCustomViewActive = true;
+      } else if (currentTab === 'home') {
+        const c = document.getElementById('media-render-container');
+        isHomeCustomViewActive = (c && c.dataset.renderedView === 'home') ? true : false;
+      } else {
+        isHomeCustomViewActive = false;
+      }
       if (container) {
         container.className = `media-container view-${mode}`;
       }
       try {
-        const itemsToRender = (currentItems && currentItems.length > 0) ? currentItems : (rawCatalogItems && rawCatalogItems.length > 0 ? rawCatalogItems : []);
-        renderMediaItems(itemsToRender);
+        renderFilteredCatalog();
       } catch (err) {
         console.error('Ошибка переключения вида каталога:', err);
       }
@@ -876,9 +1059,11 @@ export function switchTab(tab, options = {}) {
   if (searchInput && searchInput.value) {
     searchInput.value = '';
     searchQuery = '';
+    allSearchResults = [];
     const clearBtn = document.getElementById('search-clear-btn');
     if (clearBtn) clearBtn.classList.remove('is-visible');
   }
+  saveCurrentNavState();
 
   document.querySelectorAll('.storm-tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
@@ -898,10 +1083,17 @@ export function switchTab(tab, options = {}) {
     b.classList.toggle('active', isActive);
   });
 
-  // При смене вкладки используем память, постоянный кэш или проверенный базовый каталог
+  // Мгновенный переключатель вкладок: 0ms отдача из памяти без мерцания скелетона
   const targetCategory = tab === 'home' ? 'popular' : tab;
   const targetKey = `${targetCategory}_1_${currentSource}`;
-  if (!clientTabCache.has(targetKey)) {
+  if (clientTabCache.has(targetKey)) {
+    const cached = clientTabCache.get(targetKey);
+    const items = Array.isArray(cached) ? cached : (cached?.items || []);
+    if (items.length > 0) {
+      rawCatalogItems = items;
+      renderFilteredCatalog();
+    }
+  } else {
     const persistent = getPersistentTabCache(targetKey);
     if (persistent && Array.isArray(persistent.items) && persistent.items.length > 0) {
       clientTabCache.set(targetKey, persistent);
@@ -928,9 +1120,59 @@ if (typeof window !== 'undefined') {
   window.closeAllActiveModals = closeAllActiveModals;
 }
 
+let isBottomNavScrollAutoHideInitialized = false;
+export function initBottomNavScrollAutoHide() {
+  const bottomNav = document.getElementById('storm-bottom-nav');
+  if (!bottomNav || isBottomNavScrollAutoHideInitialized) return;
+  isBottomNavScrollAutoHideInitialized = true;
+
+  let lastScrollY = window.scrollY || 0;
+  let ticking = false;
+  let isHidden = false;
+
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      if (window.innerWidth > 768 || document.body.classList.contains('tv-mode') || document.body.classList.contains('cinema-open')) {
+        if (isHidden) {
+          bottomNav.style.transform = '';
+          isHidden = false;
+        }
+        return;
+      }
+      const currentScrollY = window.scrollY || 0;
+      const scrollDiff = currentScrollY - lastScrollY;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+
+      if (currentScrollY <= 50 || currentScrollY >= maxScroll - 40) {
+        if (isHidden) {
+          bottomNav.style.transform = 'translate3d(0, 0, 0)';
+          isHidden = false;
+        }
+      } else if (scrollDiff > 8 && currentScrollY > 100) {
+        if (!isHidden) {
+          bottomNav.style.transform = 'translate3d(0, 110%, 0)';
+          isHidden = true;
+        }
+      } else if (scrollDiff < -6) {
+        if (isHidden) {
+          bottomNav.style.transform = 'translate3d(0, 0, 0)';
+          isHidden = false;
+        }
+      }
+      lastScrollY = Math.max(0, currentScrollY);
+    });
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+}
+
 function initBottomNav() {
   if (isBottomNavInitialized) return;
   isBottomNavInitialized = true;
+  initBottomNavScrollAutoHide();
 
   const syncBottomNavActive = (activeTab) => {
     document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
@@ -1132,12 +1374,8 @@ function initFilterSheet() {
       updateFilterBadge();
       closeFilterSheet();
 
-      if (currentSource !== prevSource || currentCountry !== prevCountry) {
-        currentPage = 1;
-        loadCurrentTab();
-      } else {
-        renderFilteredCatalog();
-      }
+      currentPage = 1;
+      loadCurrentTab();
     });
   }
 
@@ -1812,18 +2050,42 @@ function buildCountryCatalogQuery(countryVal = currentCountry) {
   return `&country=${encodeURIComponent(countryVal)}`;
 }
 
+
+export function buildCatalogQueryParams(category, page, source) {
+  const params = new URLSearchParams();
+  params.set('category', category);
+  params.set('page', String(page));
+  params.set('source', source || currentSource || 'all');
+  if (currentGenre && currentGenre !== 'all') params.set('genre', currentGenre);
+  if (currentCountry && currentCountry !== 'all') {
+    params.set('country', currentCountry);
+    if (currentCountry === 'foreign') params.set('exceptCountry', 'Россия');
+  }
+  if (currentYear && currentYear !== 'all') params.set('year', currentYear);
+  if (currentRating > 0) params.set('rating', String(currentRating));
+  if (currentSort && currentSort !== 'newest') params.set('sort', currentSort);
+  if (only4KQuickFilter) params.set('quality', '4k');
+  if (searchQuery && searchQuery.trim().length >= 2) params.set('q', searchQuery.trim());
+  return params;
+}
+
+export function getTabCacheKey(category, page, source) {
+  const p = buildCatalogQueryParams(category, page, source);
+  return `cat_v8_${category}_p${page}_s${source}_${p.toString()}`;
+}
+
 function scheduleNextPagePrefetch(cat, page, src) {
   clearTimeout(prefetchTimer);
   if (page >= totalCatalogPages) return;
   prefetchTimer = setTimeout(async () => {
-    const countrySuffix = currentCountry && currentCountry !== 'all' ? `_${currentCountry}` : '';
-    const nextKey = `${cat}_${page + 1}_${src}${countrySuffix}`;
+    const nextKey = getTabCacheKey(cat, page + 1, src);
     if (clientTabCache.has(nextKey)) return;
     try {
       const headers = {};
       const token = localStorage.getItem('storm_token');
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`/api/media/catalog?category=${cat}&page=${page + 1}&source=${src}${buildCountryCatalogQuery()}`, {
+      const params = buildCatalogQueryParams(cat, page + 1, src);
+      const res = await fetch(`/api/media/catalog?${params.toString()}`, {
         headers,
         signal: AbortSignal.timeout(8000)
       });
@@ -1832,8 +2094,8 @@ function scheduleNextPagePrefetch(cat, page, src) {
         if (data.items && data.items.length > 0) {
           clientTabCache.set(nextKey, {
             items: deduplicateMediaList(data.items),
-            totalItems: data.total_items || (totalCatalogPages * 20),
-            totalPages: data.total_pages || totalCatalogPages
+            totalItems: data.total_items || (data.total_pages * 20),
+            totalPages: data.total_pages || 1
           });
         }
       }
@@ -1878,6 +2140,7 @@ const PROTECTED_FRANCHISE_NUM_TITLES = [
   'кайдзю номер 8', 'кайдзю №8', 'кайдзю № 8', 'kaiju no. 8', 'kaiju no 8',
   'моб психо 100', 'mob psycho 100',
   '86', 'восемьдесят шесть', 'eighty six', 'eighty-six',
+  'ранма 1/2', 'ранма ½', 'ranma 1/2', 'ranma ½', '9-1-1',
   'зона 88', 'area 88', 'токио 24-й район', 'гандам 00', 'вавилон 5',
   '1984', '2012', '1917', '9', '300', '24', 'бегущий по лезвию 2049',
   'гладиатор 2', 'дюна: часть вторая', 'дюна 2', 'аватар 2', 'аватар 3',
@@ -1888,7 +2151,7 @@ const PROTECTED_FRANCHISE_NUM_TITLES = [
   'холоп 2', 'бэтмен 2', 'соник 2', 'соник 3', 'ужасающий 2', 'ужасающий 3', 'микки 17'
 ];
 
-export function cleanVideoTitle(str) {
+export function cleanVideoTitle(str, isAnimeOrSeries = false) {
   if (!str) return '';
   let s = String(str).trim();
   // Постер
@@ -1902,17 +2165,47 @@ export function cleanVideoTitle(str) {
   s = s.replace(/(?:^|\s+)(?:Ultra\s*HD|UHD|HDR10\+?|HDR|Dolby\s*Vision|BDRip|DVDRip|WEB-DL|Remux)(?=\s+|$|[.,;:!?\(\)\[\]])/gi, '');
   // фильм / сериал в скобках
   s = s.replace(/\s*[\(\[]\s*(?:фильм|сериал)\s*[\)\]]/gi, '');
+  if (isAnimeOrSeries) {
+    s = s.replace(/\s*[\(\[]\s*(?:19\d\d|20\d\d)\s*[\)\]]/g, '');
+  }
   // Сезон / ТВ / Часть в скобках и без скобок: (1 сезон), [2 сезон], [ТВ-2], Season 2, 2nd Season
-  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
-  s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
-  // Удаляем хвостовой номер ТОЛЬКО если за ним явно следует маркер сезона/арки (не обрезая сиквелы фильмов вроде «Вышка 2»)
+  s = s.replace(/\s*[\(\[]\s*(?:(?:тв|tv)[\s-]*\d+(?:\s*часть\s*\d+)?|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s*season|(?:second|third|fourth|fifth)\s*season|часть\s*\d+|part\s*\d+|cour\s*\d+)\s*[\)\]]/gi, '');
+  for (let pass = 0; pass < 2; pass++) {
+    s = s.replace(/(?:\s*[:.\-–—/|•]\s*|\s+)(?:(?:тв|tv)[\s-]*\d+|\d+\s*(?:-?[йяе]|ый|ой)?\s*сезон|сезон\s*\d+|season\s*\d+|\d+(?:nd|rd|th)\s+season|(?:second|third|fourth|fifth)\s+season|часть\s*\d+|part\s*(?:\d+|ii|iii|iv)|cour\s*\d+|акт\s*(?:\d+|ii|iii|iv)|act\s*(?:\d+|ii|iii|iv)|продолжение|финал(?:ьный\s*сезон)?|final\s*season)(?:\s*[:.\-–—/|•].*)?$/gi, '');
+  }
+  if (isAnimeOrSeries) {
+    s = s.replace(/\s*:\s*арка\s+[^:]+$/i, '');
+  }
   const lowerFull = s.toLowerCase().replace(/ё/g, 'е').trim();
-  const isProtectedMovieSeq = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
-  if (!isProtectedMovieSeq) {
-    const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(?:сезон|season|арка|cour).*$/i);
-    if (mTrail && mTrail[1].trim().length >= 3) {
-      s = mTrail[1].trim();
+  const isProtected = PROTECTED_FRANCHISE_NUM_TITLES.some(p => lowerFull === p || lowerFull.startsWith(p + ':'));
+  if (!isProtected) {
+    if (isAnimeOrSeries) {
+      // В аниме-сериалах и сериалах сезоны не пишутся как части/номера в названии («Аой Ашито 2» -> «Аой Ашито»)
+      const mSub = s.match(/^(.{2,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(.+)$/i);
+      if (mSub && mSub[1].trim().length >= 2) {
+        const bLower = mSub[1].trim().toLowerCase().replace(/ё/g, 'е');
+        if (!PROTECTED_FRANCHISE_NUM_TITLES.includes(bLower)) {
+          s = mSub[1].trim();
+        }
+      }
+      const mEnd = s.match(/^(.{2,}?)\s+([2-9]|1[0-2])$/);
+      if (mEnd && mEnd[1].trim().length >= 2) {
+        const bLower = mEnd[1].trim().toLowerCase().replace(/ё/g, 'е');
+        if (!PROTECTED_FRANCHISE_NUM_TITLES.includes(bLower)) {
+          s = mEnd[1].trim();
+        }
+      }
+    } else {
+      // Для фильмов удаляем хвостовой номер ТОЛЬКО если за ним явно следует маркер сезона/арки (сохраняя «Вышка 2», «Гладиатор 2»)
+      const mTrail = s.match(/^(.{3,}?)\s+([2-9]|1[0-2])\s*[:.\-–—]\s*(?:сезон|season|арка|cour).*$/i);
+      if (mTrail && mTrail[1].trim().length >= 3) {
+        s = mTrail[1].trim();
+      }
     }
+  }
+  // Каноническое объединение «Ао Аси» / «Аой Ашито»
+  if (/^ао[й]?\s+а(?:си|шито)$/i.test(s.trim())) {
+    return 'Аой Ашито';
   }
   // Каноническое объединение франшизы «Звёздные Войны: Видения» (включая спин-офф/4-й сезон «Девятый джедай»)
   if (/^зв[её]здные\s+войны\s*:\s*видени[яе]/i.test(s)) {
@@ -1952,6 +2245,9 @@ export function unwrapRawImageUrl(url) {
     }
   }
   if (clean.startsWith('//')) clean = `https:${clean}`;
+  if (clean.includes('shikimori.one/')) {
+    clean = clean.replace('shikimori.one/', 'shikimori.io/');
+  }
   const anixMatch = clean.match(/(?:s\d*\.)?anix(?:mirai|sekai)\.com\/posters\/([^/?#]+)/i);
   if (anixMatch) {
     const code = anixMatch[1].replace(/\.jpg$/i, '');
@@ -1991,20 +2287,29 @@ export function handleGlobalImageError(imgEl) {
   const rawUrl = imgEl.dataset.rawUrl || unwrapRawImageUrl(imgEl.getAttribute('src') || '');
   const title = imgEl.dataset.title || imgEl.getAttribute('alt') || '';
   const isLiftImg = rawUrl && rawUrl.includes('img.liftw.ws');
+  const isAnilibriaImg = rawUrl && (rawUrl.includes('anilibria.top') || rawUrl.includes('aniliberty.top'));
 
-  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !imgEl.dataset.triedWsrv) {
+  if (isAnilibriaImg && !imgEl.dataset.triedAniliberty && window.__STORM_BACKEND_ONLINE__ !== false) {
+    imgEl.dataset.triedAniliberty = '1';
+    const altUrl = rawUrl.includes('anilibria.top')
+      ? rawUrl.replace('anilibria.top', 'aniliberty.top')
+      : rawUrl.replace('aniliberty.top', 'anilibria.top');
+    imgEl.src = `/api/media/image-proxy?url=${encodeURIComponent(altUrl)}${title ? `&title=${encodeURIComponent(title.trim())}` : ''}&v=2`;
+    return;
+  }
+  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !isAnilibriaImg && !imgEl.dataset.triedWsrv) {
     imgEl.dataset.triedWsrv = '1';
     imgEl.src = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
     return;
   }
-  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !imgEl.dataset.triedWeserv) {
+  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !isAnilibriaImg && !imgEl.dataset.triedWeserv) {
     imgEl.dataset.triedWeserv = '1';
     imgEl.src = `https://images.weserv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
     return;
   }
   if (title && !imgEl.dataset.triedTitleProxy && window.__STORM_BACKEND_ONLINE__ !== false) {
     imgEl.dataset.triedTitleProxy = '1';
-    imgEl.src = `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}`;
+    imgEl.src = `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}&v=2`;
     return;
   }
   imgEl.dataset.stormFallbackDone = '1';
@@ -2039,7 +2344,7 @@ export function getSafePosterUrl(url, title = '') {
       if (window.__STORM_BACKEND_ONLINE__ === false) {
         return generateSvgPosterDataUri(cleanTitle);
       }
-      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}`;
+      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&v=4`;
     }
     return 'assets/favicon.svg';
   }
@@ -2056,21 +2361,25 @@ export function getSafePosterUrl(url, title = '') {
     if (cleanTitle && !proxyUrl.includes('title=')) {
       proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + `title=${encodeURIComponent(cleanTitle)}`;
     }
+    if (!proxyUrl.includes('v=')) {
+      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + 'v=4';
+    }
     return proxyUrl;
   }
 
   if (clean.startsWith('//')) clean = `https:${clean}`;
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
     const isLiftHost = clean.includes('img.liftw.ws') || clean.includes('lateremb.ws');
+    const isAnilibriaHost = clean.includes('anilibria.top') || clean.includes('aniliberty.top');
     const useDirectCdn = (isStormNativeApp() || window.__STORM_BACKEND_ONLINE__ === false) && !isLiftHost;
     if (useDirectCdn) {
-      if (clean.includes('static.anixart.tv') || clean.includes('rutube.ru') || clean.includes('userapi.com') || clean.includes('mycdn.me')) {
+      if (isAnilibriaHost || clean.includes('static.anixart.tv') || clean.includes('rutube.ru') || clean.includes('userapi.com') || clean.includes('mycdn.me')) {
         return clean;
       }
       return `https://wsrv.nl/?url=${encodeURIComponent(clean)}&w=500&q=85&output=webp`;
     }
     const titleParam = cleanTitle ? `&title=${encodeURIComponent(cleanTitle)}` : '';
-    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}`;
+    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}&v=4`;
   }
   return clean;
 }
@@ -2079,13 +2388,19 @@ export function getPosterSrcset(posterUrl) {
   return '';
 }
 
-export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '') {
+export function getMediaCardImgHtml(posterUrl, title = '', extraClass = '', priorityMode = false) {
   const rawClean = unwrapRawImageUrl(posterUrl || '');
   const safePoster = getSafePosterUrl(posterUrl, title);
   const cleanTitle = escapeHtml(title || '');
   const safeRawAttr = escapeHtml(rawClean || '');
   const classAttr = extraClass ? ` class="${extraClass}"` : '';
-  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}" loading="lazy" decoding="async" onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
+  let priorityAttr = ' loading="lazy" decoding="async"';
+  if (priorityMode === 'high' || priorityMode === true) {
+    priorityAttr = ' fetchpriority="high" decoding="async"';
+  } else if (priorityMode === 'low') {
+    priorityAttr = ' loading="lazy" decoding="async" fetchpriority="low"';
+  }
+  return `<img${classAttr} src="${safePoster}" data-raw-url="${safeRawAttr}" data-title="${cleanTitle}" alt="${cleanTitle}"${priorityAttr} onerror="window.__stormHandleImgError && window.__stormHandleImgError(this)">`;
 }
 
 /**
@@ -2416,7 +2731,11 @@ export function isTrailerMedia(item) {
 
 export function formatMediaTitle(item) {
   if (!item) return '';
-  let rawTitle = cleanVideoTitle(item.title || item.original_title || '');
+  const detectedType = detectClientMediaType(item) || item.media_type || '';
+  const isSeriesOrAnime = detectedType === 'series' || detectedType === 'anime-series' || detectedType === 'cartoon-series' ||
+    (isAnimeItemClient(item) && detectedType !== 'movie' && detectedType !== 'anime-movie') ||
+    checkIfMediaIsSeries(item);
+  let rawTitle = cleanVideoTitle(item.title || item.original_title || '', isSeriesOrAnime);
 
   // Извлечение года с проверкой известных фильмов с числами/годами в названии
   const lowerCheck = `${item.title || ''} ${item.original_title || ''}`.toLowerCase();
@@ -2538,6 +2857,17 @@ async function loadCurrentTab() {
   const container = document.getElementById('media-render-container');
   if (!container) return;
 
+  if (searchQuery && searchQuery.trim().length >= 2 && Array.isArray(allSearchResults) && allSearchResults.length > 0) {
+    const pageSize = 36;
+    totalCatalogItems = allSearchResults.length;
+    totalCatalogPages = Math.max(1, Math.ceil(totalCatalogItems / pageSize));
+    if (currentPage > totalCatalogPages) currentPage = 1;
+    const sliceStart = (currentPage - 1) * pageSize;
+    rawCatalogItems = allSearchResults.slice(sliceStart, sliceStart + pageSize);
+    renderFilteredCatalog();
+    return;
+  }
+
   if (currentTab !== 'home') {
     hideHeroShowcase();
   }
@@ -2572,11 +2902,10 @@ async function loadCurrentTab() {
         if (pct >= 95) return false;
 
         // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
+        if (pct >= 90) return false;
         const sec = typeof h.time_seconds === 'number' ? h.time_seconds : (h.last_time_seconds || 0);
-        const ep = parseInt(h.episode, 10) || 1;
-        const hasRealProgress = (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
-
-        return hasRealProgress;
+        const realSec = typeof h.real_watched_seconds === 'number' ? h.real_watched_seconds : sec;
+        return sec >= 600 && realSec >= 600;
       })
       .map(h => ({
         id: h.media_id || h.id,
@@ -2596,7 +2925,29 @@ async function loadCurrentTab() {
   }
 
   if (currentTab === 'bookmarks') {
-    renderSkeletonGrid();
+    // Мгновенный рендер из локального кэша закладок без ожидания сетевого ответа
+    const memBookmarks = (typeof getMemoryBookmarksCache === 'function') ? getMemoryBookmarksCache() : [];
+    if (memBookmarks && memBookmarks.length > 0) {
+      const rawItems = memBookmarks.map(b => ({
+        id: b.media_id || b.id,
+        source: b.source,
+        title: b.title,
+        original_title: b.original_title,
+        poster: getSafePosterUrl(b.poster_url || b.poster, b.title),
+        media_type: b.media_type,
+        year: b.year || '',
+        user_status: b.status,
+        is_favorite: (b.is_favorite === 1 || b.is_favorite === true || b.status === 'favorite') ? 1 : 0,
+        progress_percent: b.progress_percent,
+        episodes_watched: b.episodes_watched,
+        total_episodes: b.total_episodes,
+        updated_at: b.updated_at
+      }));
+      rawCatalogItems = deduplicateMediaList(rawItems);
+      renderFilteredCatalog();
+    } else {
+      renderSkeletonGrid();
+    }
     try {
       const [bookmarks, customLists] = await Promise.all([
         fetchUserBookmarks().catch(() => []),
@@ -2628,40 +2979,106 @@ async function loadCurrentTab() {
     return;
   }
 
+  // 0. Если активен фильтр по пользовательским закладкам (Смотрю, В планах и т.д.)
+  if (currentStatusFilter && currentStatusFilter !== 'all') {
+    const memBookmarks = (typeof getMemoryBookmarksCache === 'function' ? getMemoryBookmarksCache() : []) || [];
+    const isTargetStatus = (b) => {
+      const s = String(b.status || b.user_status || '').toLowerCase().replace(/-/g, '_');
+      if (currentStatusFilter === 'plan' || currentStatusFilter === 'planned') return s === 'plan' || s === 'planned';
+      if (currentStatusFilter === 'hold' || currentStatusFilter === 'on_hold') return s === 'hold' || s === 'on_hold';
+      if (currentStatusFilter === 'completed' || currentStatusFilter === 'watched') return s === 'completed' || s === 'watched';
+      if (currentStatusFilter === 'wont_watch' || currentStatusFilter === 'wontwatch') return s === 'wont_watch' || s === 'wontwatch';
+      return s === currentStatusFilter;
+    };
+
+    let filtered = memBookmarks.filter(isTargetStatus);
+
+    // Фильтрация по текущему разделу каталога
+    if (['movies', 'series', 'cartoons', 'cartoon-series', 'anime-movies', 'anime-series'].includes(currentTab)) {
+      filtered = filtered.filter(b => {
+        const mType = String(b.media_type || '').toLowerCase();
+        if (currentTab === 'movies') return mType === 'movie' || mType === 'movies';
+        if (currentTab === 'series') return mType === 'series' || mType === 'tv';
+        if (currentTab === 'cartoons') return mType === 'cartoon' || mType === 'cartoons';
+        if (currentTab === 'cartoon-series') return mType === 'cartoon-series';
+        if (currentTab === 'anime-movies') return mType === 'anime-movie' || mType === 'anime-movies';
+        if (currentTab === 'anime-series') return mType === 'anime-series';
+        return true;
+      });
+    }
+
+    if (currentGenre && currentGenre !== 'all') {
+      const targetG = currentGenre.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const gStr = Array.isArray(b.genres) ? b.genres.join(' ') : String(b.genres || '');
+        return gStr.toLowerCase().includes(targetG);
+      });
+    }
+
+    const pageSize = 36;
+    totalCatalogItems = filtered.length;
+    totalCatalogPages = Math.max(1, Math.ceil(totalCatalogItems / pageSize));
+    if (currentPage > totalCatalogPages) currentPage = 1;
+    const sliceStart = (currentPage - 1) * pageSize;
+    rawCatalogItems = filtered.slice(sliceStart, sliceStart + pageSize).map(b => ({
+      id: b.media_id || b.id,
+      source: b.source,
+      title: b.title,
+      original_title: b.original_title,
+      poster: getSafePosterUrl(b.poster_url || b.poster, b.title),
+      media_type: b.media_type,
+      year: b.year || '',
+      user_status: b.status,
+      is_favorite: (b.is_favorite === 1 || b.is_favorite === true || b.status === 'favorite') ? 1 : 0,
+      progress_percent: b.progress_percent,
+      episodes_watched: b.episodes_watched,
+      total_episodes: b.total_episodes,
+      updated_at: b.updated_at
+    }));
+    renderFilteredCatalog();
+    return;
+  }
+
   // Каталог медиа - мгновенная отдача из кэша + фоновое обновление
   let category = currentTab;
   if (currentTab === 'home') category = 'popular';
   const defPages = CATEGORY_DEFAULT_PAGES[category] || 100;
-  if (currentPage > defPages) {
-    currentPage = defPages;
-  }
-  const countrySuffix = currentCountry && currentCountry !== 'all' ? `_${currentCountry}` : '';
-  const cacheKey = `${category}_${currentPage}_${currentSource}${countrySuffix}`;
+  const cacheKey = getTabCacheKey(category, currentPage, currentSource);
   const loadSeq = ++activeTabLoadSeq;
+
+  const hasFilterActive = Boolean(
+    (currentGenre && currentGenre !== 'all') ||
+    (currentCountry && currentCountry !== 'all') ||
+    (currentYear && currentYear !== 'all') ||
+    currentRating > 0 ||
+    (currentSort && currentSort !== 'newest') ||
+    only4KQuickFilter ||
+    (searchQuery && searchQuery.trim().length >= 2)
+  );
 
   if (clientTabCache.has(cacheKey)) {
     const cached = clientTabCache.get(cacheKey);
     let items = Array.isArray(cached) ? cached : (cached?.items || []);
-    if (currentPage > 1) {
+    if (currentPage > 1 && !hasFilterActive) {
       items = filterPageDuplicates(items, category, currentPage);
     }
     rawCatalogItems = items;
-    totalCatalogPages = Math.min(defPages, cached?.totalPages || defPages);
+    totalCatalogPages = cached?.totalPages || 1;
     totalCatalogItems = cached?.totalItems || (totalCatalogPages * 20);
     renderFilteredCatalog();
     scheduleNextPagePrefetch(category, currentPage, currentSource);
   } else {
-    const persistent = currentPage === 1 ? getPersistentTabCache(cacheKey) : null;
+    const persistent = (currentPage === 1 && !hasFilterActive) ? getPersistentTabCache(cacheKey) : null;
     if (persistent && Array.isArray(persistent.items) && persistent.items.length > 0) {
       clientTabCache.set(cacheKey, persistent);
       rawCatalogItems = persistent.items;
-      totalCatalogPages = Math.min(defPages, persistent.totalPages || defPages);
+      totalCatalogPages = persistent.totalPages || defPages;
       totalCatalogItems = persistent.totalItems || (totalCatalogPages * 20);
       renderFilteredCatalog();
       scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
-      const baseline = getBaselineCatalog(category);
-      if (baseline && baseline.length > 0 && currentCountry === 'all') {
+      const baseline = (!hasFilterActive && currentCountry === 'all') ? getBaselineCatalog(category) : null;
+      if (baseline && baseline.length > 0) {
         rawCatalogItems = baseline;
         renderFilteredCatalog();
       } else {
@@ -2676,7 +3093,8 @@ async function loadCurrentTab() {
     const token = localStorage.getItem('storm_token');
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=${currentSource}${buildCountryCatalogQuery()}`, {
+    const params = buildCatalogQueryParams(category, currentPage, currentSource);
+    const res = await fetch(`/api/media/catalog?${params.toString()}`, {
       headers,
       signal: AbortSignal.timeout(12000)
     });
@@ -2684,76 +3102,90 @@ async function loadCurrentTab() {
     if (loadSeq !== activeTabLoadSeq) return; // Устаревший запрос отменён
 
     const fetchedItems = data.items || [];
-    totalCatalogPages = Math.min(defPages, data.total_pages || defPages);
-    totalCatalogItems = data.total_items || (totalCatalogPages * 20);
+    totalCatalogPages = data.total_pages || 1;
+    totalCatalogItems = data.total_items || (totalCatalogPages * (fetchedItems.length || 20));
 
     if (fetchedItems.length > 0) {
       let cleanList = deduplicateMediaList(fetchedItems);
-      if (currentPage > 1) {
+      if (currentPage > 1 && !hasFilterActive) {
         cleanList = filterPageDuplicates(cleanList, category, currentPage);
       }
       const wasEquivalent = areMediaListsEquivalent(rawCatalogItems, cleanList);
       rawCatalogItems = cleanList;
       clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-      if (currentPage === 1) {
+      if (currentPage === 1 && !hasFilterActive) {
         setPersistentTabCache(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
       }
-      if (!wasEquivalent) {
+      if (!wasEquivalent || rawCatalogItems.length !== cleanList.length) {
         renderFilteredCatalog();
       }
       scheduleNextPagePrefetch(category, currentPage, currentSource);
     } else {
-      // Если по текущему источнику 0 элементов, пробуем сводный каталог
-      try {
-        const retryRes = await fetch(`/api/media/catalog?category=${category}&page=${currentPage}&source=all${buildCountryCatalogQuery()}`, {
-          headers,
-          signal: AbortSignal.timeout(8000)
-        });
-        const retryData = await retryRes.json();
-        if (loadSeq !== activeTabLoadSeq) return;
+      // Если по текущему источнику 0 элементов, пробуем сводный каталог 'all'
+      if (currentSource !== 'all') {
+        try {
+          const retryParams = buildCatalogQueryParams(category, currentPage, 'all');
+          const retryRes = await fetch(`/api/media/catalog?${retryParams.toString()}`, {
+            headers,
+            signal: AbortSignal.timeout(8000)
+          });
+          const retryData = await retryRes.json();
+          if (loadSeq !== activeTabLoadSeq) return;
 
-        if (retryData.items && retryData.items.length > 0) {
-          let retryList = deduplicateMediaList(retryData.items);
-          if (currentPage > 1) {
-            retryList = filterPageDuplicates(retryList, category, currentPage);
+          if (retryData.items && retryData.items.length > 0) {
+            const retryList = deduplicateMediaList(retryData.items);
+            totalCatalogPages = retryData.total_pages || 1;
+            totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
+            rawCatalogItems = retryList;
+            renderFilteredCatalog();
+            clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
+            scheduleNextPagePrefetch(category, currentPage, currentSource);
+            return;
           }
-          rawCatalogItems = retryList;
-          totalCatalogPages = Math.min(defPages, retryData.total_pages || defPages);
-          totalCatalogItems = retryData.total_items || (totalCatalogPages * 20);
-          clientTabCache.set(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-          if (currentPage === 1) {
-            setPersistentTabCache(cacheKey, { items: rawCatalogItems, totalItems: totalCatalogItems, totalPages: totalCatalogPages });
-          }
-          renderFilteredCatalog();
-          scheduleNextPagePrefetch(category, currentPage, currentSource);
-          return;
+        } catch (retryErr) {
+          console.warn('Fallback catalog error:', retryErr);
         }
-      } catch {}
-
-      if (loadSeq !== activeTabLoadSeq) return;
-      if (!rawCatalogItems || rawCatalogItems.length === 0) {
-        if (currentPage > totalCatalogPages) {
-          currentPage = totalCatalogPages;
-          loadCurrentTab();
-          return;
-        }
-        renderFilteredCatalog();
       }
+
+      rawCatalogItems = [];
+      totalCatalogPages = 1;
+      totalCatalogItems = 0;
+      renderFilteredCatalog();
     }
   } catch (err) {
     if (loadSeq !== activeTabLoadSeq) return;
+    console.warn('Network catalog error:', err);
     if (!rawCatalogItems || rawCatalogItems.length === 0) {
-      renderFilteredCatalog();
+      const baseline = (!hasFilterActive && currentCountry === 'all') ? getBaselineCatalog(category) : null;
+      if (baseline && baseline.length > 0) {
+        rawCatalogItems = baseline;
+        renderFilteredCatalog();
+      }
     }
   }
 }
 
 // Нормализация названий медиа для надежного сопоставления и исключения дублей
-function normalizeMediaTitle(title, originalTitle = '') {
+function splitCompoundTitle(rawTitle) {
+  if (!rawTitle || typeof rawTitle !== 'string') return { primary: '', alt: null };
+  const str = rawTitle.trim();
+  if (/\b\d+\s*\/\s*\d+\b/.test(str) && !/\p{L}+\s*\/\s*\p{L}+/u.test(str)) {
+    return { primary: str, alt: null };
+  }
+  if (str.includes('/')) {
+    const parts = str.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
+    if (parts.length > 1 && parts.filter(p => /\p{L}/u.test(p)).length >= 2) {
+      return { primary: parts[0], alt: parts[1] };
+    }
+  }
+  return { primary: str, alt: null };
+}
+
+function normalizeMediaTitle(title, originalTitle = '', isSeriesOrAnime = false) {
   if (!title && !originalTitle) return '';
   const clean = (t) => {
     if (!t) return '';
-    let raw = cleanVideoTitle(t);
+    let raw = cleanVideoTitle(t, isSeriesOrAnime);
     let s = String(raw).toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/\s*[\(\[][^\)\]]*[\)\]]/gi, ' ')
@@ -2913,11 +3345,11 @@ export function getMediaCategoryLabel(item, fallbackCategory = '') {
     return 'Фильм';
   }
 
+  if (detectedType === 'anime-movie' || type === 'anime-movie' || type === 'anime-movies' || cat === 'anime-movies' || cat === 'anime-movie' || cat === 'аниме-фильм') {
+    return 'Аниме-фильм';
+  }
   if (detectedType === 'anime-series' || type === 'anime-series' || (source.includes('anix') && type.includes('series')) || (source.includes('libria') && type.includes('series'))) {
     return 'Аниме-сериал';
-  }
-  if (detectedType === 'anime-movie' || type === 'anime-movie' || cat === 'anime-movies') {
-    return 'Аниме-фильм';
   }
   if (type === 'anime' || source === 'anixart' || source === 'anilibria' || source === 'shikimori' || cat === 'anime' || cat === 'anime-series') {
     if (type.includes('series') || title.includes('сезон') || title.includes('сериал')) return 'Аниме-сериал';
@@ -2949,19 +3381,37 @@ function deduplicateMediaList(items) {
     // 100% исключение трейлеров, промо и фанатских концептов
     if (isTrailerMedia(item)) continue;
 
-    const itemTitle = item.title || item.name || '';
+    const rawItemTitle = item.title || item.name || '';
     const origTitle = item.original_title || item.original_name || '';
     const itemType = detectClientMediaType(item) || item.media_type || '';
-    const isSeriesOrAnime = itemType === 'series' || itemType === 'anime-series' || itemType === 'cartoon-series' || ['anilibria', 'anixart', 'shikimori'].includes(item.source);
+    const isSeriesOrAnime = itemType === 'series' || itemType === 'anime-series' || itemType === 'cartoon-series' || (['anilibria', 'anixart', 'shikimori'].includes(item.source) && itemType !== 'anime-movie' && itemType !== 'movie');
+    const compound = splitCompoundTitle(rawItemTitle);
+    const primaryTitle = compound.primary;
+    const altTitle = compound.alt;
+    const itemTitle = isSeriesOrAnime ? cleanVideoTitle(primaryTitle || rawItemTitle, true) : (primaryTitle || rawItemTitle);
+    if (isSeriesOrAnime && itemTitle) {
+      item.title = itemTitle;
+    }
     const itemYr = getMediaYear(item) || item.year || '';
-    const baseNormKey = normalizeMediaTitle(itemTitle, origTitle);
-    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle, '') : '';
+    const baseNormKey = normalizeMediaTitle(primaryTitle || itemTitle, origTitle, isSeriesOrAnime);
+    const altNormKey = altTitle ? normalizeMediaTitle(altTitle, '', isSeriesOrAnime) : '';
+    const fullNormKey = normalizeMediaTitle(rawItemTitle, origTitle, isSeriesOrAnime);
+    const baseOrigKey = origTitle ? normalizeMediaTitle(origTitle.replace(/\bmovie\s*\d*\s*:/gi, ' '), '', isSeriesOrAnime) : '';
     const normKey = (!isSeriesOrAnime && baseNormKey && itemYr) ? `${baseNormKey}_movie_${itemYr}` : baseNormKey;
     const origKey = (!isSeriesOrAnime && baseOrigKey && itemYr) ? `${baseOrigKey}_movie_${itemYr}` : baseOrigKey;
     const tmdbKey = item.tmdb_id ? `tmdb_${item.tmdb_id}` : (String(item.id || '').startsWith('tmdb_') ? String(item.id) : '');
     const kpKey = (item.kp_id || item.kinopoisk_id) ? `kp_${item.kp_id || item.kinopoisk_id}` : '';
 
-    const candidateKeys = [normKey, origKey, tmdbKey, kpKey].filter(Boolean);
+    // Poster filename match
+    const cleanPosterFn = (p) => {
+      if (!p) return '';
+      const m = String(p).match(/([^\/\?#]+\.(?:jpg|jpeg|png|webp))/i);
+      return m ? m[1].toLowerCase() : '';
+    };
+    const posterFn = cleanPosterFn(item.poster || item.poster_url);
+    const posterKey = posterFn ? `poster_${posterFn}_${itemYr || ''}` : '';
+
+    const candidateKeys = [normKey, baseNormKey, altNormKey, fullNormKey, origKey, baseOrigKey, tmdbKey, kpKey, posterKey].filter(Boolean);
     let key = '';
     for (const ck of candidateKeys) {
       if (itemMap.has(ck)) {
@@ -2990,7 +3440,25 @@ function deduplicateMediaList(items) {
       const rawFanfilmUrl = item.fanfilm_4k_url || existing.fanfilm_4k_url ||
         (item.source === 'fanfilm4k' ? (item.link || item.url) : (existing.source === 'fanfilm4k' ? (existing.link || existing.url) : null));
       const fanfilmUrl = (rawFanfilmUrl && !String(rawFanfilmUrl).includes('do=search')) ? rawFanfilmUrl : null;
-      const mergedLiftId = item.lift_id || existing.lift_id || null;
+      const extractLiftId = (it) => {
+        if (!it) return null;
+        if (it.lift_id) return String(it.lift_id).replace(/^lift_/i, '');
+        if (it.source === 'lift' && it.id) return String(it.id).replace(/^lift_/i, '');
+        return null;
+      };
+      const mergedLiftId = extractLiftId(item) || extractLiftId(existing) || null;
+      const normalizeMType = (t) => {
+        const s = String(t || '').toLowerCase().trim();
+        if (s === 'movies' || s === 'films' || s === 'film') return 'movie';
+        if (s === 'shows' || s === 'serial') return 'series';
+        return s;
+      };
+      const mergedIds = Array.from(new Set([
+        ...(existing._mergedIds || [existing.id]),
+        ...(item._mergedIds || [item.id]),
+        existing.id,
+        item.id
+      ].filter(Boolean)));
       const hasAnyVerifiedStream = Boolean(
         fanfilmUrl ||
         mergedLiftId ||
@@ -3022,7 +3490,7 @@ function deduplicateMediaList(items) {
         is_upcoming: mergedUpcoming,
         is4K: has4K,
         quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (item.quality || existing.quality)),
-        poster: item.poster || item.poster_url || existing.poster || existing.poster_url,
+        poster: ((existing.poster && (!existing.poster.includes('/api/media/image-proxy') || existing.poster.includes('url='))) ? existing.poster : ((item.poster && (!item.poster.includes('/api/media/image-proxy') || item.poster.includes('url='))) ? item.poster : (existing.poster || item.poster || existing.poster_url || item.poster_url))),
         user_status: item.user_status || existing.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       } : {
@@ -3039,10 +3507,25 @@ function deduplicateMediaList(items) {
         is_upcoming: mergedUpcoming,
         is4K: has4K,
         quality: mergedUpcoming ? 'Ожидается' : (has4K ? '4K Ultra HD' : (existing.quality || item.quality)),
-        poster: existing.poster || existing.poster_url || item.poster || item.poster_url,
+        poster: ((existing.poster && (!existing.poster.includes('/api/media/image-proxy') || existing.poster.includes('url='))) ? existing.poster : ((item.poster && (!item.poster.includes('/api/media/image-proxy') || item.poster.includes('url='))) ? item.poster : (existing.poster || item.poster || existing.poster_url || item.poster_url))),
         user_status: existing.user_status || item.user_status,
         progress_percent: Math.max(item.progress_percent || 0, existing.progress_percent || 0)
       };
+
+      merged._mergedIds = mergedIds;
+      merged.lift_id = mergedLiftId;
+      merged.fanfilm_4k_url = fanfilmUrl;
+      merged.media_type = normalizeMType(merged.media_type);
+
+      // Привязываем все объединенные ID в aliasToKey для мгновенного нахождения
+      for (const mId of mergedIds) {
+        aliasToKey.set(String(mId), key);
+        aliasToKey.set(`id_${mId}`, key);
+      }
+      if (mergedLiftId) {
+        aliasToKey.set(String(mergedLiftId), key);
+        aliasToKey.set(`lift_${mergedLiftId}`, key);
+      }
 
       // Объединение плееров и ссылок на источники
       const mergedPlayers = [];
@@ -3517,8 +4000,9 @@ function createRailCardHtml(item, idx, isWide = false, railId = '') {
   const primaryQualityBadge = isUpcoming
     ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
     : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
-  const secondaryContextBadge = item.next_up
-    ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
+  const nextBadgeText = item.next_up_badge || item.next_up;
+  const secondaryContextBadge = (!isExplicitMovie && nextBadgeText)
+    ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${nextBadgeText}</span>`
     : ((!isExplicitMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
       ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
       : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
@@ -3530,7 +4014,7 @@ function createRailCardHtml(item, idx, isWide = false, railId = '') {
     <div class="rail-item ${isWide ? 'rail-item-wide' : ''}">
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          ${getMediaCardImgHtml(poster, item.title)}
+          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-card-badges">
             ${primaryQualityBadge}
             ${secondaryContextBadge}
@@ -3650,7 +4134,7 @@ export async function ensureLiftHomeRailsLoaded() {
           } catch (_) {}
           if (!hadBefore && currentTab === 'home') {
             lastRenderedHomeKey = '';
-            renderHomeView(rawCatalogItems);
+            renderFilteredCatalog();
           }
         }
       })
@@ -3932,6 +4416,8 @@ let lastRenderedHomeKey = '';
 function renderHomeView(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+  container.className = 'media-container view-grid home-rails-active';
+  document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
 
   ensureLiftHomeRailsLoaded();
   const hasLiftRails = Boolean(cachedLiftHomeRails && (cachedLiftHomeRails.foreignFilms?.length || cachedLiftHomeRails.ruFilms?.length));
@@ -3959,6 +4445,40 @@ function renderHomeView(items) {
     });
   }
 
+  const allLiftItems = cachedLiftHomeRails ? [
+    ...(cachedLiftHomeRails.foreignFilms || []),
+    ...(cachedLiftHomeRails.foreignSeries || []),
+    ...(cachedLiftHomeRails.ruFilms || []),
+    ...(cachedLiftHomeRails.ruSeries || [])
+  ] : [];
+
+  const unifiedPool = deduplicateMediaList([...items, ...allLiftItems]);
+  const canonicalMap = new Map();
+  for (const it of unifiedPool) {
+    const yr = getMediaYear(it) || it.year || '';
+    const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+    if (nKey) {
+      canonicalMap.set(nKey, it);
+      if (yr) canonicalMap.set(`${nKey}_${yr}`, it);
+    }
+    if (it.id) canonicalMap.set(String(it.id), it);
+    if (it._mergedIds) {
+      for (const mId of it._mergedIds) canonicalMap.set(String(mId), it);
+    }
+    if (it.lift_id) {
+      canonicalMap.set(`lift_${it.lift_id}`, it);
+      canonicalMap.set(String(it.lift_id), it);
+    }
+  }
+
+  items = deduplicateMediaList(items).map(it => {
+    const yr = getMediaYear(it) || it.year || '';
+    const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+    return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+           (nKey && canonicalMap.get(nKey)) ||
+           (it.id && canonicalMap.get(String(it.id))) ||
+           it;
+  });
   items = deduplicateMediaList(items);
   items.forEach(it => {
     const st = resolveMediaUserStatus(it);
@@ -4018,11 +4538,10 @@ function renderHomeView(items) {
       if (pct >= 95 && isMovie) return false;
 
       // Строгая фильтрация: только РЕАЛЬНЫЙ просмотр (прогресс от 2% и время от 60 секунд, либо 2+ серия)
+      if (pct >= 90) return false;
       const sec = typeof i.time_seconds === 'number' ? i.time_seconds : (i.last_time_seconds || 0);
-      const ep = parseInt(i.episode, 10) || 1;
-      const hasRealProgress = (pct >= 2.0 && sec >= 60) || (pct >= 5.0) || (ep > 1);
-
-      return hasRealProgress;
+      const realSec = typeof i.real_watched_seconds === 'number' ? i.real_watched_seconds : sec;
+      return sec >= 600 && realSec >= 600;
     })
     .map(i => {
       const ep = parseInt(i.episode, 10) || 1;
@@ -4749,48 +5268,100 @@ function renderHomeView(items) {
 
   if (cachedLiftHomeRails) {
     if (Array.isArray(cachedLiftHomeRails.foreignFilms) && cachedLiftHomeRails.foreignFilms.length > 0) {
-      rails.push({
-        id: 'rail-lift-foreign-films',
-        icon: '🌎',
-        title: 'Популярные зарубежные фильмы',
-        category: 'movies',
-        country: 'foreign',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.foreignFilms).slice(0, 28)
+      const canonicalForeignFilms = deduplicateMediaList(
+        cachedLiftHomeRails.foreignFilms.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      ).filter(it => {
+        const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+        return !nKey || !trendingNormKeys.has(nKey);
       });
+
+      if (canonicalForeignFilms.length > 0) {
+        rails.push({
+          id: 'rail-lift-foreign-films',
+          icon: '🌎',
+          title: 'Популярные зарубежные фильмы',
+          category: 'movies',
+          country: 'foreign',
+          isWide: false,
+          items: canonicalForeignFilms.slice(0, 28)
+        });
+      }
     }
     if (Array.isArray(cachedLiftHomeRails.foreignSeries) && cachedLiftHomeRails.foreignSeries.length > 0) {
-      rails.push({
-        id: 'rail-lift-foreign-series',
-        icon: '📺',
-        title: 'Популярные зарубежные сериалы',
-        category: 'series',
-        country: 'foreign',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.foreignSeries).slice(0, 28)
-      });
+      const canonicalForeignSeries = deduplicateMediaList(
+        cachedLiftHomeRails.foreignSeries.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      );
+      if (canonicalForeignSeries.length > 0) {
+        rails.push({
+          id: 'rail-lift-foreign-series',
+          icon: '📺',
+          title: 'Популярные зарубежные сериалы',
+          category: 'series',
+          country: 'foreign',
+          isWide: false,
+          items: canonicalForeignSeries.slice(0, 28)
+        });
+      }
     }
     if (Array.isArray(cachedLiftHomeRails.ruFilms) && cachedLiftHomeRails.ruFilms.length > 0) {
-      rails.push({
-        id: 'rail-lift-ru-films',
-        icon: '🇷🇺',
-        title: 'Популярные российские фильмы',
-        category: 'movies',
-        country: 'Россия',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.ruFilms).slice(0, 28)
-      });
+      const canonicalRuFilms = deduplicateMediaList(
+        cachedLiftHomeRails.ruFilms.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      );
+      if (canonicalRuFilms.length > 0) {
+        rails.push({
+          id: 'rail-lift-ru-films',
+          icon: '🇷🇺',
+          title: 'Популярные российские фильмы',
+          category: 'movies',
+          country: 'Россия',
+          isWide: false,
+          items: canonicalRuFilms.slice(0, 28)
+        });
+      }
     }
     if (Array.isArray(cachedLiftHomeRails.ruSeries) && cachedLiftHomeRails.ruSeries.length > 0) {
-      rails.push({
-        id: 'rail-lift-ru-series',
-        icon: '🎬',
-        title: 'Популярные российские сериалы',
-        category: 'series',
-        country: 'Россия',
-        isWide: false,
-        items: deduplicateMediaList(cachedLiftHomeRails.ruSeries).slice(0, 28)
-      });
+      const canonicalRuSeries = deduplicateMediaList(
+        cachedLiftHomeRails.ruSeries.map(it => {
+          const yr = getMediaYear(it) || it.year || '';
+          const nKey = normalizeMediaTitle(it.title, it.original_title || '');
+          return (nKey && yr && canonicalMap.get(`${nKey}_${yr}`)) ||
+                 (nKey && canonicalMap.get(nKey)) ||
+                 (it.id && canonicalMap.get(String(it.id))) ||
+                 it;
+        })
+      );
+      if (canonicalRuSeries.length > 0) {
+        rails.push({
+          id: 'rail-lift-ru-series',
+          icon: '🎬',
+          title: 'Популярные российские сериалы',
+          category: 'series',
+          country: 'Россия',
+          isWide: false,
+          items: canonicalRuSeries.slice(0, 28)
+        });
+      }
     }
   }
 
@@ -4967,10 +5538,14 @@ function renderHomeView(items) {
     railEl.querySelectorAll('.media-card').forEach((card, cIdx) => {
       const item = railData.items[cIdx];
       if (!item) return;
+      card._mediaItem = item;
 
       card.onclick = () => {
         if (carousel && carousel.dataset.isDragging === 'true') return;
-        openPlayerModal(item);
+        const opts = {};
+        if (item.season) opts.initialSeason = item.season;
+        if (item.episode) opts.initialEpisode = item.episode;
+        openPlayerModal(item, opts);
       };
 
       const bmBtn = card.querySelector('.media-card-bookmark-btn');
@@ -5032,9 +5607,18 @@ function renderHomeView(items) {
 // -------------------------------------------------------------
 // РЕНДЕРИНГ ЭЛЕМЕНТОВ В 4 РЕЖИМАХ ОТОБРАЖЕНИЯ
 // -------------------------------------------------------------
+let _stormGridRenderGeneration = 0;
+
 function renderMediaItems(items) {
   const container = document.getElementById('media-render-container');
   if (!container) return;
+
+  if (!['grid', 'compact-grid', 'detailed-list', 'table'].includes(currentViewMode)) {
+    currentViewMode = 'grid';
+  }
+  container.className = `media-container view-${currentViewMode}`;
+  document.body.dataset.cardDensity = currentCardDensity || 'standard';
+  document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
 
   container.dataset.renderedView = currentTab;
   lastRenderedHomeKey = '';
@@ -5113,9 +5697,11 @@ function renderMediaItems(items) {
       const primaryQualityBadge = isUpcoming
         ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>'
         : (isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : ''));
-      const secondaryContextBadge = item.next_up
-        ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${item.next_up}</span>`
-        : ((item.media_type === 'series' || catLabel === 'Сериал')
+      const isCardMovie = item.media_type === 'movie' || item.category === 'Фильм' || catLabel === 'Фильм';
+      const cardNextBadge = item.next_up_badge || item.next_up;
+      const secondaryContextBadge = (!isCardMovie && cardNextBadge)
+        ? `<span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700;">▶ ${cardNextBadge}</span>`
+        : ((!isCardMovie && (item.media_type === 'series' || catLabel === 'Сериал'))
           ? '<span class="storm-badge storm-badge-series" style="background:rgba(168,85,247,0.22); border-color:#a855f7; color:#c084fc; font-weight:700;">Сериал</span>'
           : (hasDub ? '<span class="storm-badge storm-badge-dub">Дубляж</span>' : ''));
 
@@ -5125,7 +5711,7 @@ function renderMediaItems(items) {
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          ${getMediaCardImgHtml(poster, item.title)}
+          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-card-badges">
             ${primaryQualityBadge}
             ${secondaryContextBadge}
@@ -5185,7 +5771,14 @@ function renderMediaItems(items) {
     }
 
     container.querySelectorAll('.media-card').forEach((card, idx) => {
-      card.onclick = () => openPlayerModal(items[idx]);
+      card._mediaItem = items[idx];
+      card.onclick = () => {
+        const it = items[idx];
+        const opts = {};
+        if (it?.season) opts.initialSeason = it.season;
+        if (it?.episode) opts.initialEpisode = it.episode;
+        openPlayerModal(it, opts);
+      };
 
       const bmBtn = card.querySelector('.media-card-bookmark-btn');
       if (bmBtn) {
@@ -5259,7 +5852,7 @@ function renderMediaItems(items) {
       return `
       <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
         <div class="media-detailed-poster">
-          ${getMediaCardImgHtml(poster, item.title)}
+          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
             ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>' : ''}
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}
@@ -5307,6 +5900,7 @@ function renderMediaItems(items) {
     }).join('');
 
     container.querySelectorAll('.media-detailed-card').forEach((card, idx) => {
+      card._mediaItem = items[idx];
       card.onclick = () => openPlayerModal(items[idx]);
 
       const playBtn = card.querySelector('.play-btn');
@@ -5372,7 +5966,7 @@ function renderMediaItems(items) {
             return `
             <tr data-idx="${idx}" class="storm-focusable" tabindex="0" role="button" style="cursor:pointer;">
               <td class="td-center">${getMediaCardImgHtml(poster, item.title, 'media-table-thumb')}</td>
-              <td><strong>${formattedTitle}</strong>${item.next_up ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up}</span>` : ''}</td>
+              <td><strong>${formattedTitle}</strong>${(item.next_up_badge || item.next_up) ? ` <span class="storm-badge storm-badge-next-up" style="background:rgba(0, 210, 255, 0.18); border-color:var(--accent); color:var(--accent); font-weight:700; margin-left:6px;">▶ ${item.next_up_badge || item.next_up}</span>` : ''}</td>
               <td class="td-center">${getSourceBadge(item) || `<span class="storm-badge storm-badge-quality">${item.media_type || 'movie'}</span>`}</td>
               <td class="td-center">${getMediaYear(item) || '—'}</td>
               <td class="td-center" style="font-weight: 700; color: var(--color-amber);">${item.rating ? `★ ${item.rating}` : '—'}</td>
@@ -5399,6 +5993,7 @@ function renderMediaItems(items) {
     `;
 
     container.querySelectorAll('tbody tr').forEach((row, idx) => {
+      row._mediaItem = items[idx];
       row.onclick = () => openPlayerModal(items[idx]);
 
       const playBtn = row.querySelector('.table-play-btn');
@@ -5425,15 +6020,19 @@ function renderCatalogPagination(shownCount) {
   const host = document.getElementById('storm-pagination-host');
   if (!host) return;
 
-  const isSearching = Boolean(searchQuery && searchQuery.trim().length >= 2);
-  if (['home', 'continue', 'bookmarks', 'offline'].includes(currentTab) || isSearching) {
+  if (currentTab === 'offline') {
     host.innerHTML = '';
     host.style.display = 'none';
     return;
   }
 
-  const totalPages = Math.max(1, totalCatalogPages);
-  const totalCount = Math.max(shownCount, totalCatalogItems);
+  let totalPages = Math.max(1, totalCatalogPages);
+  let totalCount = Math.max(shownCount, totalCatalogItems);
+
+  if (inPageQuickQuery && inPageQuickQuery.trim().length > 0) {
+    totalCount = shownCount;
+    totalPages = 1;
+  }
 
   // Ограничиваем количество кнопок на узких мобильных экранах
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 500;
@@ -5517,9 +6116,10 @@ function renderCatalogPagination(shownCount) {
 function goToPage(pageNum) {
   if (pageNum === currentPage) return;
   currentPage = pageNum;
+  saveCurrentNavState();
 
   const category = currentTab === 'home' ? 'popular' : currentTab;
-  const cacheKey = `${category}_${currentPage}_${currentSource}`;
+  const cacheKey = getTabCacheKey(category, currentPage, currentSource);
   if (!clientTabCache.has(cacheKey)) {
     rawCatalogItems = [];
     renderSkeletonGrid();
@@ -5623,13 +6223,37 @@ export async function executeSearch(query = null) {
   const clearBtn = document.getElementById('search-clear-btn');
   const q = (query !== null ? query : (input ? input.value : '')).trim();
   searchQuery = q;
+  saveCurrentNavState();
 
   if (clearBtn) {
     clearBtn.classList.toggle('is-visible', q.length > 0);
   }
 
   if (q.length >= 2) {
-    renderSkeletonGrid();
+    // Мгновенный показ совпадений из локального кэша (0 мс задержки) до ответа сервера с поддержкой опечаток и падежей
+    const stemRu = (w) => {
+      const s = String(w || '').toLowerCase().replace(/ё/g, 'е').trim();
+      if (s.length <= 3) return s;
+      const st = s.replace(/(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|иях|ием|ией|ию|ия|ие|ии|ью|ей|ой|ый|ий|ая|яя|ое|ее|ые|ам|ям|ах|ях|ом|ем|ов|ев|у|ю|а|я|о|е|и|ы|ь)$/u, '');
+      return st.length >= 3 ? st : s.slice(0, 3);
+    };
+    const qWords = q.toLowerCase().replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/gu).filter(w => w.length >= 2);
+    const instantMatches = typeof searchBaselineCatalog === 'function' ? [...searchBaselineCatalog(q)] : [];
+    const qLower = q.toLowerCase().replace(/ё/g, 'е');
+    for (const locIt of (rawCatalogItems || [])) {
+      const tLow = String(locIt.title || '').toLowerCase().replace(/ё/g, 'е');
+      const oLow = String(locIt.original_title || '').toLowerCase().replace(/ё/g, 'е');
+      const combined = `${tLow} ${oLow}`;
+      if (tLow.includes(qLower) || oLow.includes(qLower) || (qWords.length > 0 && qWords.every(w => combined.includes(stemRu(w))))) {
+        instantMatches.push(locIt);
+      }
+    }
+    if (instantMatches.length > 0) {
+      rawCatalogItems = deduplicateMediaList(instantMatches);
+      renderFilteredCatalog();
+    } else {
+      renderSkeletonGrid();
+    }
     try {
       let items = [];
       try {
@@ -5650,28 +6274,12 @@ export async function executeSearch(query = null) {
         }
       }
 
-      // 2. Семантический и мультипровайдерный фолбэк поиск по RuTube и VK Видео
-      if (items.length === 0 && q.length >= 2) {
+      // 2. Семантический фолбэк поиск только по реальным кинобазам (TMDB / FanFilm4K)
+      if (items.length === 0 && q.length >= 3) {
         try {
-          const fallbackTasks = [
-            fetch(`/api/rutube/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-            fetch(`/api/vkvideo/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))
-          ];
-          if (q.length >= 3) {
-            fallbackTasks.push(
-              fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }))
-            );
-          }
-
-          const fallbackResults = await Promise.all(fallbackTasks);
-          for (const resObj of fallbackResults) {
-            if (Array.isArray(resObj?.items) && resObj.items.length > 0) {
-              items.push(...resObj.items);
-            }
-          }
-
-          if (items.length > 0) {
-            showToast(`✨ Найдено в RuTube и VK Видео: ${items.length} релизов`, 'info');
+          const semRes = await fetch(`/api/search/semantic?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] }));
+          if (Array.isArray(semRes?.items) && semRes.items.length > 0) {
+            items.push(...semRes.items);
           }
         } catch (_) {}
       }
@@ -5707,11 +6315,16 @@ export async function executeSearch(query = null) {
         }
       }
 
-      rawCatalogItems = deduplicateMediaList(items);
-      totalCatalogItems = rawCatalogItems.length;
-      totalCatalogPages = 1;
+      allSearchResults = deduplicateMediaList(items);
+      totalCatalogItems = allSearchResults.length;
+      const searchPageSize = 36;
+      totalCatalogPages = Math.max(1, Math.ceil(totalCatalogItems / searchPageSize));
       currentPage = 1;
+      rawCatalogItems = allSearchResults.slice(0, searchPageSize);
       renderFilteredCatalog();
+      if (document.body.classList.contains('tv-mode') && typeof window.stormFocusFirstCatalogCard === 'function') {
+        setTimeout(() => window.stormFocusFirstCatalogCard(), 60);
+      }
     } catch (err) {
       const container = document.getElementById('media-render-container');
       if (container) {
@@ -5857,6 +6470,12 @@ function initFiltersCollapsible() {
 
 if (typeof window !== 'undefined') {
   window.executeSearch = executeSearch;
+  window.stormOnTvModeChanged = () => {
+    lastRenderedHomeKey = '';
+    const container = document.getElementById('media-render-container');
+    if (container) container.dataset.renderedView = '';
+    renderFilteredCatalog();
+  };
   window.toggleFiltersCollapsible = toggleFiltersCollapsible;
 }
 
@@ -6133,7 +6752,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentGenre,
     onSelect: (id) => {
       currentGenre = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6149,6 +6770,7 @@ export function initFilterDropdowns() {
     onSelect: (id) => {
       currentCountry = id;
       currentPage = 1;
+      syncDesktopFilterLabels();
       loadCurrentTab();
     }
   });
@@ -6181,7 +6803,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentYear,
     onSelect: (id) => {
       currentYear = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6209,7 +6833,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentRating,
     onSelect: (id) => {
       currentRating = parseFloat(id) || 0;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6235,7 +6861,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentStatusFilter,
     onSelect: (id) => {
       currentStatusFilter = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6257,7 +6885,9 @@ export function initFilterDropdowns() {
     getActiveVal: () => currentSort,
     onSelect: (id) => {
       currentSort = id;
-      renderFilteredCatalog();
+      currentPage = 1;
+      syncDesktopFilterLabels();
+      loadCurrentTab();
     }
   });
 
@@ -6325,13 +6955,11 @@ export function resetAllFilters() {
     el.classList.toggle('is-active', el.dataset.value === 'newest');
   });
 
+  only4KQuickFilter = false;
+  inPageQuickQuery = '';
+  currentPage = 1;
   updateFilterBadge();
-  if (prevSource !== 'all' || prevCountry !== 'all') {
-    currentPage = 1;
-    loadCurrentTab();
-  } else {
-    renderFilteredCatalog();
-  }
+  loadCurrentTab();
 }
 
 export function escapeHtml(str) {
@@ -6365,6 +6993,7 @@ function renderBookmarksSubNav(counts) {
     { id: 'hold', icon: '⏸️', label: t('bookmarks_subtab_hold') || 'Отложено', count: counts.hold || 0 },
     { id: 'dropped', icon: '❌', label: t('bookmarks_subtab_dropped') || 'Заброшено', count: counts.dropped || 0 },
     { id: 'wont_watch', icon: '🚫', label: t('bookmarks_subtab_wont_watch') || 'Не буду смотреть', count: counts.wont_watch || 0 },
+    { id: 'history', icon: '🕒', label: 'История просмотров', count: counts.history || 0 },
     { id: 'lists', icon: '📁', label: t('bookmarks_subtab_lists') || 'Мои коллекции', count: counts.lists || 0 }
   ];
 
@@ -6381,6 +7010,11 @@ function renderBookmarksSubNav(counts) {
       if (currentBookmarkSubTab === subtab && !activeViewingCustomList) return;
       currentBookmarkSubTab = subtab;
       activeViewingCustomList = null;
+      saveCurrentNavState();
+      if (subtab === 'history') {
+        switchTab('history');
+        return;
+      }
       renderFilteredCatalog();
     };
   });
@@ -6697,15 +7331,41 @@ export function renderFilteredCatalog() {
 
   if (currentTab === 'bookmarks') {
     const isFav = it => it.user_status === 'favorite' || it.status === 'favorite' || it.is_favorite === 1 || it.is_favorite === true || it.isFavorite === true;
+    const isWontWatch = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'wont_watch' || s === 'wontwatch' || s === 'abandoned';
+    };
+    const isHold = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'hold' || s === 'on_hold';
+    };
+    const isPlan = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'plan' || s === 'planned';
+    };
+    const isCompleted = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'completed' || s === 'watched';
+    };
+    const isDropped = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'dropped';
+    };
+    const isWatching = it => {
+      const s = String(it.user_status || it.status || it.bookmark_status || '').toLowerCase().replace(/-/g, '_');
+      return s === 'watching';
+    };
+
     const counts = {
       all: rawCatalogItems.length,
-      watching: rawCatalogItems.filter(it => it.user_status === 'watching').length,
+      watching: rawCatalogItems.filter(isWatching).length,
       favorite: rawCatalogItems.filter(isFav).length,
-      plan: rawCatalogItems.filter(it => it.user_status === 'plan' || it.user_status === 'planned').length,
-      completed: rawCatalogItems.filter(it => it.user_status === 'completed').length,
-      hold: rawCatalogItems.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold').length,
-      dropped: rawCatalogItems.filter(it => it.user_status === 'dropped').length,
-      wont_watch: rawCatalogItems.filter(it => it.user_status === 'wont_watch').length,
+      plan: rawCatalogItems.filter(isPlan).length,
+      completed: rawCatalogItems.filter(isCompleted).length,
+      hold: rawCatalogItems.filter(isHold).length,
+      dropped: rawCatalogItems.filter(isDropped).length,
+      wont_watch: rawCatalogItems.filter(isWontWatch).length,
+      history: getFullWatchHistoryList().length,
       lists: cachedCustomLists.length
     };
     renderBookmarksSubNav(counts);
@@ -6727,11 +7387,19 @@ export function renderFilteredCatalog() {
 
     if (currentBookmarkSubTab !== 'all') {
       if (currentBookmarkSubTab === 'plan') {
-        items = items.filter(it => it.user_status === 'plan' || it.user_status === 'planned');
+        items = items.filter(isPlan);
       } else if (currentBookmarkSubTab === 'hold') {
-        items = items.filter(it => it.user_status === 'hold' || it.user_status === 'on_hold');
+        items = items.filter(isHold);
       } else if (currentBookmarkSubTab === 'favorite') {
         items = items.filter(isFav);
+      } else if (currentBookmarkSubTab === 'completed') {
+        items = items.filter(isCompleted);
+      } else if (currentBookmarkSubTab === 'dropped') {
+        items = items.filter(isDropped);
+      } else if (currentBookmarkSubTab === 'watching') {
+        items = items.filter(isWatching);
+      } else if (currentBookmarkSubTab === 'wont_watch' || currentBookmarkSubTab === 'wontwatch') {
+        items = items.filter(isWontWatch);
       } else {
         items = items.filter(it => it.user_status === currentBookmarkSubTab);
       }
@@ -6859,7 +7527,7 @@ export function renderFilteredCatalog() {
     });
   }
 
-  // 4. Сортировка: по умолчанию ВЕЗДЕ по дате (от новых к старым)
+  // 4. Сортировка: при поиске сохраняем релевантность выдачи сервера (точное совпадение названия на первом месте)
   if (isSearching) {
     if (currentSort === 'rating') {
       items.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
@@ -6867,8 +7535,6 @@ export function renderFilteredCatalog() {
       items.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
     } else if (currentSort === 'popular') {
       items.sort((a, b) => (parseFloat(b.popularity || b.rating) || 0) - (parseFloat(a.popularity || a.rating) || 0));
-    } else {
-      items.sort((a, b) => (parseInt(b.year, 10) || 0) - (parseInt(a.year, 10) || 0));
     }
   } else if (isFiltered) {
     if (currentSort === 'rating') {
@@ -6929,8 +7595,26 @@ export function renderFilteredCatalog() {
 
   const heroContainer = document.getElementById('hero-showcase-container');
 
-  // Если мы на вкладке Главная и нет фильтрации/поиска - отображаем кинематографичный вид Emby/Plex
-  if (currentTab === 'home' && !isFiltered && (!searchQuery || !searchQuery.trim())) {
+  const isTvModeNow = document.body.classList.contains('tv-mode') || document.documentElement.getAttribute('data-tv-mode') === 'true';
+
+  // В ТВ-режиме (или при кастомном виде на Главной) собираем единый плоский список без группировки по лентам и без баннера
+  if (currentTab === 'home' && (isTvModeNow || isHomeCustomViewActive) && (!searchQuery || !searchQuery.trim())) {
+    ensureLiftHomeRailsLoaded();
+    if (cachedLiftHomeRails) {
+      const extraPool = [
+        ...(cachedLiftHomeRails.foreignFilms || []),
+        ...(cachedLiftHomeRails.foreignSeries || []),
+        ...(cachedLiftHomeRails.ruFilms || []),
+        ...(cachedLiftHomeRails.ruSeries || [])
+      ];
+      if (extraPool.length > 0) {
+        currentItems = deduplicateMediaList([...currentItems, ...extraPool]);
+      }
+    }
+  }
+
+  // Если мы на вкладке Главная, НЕ в ТВ-режиме, выбран режим витрины и нет фильтрации/поиска
+  if (!isTvModeNow && currentTab === 'home' && currentViewMode === 'grid' && !isHomeCustomViewActive && !isFiltered && (!searchQuery || !searchQuery.trim())) {
     const qBar = document.getElementById('storm-quick-catalog-bar');
     if (qBar) {
       qBar.style.display = 'none';
@@ -6939,7 +7623,15 @@ export function renderFilteredCatalog() {
     renderHomeView(currentItems);
   } else {
     hideHeroShowcase();
-    renderQuickCatalogBar(currentItems.length);
+    if (isTvModeNow) {
+      const qBar = document.getElementById('storm-quick-catalog-bar');
+      if (qBar) {
+        qBar.style.display = 'none';
+        qBar.innerHTML = '';
+      }
+    } else {
+      renderQuickCatalogBar(currentItems.length);
+    }
     renderMediaItems(currentItems);
   }
 }
@@ -6966,6 +7658,7 @@ export function renderQuickCatalogBar(shownCount = 0) {
     'anime-movies': '🌸 Аниме-фильмы',
     'anime-series': '⛩️ Аниме-сериалы',
     continue: '⏯️ Продолжить просмотр',
+    history: '🕒 История просмотров',
     bookmarks: '🔖 Мои списки и закладки'
   };
   const sectionLabel = (searchQuery && searchQuery.trim().length >= 2)
@@ -6992,7 +7685,7 @@ export function renderQuickCatalogBar(shownCount = 0) {
     { id: 'приключения', label: '🧭 Приключения' }
   ];
 
-  const showGenreChips = !['bookmarks', 'continue'].includes(currentTab) && !(searchQuery && searchQuery.trim().length >= 2);
+  const showGenreChips = !['bookmarks', 'continue', 'history'].includes(currentTab) && !(searchQuery && searchQuery.trim().length >= 2);
 
   qBar.innerHTML = `
     <div class="quick-catalog-bar-top">
@@ -7006,6 +7699,7 @@ export function renderQuickCatalogBar(shownCount = 0) {
           <input type="text" id="quick-inpage-filter-input" class="quick-inpage-search-input" placeholder="Быстрый фильтр на странице..." value="${escapeHtml(inPageQuickQuery || '')}">
           ${inPageQuickQuery ? `<button type="button" class="quick-inpage-clear-btn" id="quick-inpage-clear-btn" title="Очистить">✕</button>` : ''}
         </div>
+        ${currentTab === 'history' && shownCount > 0 ? `<button type="button" class="quick-catalog-pill-btn" id="quick-clear-history-btn" style="border-color:rgba(239,68,68,0.4);color:#fca5a5;" title="Очистить историю просмотров">🗑️ Очистить историю</button>` : ''}
         <button type="button" class="quick-catalog-pill-btn ${only4KQuickFilter ? 'active' : ''}" id="quick-filter-4k-toggle" title="Показать только релизы в 4K UHD">
           ✨ 4K UHD
         </button>
@@ -7042,11 +7736,22 @@ export function renderQuickCatalogBar(shownCount = 0) {
     };
   }
 
+  const clearHistBtn = qBar.querySelector('#quick-clear-history-btn');
+  if (clearHistBtn) {
+    clearHistBtn.onclick = () => {
+      clearStormWatchHistoryList();
+      rawCatalogItems = [];
+      renderFilteredCatalog();
+      if (typeof showToast === 'function') showToast('История просмотров очищена', 'info');
+    };
+  }
+
   const toggle4kBtn = qBar.querySelector('#quick-filter-4k-toggle');
   if (toggle4kBtn) {
     toggle4kBtn.onclick = () => {
       only4KQuickFilter = !only4KQuickFilter;
-      renderFilteredCatalog();
+      currentPage = 1;
+      loadCurrentTab();
     };
   }
 
@@ -7056,7 +7761,13 @@ export function renderQuickCatalogBar(shownCount = 0) {
       currentCardDensity = d;
       localStorage.setItem('storm_card_density', d);
       document.body.dataset.cardDensity = d;
+      if (currentViewMode !== 'grid') {
+        currentViewMode = 'grid';
+        localStorage.setItem('storm_view_mode', 'grid');
+        if (currentTab === 'home') isHomeCustomViewActive = true;
+      }
       qBar.querySelectorAll('.quick-density-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderFilteredCatalog();
     };
   });
 
@@ -7067,8 +7778,9 @@ export function renderQuickCatalogBar(shownCount = 0) {
       pill.onclick = () => {
         const gId = pill.dataset.qgenre || 'all';
         currentGenre = gId;
+        currentPage = 1;
         syncDesktopFilterLabels();
-        renderFilteredCatalog();
+        loadCurrentTab();
       };
     });
   }
@@ -7342,34 +8054,15 @@ export async function applyGenreFilter(genre) {
   if (!genre) return;
   const cleanGenre = genre.trim();
   currentGenre = cleanGenre.toLowerCase();
-  currentCountry = 'all';
+  currentPage = 1;
 
-  const genreLabel = document.getElementById('filter-genre-label');
-  if (genreLabel) {
-    genreLabel.textContent = cleanGenre.charAt(0).toUpperCase() + cleanGenre.slice(1);
-  }
-  document.querySelectorAll('#filter-genre-list .storm-dropdown-item').forEach(el => {
-    el.classList.toggle('is-active', el.dataset.value === currentGenre);
-  });
+  syncDesktopFilterLabels();
+  updateFilterBadge();
 
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) resetBtn.style.display = 'inline-flex';
 
-  renderFilteredCatalog();
-
-  if (currentItems.length < 3) {
-    try {
-      const res = await fetch(`/api/media/search?q=${encodeURIComponent(cleanGenre)}&source=all`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-          rawCatalogItems = deduplicateMediaList([...rawCatalogItems, ...data.items]);
-          renderFilteredCatalog();
-        }
-      }
-    } catch {}
-  }
-
+  loadCurrentTab();
   showToast(`Фильтр по жанру: ${cleanGenre.charAt(0).toUpperCase() + cleanGenre.slice(1)}`, 'info');
 }
 window.applyGenreFilter = applyGenreFilter;
@@ -7378,32 +8071,15 @@ export async function applyCountryFilter(country) {
   if (!country) return;
   const cleanCountry = country.trim();
   currentCountry = cleanCountry.toLowerCase();
-  currentGenre = 'all';
+  currentPage = 1;
 
-  const homeBtn = document.querySelector('.storm-tab-btn[data-tab="home"]');
-  if (homeBtn && currentTab !== 'home') {
-    currentTab = 'home';
-    document.querySelectorAll('.storm-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'home'));
-  }
+  syncDesktopFilterLabels();
+  updateFilterBadge();
 
   const resetBtn = document.getElementById('reset-filters-btn');
   if (resetBtn) resetBtn.style.display = 'inline-flex';
 
-  renderFilteredCatalog();
-
-  if (currentItems.length < 3) {
-    try {
-      const res = await fetch(`/api/media/search?q=${encodeURIComponent(cleanCountry)}&source=all`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-          rawCatalogItems = deduplicateMediaList([...rawCatalogItems, ...data.items]);
-          renderFilteredCatalog();
-        }
-      }
-    } catch {}
-  }
-
+  loadCurrentTab();
   showToast(`Фильтр по стране: ${cleanCountry.charAt(0).toUpperCase() + cleanCountry.slice(1)}`, 'info');
 }
 window.applyCountryFilter = applyCountryFilter;
@@ -7412,22 +8088,39 @@ window.applyCountryFilter = applyCountryFilter;
 // МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ (MODALS)
 // -------------------------------------------------------------
 function initModals() {
-  // Иерархическое закрытие через Escape (ESC):
-  // 1. Кастомные выпадающие списки -> 2. Всплывающие поповеры/стикеры -> 3. Настройки Ambilight ->
-  // 4. Студийные панели (Pro Видео, Pro Звук) -> 5. Полноэкранный режим видео -> 6. Вторичные модалки -> 7. Плеер
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' && e.keyCode !== 27) return;
+  // Универсальное иерархическое закрытие ВСЕХ модальных окон, шторок и оверлеев через Escape (ESC):
+  const closeTopmostStormModalOnEscape = (e) => {
+    if (e && e.key !== 'Escape' && e.keyCode !== 27) return false;
+    if (e && e._stormEscHandled) return true;
+
+    const markHandled = () => {
+      if (!e) return true;
+      e._stormEscHandled = true;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        try { document.activeElement.blur(); } catch (_) {}
+      }
+      return true;
+    };
 
     // 1. Открытые кастомные выпадающие списки
     const openDropdowns = document.querySelectorAll('.storm-custom-dropdown.is-open');
     if (openDropdowns.length > 0) {
       openDropdowns.forEach(dd => dd.classList.remove('is-open'));
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 2. Всплывающие поповеры (стикеры, обои, превью карточек)
+    // 2. Всплывающие поповеры и меню источников плеера
     let closedPopover = false;
+    const playerMenu = document.getElementById('player-source-menu');
+    if (playerMenu && playerMenu.style.display === 'block') {
+      playerMenu.style.display = 'none';
+      document.getElementById('player-source-dropdown')?.classList.remove('is-open');
+      document.body.classList.remove('player-dropdown-active');
+      closedPopover = true;
+    }
     const stickerPopover = document.getElementById('chat-stickers-popover');
     if (stickerPopover && stickerPopover.style.display !== 'none') {
       stickerPopover.style.display = 'none';
@@ -7442,54 +8135,102 @@ function initModals() {
       hideCardHoverPreview();
     }
     if (closedPopover) {
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 3. Панель настроек Ambilight
+    // 3. Панель настроек Ambilight и CleanView
     const ambHost = document.getElementById('ambilight-settings-panel-host');
     if (ambHost && ambHost.children.length > 0) {
       ambHost.innerHTML = '';
-      e.stopPropagation();
-      return;
+      return markHandled();
+    }
+    const cvAim = document.getElementById('storm-cleanview-aim-layer');
+    if (cvAim) {
+      cvAim.remove();
+      return markHandled();
+    }
+    const cvPanel = document.getElementById('storm-cleanview-panel');
+    if (cvPanel && cvPanel.classList.contains('is-open')) {
+      cvPanel.classList.remove('is-open');
+      return markHandled();
     }
 
-    // 4. Внутренняя студийная шторка плеера (Pro Видео, Pro Звук, Ambilight, Субтитры)
+    // 4. Специальные модальные окна плеера (External Tracks, Series Wheel, Lift Download, Studio Drawer)
+    const extTracksModal = document.getElementById('storm-external-tracks-modal');
+    if (extTracksModal && extTracksModal.style.display !== 'none') {
+      extTracksModal.style.display = 'none';
+      return markHandled();
+    }
+    const wheelModal = document.getElementById('series-wheel-modal');
+    if (wheelModal && (wheelModal.classList.contains('is-open') || (wheelModal.style.display && wheelModal.style.display !== 'none'))) {
+      wheelModal.classList.remove('is-open');
+      wheelModal.style.display = 'none';
+      return markHandled();
+    }
+    const dlModal = document.getElementById('lift-download-modal');
+    if (dlModal && (dlModal.classList.contains('is-open') || (dlModal.style.display && dlModal.style.display !== 'none'))) {
+      dlModal.classList.remove('is-open');
+      dlModal.style.display = 'none';
+      return markHandled();
+    }
     const studioBackdrop = document.getElementById('player-studio-modal-backdrop');
     if (studioBackdrop && studioBackdrop.style.display !== 'none') {
       studioBackdrop.style.display = 'none';
       const drawerBody = studioBackdrop.querySelector('#studio-drawer-body');
       if (drawerBody) drawerBody.style.display = 'block';
       document.querySelectorAll('.studio-tab-btn').forEach(btn => btn.classList.remove('active'));
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 5. Полноэкранный режим плеера
+    // 5. Голосовой ассистент HUD и мобильная шторка
+    const voiceHud = document.getElementById('storm-voice-assistant-hud');
+    if (voiceHud && voiceHud.classList.contains('is-open')) {
+      document.getElementById('storm-voice-hud-close')?.click();
+      voiceHud.classList.remove('is-open');
+      return markHandled();
+    }
+    const drawer = document.getElementById('mobile-drawer-backdrop');
+    if (drawer && drawer.classList.contains('is-open')) {
+      if (typeof closeMobileDrawer === 'function') closeMobileDrawer();
+      else drawer.classList.remove('is-open');
+      return markHandled();
+    }
+
+    // 6. Любые открытые вторичные модальные окна (КРОМЕ видеоплеера cinema-modal)
+    const secondaryModals = Array.from(document.querySelectorAll('.storm-modal-backdrop.is-open, .modal-backdrop.is-open')).filter(m => m.id !== 'cinema-modal');
+    if (secondaryModals.length > 0) {
+      const topModal = secondaryModals[secondaryModals.length - 1];
+      topModal.classList.remove('is-open');
+      if (topModal.id === 'auth-modal' && typeof stopTvDeviceCodeSession === 'function') {
+        stopTvDeviceCodeSession();
+      }
+      if (!document.querySelector('.storm-modal-backdrop.is-open')) {
+        document.body.classList.remove('modal-open');
+      }
+      return markHandled();
+    }
+
+    // 7. Полноэкранный режим плеера
     const cinemaModal = document.getElementById('cinema-modal');
     if (cinemaModal && cinemaModal.classList.contains('is-fullscreen')) {
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
       cinemaModal.classList.remove('is-fullscreen');
-      e.stopPropagation();
-      return;
+      return markHandled();
     }
 
-    // 6. Любые открытые вторичные модальные окна (КРОМЕ видеоплеера cinema-modal)
-    const secondaryModals = Array.from(document.querySelectorAll('.storm-modal-backdrop.is-open')).filter(m => m.id !== 'cinema-modal');
-    if (secondaryModals.length > 0) {
-      const topModal = secondaryModals[secondaryModals.length - 1];
-      topModal.classList.remove('is-open');
-      e.stopPropagation();
-      return;
-    }
-
-    // 7. И только если открыт исключительно видеоплеер — закрываем его
+    // 8. И только если открыт исключительно видеоплеер — закрываем его
     if (cinemaModal && cinemaModal.classList.contains('is-open')) {
       closePlayerModal();
+      return markHandled();
     }
-  });
+
+    return false;
+  };
+
+  window.closeTopmostStormModalOnEscape = closeTopmostStormModalOnEscape;
+  window.addEventListener('keydown', closeTopmostStormModalOnEscape, true);
 
   // Закрытие кастомных выпадающих списков при клике вне их области
   document.addEventListener('click', (e) => {
@@ -7529,16 +8270,14 @@ function initModals() {
     });
   });
 
-  // Открытие модалки логина
+  // Открытие модалки логина / регистрации
   const loginModalBtn = document.getElementById('login-modal-btn');
   const authModal = document.getElementById('auth-modal');
-  if (loginModalBtn && authModal) {
-    loginModalBtn.onclick = () => authModal.classList.add('is-open');
-  }
-
-  // Переключение Вход / Регистрация / ТВ-код
   const switchToRegister = document.getElementById('switch-to-register');
   const switchToLogin = document.getElementById('switch-to-login');
+  const authTabLogin = document.getElementById('auth-tab-login');
+  const authTabRegister = document.getElementById('auth-tab-register');
+  const authModeTabs = document.getElementById('auth-mode-tabs');
   const loginForm = document.getElementById('login-form');
   const registerForm = document.getElementById('register-form');
   const authModalTitle = document.getElementById('auth-modal-title');
@@ -7547,20 +8286,122 @@ function initModals() {
   const tvCodeRefreshBtn = document.getElementById('tv-code-refresh-btn');
   const tvCodeBackBtn = document.getElementById('tv-code-back-btn');
 
-  if (switchToRegister && switchToLogin) {
-    switchToRegister.onclick = () => {
-      stopTvDeviceCodeSession();
-      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
-      loginForm.style.display = 'none';
-      registerForm.style.display = 'block';
-      authModalTitle.textContent = t('auth_register');
+  const recoveryForm = document.getElementById('recovery-form');
+  const switchToRecovery = document.getElementById('switch-to-recovery');
+  const recoveryBackToLogin = document.getElementById('recovery-back-to-login');
+  const recSendTelegramBtn = document.getElementById('rec-send-telegram-btn');
+
+  const setAuthModalMode = (mode = 'login') => {
+    stopTvDeviceCodeSession();
+    if (tvCodeContainer) tvCodeContainer.style.display = 'none';
+    if (recoveryForm) recoveryForm.style.display = 'none';
+    if (authModeTabs) authModeTabs.style.display = (mode === 'tv' || mode === 'recovery') ? 'none' : 'flex';
+    if (mode === 'register') {
+      if (loginForm) loginForm.style.display = 'none';
+      if (registerForm) registerForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = t('auth_register') || 'Регистрация';
+      if (authTabLogin) authTabLogin.className = 'storm-btn storm-btn-secondary storm-btn-sm';
+      if (authTabRegister) authTabRegister.className = 'storm-btn storm-btn-primary storm-btn-sm';
+      setTimeout(() => document.getElementById('reg-username')?.focus(), 60);
+    } else if (mode === 'recovery') {
+      if (loginForm) loginForm.style.display = 'none';
+      if (registerForm) registerForm.style.display = 'none';
+      if (recoveryForm) recoveryForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = '🔑 Восстановление пароля';
+      const loginTyped = (document.getElementById('login-username')?.value || '').trim();
+      const recLoginInput = document.getElementById('rec-login');
+      if (recLoginInput && loginTyped && !recLoginInput.value) {
+        recLoginInput.value = loginTyped;
+      }
+      setTimeout(() => document.getElementById('rec-login')?.focus(), 60);
+    } else {
+      if (registerForm) registerForm.style.display = 'none';
+      if (loginForm) loginForm.style.display = 'block';
+      if (authModalTitle) authModalTitle.textContent = t('auth_login') || 'Вход в систему';
+      if (authTabLogin) authTabLogin.className = 'storm-btn storm-btn-primary storm-btn-sm';
+      if (authTabRegister) authTabRegister.className = 'storm-btn storm-btn-secondary storm-btn-sm';
+      fetchSavedAccounts().catch(() => {});
+      setTimeout(() => document.getElementById('login-username')?.focus(), 60);
+    }
+  };
+
+  window.openStormAuthModal = (mode = 'login') => {
+    setAuthModalMode(mode);
+    if (authModal) authModal.classList.add('is-open');
+  };
+
+  if (switchToRecovery) {
+    switchToRecovery.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('recovery');
     };
-    switchToLogin.onclick = () => {
-      stopTvDeviceCodeSession();
-      if (tvCodeContainer) tvCodeContainer.style.display = 'none';
-      registerForm.style.display = 'none';
-      loginForm.style.display = 'block';
-      authModalTitle.textContent = t('auth_login');
+  }
+  if (recoveryBackToLogin) {
+    recoveryBackToLogin.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('login');
+    };
+  }
+  if (recSendTelegramBtn) {
+    recSendTelegramBtn.onclick = async () => {
+      const loginVal = (document.getElementById('rec-login')?.value || '').trim();
+      const origText = recSendTelegramBtn.textContent;
+      recSendTelegramBtn.disabled = true;
+      recSendTelegramBtn.textContent = '⏳ Отправка...';
+      try {
+        await requestTelegramPasswordReset(loginVal);
+        document.getElementById('rec-code')?.focus();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        recSendTelegramBtn.disabled = false;
+        recSendTelegramBtn.textContent = origText;
+      }
+    };
+  }
+  if (recoveryForm) {
+    recoveryForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const loginVal = (document.getElementById('rec-login')?.value || '').trim();
+      const codeVal = (document.getElementById('rec-code')?.value || '').trim();
+      const passVal = (document.getElementById('rec-new-password')?.value || '').trim();
+      const submitBtn = document.getElementById('rec-submit-btn');
+      const origText = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Сброс пароля...';
+      }
+      try {
+        await confirmPasswordReset(loginVal, codeVal, passVal);
+        recoveryForm.reset();
+        setAuthModalMode('login');
+        if (authModal) authModal.classList.remove('is-open');
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = origText;
+        }
+      }
+    };
+  }
+
+  if (loginModalBtn && authModal) {
+    loginModalBtn.onclick = () => window.openStormAuthModal('login');
+  }
+
+  if (authTabLogin) authTabLogin.onclick = () => setAuthModalMode('login');
+  if (authTabRegister) authTabRegister.onclick = () => setAuthModalMode('register');
+
+  if (switchToRegister && switchToLogin) {
+    switchToRegister.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('register');
+    };
+    switchToLogin.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthModalMode('login');
     };
   }
 
@@ -7630,14 +8471,27 @@ function initModals() {
   if (registerForm) {
     registerForm.onsubmit = async (e) => {
       e.preventDefault();
-      const userVal = (document.getElementById('reg-username')?.value || '').trim() || 'Пользователь';
+      const userVal = (document.getElementById('reg-username')?.value || '').trim();
       const emailVal = (document.getElementById('reg-email')?.value || '').trim();
       const passVal = (document.getElementById('reg-password')?.value || '').trim();
+      const submitBtn = document.getElementById('register-submit-btn') || registerForm.querySelector('button[type="submit"]');
+      const origText = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Создание аккаунта...';
+      }
       try {
         await register(userVal, emailVal, passVal);
-        authModal.classList.remove('is-open');
+        registerForm.reset();
+        setAuthModalMode('login');
+        if (authModal) authModal.classList.remove('is-open');
       } catch (err) {
         showToast(err.message, 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = origText;
+        }
       }
     };
   }
@@ -7744,9 +8598,17 @@ function showCardHoverPreview(card, item) {
 
   const isUpcoming = isUpcomingMediaItem(item);
 
+  const isStubDesc = (txt) => {
+    if (!txt || typeof txt !== 'string') return true;
+    const s = txt.trim();
+    if (s.length < 55) return true;
+    return /просмотр (?:фильма|сериала|онлайн) в высоком качестве|превосходное качество видео|официальный лицензионный релиз|медиатека vk видео|аниме доступно для онлайн|фильм доступен для онлайн/i.test(s);
+  };
+
+  const hasRealDesc = !isStubDesc(item.description);
   const previewDesc = isUpcoming
     ? `Официальная премьера ожидается в ${previewYr || 'скоро'} году. Добавьте в «Буду смотреть», чтобы не пропустить цифровой релиз и 4K стримы.`
-    : (item.description || (previewCat.toLowerCase().includes('сериал') ? 'Просмотр сериала онлайн в высоком качестве с профессиональным русским дубляжем.' : 'Просмотр фильма онлайн в высоком качестве с профессиональным русским дубляжем.'));
+    : (hasRealDesc ? item.description : 'Загрузка описания сюжета...');
 
   preview.innerHTML = `
     <!-- Верхняя строка плашек -->
@@ -7801,6 +8663,51 @@ function showCardHoverPreview(card, item) {
   `;
 
   activeHoverPreviewEl = preview;
+
+  // Если у карточки отсутствует реальное описание сюжета — мгновенно подгружаем его с сервера и кэшируем
+  if (!isUpcoming && !hasRealDesc && item) {
+    window.__STORM_HOVER_SYNOPSIS_CACHE__ = window.__STORM_HOVER_SYNOPSIS_CACHE__ || new Map();
+    const cacheKey = `${item.source || 'all'}_${item.id || ''}_${item.title || ''}`;
+    const applyLoadedDetails = (det) => {
+      if (!det) return;
+      if (det.description && !isStubDesc(det.description)) {
+        item.description = det.description;
+      }
+      if (det.original_title && !item.original_title) item.original_title = det.original_title;
+      if (det.rating && (!item.rating || Number(item.rating) === 0)) item.rating = det.rating;
+      if (Array.isArray(det.genres) && det.genres.length > 0) item.genres = det.genres;
+      if (preview.isConnected) {
+        const descEl = preview.querySelector('.hover-preview-desc');
+        if (descEl) {
+          descEl.textContent = item.description || (previewCat.toLowerCase().includes('сериал')
+            ? 'Захватывающий многосерийный проект с проработанным сюжетом и русским дубляжем.'
+            : 'Увлекательный полнометражный фильм с профессиональным русским дубляжем.');
+        }
+      }
+    };
+
+    if (window.__STORM_HOVER_SYNOPSIS_CACHE__.has(cacheKey)) {
+      applyLoadedDetails(window.__STORM_HOVER_SYNOPSIS_CACHE__.get(cacheKey));
+    } else {
+      const qParams = new URLSearchParams({
+        id: String(item.id || ''),
+        source: String(item.source || 'fanfilm4k'),
+        title: String(item.title || ''),
+        year: String(previewYr || ''),
+        media_type: String(item.media_type || ''),
+        url: String(item.link || item.fanfilm_4k_url || '')
+      });
+      fetch(`/api/media/item?${qParams.toString()}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(det => {
+          if (det) {
+            window.__STORM_HOVER_SYNOPSIS_CACHE__.set(cacheKey, det);
+            applyLoadedDetails(det);
+          }
+        })
+        .catch(() => {});
+    }
+  }
 
   // Удерживаем попап при наведении курсора на него
   preview.onmouseenter = () => {
@@ -7956,6 +8863,63 @@ function hideCardHoverPreview() {
 }
 
 window.addEventListener('touchstart', hideCardHoverPreview, { passive: true });
+
+// Hover Intent Prefetching (220 ms) & Instant Player Open
+let hoverPrefetchTimer = null;
+let currentPrefetchedCard = null;
+
+function triggerCardHoverPrefetch(card) {
+  if (!card || !card.isConnected) return;
+  const item = card._mediaItem || {
+    id: card.dataset.id,
+    source: card.dataset.source,
+    title: card.dataset.title,
+    year: card.dataset.year,
+    link: card.dataset.link || card.dataset.url,
+    poster: card.dataset.poster,
+    media_type: card.dataset.mediaType || card.dataset.type,
+    fanfilm_4k_url: card.dataset.fanfilm4kUrl
+  };
+  if (item && (item.id || item.title)) {
+    if (typeof window.prefetchStormMediaItem === 'function') {
+      window.prefetchStormMediaItem(item);
+    } else if (typeof loadPlayerModule === 'function') {
+      loadPlayerModule().then(m => {
+        if (m && typeof m.prefetchMediaItemDetails === 'function') {
+          m.prefetchMediaItemDetails(item);
+        }
+      }).catch(() => {});
+    }
+  }
+}
+
+document.addEventListener('pointerover', (e) => {
+  const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
+  if (!card || card === currentPrefetchedCard) return;
+  clearTimeout(hoverPrefetchTimer);
+  currentPrefetchedCard = card;
+  hoverPrefetchTimer = setTimeout(() => {
+    triggerCardHoverPrefetch(card);
+  }, 120);
+}, { passive: true });
+
+document.addEventListener('pointerout', (e) => {
+  const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
+  if (card && card === currentPrefetchedCard && (!e.relatedTarget || !card.contains(e.relatedTarget))) {
+    clearTimeout(hoverPrefetchTimer);
+    currentPrefetchedCard = null;
+  }
+}, { passive: true });
+
+document.addEventListener('focusin', (e) => {
+  const card = e.target.closest('.media-card, .media-detailed-card, tbody tr');
+  if (!card) return;
+  clearTimeout(hoverPrefetchTimer);
+  currentPrefetchedCard = card;
+  hoverPrefetchTimer = setTimeout(() => {
+    triggerCardHoverPrefetch(card);
+  }, 120);
+}, { passive: true });
 
 // -------------------------------------------------------------
 // PWA И SERVICE WORKER
@@ -8623,8 +9587,14 @@ export function initStormCustomSelects() {
 
   const observer = new MutationObserver((mutations) => {
     for (const m of mutations) {
+      if (m.target && m.target.closest && (m.target.closest('#media-render-container') || m.target.closest('#lift-curated-rails-container') || m.target.closest('#hero-showcase-container'))) {
+        continue;
+      }
       for (const node of m.addedNodes) {
         if (node && node.nodeType === 1) {
+          if (node.closest && (node.closest('#media-render-container') || node.closest('#lift-curated-rails-container') || node.closest('#hero-showcase-container'))) {
+            continue;
+          }
           if (node.tagName === 'SELECT') {
             bindStormSelectElement(node);
           } else if (node.querySelectorAll) {

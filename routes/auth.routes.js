@@ -401,6 +401,16 @@ export function createAuthRouter({ requireAuth }) {
 
         for (const [k, v] of Object.entries(body.kv)) {
           const safeKey = String(k).slice(0, 120);
+          if (
+            safeKey.startsWith('storm_lift_') ||
+            safeKey.startsWith('storm_cal_') ||
+            safeKey.startsWith('storm_catalog_') ||
+            safeKey.startsWith('storm_cat_') ||
+            safeKey.startsWith('storm_search_') ||
+            safeKey === 'storm_local_bookmarks'
+          ) {
+            continue;
+          }
           if (v === null || v === undefined) {
             if (safeKey === 'storm_toasted_achievements_v1' || safeKey === 'storm_local_achievements') continue;
             delete kvStore[safeKey];
@@ -487,7 +497,20 @@ export function createAuthRouter({ requireAuth }) {
       const subscriptions = getReleaseSubscriptions(userId);
       const sessions = getUserActiveSessions(userId);
       const achievements = getUserAchievements(userId);
-      const kvOut = { ...(settings.kv_store || {}) };
+      const kvOut = {};
+      for (const [k, v] of Object.entries(settings.kv_store || {})) {
+        if (
+          k.startsWith('storm_lift_') ||
+          k.startsWith('storm_cal_') ||
+          k.startsWith('storm_catalog_') ||
+          k.startsWith('storm_cat_') ||
+          k.startsWith('storm_search_') ||
+          k === 'storm_local_bookmarks'
+        ) {
+          continue;
+        }
+        kvOut[k] = v;
+      }
       try {
         const toastedSet = new Set();
         try {
@@ -511,12 +534,44 @@ export function createAuthRouter({ requireAuth }) {
         kvOut.storm_toasted_achievements_v1 = JSON.stringify(Array.from(toastedSet));
       } catch (_) {}
 
+      // Защита от расхождения kv_store со статусами реальных закладок
+      if (Array.isArray(bookmarks)) {
+        for (const b of bookmarks) {
+          if (!b) continue;
+          const bId = String(b.media_id || b.id || '').trim();
+          const bStatus = String(b.status || b.user_status || '').trim().toLowerCase();
+          if (bId && bStatus && bStatus !== 'none') {
+            kvOut[`storm_status_${bId}`] = bStatus;
+            const stripped = bId.replace(/^[a-z]+_(?:up_|movie_|tv_|series_)?/i, '');
+            if (stripped && stripped !== bId) {
+              kvOut[`storm_status_${stripped}`] = bStatus;
+            }
+          }
+          const normT = String(b.title || '').trim().toLowerCase().replace(/ё/g, 'е');
+          if (normT && bStatus && bStatus !== 'none') {
+            kvOut[`storm_status_title_${normT}`] = bStatus;
+            const canonT = normT.replace(/[^\p{L}\p{N}]+/gu, '');
+            if (canonT) kvOut[`storm_status_canon_${canonT}`] = bStatus;
+          }
+        }
+      }
+
+      const cleanSettings = { ...settings };
+      delete cleanSettings.kv_store;
+
+      const cleanUser = { ...req.user };
+      delete cleanUser.settings_json;
+      if (cleanUser.settings) {
+        cleanUser.settings = { ...cleanUser.settings };
+        delete cleanUser.settings.kv_store;
+      }
+
       res.json({
         authenticated: true,
         token: req.token || null,
-        user: req.user,
+        user: cleanUser,
         stats,
-        settings,
+        settings: cleanSettings,
         kv: kvOut,
         bookmarks,
         continueWatching,
