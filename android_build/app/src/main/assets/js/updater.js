@@ -6,7 +6,7 @@
 
 import { showToast } from './auth.js?v=1.6.4';
 
-export const CURRENT_APP_VERSION = '1.5.0';
+export const CURRENT_APP_VERSION = '1.6.0';
 export const STORM_GAMES_WORLD_REPO = 'https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA';
 export const STORM_GAMES_WORLD_API = 'https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA';
 

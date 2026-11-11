@@ -31,7 +31,7 @@ import {
   db
 } from '../db.js';
 
-describe('STORM MULTIMEDIA 1.5.0 — Automated Quality & Security Suite', () => {
+describe('STORM MULTIMEDIA 1.6.0 - Automated Quality & Security Suite', () => {
   after(async () => {
     try { flushWatchProgressBatch(); } catch (_) {}
     try { await closeMariaDbPool(); } catch (_) {}
