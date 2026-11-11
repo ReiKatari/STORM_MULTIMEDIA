@@ -4,7 +4,7 @@
    https://github.com/ReiKatari/STORM_MULTIMEDIA/releases
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.6.2';
+import { showToast } from './auth.js?v=1.6.4';
 
 export const CURRENT_APP_VERSION = '1.5.0';
 export const STORM_GAMES_WORLD_REPO = 'https://stormgamesworld.ru/programs?repo=STORM_MULTIMEDIA';

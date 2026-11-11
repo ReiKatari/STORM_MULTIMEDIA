@@ -5,7 +5,7 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat wget
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev && npm install --no-save --os=linux --libc=musl --cpu=x64 sharp
 
 COPY . .
 RUN mkdir -p /app/data && chown -R node:node /app

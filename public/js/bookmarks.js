@@ -1,11 +1,11 @@
-import { trackClientAction } from './achievements.js?v=1.6.3';
+import { trackClientAction } from './achievements.js?v=1.6.4';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.6.3';
-import { t } from './i18n.js?v=1.6.3';
-import { normalizeStatus } from './status-icons.js?v=1.6.3';
+import { getToken, showToast } from './auth.js?v=1.6.4';
+import { t } from './i18n.js?v=1.6.4';
+import { normalizeStatus } from './status-icons.js?v=1.6.4';
 
 let memoryBookmarksCache = [];
 const bookmarksByIdMap = new Map();
@@ -531,13 +531,6 @@ export function resolveMediaUserStatus(item) {
     if (match?.status && match.status !== 'none') {
       const serverSt = normalizeStatus(match.status || match.user_status || '');
       if (serverSt && serverSt !== 'none') {
-        // ????????????? localStorage: ????????? ?????????? ?????
-        try {
-          if (id) localStorage.setItem(`storm_status_${id}`, serverSt);
-          if (strippedId) localStorage.setItem(`storm_status_${strippedId}`, serverSt);
-          if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, serverSt);
-          if (canonTitle) localStorage.setItem(`storm_status_canon_${canonTitle}`, serverSt);
-        } catch (_) {}
         return serverSt;
       }
     }
@@ -773,20 +766,37 @@ export function normalizeContinueTitleKey(title = '') {
     .trim();
 }
 
+let dismissedContinueCacheSet = null;
+
+function getDismissedContinueSet() {
+  if (dismissedContinueCacheSet) return dismissedContinueCacheSet;
+  dismissedContinueCacheSet = new Set();
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('storm_dismissed_continue_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const entry of parsed) {
+            if (!entry) continue;
+            if (entry.id) dismissedContinueCacheSet.add(`id:${entry.id}`);
+            if (entry.tKey) dismissedContinueCacheSet.add(`title:${entry.tKey}`);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return dismissedContinueCacheSet;
+}
+
 export function isDismissedFromContinueWatching(mediaId, title = '') {
   try {
-    const raw = localStorage.getItem('storm_dismissed_continue_v1');
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return false;
+    const set = getDismissedContinueSet();
     const cleanId = String(mediaId || '').trim();
+    if (cleanId && set.has(`id:${cleanId}`)) return true;
     const tKey = normalizeContinueTitleKey(title);
-    return parsed.some(entry => {
-      if (!entry) return false;
-      if (cleanId && entry.id && String(entry.id) === cleanId) return true;
-      if (tKey && entry.tKey && entry.tKey === tKey) return true;
-      return false;
-    });
+    if (tKey && set.has(`title:${tKey}`)) return true;
+    return false;
   } catch {
     return false;
   }
@@ -797,6 +807,15 @@ export function setDismissedFromContinueWatching(mediaId, title = '', dismissed 
     const cleanId = String(mediaId || '').trim();
     const tKey = normalizeContinueTitleKey(title);
     if (!cleanId && !tKey) return;
+    const set = getDismissedContinueSet();
+    if (dismissed) {
+      if (cleanId) set.add(`id:${cleanId}`);
+      if (tKey) set.add(`title:${tKey}`);
+    } else {
+      if (cleanId) set.delete(`id:${cleanId}`);
+      if (tKey) set.delete(`title:${tKey}`);
+    }
+
     let list = [];
     try {
       const raw = localStorage.getItem('storm_dismissed_continue_v1');
@@ -2028,13 +2047,6 @@ export async function deleteCustomListApi(listId) {
     if (match?.status && match.status !== 'none') {
       const serverSt = normalizeStatus(match.status || match.user_status || '');
       if (serverSt && serverSt !== 'none') {
-        // ????????????? localStorage: ????????? ?????????? ?????
-        try {
-          if (id) localStorage.setItem(`storm_status_${id}`, serverSt);
-          if (strippedId) localStorage.setItem(`storm_status_${strippedId}`, serverSt);
-          if (normTitle) localStorage.setItem(`storm_status_title_${normTitle}`, serverSt);
-          if (canonTitle) localStorage.setItem(`storm_status_canon_${canonTitle}`, serverSt);
-        } catch (_) {}
         return serverSt;
       }
     }

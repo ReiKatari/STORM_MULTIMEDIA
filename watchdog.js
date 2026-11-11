@@ -10,6 +10,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SERVER_SCRIPT = path.join(__dirname, 'server.js');
+const PID_FILE = path.join(__dirname, 'watchdog.pid');
+
+// Защита от запуска дублирующих супервизоров (Single-Instance Lock)
+try {
+  if (fs.existsSync(PID_FILE)) {
+    const existingPid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+    if (existingPid && existingPid !== process.pid) {
+      try {
+        process.kill(existingPid, 0);
+        console.log(`[STORM WATCHDOG] Другой активный процесс супервизора уже запущен (PID: ${existingPid}). Выход.`);
+        removePidFile(); process.exit(0);
+      } catch (_) {
+        // Предыдущий процесс завершился без удаления pid-файла
+      }
+    }
+  }
+  fs.writeFileSync(PID_FILE, String(process.pid), 'utf8');
+} catch (_) {}
+
+function removePidFile() {
+  try {
+    if (fs.existsSync(PID_FILE)) {
+      const stored = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+      if (stored === process.pid) fs.unlinkSync(PID_FILE);
+    }
+  } catch (_) {}
+}
+
+process.on('exit', removePidFile);
 const PORT = process.env.PORT || 3900;
 const HEALTHCHECK_INTERVAL_MS = 15000;
 const HEALTHCHECK_TIMEOUT_MS = 5000;
@@ -126,7 +156,7 @@ function startServer() {
 
       if (isShuttingDown) {
         log('Сторож завершает работу в штатном режиме.');
-        process.exit(0);
+        removePidFile(); process.exit(0);
         return;
       }
 
@@ -158,13 +188,13 @@ function handleShutdown(signal) {
         if (currentChild) {
           try { currentChild.kill('SIGKILL'); } catch (_) {}
         }
-        process.exit(0);
+        removePidFile(); process.exit(0);
       }, 3000);
     } catch (_) {
-      process.exit(0);
+      removePidFile(); process.exit(0);
     }
   } else {
-    process.exit(0);
+    removePidFile(); process.exit(0);
   }
 }
 

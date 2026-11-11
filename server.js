@@ -1825,7 +1825,7 @@ function normalizeImageUrl(url) {
   return clean;
 }
 
-async function fetchImageBuffer(url, timeoutMs = 6500) {
+async function fetchImageBuffer(url, timeoutMs = 2500) {
   if (!url || isPlaceholderImage(url)) return null;
 
   const normalized = normalizeImageUrl(url);
@@ -1909,17 +1909,7 @@ async function fetchImageBuffer(url, timeoutMs = 6500) {
       if (buffer && buffer.length > 100) {
         if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
           let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
-            if (sharp) {
-              try {
-                const webpBuf = await sharp(buffer)
-                  .webp({ quality: 82, effort: 3 })
-                  .toBuffer();
-                buffer = webpBuf;
-                contentType = 'image/webp';
-              } catch {
-                // Фолбэк на оригинальный формат, если sharp не смог обработать (например svg)
-              }
-            }
+
 
             const item = { buffer, contentType };
             if (imageBinaryCache.size > 1000) {
@@ -2387,6 +2377,35 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
   return await resolveAnimePosterBuffer(title, orig);
 }
 
+let activeSharpJobs = 0;
+const MAX_CONCURRENT_SHARP = 4;
+const sharpQueue = [];
+
+function runWithSharpLimiter(fn) {
+  return new Promise((resolve, reject) => {
+    const execute = async () => {
+      activeSharpJobs++;
+      try {
+        const res = await fn();
+        resolve(res);
+      } catch (err) {
+        reject(err);
+      } finally {
+        activeSharpJobs--;
+        if (sharpQueue.length > 0) {
+          const next = sharpQueue.shift();
+          next();
+        }
+      }
+    };
+    if (activeSharpJobs < MAX_CONCURRENT_SHARP) {
+      execute();
+    } else {
+      sharpQueue.push(execute);
+    }
+  });
+}
+
 async function transformImageWithSharp(imgObj, req) {
   if (!imgObj || !imgObj.buffer) return imgObj;
   if (!sharp || String(imgObj.contentType || '').includes('svg')) return imgObj;
@@ -2404,22 +2423,24 @@ async function transformImageWithSharp(imgObj, req) {
   if (cached) return cached;
 
   try {
-    let pipeline = sharp(imgObj.buffer, { failOnError: false });
-    if (reqWidth > 0) {
-      pipeline = pipeline.resize({ width: reqWidth, withoutEnlargement: true });
-    }
-    let contentType = imgObj.contentType;
-    if (wantsAvif) {
-      pipeline = pipeline.avif({ quality: Math.min(reqQuality, 75) });
-      contentType = 'image/avif';
-    } else if (wantsWebp) {
-      pipeline = pipeline.webp({ quality: reqQuality });
-      contentType = 'image/webp';
-    }
-    const outBuffer = await pipeline.toBuffer();
-    const outObj = { buffer: outBuffer, contentType };
-    l1Cache.set(cacheKey, outObj, 1000 * 60 * 60 * 6);
-    return outObj;
+    return await runWithSharpLimiter(async () => {
+      let pipeline = sharp(imgObj.buffer, { failOnError: false });
+      if (reqWidth > 0) {
+        pipeline = pipeline.resize({ width: reqWidth, withoutEnlargement: true });
+      }
+      let contentType = imgObj.contentType;
+      if (wantsAvif) {
+        pipeline = pipeline.avif({ quality: Math.min(reqQuality, 75) });
+        contentType = 'image/avif';
+      } else if (wantsWebp) {
+        pipeline = pipeline.webp({ quality: reqQuality });
+        contentType = 'image/webp';
+      }
+      const outBuffer = await pipeline.toBuffer();
+      const outObj = { buffer: outBuffer, contentType };
+      l1Cache.set(cacheKey, outObj, 1000 * 60 * 60 * 6);
+      return outObj;
+    });
   } catch (_) {
     return imgObj;
   }
@@ -2690,6 +2711,31 @@ function isAnimeMediaItem(item) {
 // ==========================================
 
 const memoryCatalogCache = new Map();
+const MAX_CATALOG_CACHE_ENTRIES = 200;
+const catalogLookupByNormTitle = new Map();
+const catalogLookupById = new Map();
+
+function setMemoryCatalogEntry(key, value) {
+  if (!key || !value) return;
+  if (memoryCatalogCache.has(key)) memoryCatalogCache.delete(key);
+  setMemoryCatalogEntry(key, value);
+  if (memoryCatalogCache.size > MAX_CATALOG_CACHE_ENTRIES) {
+    const oldest = memoryCatalogCache.keys().next().value;
+    if (oldest) memoryCatalogCache.delete(oldest);
+  }
+  if (Array.isArray(value.items)) {
+    for (const it of value.items) {
+      if (!it) continue;
+      const tNorm = String(it.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+      const yr = String(it.year || '').trim();
+      if (tNorm) {
+        if (yr) catalogLookupByNormTitle.set(`${tNorm}_${yr}`, it);
+        if (!catalogLookupByNormTitle.has(tNorm)) catalogLookupByNormTitle.set(tNorm, it);
+      }
+      if (it.id) catalogLookupById.set(String(it.id), it);
+    }
+  }
+}
 const MEMORY_CATALOG_FRESH_TTL = 15 * 60 * 1000; // 15 минут - свежий кэш
 const MEMORY_CATALOG_MAX_STALE_TTL = 24 * 60 * 60 * 1000; // 24 часа - допустимый stale кэш
 
@@ -3562,7 +3608,7 @@ setTimeout(async () => {
         try {
           const res = await executeCatalogFetch(cat, 1, 'all');
           if (res && res.items && res.items.length > 0) {
-            memoryCatalogCache.set(cacheKey, {
+            setMemoryCatalogEntry(cacheKey, {
               items: res.items,
               totalItems: res.totalItems,
               totalPages: res.totalPages,
@@ -3727,7 +3773,7 @@ app.get('/api/media/catalog', async (req, res) => {
         setImmediate(() => {
           executeCatalogFetch(category, page, source, extraFilters).then(fresh => {
             if (fresh && fresh.items && fresh.items.length > 0) {
-              memoryCatalogCache.set(cacheKey, {
+              setMemoryCatalogEntry(cacheKey, {
                 items: fresh.items,
                 totalItems: fresh.totalItems,
                 totalPages: fresh.totalPages,
@@ -3781,7 +3827,7 @@ app.get('/api/media/catalog', async (req, res) => {
     let calculatedTotalPages = fetched.totalPages || 1;
 
     if (items && items.length > 0) {
-      memoryCatalogCache.set(cacheKey, {
+      setMemoryCatalogEntry(cacheKey, {
         items,
         totalItems,
         totalPages: calculatedTotalPages,
@@ -3862,6 +3908,17 @@ app.get('/api/media/calendar', async (req, res) => {
 });
 
 const memorySearchCache = new Map();
+const MAX_SEARCH_CACHE_ENTRIES = 200;
+
+function setMemorySearchEntry(key, value) {
+  if (!key || !value) return;
+  if (memorySearchCache.has(key)) memorySearchCache.delete(key);
+  setMemorySearchEntry(key, value);
+  if (memorySearchCache.size > MAX_SEARCH_CACHE_ENTRIES) {
+    const oldest = memorySearchCache.keys().next().value;
+    if (oldest) memorySearchCache.delete(oldest);
+  }
+}
 const SEARCH_CACHE_FRESH_TTL = 15 * 60 * 1000; // 15 минут
 const SEARCH_CACHE_MAX_TTL = 12 * 60 * 60 * 1000; // 12 часов
 
@@ -4446,7 +4503,7 @@ app.get('/api/media/search', async (req, res) => {
         executeUnifiedSearch(query, source)
           .then(freshItems => {
             if (freshItems.length > 0) {
-              memorySearchCache.set(cacheKey, { items: freshItems, timestamp: Date.now() });
+              setMemorySearchEntry(cacheKey, { items: freshItems, timestamp: Date.now() });
             }
           })
           .catch(() => {});
@@ -4471,7 +4528,7 @@ app.get('/api/media/search', async (req, res) => {
 
     const items = await executeUnifiedSearch(query, source);
     if (items.length > 0) {
-      memorySearchCache.set(cacheKey, { items, timestamp: now });
+      setMemorySearchEntry(cacheKey, { items, timestamp: now });
     }
 
     const searchUserId = req.user?.id || null;
@@ -5040,20 +5097,12 @@ app.get('/api/media/item', async (req, res) => {
         const matchYr = mediaDetails.year || req.query.year || '';
         let knownFf = resolveFanFilmUrl(matchTitle, matchYr);
         if (!knownFf) {
-          for (const entry of memoryCatalogCache.values()) {
-            if (entry && Array.isArray(entry.items)) {
-              const match = entry.items.find(catIt => {
-                if (!catIt || !catIt.fanfilm_4k_url) return false;
-                const cNorm = String(catIt.title || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
-                const tNorm = String(matchTitle).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
-                const cYr = String(catIt.year || '').trim();
-                return (tNorm && cNorm && tNorm === cNorm && (!matchYr || !cYr || matchYr === cYr));
-              });
-              if (match && match.fanfilm_4k_url) {
-                knownFf = match.fanfilm_4k_url;
-                break;
-              }
-            }
+          const tNorm = String(matchTitle).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '').trim();
+          const matchYrStr = String(matchYr).trim();
+          const fastMatch = (tNorm && matchYrStr && catalogLookupByNormTitle.get(`${tNorm}_${matchYrStr}`))
+            || (tNorm && catalogLookupByNormTitle.get(tNorm));
+          if (fastMatch?.fanfilm_4k_url) {
+            knownFf = fastMatch.fanfilm_4k_url;
           }
         }
         if (knownFf) {
@@ -5490,14 +5539,9 @@ app.get('/api/media/item', async (req, res) => {
         knownUrl = resolveFanFilmUrl(targetLookup, req.query.year || '');
       }
       if (!knownUrl && targetLookup) {
-        for (const entry of memoryCatalogCache.values()) {
-          if (entry && Array.isArray(entry.items)) {
-            const match = entry.items.find(it => it && (String(it.id) === targetLookup || (it.fanfilm_4k_url && it.fanfilm_4k_url.includes(targetLookup))));
-            if (match && match.fanfilm_4k_url) {
-              knownUrl = match.fanfilm_4k_url;
-              break;
-            }
-          }
+        const fastMatch = catalogLookupById.get(String(targetLookup));
+        if (fastMatch?.fanfilm_4k_url) {
+          knownUrl = fastMatch.fanfilm_4k_url;
         }
       }
       if (knownUrl) targetLookup = knownUrl;
@@ -12727,7 +12771,7 @@ server.listen(PORT, () => {
     try {
       const fresh = await executeCatalogFetch('popular', 1, 'all', {});
       if (fresh && fresh.items && fresh.items.length > 0) {
-        memoryCatalogCache.set('popular_1_all', {
+        setMemoryCatalogEntry('popular_1_all', {
           items: fresh.items,
           totalItems: fresh.totalItems,
           totalPages: Math.max(1, Math.ceil(fresh.totalItems / 24)),

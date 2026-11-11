@@ -15,6 +15,7 @@ import * as cheerio from 'cheerio';
 import { getCache, setCache } from '../db.js';
 import { getAnixartDiscover } from './anixart-service.js';
 import { normalizeAnimeFranchiseTitle, extractSeasonNumberFromTitle } from './canonical-media-intel.js';
+import { tmdbFetch, TMDB_API_KEY } from './tmdb-service.js';
 
 export function wrapPoster(url, title = '', orig = '') {
   const cleanTitle = (title || '').trim();
@@ -107,7 +108,7 @@ export async function getLostFilmSchedule(weekStart, weekEnd) {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
       },
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(2500)
     });
     if (res.ok) {
       html = await res.text();
@@ -115,8 +116,8 @@ export async function getLostFilmSchedule(weekStart, weekEnd) {
         setCache('lostfilm', 'last_raw_html', html, 86400 * 7);
       }
     }
-  } catch (err) {
-    console.warn('[Schedule] LostFilm live fetch timeout/error, using cached HTML:', err.message);
+  } catch (_) {
+    // Бесшумный фолбэк на кэш при сетевых блокировках
   }
 
   if (!html) {
@@ -382,17 +383,27 @@ export async function getShikimoriSchedule(weekStart, weekEnd) {
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const shikiRes = await fetch('https://shikimori.io/api/calendar', {
-      headers: {
-        'User-Agent': 'STORM-Multimedia/1.0 (+https://github.com/ReiKatari)',
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(5000)
-    });
-
-    if (!shikiRes.ok) return [];
-    const shikiData = await shikiRes.json();
-    if (!Array.isArray(shikiData)) return [];
+    const shikiMirrors = ['https://shikimori.one/api/calendar', 'https://shikimori.io/api/calendar'];
+    let shikiData = null;
+    for (const mirror of shikiMirrors) {
+      try {
+        const shikiRes = await fetch(mirror, {
+          headers: {
+            'User-Agent': 'STORM-Multimedia/1.0 (+https://github.com/ReiKatari)',
+            'Accept': 'application/json'
+          },
+          signal: AbortSignal.timeout(3000)
+        });
+        if (shikiRes.ok) {
+          const d = await shikiRes.json();
+          if (Array.isArray(d)) {
+            shikiData = d;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+    if (!shikiData || !Array.isArray(shikiData)) return [];
 
     const items = [];
     shikiData.forEach(entry => {
@@ -449,8 +460,7 @@ export async function getShikimoriSchedule(weekStart, weekEnd) {
       setCache('shikimori', cacheKey, items, 1800);
     }
     return items;
-  } catch (err) {
-    console.warn('[Schedule] Shikimori live error:', err.message);
+  } catch (_) {
     return [];
   }
 }
@@ -467,15 +477,10 @@ export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
     const startStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
     const endStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}`;
 
+    const tmdbKey = process.env.TMDB_API_KEY || TMDB_API_KEY || '4e44d9029b1270a757cddc766a1bcb63';
     const [upcomingRes, discoverRes] = await Promise.allSettled([
-      fetch('https://api.themoviedb.org/3/movie/upcoming?api_key=4e44d9029b1270a757cddc766a1bcb63&language=ru-RU&page=1', {
-        headers: { 'User-Agent': 'STORM-Multimedia/1.0' },
-        signal: AbortSignal.timeout(4000)
-      }),
-      fetch(`https://api.themoviedb.org/3/discover/movie?api_key=4e44d9029b1270a757cddc766a1bcb63&language=ru-RU&region=RU&primary_release_date.gte=${startStr}&primary_release_date.lte=${endStr}&sort_by=popularity.desc`, {
-        headers: { 'User-Agent': 'STORM-Multimedia/1.0' },
-        signal: AbortSignal.timeout(4000)
-      })
+      tmdbFetch(`/movie/upcoming?api_key=${tmdbKey}&language=ru-RU&page=1`, { timeout: 3500 }),
+      tmdbFetch(`/discover/movie?api_key=${tmdbKey}&language=ru-RU&region=RU&primary_release_date.gte=${startStr}&primary_release_date.lte=${endStr}&sort_by=popularity.desc`, { timeout: 3500 })
     ]);
 
     const results = [];
@@ -536,8 +541,7 @@ export async function getTmdbUpcomingMovies(weekStart, weekEnd) {
       setCache('tmdb', cacheKey, items, 1800);
     }
     return items;
-  } catch (err) {
-    console.warn('[Schedule] TMDB upcoming notice:', err.message);
+  } catch (_) {
     return [];
   }
 }
@@ -551,10 +555,8 @@ export async function getTmdbTvSchedule(weekStart, weekEnd) {
   if (cached && Array.isArray(cached) && cached.length > 0) return cached;
 
   try {
-    const res = await fetch('https://api.themoviedb.org/3/tv/on_the_air?api_key=4e44d9029b1270a757cddc766a1bcb63&language=ru-RU&page=1', {
-      headers: { 'User-Agent': 'STORM-Multimedia/1.0' },
-      signal: AbortSignal.timeout(4000)
-    });
+    const tmdbKey = process.env.TMDB_API_KEY || TMDB_API_KEY || '4e44d9029b1270a757cddc766a1bcb63';
+    const res = await tmdbFetch(`/tv/on_the_air?api_key=${tmdbKey}&language=ru-RU&page=1`, { timeout: 3500 });
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data.results)) return [];
@@ -599,8 +601,7 @@ export async function getTmdbTvSchedule(weekStart, weekEnd) {
       setCache('tmdb', cacheKey, items, 1800);
     }
     return items;
-  } catch (err) {
-    console.warn('[Schedule] TMDB TV on_the_air notice:', err.message);
+  } catch (_) {
     return [];
   }
 }

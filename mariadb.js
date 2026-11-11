@@ -5,6 +5,23 @@ let pool = null;
 let activeHost = null;
 let isConnected = false;
 let syncInProgress = false;
+let isInitialSync = true;
+
+function runSqliteTransaction(sqliteDb, fn) {
+  let inTx = false;
+  try {
+    sqliteDb.exec('BEGIN IMMEDIATE');
+    inTx = true;
+    fn();
+    sqliteDb.exec('COMMIT');
+    inTx = false;
+  } catch (err) {
+    if (inTx) {
+      try { sqliteDb.exec('ROLLBACK'); } catch (_) {}
+    }
+    throw err;
+  }
+}
 let initInFlightPromise = null;
 let mariaWriteQueue = Promise.resolve();
 let lastFailedInitAt = 0;
@@ -253,8 +270,9 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           role = excluded.role,
           settings_json = excluded.settings_json
       `);
-      for (const u of mUsers) {
-        let finalSettingsJson = u.settings_json || '{}';
+      runSqliteTransaction(sqliteDb, () => {
+        for (const u of mUsers) {
+          let finalSettingsJson = u.settings_json || '{}';
         try {
           const localRow = getLocalUser.get(u.id);
           if (localRow && localRow.settings_json) {
@@ -307,6 +325,7 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           finalSettingsJson
         );
       }
+    });
     }
 
     // 2. Синхронизация сессий (с очисткой истёкших и ранее утёкших сессий)
@@ -414,7 +433,8 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       `);
 
       const mBookmarkMap = new Map();
-      for (const b of mBookmarks) {
+      runSqliteTransaction(sqliteDb, () => {
+        for (const b of mBookmarks) {
         const key = `${b.user_id}_${String(b.media_id)}_${b.source}`;
         mBookmarkMap.set(key, Number(b.updated_at) || 0);
         upsertBookmark.run(
@@ -435,7 +455,8 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           b.watched_episodes_json || '{}',
           Number(b.updated_at) || 0
         );
-      }
+        }
+      });
 
       // Передаем локальные закладки в MariaDB, если их там ещё нет или они свежее
       const localBookmarks = sqliteDb.prepare('SELECT * FROM bookmarks').all();
@@ -576,7 +597,8 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       `);
 
       const mHistMap = new Map();
-      for (const h of mHistory) {
+      runSqliteTransaction(sqliteDb, () => {
+        for (const h of mHistory) {
         if (validUserIds.size > 0 && !validUserIds.has(Number(h.user_id))) continue;
         if (isHistoryRowInvalidOrDismissed(h)) {
           mariaDeleteWatchHistory(h.user_id, String(h.media_id), h.title);
@@ -603,7 +625,8 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
           h.progress_percent || 0.0,
           Number(h.updated_at)
         );
-      }
+        }
+      });
 
       // Передаем локальную историю в MariaDB только если она валидна, не удалена и свежее
       const localHist = sqliteDb.prepare('SELECT * FROM watch_history').all();
@@ -718,7 +741,10 @@ export async function syncFromMariaDbToSqlite(sqliteDb) {
       }
     }
 
-    console.log('[MariaDB 10] Двусторонняя синхронизация завершена успешно.');
+    if (isInitialSync || process.env.DEBUG_SYNC === '1') {
+      console.log('[MariaDB 10] Двусторонняя синхронизация завершена успешно.');
+    }
+    isInitialSync = false;
   } catch (err) {
     console.error('[MariaDB 10] Ошибка фоновой синхронизации данных:', err.message);
   } finally {

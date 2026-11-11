@@ -105,10 +105,10 @@ const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT || process.execArgv.i
 if (!isTestRunner) {
   initMariaDb().then(() => {
     syncFromMariaDbToSqlite(db);
-    // Периодическая фоновая синхронизация каждые 30 секунд для подхвата правок из phpMyAdmin
+    // Периодическая фоновая синхронизация каждые 5 минут для подхвата правок из phpMyAdmin
     setInterval(() => {
       syncFromMariaDbToSqlite(db);
-    }, 30000).unref();
+    }, 300000).unref();
   }).catch(err => {
     console.warn('[MariaDB 10] Инициализация:', err.message);
   });

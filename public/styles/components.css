@@ -483,8 +483,8 @@ input[type="checkbox"]::after {
   align-items: center;
   gap: 5px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .storm-badge-watching {
@@ -789,8 +789,8 @@ button:active .storm-status-svg {
   position: fixed;
   inset: 0;
   background: rgba(5, 7, 10, 0.86);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   z-index: 150000 !important;
   display: flex;
   align-items: center;
@@ -3350,8 +3350,8 @@ button:active .storm-status-svg {
   position: absolute;
   top: 4px;
   left: 4px;
-  background: rgba(0, 0, 0, 0.82);
-  backdrop-filter: blur(4px);
+  background: rgba(12, 14, 26, 0.88);
+  backdrop-filter: none;
   color: #ffffff;
   font-size: 10.5px;
   font-weight: 700;
@@ -3366,8 +3366,8 @@ button:active .storm-status-svg {
   position: absolute;
   bottom: 4px;
   right: 4px;
-  background: rgba(0, 0, 0, 0.82);
-  backdrop-filter: blur(4px);
+  background: rgba(12, 14, 26, 0.88);
+  backdrop-filter: none;
   color: #ffffff;
   font-size: 9.5px;
   font-weight: 600;
@@ -4564,8 +4564,8 @@ button:active .storm-status-svg {
   position: absolute;
   top: 6px;
   right: 6px;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
+  background: rgba(12, 14, 26, 0.88);
+  backdrop-filter: none;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
@@ -6323,8 +6323,8 @@ body.player-dropdown-active #cinema-modal:has(.player-custom-dropdown.is-open) .
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(10, 11, 16, 0.88);
-  backdrop-filter: blur(4px);
+  background: rgba(12, 14, 26, 0.88);
+  backdrop-filter: none;
   font-size: 10px;
   font-weight: 800;
   color: var(--accent);
@@ -11282,8 +11282,8 @@ body.cinema-focus-active::-webkit-scrollbar,
   height: 30px;
   border-radius: 50%;
   background: rgba(10, 14, 24, 0.78);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.85);
   display: flex;
@@ -11461,8 +11461,8 @@ body.cinema-focus-active::-webkit-scrollbar,
   border-radius: 8px;
   border: 1px solid rgba(244, 63, 94, 0.45);
   background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   color: #fda4af;
   font-size: 12px;
   font-weight: 800;
@@ -12716,8 +12716,8 @@ body[data-card-density="compact"] #media-render-container.media-container.view-g
   line-height: 1.35;
   max-width: 280px;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.65), 0 0 12px var(--accent-glow);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   opacity: 0;
   transform: translateY(4px) scale(0.96);
   transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
@@ -13215,6 +13215,24 @@ body.tv-mode #media-render-container.view-grid {
 .storm-modal-window, .storm-modal-dialog,
 .inplayer-ctrl-btn, .media-play-icon,
 .player-inplayer-episodes-sheet, .player-inplayer-voice-sheet {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+
+/* ==========================================================================
+   CARD SUB-ELEMENTS: ZERO-OVERHEAD GPU COMPOSITING (LOCKED 60-120 FPS)
+   ========================================================================== */
+.media-card-status-badge,
+.media-card-watched-tag,
+.media-card-bookmark-btn,
+.media-card-remove-continue-btn,
+.series-episode-badge,
+.series-episode-duration,
+.episode-duration-pill,
+.person-media-rating,
+.cal-poster-ep-badge,
+.franchise-order-badge {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }

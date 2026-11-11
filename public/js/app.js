@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.6.3';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.3';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.3';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.3';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.3';
-import { getStatusIconSvg } from './status-icons.js?v=1.6.3';
-import { initFormFactorEngine } from './form-factor.js?v=1.6.3';
+import { initTheme, setTheme } from './theme.js?v=1.6.4';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.4';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.4';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.4';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.4';
+import { getStatusIconSvg } from './status-icons.js?v=1.6.4';
+import { initFormFactorEngine } from './form-factor.js?v=1.6.4';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.6.3';
+const STORM_ASSET_VER = '1.6.4';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -3809,6 +3809,14 @@ function renderHeroShowcase(items) {
     resetAutoRotation();
   }
 
+  let isHeroVisible = true;
+  if (typeof IntersectionObserver !== 'undefined' && container && !container._heroObserver) {
+    container._heroObserver = new IntersectionObserver((entries) => {
+      isHeroVisible = Boolean(entries[0] && entries[0].isIntersecting);
+    }, { threshold: 0.1 });
+    container._heroObserver.observe(container);
+  }
+
   function startAutoRotation() {
     if (currentTab !== 'home' || heroSliderItems.length <= 1) return;
     if (heroSliderTimer) clearInterval(heroSliderTimer);
@@ -3817,6 +3825,9 @@ function renderHeroShowcase(items) {
         stopAutoRotation();
         hideHeroShowcase();
         return;
+      }
+      if (typeof document !== 'undefined' && (document.hidden || !isHeroVisible)) {
+        return; // Пропускаем смену слайдов, когда блок вне экрана или вкладка в фоне
       }
       currentHeroIndex = (currentHeroIndex + 1) % heroSliderItems.length;
       renderSlide(currentHeroIndex);
