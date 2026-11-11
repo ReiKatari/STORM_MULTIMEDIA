@@ -52,16 +52,16 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.6.4';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.4';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.4';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.4';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.4';
-import { getStatusIconSvg } from './status-icons.js?v=1.6.4';
-import { initFormFactorEngine } from './form-factor.js?v=1.6.4';
+import { initTheme, setTheme } from './theme.js?v=1.6.5';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.5';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.5';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.5';
+import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.5';
+import { getStatusIconSvg } from './status-icons.js?v=1.6.5';
+import { initFormFactorEngine } from './form-factor.js?v=1.6.5';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.6.4';
+const STORM_ASSET_VER = '1.6.5';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -5722,7 +5722,7 @@ function renderMediaItems(items) {
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
-          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
+          ${getMediaCardImgHtml(poster, item.title, '', idx < 6 ? 'high' : (idx >= 12 ? 'low' : false))}
           <div class="media-card-badges">
             ${primaryQualityBadge}
             ${secondaryContextBadge}
@@ -5863,7 +5863,7 @@ function renderMediaItems(items) {
       return `
       <div class="media-detailed-card storm-focusable" data-idx="${idx}" tabindex="0" role="button">
         <div class="media-detailed-poster">
-          ${getMediaCardImgHtml(poster, item.title, '', (idx < 4 && (railId === 'rail-continue' || railId === 'rail-trending')) ? 'high' : (idx >= 8 ? 'low' : false))}
+          ${getMediaCardImgHtml(poster, item.title, '', idx < 4 ? 'high' : (idx >= 8 ? 'low' : false))}
           <div class="media-detailed-badges" style="position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;">
             ${isUpcoming ? '<span class="storm-badge storm-badge-upcoming" style="background:rgba(245,158,11,0.22); border-color:#f59e0b; color:#fbbf24; font-weight:800; text-transform:uppercase;">ОЖИДАЕТСЯ</span>' : ''}
             ${isReal4K ? '<span class="storm-badge storm-badge-4k">4K UHD</span>' : (is1080p ? '<span class="storm-badge storm-badge-1080p">1080p</span>' : '')}

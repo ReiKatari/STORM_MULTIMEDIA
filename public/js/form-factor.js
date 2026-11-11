@@ -3,8 +3,8 @@
    (ADAPTIVE FORM FACTOR ENGINE: DESKTOP, MOBILE TOUCH, 10-FOOT TV)
    ========================================================================== */
 
-import { toggleTvMode } from './gamepad-tv.js?v=1.6.4';
-import { showToast } from './auth.js?v=1.6.4';
+import { toggleTvMode } from './gamepad-tv.js?v=1.6.5';
+import { showToast } from './auth.js?v=1.6.5';
 
 let currentProfile = 'auto'; // 'auto', 'desktop', 'mobile', 'tv'
 let activeEffectiveProfile = 'desktop';

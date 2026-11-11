@@ -1482,7 +1482,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.0',
+    version: '1.6.1',
     l1Cache: l1Cache.getStats(),
     database: {
       connected: isMariaDbActive()
@@ -1729,7 +1729,7 @@ app.post('/api/profiles/save', requireAuth, (req, res) => {
   }
 });
 
-// Подключение модульных роутеров архитектуры 1.6.0 (Пункт 6.1)
+// Подключение модульных роутеров архитектуры 1.6.1 (Пункт 6.1)
 app.use(createAuthRouter({ requireAuth }));
 app.use(createUserMediaRouter({ requireAuth }));
 app.use(createAdminRouter({ requireAdmin }));
@@ -2718,7 +2718,7 @@ const catalogLookupById = new Map();
 function setMemoryCatalogEntry(key, value) {
   if (!key || !value) return;
   if (memoryCatalogCache.has(key)) memoryCatalogCache.delete(key);
-  setMemoryCatalogEntry(key, value);
+  memoryCatalogCache.set(key, value);
   if (memoryCatalogCache.size > MAX_CATALOG_CACHE_ENTRIES) {
     const oldest = memoryCatalogCache.keys().next().value;
     if (oldest) memoryCatalogCache.delete(oldest);
@@ -3913,7 +3913,7 @@ const MAX_SEARCH_CACHE_ENTRIES = 200;
 function setMemorySearchEntry(key, value) {
   if (!key || !value) return;
   if (memorySearchCache.has(key)) memorySearchCache.delete(key);
-  setMemorySearchEntry(key, value);
+  memorySearchCache.set(key, value);
   if (memorySearchCache.size > MAX_SEARCH_CACHE_ENTRIES) {
     const oldest = memorySearchCache.keys().next().value;
     if (oldest) memorySearchCache.delete(oldest);
@@ -11787,7 +11787,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (STORM GAMES WORLD GIT + GITHUB RELEASES DUAL MIRROR)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.6.0';
+  let currentAppVersion = '1.6.1';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -11824,7 +11824,7 @@ app.get('/api/updates/check', async (req, res) => {
     try {
       const sgwRes = await fetch('https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA', {
         headers: {
-          'User-Agent': 'STORM-Multimedia-Client/1.6.0 (+https://stormgamesworld.ru)',
+          'User-Agent': 'STORM-Multimedia-Client/1.6.1 (+https://stormgamesworld.ru)',
           'Accept': 'application/json'
         },
         signal: AbortSignal.timeout(5000)
@@ -12760,9 +12760,9 @@ app.get('*', (req, res) => {
 
 // Запуск сервера с поддержкой WebSockets и фоновых демонов балансеров
 server.listen(PORT, () => {
-  logger.info('STORM MULTIMEDIA 1.6.0 Server started', { port: PORT });
+  logger.info('STORM MULTIMEDIA 1.6.1 Server started', { port: PORT });
   console.log(`====================================================`);
-  console.log(`🚀 STORM MULTIMEDIA 1.6.0 Сервер запущен на порту ${PORT}`);
+  console.log(`🚀 STORM MULTIMEDIA 1.6.1 Сервер запущен на порту ${PORT}`);
   refreshLiftHomeRailsServer(16).catch(() => {});
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);

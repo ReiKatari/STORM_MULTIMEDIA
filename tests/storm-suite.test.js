@@ -1,6 +1,9 @@
 process.env.NODE_ENV = 'test';
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { StormLruCache } from '../services/lru-cache.js';
 import {
   generateTotpSecret,
@@ -31,7 +34,7 @@ import {
   db
 } from '../db.js';
 
-describe('STORM MULTIMEDIA 1.6.0 - Automated Quality & Security Suite', () => {
+describe('STORM MULTIMEDIA 1.6.1 - Automated Quality & Security Suite', () => {
   after(async () => {
     try { flushWatchProgressBatch(); } catch (_) {}
     try { await closeMariaDbPool(); } catch (_) {}
@@ -205,5 +208,38 @@ describe('STORM MULTIMEDIA 1.6.0 - Automated Quality & Security Suite', () => {
     // Очистка тестовых пользователей
     deleteUserAccountById(u1.user.id);
     deleteUserAccountById(u2.user.id);
+  });
+
+  it('6. Frontend renderMediaItems has zero railId references & server cache setters avoid self-recursion', () => {
+    const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+    // (a) renderMediaItems in public/js/app.js contains zero railId references
+    const appJsContent = readFileSync(join(rootDir, 'public', 'js', 'app.js'), 'utf8');
+    const renderFnStart = appJsContent.indexOf('function renderMediaItems(');
+    assert.ok(renderFnStart !== -1, 'renderMediaItems function must exist in public/js/app.js');
+    const renderFnEnd = appJsContent.indexOf('\nfunction ', renderFnStart + 1);
+    const renderFnBody = appJsContent.substring(renderFnStart, renderFnEnd !== -1 ? renderFnEnd : undefined);
+    assert.equal(renderFnBody.includes('railId'), false, 'renderMediaItems must contain zero railId references');
+
+    // (b) setMemoryCatalogEntry / setMemorySearchEntry in server.js call memoryCatalogCache.set / memorySearchCache.set without self-recursion
+    const serverJsContent = readFileSync(join(rootDir, 'server.js'), 'utf8');
+
+    // Check setMemoryCatalogEntry
+    const catalogFnStart = serverJsContent.indexOf('function setMemoryCatalogEntry(');
+    assert.ok(catalogFnStart !== -1, 'setMemoryCatalogEntry must exist in server.js');
+    const catalogFnEnd = serverJsContent.indexOf('\nfunction ', catalogFnStart + 1);
+    const catalogFnBody = serverJsContent.substring(catalogFnStart, catalogFnEnd !== -1 ? catalogFnEnd : undefined);
+    const catalogBodyOnly = catalogFnBody.slice(catalogFnBody.indexOf('{') + 1);
+    assert.ok(catalogBodyOnly.includes('memoryCatalogCache.set('), 'setMemoryCatalogEntry must call memoryCatalogCache.set');
+    assert.equal(catalogBodyOnly.includes('setMemoryCatalogEntry('), false, 'setMemoryCatalogEntry must not call itself recursively');
+
+    // Check setMemorySearchEntry
+    const searchFnStart = serverJsContent.indexOf('function setMemorySearchEntry(');
+    assert.ok(searchFnStart !== -1, 'setMemorySearchEntry must exist in server.js');
+    const searchFnEnd = serverJsContent.indexOf('\nfunction ', searchFnStart + 1);
+    const searchFnBody = serverJsContent.substring(searchFnStart, searchFnEnd !== -1 ? searchFnEnd : undefined);
+    const searchBodyOnly = searchFnBody.slice(searchFnBody.indexOf('{') + 1);
+    assert.ok(searchBodyOnly.includes('memorySearchCache.set('), 'setMemorySearchEntry must call memorySearchCache.set');
+    assert.equal(searchBodyOnly.includes('setMemorySearchEntry('), false, 'setMemorySearchEntry must not call itself recursively');
   });
 });

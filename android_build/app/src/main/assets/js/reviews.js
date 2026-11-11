@@ -4,8 +4,8 @@
    сортировка, спойлер-блоки и верифицированные рецензии кинокритиков
    ========================================================================== */
 
-import { getUser, showToast } from './auth.js?v=1.6.4';
-import { trackClientAction } from './achievements.js?v=1.6.4';
+import { getUser, showToast } from './auth.js?v=1.6.5';
+import { trackClientAction } from './achievements.js?v=1.6.5';
 
 // Форматирование даты строго по стандарту dd.MM.yyyy (Правило 5.2)
 function formatStormDate(timestamp) {
