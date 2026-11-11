@@ -76,3 +76,5 @@ android_build/app/src/main/assets/public/
 Files/
 
 watchdog.pid
+data/image-cache/
+
