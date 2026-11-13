@@ -3,8 +3,8 @@
    Локальное и алгоритмическое распознавание интро/аутро + таймкоды
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.6.5';
-import { trackClientAction } from './achievements.js?v=1.6.5';
+import { showToast } from './auth.js?v=1.7.0';
+import { trackClientAction } from './achievements.js?v=1.7.0';
 
 let activeVideo = null;
 let currentSkipIntervals = null;

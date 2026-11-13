@@ -52,16 +52,35 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.6.5';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.6.5';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.6.5';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.6.5';
-import { getBaselineCatalog, searchBaselineCatalog } from './catalog-baseline.js?v=1.6.5';
-import { getStatusIconSvg } from './status-icons.js?v=1.6.5';
-import { initFormFactorEngine } from './form-factor.js?v=1.6.5';
+import { initTheme, setTheme } from './theme.js?v=1.7.0';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.7.0';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.7.0';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.7.0';
+let _baselineMod = null;
+let _baselineModPromise = null;
+function loadBaselineCatalogMod() {
+  if (_baselineMod) return Promise.resolve(_baselineMod);
+  return (_baselineModPromise ||= import('./catalog-baseline.js?v=1.7.0').then(m => (_baselineMod = m)).catch(() => null));
+}
+function getBaselineCatalog(category) {
+  if (_baselineMod && typeof _baselineMod.getBaselineCatalog === 'function') {
+    return _baselineMod.getBaselineCatalog(category);
+  }
+  loadBaselineCatalogMod();
+  return [];
+}
+function searchBaselineCatalog(q) {
+  if (_baselineMod && typeof _baselineMod.searchBaselineCatalog === 'function') {
+    return _baselineMod.searchBaselineCatalog(q);
+  }
+  loadBaselineCatalogMod();
+  return [];
+}
+import { getStatusIconSvg } from './status-icons.js?v=1.7.0';
+import { initFormFactorEngine } from './form-factor.js?v=1.7.0';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.6.5';
+const STORM_ASSET_VER = '1.7.0';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -339,6 +358,50 @@ export function isStormNativeApp() {
          Boolean(window.StormNativeApp);
 }
 
+export function isCleanMobileMode() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  if (document.body && (document.body.classList.contains('tv-mode') || document.body.classList.contains('form-factor-desktop'))) {
+    return false;
+  }
+  if (document.body && document.body.classList.contains('form-factor-mobile')) return true;
+  const w = window.innerWidth || document.documentElement.clientWidth || 1024;
+  return w <= 768 || (isStormNativeApp() && w <= 960);
+}
+
+const MOBILE_SECTION_TITLES = {
+  new: 'Новинки',
+  home: 'Популярное',
+  movies: 'Фильмы',
+  series: 'Сериалы',
+  cartoons: 'Мультфильмы',
+  'cartoon-series': 'Мультсериалы',
+  'anime-movies': 'Аниме-фильмы',
+  'anime-series': 'Аниме-сериалы',
+  continue: 'Продолжить просмотр',
+  bookmarks: 'Закладки',
+  history: 'История просмотров',
+  offline: 'Офлайн-просмотр'
+};
+
+export function syncMobileHeaderState(customTitle = '') {
+  const titleEl = document.getElementById('storm-mobile-section-title');
+  if (titleEl) {
+    if (customTitle) {
+      titleEl.textContent = customTitle;
+    } else if (searchQuery && searchQuery.trim().length >= 2) {
+      titleEl.textContent = `Поиск: ${searchQuery.trim()}`;
+    } else if (currentTab === 'bookmarks' && currentBookmarkSubTab === 'history') {
+      titleEl.textContent = 'История просмотров';
+    } else {
+      titleEl.textContent = MOBILE_SECTION_TITLES[currentTab] || 'Новинки';
+    }
+  }
+  const activeDrawerKey = (currentTab === 'bookmarks' && currentBookmarkSubTab === 'history') ? 'history' : currentTab;
+  document.querySelectorAll('.mobile-drawer-cat-btn[data-drawer-tab]').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.drawerTab === activeDrawerKey);
+  });
+}
+
 async function startStormApp() {
   if (window.__STORM_APP_BOOTED__) return;
   window.__STORM_APP_BOOTED__ = true;
@@ -346,7 +409,14 @@ async function startStormApp() {
     if (isStormNativeApp()) {
       document.body.classList.add('is-native-app');
     }
+    const savedCols = localStorage.getItem('storm_mobile_cols') || '3';
+    document.body.dataset.mobileCols = savedCols;
+    if (isCleanMobileMode() && (!_initialNavState || !_initialNavState.tab || _initialNavState.tab === 'home') && !window.location.hash && !(searchQuery && searchQuery.trim().length >= 2)) {
+      currentTab = localStorage.getItem('storm_mobile_start_tab') || 'new';
+    }
     document.body.dataset.activeTab = currentTab || 'home';
+    syncMobileHeaderState();
+    setTimeout(() => { loadBaselineCatalogMod(); }, 1800);
   } catch (_) {}
 
   // 1. Немедленная инициализация темы и языка
@@ -763,6 +833,8 @@ export function closeAllActiveModals() {
   document.querySelectorAll('.storm-modal-backdrop.is-open, .modal-backdrop.is-open').forEach(m => {
     m.classList.remove('is-open');
   });
+  const overflowMenu = document.getElementById('storm-mobile-overflow-menu');
+  if (overflowMenu) overflowMenu.classList.remove('is-open');
   document.body.classList.remove('modal-open');
   if (typeof closePlayerModal === 'function') {
     closePlayerModal();
@@ -1072,6 +1144,8 @@ export function switchTab(tab, options = {}) {
   document.querySelectorAll('.storm-mobile-nav-item').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
+  document.body.classList.remove('mobile-search-open');
+  syncMobileHeaderState();
 
   // Синхронизация нижней панели навигации (Emby и Plex Dock)
   document.querySelectorAll('.storm-bottom-nav-item').forEach(b => {
@@ -2286,30 +2360,33 @@ export function handleGlobalImageError(imgEl) {
   if (!imgEl || imgEl.dataset.stormFallbackDone === '1') return;
   const rawUrl = imgEl.dataset.rawUrl || unwrapRawImageUrl(imgEl.getAttribute('src') || '');
   const title = imgEl.dataset.title || imgEl.getAttribute('alt') || '';
-  const isLiftImg = rawUrl && rawUrl.includes('img.liftw.ws');
   const isAnilibriaImg = rawUrl && (rawUrl.includes('anilibria.top') || rawUrl.includes('aniliberty.top'));
+  const proxyPrefix = (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:')
+    ? 'https://stormmultimedia.ru'
+    : '';
 
-  if (isAnilibriaImg && !imgEl.dataset.triedAniliberty && window.__STORM_BACKEND_ONLINE__ !== false) {
+  if (isAnilibriaImg && !imgEl.dataset.triedAniliberty) {
     imgEl.dataset.triedAniliberty = '1';
     const altUrl = rawUrl.includes('anilibria.top')
       ? rawUrl.replace('anilibria.top', 'aniliberty.top')
       : rawUrl.replace('aniliberty.top', 'anilibria.top');
-    imgEl.src = `/api/media/image-proxy?url=${encodeURIComponent(altUrl)}${title ? `&title=${encodeURIComponent(title.trim())}` : ''}&v=2`;
+    imgEl.src = `${proxyPrefix}/api/media/image-proxy?url=${encodeURIComponent(altUrl)}${title ? `&title=${encodeURIComponent(title.trim())}` : ''}&v=5`;
     return;
   }
-  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !isAnilibriaImg && !imgEl.dataset.triedWsrv) {
-    imgEl.dataset.triedWsrv = '1';
-    imgEl.src = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
+  if (rawUrl && rawUrl.includes('image.tmdb.org') && !imgEl.dataset.triedTmdbMirror) {
+    imgEl.dataset.triedTmdbMirror = '1';
+    const mirrorUrl = rawUrl.replace('image.tmdb.org', 'imagetmdb.com');
+    imgEl.src = `${proxyPrefix}/api/media/image-proxy?url=${encodeURIComponent(mirrorUrl)}${title ? `&title=${encodeURIComponent(title.trim())}` : ''}&v=5`;
     return;
   }
-  if (rawUrl && rawUrl.startsWith('http') && !isLiftImg && !isAnilibriaImg && !imgEl.dataset.triedWeserv) {
-    imgEl.dataset.triedWeserv = '1';
-    imgEl.src = `https://images.weserv.nl/?url=${encodeURIComponent(rawUrl)}&w=500&q=85&output=webp`;
-    return;
-  }
-  if (title && !imgEl.dataset.triedTitleProxy && window.__STORM_BACKEND_ONLINE__ !== false) {
+  if (title && title.trim().length >= 2 && !imgEl.dataset.triedTitleProxy && window.__STORM_BACKEND_ONLINE__ !== false) {
     imgEl.dataset.triedTitleProxy = '1';
-    imgEl.src = `/api/media/image-proxy?title=${encodeURIComponent(title.trim())}&v=2`;
+    imgEl.src = `${proxyPrefix}/api/media/image-proxy?title=${encodeURIComponent(title.trim())}&v=5`;
+    return;
+  }
+  if (rawUrl && rawUrl.startsWith('http') && !rawUrl.includes('img.liftw.ws') && !rawUrl.includes('image.tmdb.org') && !imgEl.dataset.triedDirectRaw) {
+    imgEl.dataset.triedDirectRaw = '1';
+    imgEl.src = rawUrl;
     return;
   }
   imgEl.dataset.stormFallbackDone = '1';
@@ -2333,18 +2410,20 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Получение безопасного и гарантированно доступного URL обложки/постера.
- * Поддерживает как локальный прокси /api/media/image-proxy, так и прямую
- * глобальную CDN-доставку через wsrv.nl для автономной работы на Android и без бэкенда.
+ * Получение безопасного и гарантированно доступного URL обложки/постера
+ * через серверный кэширующий прокси /api/media/image-proxy (с поддержкой Referer и зеркал TMDB).
  */
 export function getSafePosterUrl(url, title = '') {
   const cleanTitle = typeof title === 'string' ? title.trim() : '';
+  const proxyPrefix = (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:')
+    ? 'https://stormmultimedia.ru'
+    : '';
   if (!url || typeof url !== 'string' || isPlaceholderImage(url)) {
     if (cleanTitle.length >= 2) {
-      if (window.__STORM_BACKEND_ONLINE__ === false) {
+      if (window.__STORM_BACKEND_ONLINE__ === false && !proxyPrefix) {
         return generateSvgPosterDataUri(cleanTitle);
       }
-      return `/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&v=4`;
+      return `${proxyPrefix}/api/media/image-proxy?title=${encodeURIComponent(cleanTitle)}&v=5`;
     }
     return 'assets/favicon.svg';
   }
@@ -2362,24 +2441,15 @@ export function getSafePosterUrl(url, title = '') {
       proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + `title=${encodeURIComponent(cleanTitle)}`;
     }
     if (!proxyUrl.includes('v=')) {
-      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + 'v=4';
+      proxyUrl += (proxyUrl.includes('?') ? '&' : '?') + 'v=5';
     }
-    return proxyUrl;
+    return `${proxyPrefix}${proxyUrl}`;
   }
 
   if (clean.startsWith('//')) clean = `https:${clean}`;
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
-    const isLiftHost = clean.includes('img.liftw.ws') || clean.includes('lateremb.ws');
-    const isAnilibriaHost = clean.includes('anilibria.top') || clean.includes('aniliberty.top');
-    const useDirectCdn = (isStormNativeApp() || window.__STORM_BACKEND_ONLINE__ === false) && !isLiftHost;
-    if (useDirectCdn) {
-      if (isAnilibriaHost || clean.includes('static.anixart.tv') || clean.includes('rutube.ru') || clean.includes('userapi.com') || clean.includes('mycdn.me')) {
-        return clean;
-      }
-      return `https://wsrv.nl/?url=${encodeURIComponent(clean)}&w=500&q=85&output=webp`;
-    }
     const titleParam = cleanTitle ? `&title=${encodeURIComponent(cleanTitle)}` : '';
-    return `/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}&v=4`;
+    return `${proxyPrefix}/api/media/image-proxy?url=${encodeURIComponent(clean)}${titleParam}&v=5`;
   }
   return clean;
 }
@@ -5719,10 +5789,29 @@ function renderMediaItems(items) {
       const bmIcon = item.user_status === 'favorite' ? '❤️' : (item.user_status === 'completed' ? '✅' : (item.user_status ? '🔖' : '＋'));
       const bmTitle = item.user_status ? `В закладках (${getStatusLabel(item.user_status)}) • Нажмите для смены` : 'Быстро добавить в «В планах»';
 
+      const countryStr = Array.isArray(item.countries) ? item.countries[0] : (item.country ? String(item.country).split(',')[0].trim() : '');
+      const genreStr = Array.isArray(item.genres) ? item.genres[0] : (item.genres ? String(item.genres).split(',')[0].trim() : '');
+      let mobileStripText = '';
+      let mobileStripTone = '';
+      if (isUpcoming) {
+        mobileStripText = yr ? `Ожидается • ${yr}` : 'Ожидается';
+        mobileStripTone = 'is-upcoming';
+      } else if (!isCardMovie && cardNextBadge) {
+        mobileStripText = String(cardNextBadge).replace(/^▶\s*/, '').trim();
+        if (/заверш|все\s+серии/i.test(mobileStripText)) mobileStripTone = 'is-completed-series';
+      } else if (!isCardMovie && (parseInt(item.season, 10) > 0 && parseInt(item.episode, 10) > 0) && (parseInt(item.season, 10) > 1 || parseInt(item.episode, 10) > 1)) {
+        mobileStripText = `${parseInt(item.season, 10)}s${parseInt(item.episode, 10)}e`;
+      } else {
+        const parts = [yr, countryStr, genreStr].filter(Boolean);
+        mobileStripText = parts.length > 0 ? parts.join(', ') : catLabel;
+      }
+
       return `
       <div class="storm-card media-card storm-focusable" data-id="${item.id}" data-source="${item.source}" tabindex="0" role="button" aria-label="${formattedTitle}">
         <div class="media-card-poster">
           ${getMediaCardImgHtml(poster, item.title, '', idx < 6 ? 'high' : (idx >= 12 ? 'low' : false))}
+          <span class="media-card-mobile-type">${escapeHtml(catLabel)}</span>
+          <div class="media-card-mobile-strip ${mobileStripTone}">${escapeHtml(mobileStripText)}</div>
           <div class="media-card-badges">
             ${primaryQualityBadge}
             ${secondaryContextBadge}
@@ -6235,6 +6324,7 @@ export async function executeSearch(query = null) {
   const q = (query !== null ? query : (input ? input.value : '')).trim();
   searchQuery = q;
   saveCurrentNavState();
+  syncMobileHeaderState();
 
   if (clearBtn) {
     clearBtn.classList.toggle('is-visible', q.length > 0);
@@ -7624,8 +7714,9 @@ export function renderFilteredCatalog() {
     }
   }
 
-  // Если мы на вкладке Главная, НЕ в ТВ-режиме, выбран режим витрины и нет фильтрации/поиска
-  if (!isTvModeNow && currentTab === 'home' && currentViewMode === 'grid' && !isHomeCustomViewActive && !isFiltered && (!searchQuery || !searchQuery.trim())) {
+  const cleanMobileNow = isCleanMobileMode();
+  // Если мы на вкладке Главная, НЕ в ТВ-режиме и НЕ в чистом мобильном режиме карточек
+  if (!isTvModeNow && !cleanMobileNow && currentTab === 'home' && currentViewMode === 'grid' && !isHomeCustomViewActive && !isFiltered && (!searchQuery || !searchQuery.trim())) {
     const qBar = document.getElementById('storm-quick-catalog-bar');
     if (qBar) {
       qBar.style.display = 'none';
@@ -7634,7 +7725,7 @@ export function renderFilteredCatalog() {
     renderHomeView(currentItems);
   } else {
     hideHeroShowcase();
-    if (isTvModeNow) {
+    if (isTvModeNow || cleanMobileNow) {
       const qBar = document.getElementById('storm-quick-catalog-bar');
       if (qBar) {
         qBar.style.display = 'none';
@@ -9120,6 +9211,7 @@ function initNewCyberFeatures() {
 
   // 9. Мобильное выдвижное меню (Mobile Drawer)
   initMobileDrawer();
+  initUnifiedMobileAndSettingsUI();
 }
 
 export function updateFamilyProfileHeader() {
@@ -9233,8 +9325,8 @@ function initMobileDrawer() {
       const diffX = endX - startX;
       const diffY = endY - startY;
 
-      // Свайп вправо на 60+ px при минимальном вертикальном смещении
-      if (diffX > 65 && Math.abs(diffY) < 70) {
+      // Свайп влево (или вправо) на 55+ px для закрытия бокового меню
+      if (Math.abs(diffX) > 55 && Math.abs(diffY) < 75) {
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
           try { navigator.vibrate(15); } catch (_) {}
         }
@@ -9419,6 +9511,302 @@ export function updateDrawerCacheSize() {
   }
 }
 
+export function openUnifiedSettingsModal(initialSection = 'account') {
+  closeMobileDrawer();
+  const overflowMenu = document.getElementById('storm-mobile-overflow-menu');
+  if (overflowMenu) overflowMenu.classList.remove('is-open');
+  const modal = document.getElementById('storm-unified-settings-modal');
+  if (!modal) return;
+  syncUnifiedSettingsUI();
+  if (initialSection) {
+    modal.querySelectorAll('.storm-settings-nav-btn').forEach(b => {
+      b.classList.toggle('is-active', b.dataset.usetTab === initialSection);
+    });
+    modal.querySelectorAll('.storm-settings-pane').forEach(p => {
+      p.classList.toggle('is-active', p.dataset.usetPane === initialSection);
+    });
+  }
+  modal.classList.add('is-open');
+  document.body.classList.add('modal-open');
+}
+
+export function syncUnifiedSettingsUI() {
+  const user = getUser();
+  const uName = document.getElementById('uset-account-name');
+  const uSub = document.getElementById('uset-account-sub');
+  const uAvatar = document.getElementById('uset-account-avatar');
+  const uLoginBtn = document.getElementById('uset-login-or-profile-btn');
+  const uLogoutBtn = document.getElementById('uset-logout-btn');
+  const uAdminBtn = document.getElementById('uset-admin-dashboard-btn');
+  const overflowAccLabel = document.getElementById('storm-overflow-account-label');
+
+  if (user) {
+    const dispName = user.username || user.name || 'Пользователь';
+    if (uName) uName.textContent = dispName;
+    if (uSub) uSub.textContent = user.email || 'Синхронизация закладок и истории активна';
+    if (uAvatar) uAvatar.src = user.avatar || 'assets/avatar_default.svg';
+    if (uLoginBtn) uLoginBtn.textContent = 'Открыть профиль';
+    if (uLogoutBtn) uLogoutBtn.style.display = 'inline-flex';
+    const isAdmin = Boolean(user.is_admin || String(dispName).toLowerCase() === 'reikatari');
+    if (uAdminBtn) uAdminBtn.style.display = isAdmin ? 'block' : 'none';
+    if (overflowAccLabel) overflowAccLabel.textContent = dispName;
+  } else {
+    if (uName) uName.textContent = 'Гость';
+    if (uSub) uSub.textContent = 'Войдите в аккаунт для синхронизации закладок и истории между устройствами';
+    if (uAvatar) uAvatar.src = 'assets/avatar_default.svg';
+    if (uLoginBtn) uLoginBtn.textContent = 'Войти в аккаунт';
+    if (uLogoutBtn) uLogoutBtn.style.display = 'none';
+    if (uAdminBtn) uAdminBtn.style.display = 'none';
+    if (overflowAccLabel) overflowAccLabel.textContent = 'Войти в аккаунт';
+  }
+
+  const startTab = localStorage.getItem('storm_mobile_start_tab') || 'new';
+  document.querySelectorAll('#uset-start-tab-pills .storm-uset-pill').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.startTab === startTab);
+  });
+
+  const cols = localStorage.getItem('storm_mobile_cols') || '3';
+  document.body.dataset.mobileCols = cols;
+  document.querySelectorAll('#uset-grid-cols-pills .storm-uset-pill').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.mobileCols === cols);
+  });
+  const overflowColsLabel = document.getElementById('storm-overflow-cols-label');
+  if (overflowColsLabel) {
+    overflowColsLabel.textContent = cols === '2' ? 'Сетка: 2 колонки' : 'Сетка: 3 колонки';
+  }
+
+  const btn4k = document.getElementById('uset-toggle-4k-btn');
+  if (btn4k) {
+    btn4k.textContent = only4KQuickFilter ? 'Включено' : 'Выключено';
+    btn4k.classList.toggle('storm-btn-primary', Boolean(only4KQuickFilter));
+    btn4k.classList.toggle('storm-btn-secondary', !only4KQuickFilter);
+  }
+
+  const activeLang = localStorage.getItem('storm_lang') || 'ru';
+  document.querySelectorAll('#uset-lang-pills .storm-uset-pill').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.usetLang === activeLang);
+  });
+
+  const activeTheme = localStorage.getItem('storm_theme') || 'STORM MIDNIGHT';
+  document.querySelectorAll('.drawer-theme-card').forEach(card => {
+    const tName = card.dataset.themeName || card.dataset.drawerTheme;
+    card.classList.toggle('active', tName === activeTheme);
+  });
+
+  const statusLbl = document.getElementById('uset-server-status-label');
+  if (statusLbl) {
+    statusLbl.textContent = window.__STORM_BACKEND_ONLINE__ === false
+      ? 'Автономный режим (локальный кэш)'
+      : `Подключено: ${window.location.host || 'stormmultimedia.ru'}`;
+  }
+  updateDrawerSleepUI();
+  updateDrawerCacheSize();
+}
+
+export function initUnifiedMobileAndSettingsUI() {
+  if (window.__STORM_UNIFIED_SETTINGS_READY__) return;
+  window.__STORM_UNIFIED_SETTINGS_READY__ = true;
+
+  // Категории в левом меню
+  document.querySelectorAll('.mobile-drawer-cat-btn[data-drawer-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.drawerTab;
+      closeMobileDrawer();
+      if (target === 'history') {
+        switchTab('bookmarks', { subTab: 'history' });
+      } else if (target) {
+        switchTab(target);
+      }
+    });
+  });
+
+  const openFilterSheetSafe = () => {
+    closeMobileDrawer();
+    const modal = document.getElementById('storm-unified-settings-modal');
+    if (modal) modal.classList.remove('is-open');
+    const mFilterBtn = document.getElementById('mobile-filter-btn') || document.getElementById('filters-toggle-btn');
+    if (mFilterBtn) {
+      mFilterBtn.click();
+    } else {
+      const sheet = document.getElementById('filter-bottom-sheet-backdrop');
+      if (sheet) sheet.classList.add('is-open');
+    }
+  };
+
+  document.getElementById('drawer-open-filters-btn')?.addEventListener('click', openFilterSheetSafe);
+  document.getElementById('drawer-open-unified-settings-btn')?.addEventListener('click', () => openUnifiedSettingsModal('catalog'));
+  document.getElementById('desktop-unified-settings-btn')?.addEventListener('click', () => openUnifiedSettingsModal('appearance'));
+
+  // Мобильный поиск в верхней панели
+  const mSearchBtn = document.getElementById('storm-mobile-search-toggle-btn');
+  const searchInput = document.getElementById('global-search-input');
+  if (mSearchBtn) {
+    mSearchBtn.addEventListener('click', () => {
+      const isOpen = document.body.classList.toggle('mobile-search-open');
+      document.getElementById('storm-mobile-overflow-menu')?.classList.remove('is-open');
+      if (isOpen && searchInput) {
+        setTimeout(() => searchInput.focus(), 40);
+      }
+    });
+  }
+  document.getElementById('search-clear-btn')?.addEventListener('click', () => {
+    if (isCleanMobileMode() && (!searchInput || !searchInput.value)) {
+      document.body.classList.remove('mobile-search-open');
+    }
+  });
+
+  // Мобильное меню 3 точек (Overflow)
+  const overflowBtn = document.getElementById('storm-mobile-overflow-btn');
+  const overflowMenu = document.getElementById('storm-mobile-overflow-menu');
+  if (overflowBtn && overflowMenu) {
+    overflowBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      syncUnifiedSettingsUI();
+      overflowMenu.classList.toggle('is-open');
+    });
+    document.addEventListener('click', (e) => {
+      if (overflowMenu.classList.contains('is-open') && !overflowMenu.contains(e.target) && e.target !== overflowBtn) {
+        overflowMenu.classList.remove('is-open');
+      }
+    });
+    overflowMenu.querySelectorAll('[data-overflow-action]').forEach(item => {
+      item.addEventListener('click', () => {
+        const act = item.dataset.overflowAction;
+        overflowMenu.classList.remove('is-open');
+        if (act === 'filters') {
+          openFilterSheetSafe();
+        } else if (act === 'columns') {
+          const cur = localStorage.getItem('storm_mobile_cols') || '3';
+          const next = cur === '3' ? '2' : '3';
+          localStorage.setItem('storm_mobile_cols', next);
+          document.body.dataset.mobileCols = next;
+          syncUnifiedSettingsUI();
+          showToast(`Сетка карточек: ${next} колонки`);
+        } else if (act === 'refresh') {
+          window.stormRefreshCatalog?.();
+          showToast('Каталог обновлён');
+        } else if (act === 'account') {
+          const u = getUser();
+          if (u) {
+            openProfileModal();
+          } else {
+            document.getElementById('auth-modal')?.classList.add('is-open');
+          }
+        } else if (act === 'settings') {
+          openUnifiedSettingsModal('catalog');
+        }
+      });
+    });
+  }
+
+  // Навигация внутри единого окна настроек
+  const uModal = document.getElementById('storm-unified-settings-modal');
+  if (uModal) {
+    document.getElementById('storm-unified-settings-close')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      document.body.classList.remove('modal-open');
+    });
+    uModal.addEventListener('click', (e) => {
+      if (e.target === uModal) {
+        uModal.classList.remove('is-open');
+        document.body.classList.remove('modal-open');
+      }
+    });
+    uModal.querySelectorAll('.storm-settings-nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.usetTab;
+        uModal.querySelectorAll('.storm-settings-nav-btn').forEach(b => b.classList.toggle('is-active', b === btn));
+        uModal.querySelectorAll('.storm-settings-pane').forEach(p => p.classList.toggle('is-active', p.dataset.usetPane === tab));
+      });
+    });
+
+    // Вкладка 1: Аккаунт
+    document.getElementById('uset-login-or-profile-btn')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      const u = getUser();
+      if (u) openProfileModal();
+      else document.getElementById('auth-modal')?.classList.add('is-open');
+    });
+    document.getElementById('uset-logout-btn')?.addEventListener('click', async () => {
+      try {
+        const authMod = await import(`./auth.js?v=${STORM_ASSET_VER}`);
+        if (typeof authMod.logout === 'function') await authMod.logout();
+      } catch (_) {}
+      syncUnifiedSettingsUI();
+      updateMobileDrawerUser();
+    });
+    document.getElementById('uset-family-btn')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      openProfileSwitcherModal();
+    });
+    document.getElementById('uset-sync-btn')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      const syncModal = document.getElementById('sync-modal');
+      if (syncModal) {
+        syncModal.classList.add('is-open');
+        renderSyncModalContent(document.getElementById('sync-modal-body'));
+      }
+    });
+    document.getElementById('uset-admin-dashboard-btn')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      document.getElementById('admin-dashboard-btn')?.click();
+    });
+
+    // Вкладка 2: Каталог и вид
+    document.querySelectorAll('#uset-start-tab-pills .storm-uset-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const st = btn.dataset.startTab || 'new';
+        localStorage.setItem('storm_mobile_start_tab', st);
+        syncUnifiedSettingsUI();
+        showToast(`Стартовый раздел: ${MOBILE_SECTION_TITLES[st] || st}`);
+      });
+    });
+    document.querySelectorAll('#uset-grid-cols-pills .storm-uset-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cols = btn.dataset.mobileCols || '3';
+        localStorage.setItem('storm_mobile_cols', cols);
+        document.body.dataset.mobileCols = cols;
+        syncUnifiedSettingsUI();
+        showToast(`Сетка карточек: ${cols} колонки`);
+      });
+    });
+    document.getElementById('uset-toggle-4k-btn')?.addEventListener('click', () => {
+      only4KQuickFilter = !only4KQuickFilter;
+      syncUnifiedSettingsUI();
+      renderFilteredCatalog();
+    });
+    document.getElementById('uset-open-filters-btn')?.addEventListener('click', openFilterSheetSafe);
+    document.getElementById('drawer-form-factor-btn')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      document.getElementById('form-factor-switcher-btn')?.click();
+    });
+
+    // Вкладка 3: Язык
+    document.querySelectorAll('#uset-lang-pills .storm-uset-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lang = btn.dataset.usetLang || 'ru';
+        setLanguage(lang);
+        syncUnifiedSettingsUI();
+      });
+    });
+
+    // Вкладка 5: Закрытие окна настроек при переходе в сервисы
+    ['drawer-recommender-btn', 'drawer-calendar-btn', 'drawer-remote-btn', 'drawer-rooms-btn', 'drawer-profile-settings-btn'].forEach(id => {
+      document.getElementById(id)?.addEventListener('click', () => {
+        uModal.classList.remove('is-open');
+      });
+    });
+
+    // Вкладка 6: Проверка обновлений
+    document.getElementById('uset-check-updates-btn')?.addEventListener('click', () => {
+      uModal.classList.remove('is-open');
+      checkForUpdates(true);
+    });
+  }
+
+  syncUnifiedSettingsUI();
+}
+
 export function updateMobileDrawerUser() {
   const user = getUser();
   const usernameEl = document.getElementById('mobile-drawer-username');
@@ -9432,22 +9820,29 @@ export function updateMobileDrawerUser() {
       usernameEl.textContent = user.username || user.name || 'Пользователь';
       statusEl.textContent = user.email || 'Аккаунт активен';
       if (authText) {
-        authText.textContent = 'Управление профилем';
+        authText.textContent = 'Профиль и настройки';
       } else if (authBtn) {
-        authBtn.innerHTML = '<span>⚙️</span> <span>Управление профилем</span>';
+        authBtn.textContent = 'Профиль и настройки';
       }
       if (avatarEl && user.avatar) avatarEl.src = user.avatar;
     } else {
       usernameEl.textContent = 'Гость';
-      statusEl.textContent = 'Авторизуйтесь для синхронизации';
+      statusEl.textContent = 'Войдите для синхронизации';
       if (authText) {
-        authText.textContent = 'Войти в профиль';
+        authText.textContent = 'Войти в аккаунт';
       } else if (authBtn) {
-        authBtn.innerHTML = '<span>🔑</span> <span>Войти в профиль</span>';
+        authBtn.textContent = 'Войти в аккаунт';
       }
       if (avatarEl) avatarEl.src = 'assets/favicon.svg';
     }
   }
+  syncUnifiedSettingsUI();
+}
+
+if (typeof window !== 'undefined') {
+  window.updateMobileDrawerUser = updateMobileDrawerUser;
+  window.syncUnifiedSettingsUI = syncUnifiedSettingsUI;
+  window.openUnifiedSettingsModal = openUnifiedSettingsModal;
 }
 
 export { startStormApp };

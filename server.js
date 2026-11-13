@@ -216,6 +216,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1);
 app.set('etag', 'weak');
 const server = http.createServer(app);
 
@@ -865,9 +866,54 @@ app.use((req, res, next) => {
   return res.end(body);
 });
 
+// Lightweight non-blocking async gzip for /api/ JSON responses (> 1536 bytes, excluding SSE/streams)
+app.use('/api', (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = function(body) {
+    if (res.headersSent) return originalJson(body);
+
+    const acceptEnc = String(req.headers['accept-encoding'] || '');
+    if (!acceptEnc.includes('gzip')) {
+      return originalJson(body);
+    }
+
+    const cType = res.getHeader('content-type');
+    if (cType && String(cType).includes('text/event-stream')) {
+      return originalJson(body);
+    }
+
+    try {
+      const jsonStr = typeof body === 'string' ? body : JSON.stringify(body);
+      const buf = Buffer.from(jsonStr, 'utf8');
+      if (buf.length > 1536) {
+        nodeZlib.gzip(buf, { level: 4 }, (err, gzipped) => {
+          if (err || !gzipped || res.headersSent) {
+            return originalJson(body);
+          }
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Vary', 'Accept-Encoding');
+          res.setHeader('Content-Length', gzipped.length);
+          return res.send(gzipped);
+        });
+        return res;
+      }
+    } catch (_) {}
+
+    return originalJson(body);
+  };
+  next();
+});
+
 app.use(compression({
   level: 6,
-  threshold: 512
+  threshold: 512,
+  filter: (req, res) => {
+    if (res.getHeader('Content-Type')?.toString().includes('text/event-stream')) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -1482,7 +1528,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    version: '1.6.1',
+    version: '1.7.0',
     l1Cache: l1Cache.getStats(),
     database: {
       connected: isMariaDbActive()
@@ -1729,7 +1775,7 @@ app.post('/api/profiles/save', requireAuth, (req, res) => {
   }
 });
 
-// Подключение модульных роутеров архитектуры 1.6.1 (Пункт 6.1)
+// Подключение модульных роутеров архитектуры 1.7.0 (Пункт 6.1)
 app.use(createAuthRouter({ requireAuth }));
 app.use(createUserMediaRouter({ requireAuth }));
 app.use(createAdminRouter({ requireAdmin }));
@@ -1825,7 +1871,7 @@ function normalizeImageUrl(url) {
   return clean;
 }
 
-async function fetchImageBuffer(url, timeoutMs = 2500) {
+async function fetchImageBuffer(url, timeoutMs = 4500) {
   if (!url || isPlaceholderImage(url)) return null;
 
   const normalized = normalizeImageUrl(url);
@@ -1843,10 +1889,14 @@ async function fetchImageBuffer(url, timeoutMs = 2500) {
     if (normalized.includes('anixmirai.com') || normalized.includes('anixsekai.com') || normalized.includes('static.anixart.tv')) {
       candidateUrls.push(normalized);
       candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
-    } else if (normalized.includes('image.tmdb.org')) {
-      candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(normalized)}`);
-      candidateUrls.push(`https://images.weserv.nl/?url=${encodeURIComponent(normalized)}`);
-      candidateUrls.push(normalized);
+    } else if (normalized.includes('image.tmdb.org') || normalized.includes('imagetmdb.com')) {
+      const tmdbPathUrl = normalized.replace('https://imagetmdb.com', 'https://image.tmdb.org');
+      const tmdbMirror = tmdbPathUrl.replace('https://image.tmdb.org', 'https://imagetmdb.com');
+      const wpPhoton = tmdbPathUrl.replace(/^https?:\/\//i, 'https://i0.wp.com/');
+      candidateUrls.push(wpPhoton);
+      candidateUrls.push(tmdbMirror);
+      candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(tmdbPathUrl)}&w=500&output=webp`);
+      candidateUrls.push(tmdbPathUrl);
     } else if (isAniLibriaHost) {
       candidateUrls.push(normalized);
       if (normalized.includes('anilibria.top')) {
@@ -1862,7 +1912,7 @@ async function fetchImageBuffer(url, timeoutMs = 2500) {
     }
 
     const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     };
     if (normalized.includes('anixart') || normalized.includes('anixmirai')) {
       headers['User-Agent'] = 'AnixartApp/8.2.1';
@@ -1870,57 +1920,86 @@ async function fetchImageBuffer(url, timeoutMs = 2500) {
     } else if (isAniLibriaHost) {
       headers['Referer'] = 'https://anilibria.top/';
     } else if (normalized.includes('shikimori')) {
-      headers['User-Agent'] = 'STORM-MULTIMEDIA/1.0 (+https://github.com/ReiKatari)';
-      headers['Referer'] = 'https://shikimori.io/';
-    } else if (normalized.includes('fanfilm4k')) {
+      headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+      headers['Referer'] = 'https://shikimori.one/';
+    } else if (normalized.includes('fanfilm4k') || normalized.includes('fanfilm')) {
       headers['Referer'] = 'https://v17.fanfilm4k.media/';
       headers['Origin'] = 'https://v17.fanfilm4k.media';
-    } else if (normalized.includes('tmdb.org')) {
+    } else if (normalized.includes('image.tmdb.org') || normalized.includes('themoviedb.org') || normalized.includes('imagetmdb.com')) {
       headers['Referer'] = 'https://www.themoviedb.org/';
+    } else if (normalized.includes('yandex') || normalized.includes('kinopoisk') || normalized.includes('avatars.mds.yandex.net')) {
+      headers['Referer'] = 'https://www.kinopoisk.ru/';
+    } else if (normalized.includes('rezka')) {
+      headers['Referer'] = 'https://rezka.ag/';
+    } else {
+      try {
+        const u = new URL(normalized);
+        headers['Referer'] = `${u.origin}/`;
+      } catch (_) {}
     }
 
-  for (const candidate of candidateUrls) {
-    try {
-      let buffer = null;
-      let rawType = 'image/jpeg';
+  const fetchSingleCandidate = async (candidate, perCandidateTimeout) => {
+    let buffer = null;
+    let rawType = 'image/jpeg';
 
-      if (candidate.includes('liftw.ws') || candidate.includes('lateremb.ws') || candidate.includes('liftapp.ink')) {
-        const liftResp = await liftRequestRaw(candidate, {
-          headers: { ...headers, Referer: 'https://liftw.ws/' },
-          timeout: Math.min(timeoutMs, 3500)
-        });
-        if (liftResp && liftResp.status >= 200 && liftResp.status < 300 && liftResp.buffer?.length > 100) {
-          buffer = liftResp.buffer;
-          rawType = liftResp.headers?.['content-type'] || 'image/jpeg';
-        }
-      } else {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
-        const res = await fetch(candidate, { headers, signal: controller.signal });
-        clearTimeout(timeout);
+    if (candidate.includes('liftw.ws') || candidate.includes('lateremb.ws') || candidate.includes('liftapp.ink')) {
+      const liftResp = await liftRequestRaw(candidate, {
+        headers: { ...headers, Referer: 'https://liftw.ws/' },
+        timeout: Math.min(perCandidateTimeout, 3500)
+      });
+      if (liftResp && liftResp.status >= 200 && liftResp.status < 300 && liftResp.buffer?.length > 100) {
+        buffer = liftResp.buffer;
+        rawType = liftResp.headers?.['content-type'] || 'image/jpeg';
+      }
+    } else {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), perCandidateTimeout);
+      try {
+        const candHeaders = (candidate.includes('wp.com') || candidate.includes('wsrv.nl') || candidate.includes('weserv.nl'))
+          ? { 'User-Agent': headers['User-Agent'] }
+          : headers;
+        const res = await fetch(candidate, { headers: candHeaders, signal: controller.signal });
         if (res.ok) {
           rawType = res.headers.get('content-type') || 'image/jpeg';
           if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
             buffer = Buffer.from(await res.arrayBuffer());
           }
         }
+      } finally {
+        clearTimeout(timeout);
       }
+    }
 
-      if (buffer && buffer.length > 100) {
-        if (rawType.startsWith('image/') || rawType.includes('octet-stream')) {
-          let contentType = rawType.startsWith('image/') ? rawType : 'image/jpeg';
+    if (buffer && buffer.length > 100 && (rawType.startsWith('image/') || rawType.includes('octet-stream'))) {
+      return { buffer, contentType: rawType.startsWith('image/') ? rawType : 'image/jpeg' };
+    }
+    throw new Error('Empty or invalid image');
+  };
 
-
-            const item = { buffer, contentType };
-            if (imageBinaryCache.size > 1000) {
-              const keysToDelete = Array.from(imageBinaryCache.keys()).slice(0, 150);
-              keysToDelete.forEach(k => imageBinaryCache.delete(k));
-            }
-            imageBinaryCache.set(normalized, item);
-            return item;
+  if (candidateUrls.length > 1 && (normalized.includes('image.tmdb.org') || normalized.includes('imagetmdb.com'))) {
+    try {
+      const item = await Promise.any(candidateUrls.map(c => fetchSingleCandidate(c, Math.min(timeoutMs, 3400))));
+      if (item) {
+        if (imageBinaryCache.size > 1000) {
+          Array.from(imageBinaryCache.keys()).slice(0, 150).forEach(k => imageBinaryCache.delete(k));
         }
+        imageBinaryCache.set(normalized, item);
+        return item;
       }
     } catch {}
+  } else {
+    for (const candidate of candidateUrls) {
+      try {
+        const item = await fetchSingleCandidate(candidate, Math.min(timeoutMs, 3200));
+        if (item) {
+          if (imageBinaryCache.size > 1000) {
+            Array.from(imageBinaryCache.keys()).slice(0, 150).forEach(k => imageBinaryCache.delete(k));
+          }
+          imageBinaryCache.set(normalized, item);
+          return item;
+        }
+      } catch {}
+    }
   }
 
   // Если прямая ссылка на постер релиза AniLibria устарела (сменился хэш файла), запрашиваем актуальный постер по ID релиза
@@ -2378,7 +2457,7 @@ async function resolveUniversalMediaPosterBuffer(title, orig) {
 }
 
 let activeSharpJobs = 0;
-const MAX_CONCURRENT_SHARP = 4;
+const MAX_CONCURRENT_SHARP = 8;
 const sharpQueue = [];
 
 function runWithSharpLimiter(fn) {
@@ -11787,7 +11866,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (STORM GAMES WORLD GIT + GITHUB RELEASES DUAL MIRROR)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.6.1';
+  let currentAppVersion = '1.7.0';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -11824,7 +11903,7 @@ app.get('/api/updates/check', async (req, res) => {
     try {
       const sgwRes = await fetch('https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA', {
         headers: {
-          'User-Agent': 'STORM-Multimedia-Client/1.6.1 (+https://stormgamesworld.ru)',
+          'User-Agent': 'STORM-Multimedia-Client/1.7.0 (+https://stormgamesworld.ru)',
           'Accept': 'application/json'
         },
         signal: AbortSignal.timeout(5000)
@@ -12760,9 +12839,9 @@ app.get('*', (req, res) => {
 
 // Запуск сервера с поддержкой WebSockets и фоновых демонов балансеров
 server.listen(PORT, () => {
-  logger.info('STORM MULTIMEDIA 1.6.1 Server started', { port: PORT });
+  logger.info('STORM MULTIMEDIA 1.7.0 Server started', { port: PORT });
   console.log(`====================================================`);
-  console.log(`🚀 STORM MULTIMEDIA 1.6.1 Сервер запущен на порту ${PORT}`);
+  console.log(`🚀 STORM MULTIMEDIA 1.7.0 Сервер запущен на порту ${PORT}`);
   refreshLiftHomeRailsServer(16).catch(() => {});
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);

@@ -1497,9 +1497,22 @@ export function removeBookmark(userId, mediaId, source, title = '') {
 }
 
 // История и прогресс просмотра (Правило: минимум 10 минут = 600 секунд РЕАЛЬНОГО времени просмотра без перелистывания)
-export function logWatchProgress(userId, data) {
-  try { recordPlaybackHeartbeat(userId, data); } catch (_) {}
-  const {
+const activeProgressUsers = new Set();
+
+export function logWatchProgress(userId, data, opts = {}) {
+  if (!userId || !data) return null;
+  const uidNum = Number(userId);
+
+  if (!opts?.skipHeartbeat) {
+    try { recordPlaybackHeartbeat(userId, data, { skipHistorySave: true }); } catch (_) {}
+  }
+
+  if (activeProgressUsers.has(uidNum)) {
+    return null;
+  }
+  activeProgressUsers.add(uidNum);
+  try {
+    const {
     media_id,
     source = 'fanfilm4k',
     title,
@@ -1713,16 +1726,19 @@ export function logWatchProgress(userId, data) {
     updated_at: now
   });
 
-  return {
-    media_id,
-    season: targetSeason,
-    episode: targetEpisode,
-    time_seconds: targetTime,
-    real_watched_seconds: Math.max(600, cumulativeReal),
-    progress_percent: targetProgress,
-    status: 'watching',
-    next_up_badge: isSeries ? (targetTime === 0 ? `След.: С${targetSeason} • Э${targetEpisode}` : `С${targetSeason} • Э${targetEpisode}`) : null
-  };
+    return {
+      media_id,
+      season: targetSeason,
+      episode: targetEpisode,
+      time_seconds: targetTime,
+      real_watched_seconds: Math.max(600, cumulativeReal),
+      progress_percent: targetProgress,
+      status: 'watching',
+      next_up_badge: isSeries ? (targetTime === 0 ? `След.: С${targetSeason} • Э${targetEpisode}` : `С${targetSeason} • Э${targetEpisode}`) : null
+    };
+  } finally {
+    activeProgressUsers.delete(uidNum);
+  }
 }
 
 export function removeContinueWatchingItem(userId, mediaId, source = '', title = '') {
@@ -3070,7 +3086,7 @@ export function recordUserActivity(userId) {
   userLastActiveMap.set(Number(userId), Date.now());
 }
 
-export function recordPlaybackHeartbeat(userId, data = {}) {
+export function recordPlaybackHeartbeat(userId, data = {}, opts = {}) {
   if (!userId) return null;
   const now = Date.now();
   userLastActiveMap.set(Number(userId), now);
@@ -3103,7 +3119,7 @@ export function recordPlaybackHeartbeat(userId, data = {}) {
   livePlaybackTracker.set(Number(userId), entry);
 
   // Автоматически сохраняем в watch_history при воспроизведении от 5 секунд
-  if (entry.title && (entry.real_watched_seconds >= 5 || entry.time_seconds >= 5)) {
+  if (!opts?.skipHistorySave && entry.title && (entry.real_watched_seconds >= 5 || entry.time_seconds >= 5)) {
     try {
       logWatchProgress(userId, {
         media_id: entry.media_id,
@@ -3116,7 +3132,7 @@ export function recordPlaybackHeartbeat(userId, data = {}) {
         time_seconds: entry.time_seconds,
         real_watched_seconds: entry.real_watched_seconds,
         duration_seconds: entry.duration_seconds
-      });
+      }, { skipHeartbeat: true });
     } catch (_) {}
   }
 

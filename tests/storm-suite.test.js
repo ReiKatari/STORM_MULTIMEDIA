@@ -34,7 +34,7 @@ import {
   db
 } from '../db.js';
 
-describe('STORM MULTIMEDIA 1.6.1 - Automated Quality & Security Suite', () => {
+describe('STORM MULTIMEDIA 1.7.0 - Automated Quality & Security Suite', () => {
   after(async () => {
     try { flushWatchProgressBatch(); } catch (_) {}
     try { await closeMariaDbPool(); } catch (_) {}
@@ -241,5 +241,58 @@ describe('STORM MULTIMEDIA 1.6.1 - Automated Quality & Security Suite', () => {
     const searchBodyOnly = searchFnBody.slice(searchFnBody.indexOf('{') + 1);
     assert.ok(searchBodyOnly.includes('memorySearchCache.set('), 'setMemorySearchEntry must call memorySearchCache.set');
     assert.equal(searchBodyOnly.includes('setMemorySearchEntry('), false, 'setMemorySearchEntry must not call itself recursively');
+  });
+
+  it('7. Playback heartbeat and watch progress have zero mutual recursion', async () => {
+    const { logWatchProgress, recordPlaybackHeartbeat, registerUser, deleteUserAccountById } = await import('../db.js');
+    const uname = 'hb_guard_' + Date.now();
+    const uRes = registerUser(uname, uname + '@storm.test', 'TestPass123!');
+    const uid = uRes && uRes.user ? uRes.user.id : uRes.id;
+    assert.ok(uid, 'Test user created');
+    try {
+      const t0 = Date.now();
+      const hb = recordPlaybackHeartbeat(uid, {
+        media_id: 'lift_999999',
+        source: 'lift',
+        title: 'Тестовый фильм проверки рекурсии',
+        media_type: 'movie',
+        time_seconds: 25,
+        real_watched_seconds: 25,
+        duration_seconds: 5400,
+        progress_percent: 1
+      });
+      const prog = logWatchProgress(uid, {
+        media_id: 'lift_999999',
+        source: 'lift',
+        title: 'Тестовый фильм проверки рекурсии',
+        media_type: 'movie',
+        time_seconds: 30,
+        real_watched_seconds: 30,
+        duration_seconds: 5400
+      });
+      const elapsed = Date.now() - t0;
+      assert.ok(hb && hb.title, 'Heartbeat entry returned');
+      assert.ok(prog, 'Watch progress returned');
+      assert.ok(elapsed < 1500, `Heartbeat + progress must be fast without recursion, took ${elapsed}ms`);
+    } finally {
+      try { deleteUserAccountById(uid); } catch (_) {}
+    }
+  });
+
+  it('8. Mobile clean UI, unified settings, and Android poster proxy have zero wsrv.nl primary trap', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const appJs = fs.readFileSync(path.join(process.cwd(), 'public', 'js', 'app.js'), 'utf8');
+    const indexHtml = fs.readFileSync(path.join(process.cwd(), 'public', 'index.html'), 'utf8');
+
+    assert.ok(indexHtml.includes('id="storm-unified-settings-modal"'), 'Unified settings modal must exist in index.html');
+    assert.ok(indexHtml.includes('id="storm-mobile-section-title"'), 'Mobile section title must exist in index.html');
+    assert.ok(indexHtml.includes('id="storm-mobile-top-actions"'), 'Mobile top actions must exist in index.html');
+    assert.equal(indexHtml.includes('rel="modulepreload" href="/js/catalog-baseline.js'), false, 'catalog-baseline.js must not block cold boot via modulepreload');
+
+    const posterFnStart = appJs.indexOf('export function getSafePosterUrl(');
+    const posterFnEnd = appJs.indexOf('export function getPosterSrcset(', posterFnStart);
+    const posterFnBody = appJs.slice(posterFnStart, posterFnEnd);
+    assert.equal(posterFnBody.includes('wsrv.nl'), false, 'getSafePosterUrl must route through /api/media/image-proxy instead of wsrv.nl');
   });
 });

@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.6.5';
+import { t, formatDate } from './i18n.js?v=1.7.0';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -196,6 +196,7 @@ export async function checkAuth() {
         if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
         if (Array.isArray(data.savedAccounts)) cachedSavedAccounts = data.savedAccounts;
         updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
         notifyAuthChanged();
         return currentUser;
       } else {
@@ -224,6 +225,7 @@ export async function checkAuth() {
   }
 
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   return currentUser;
 }
@@ -316,7 +318,7 @@ function collectGuestProgressForRegistration() {
 export async function register(username, email, password) {
   const uStr = String(username || '').trim();
   const eStr = String(email || '').trim().toLowerCase();
-  const pStr = String(password || '').trim();
+  const pStr = String(password ?? '');
 
   if (!uStr || !eStr || !pStr) {
     throw new Error('Заполните имя пользователя, email и пароль');
@@ -397,6 +399,7 @@ export async function register(username, email, password) {
     window.hydrateStateFromDatabase().catch(() => {});
   }
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   renderSavedAccountsLists();
 
@@ -411,7 +414,7 @@ export async function register(username, email, password) {
 
 export async function login(loginStr, password) {
   const lStr = String(loginStr || '').trim();
-  const pStr = String(password || '').trim();
+  const pStr = String(password ?? '');
 
   if (!lStr || !pStr) {
     throw new Error('Пожалуйста, введите логин и пароль');
@@ -433,7 +436,7 @@ export async function login(loginStr, password) {
 
   let data = await res.json().catch(() => ({}));
   if (res.ok && data && data.requires2FA) {
-    const totpCode = window.prompt(data.message || 'Введите 6-значный код двухфакторной аутентификации (2FA TOTP):');
+    const totpCode = await requestStormTotpModal(data.message || 'Введите 6-значный код двухфакторной аутентификации (2FA TOTP):');
     if (!totpCode) {
       throw new Error('Вход отменён: требуется код 2FA');
     }
@@ -463,6 +466,7 @@ export async function login(loginStr, password) {
   if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
   if (Array.isArray(data.savedAccounts)) cachedSavedAccounts = data.savedAccounts;
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   renderSavedAccountsLists();
   showToast(t('msg_login_success'), 'success');
@@ -484,6 +488,7 @@ export function loginOfflineUser(username = 'Пользователь', customEm
   localStorage.setItem('storm_token', currentToken);
   localStorage.setItem('storm_user', JSON.stringify(currentUser));
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   showToast(`Вход выполнен (${currentUser.username})`, 'success');
   return currentUser;
@@ -496,6 +501,7 @@ export function loginAsGuest() {
   clearUserSessionLocalCache({ restoreGuestVault: true });
   localStorage.setItem('storm_explicit_guest_mode', '1');
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   showToast('Включён локальный гостевой профиль (все данные сохраняются на устройстве)', 'info');
   return null;
@@ -521,6 +527,7 @@ export async function logout() {
   localStorage.setItem('storm_explicit_guest_mode', '1');
 
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   showToast(t('msg_logout_success'), 'info');
 }
@@ -559,6 +566,7 @@ export async function startTvDeviceCodeSession() {
           localStorage.setItem('storm_token', currentToken);
           localStorage.setItem('storm_user', JSON.stringify(currentUser));
           updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
           notifyAuthChanged();
           showToast(`✅ Успешный вход на ТВ (${currentUser.username})!`, 'success');
           const authModal = document.getElementById('auth-modal');
@@ -869,6 +877,7 @@ export async function updateProfile(username, email, avatar, bio = '') {
   }
 
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   showToast('✅ Профиль успешно обновлён!', 'success');
   return true;
@@ -1149,18 +1158,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.6.5').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.7.0').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.6.5').then(achMod => {
+  import('./achievements.js?v=1.7.0').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.6.5').then(themeMod => {
+  import('./theme.js?v=1.7.0').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -1224,7 +1233,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.6.5').then(m => {
+      import('./player.js?v=1.7.0').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -1238,10 +1247,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.6.5').then(m => {
+      import('./player.js?v=1.7.0').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.6.5').then(m => {
+      import('./ad-shield.js?v=1.7.0').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -1265,7 +1274,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.6.5').then(m => {
+      import('./ad-shield.js?v=1.7.0').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -1278,7 +1287,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.6.5').then(m => {
+      import('./smart-skip.js?v=1.7.0').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -1291,7 +1300,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.6.5').then(m => {
+      import('./player.js?v=1.7.0').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -1309,11 +1318,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.6.5').then(m => {
+      import('./player.js?v=1.7.0').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.6.5').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.7.0').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1536,7 +1545,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.6.5').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.7.0').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1621,7 +1630,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.6.5').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.7.0').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -2013,6 +2022,7 @@ async function syncProfilesWithServer() {
           localStorage.setItem(userKey, JSON.stringify(familyProfiles));
         }
         updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
       }
     }
   } catch {}
@@ -2142,6 +2152,7 @@ export function updateFamilyProfile(id, data) {
       }
       localStorage.setItem('storm_user', JSON.stringify(currentUser));
       updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
     }
   }
 
@@ -2221,6 +2232,7 @@ export function switchFamilyProfile(profileId, bypassPin = false) {
 
   showToast(`Переключён профиль: ${target.name}`, 'success');
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
 
   // Плавная перезагрузка для обновления интерфейса и фильтрации каталога
@@ -3296,6 +3308,7 @@ export async function switchSavedAccount(targetUserId) {
   }
 
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   renderSavedAccountsLists();
   showToast(`⚡ Вы переключились на аккаунт «${currentUser.username}»!`, 'success');
@@ -3329,6 +3342,7 @@ export async function removeSavedAccount(targetUserId) {
     clearUserSessionLocalCache();
     if (Array.isArray(data.vaultTokens)) saveLocalVaultTokens(data.vaultTokens);
     updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
     notifyAuthChanged();
   }
   renderSavedAccountsLists();
@@ -3509,6 +3523,7 @@ export async function confirmPasswordReset(loginStr, codeStr, newPasswordStr) {
   }
 
   updateAuthUI();
+  if (typeof window !== 'undefined') { window.updateMobileDrawerUser?.(); window.syncUnifiedSettingsUI?.(); }
   notifyAuthChanged();
   renderSavedAccountsLists();
   showToast(`✅ ${data.message || 'Пароль успешно обновлён, вход выполнен!'}`, 'success');
@@ -3606,4 +3621,42 @@ export async function loadProfileRecoveryConfigUI() {
 
   if (saveTgBtn) saveTgBtn.onclick = () => saveTgHandler(false);
   if (testTgBtn) testTgBtn.onclick = () => saveTgHandler(true);
+}
+
+
+function requestStormTotpModal(promptMessage) {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined' || !document.body) {
+      resolve(typeof window !== 'undefined' && window.prompt ? window.prompt(promptMessage) : null);
+      return;
+    }
+    const existing = document.getElementById('storm-totp-prompt-modal');
+    if (existing) existing.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'storm-totp-prompt-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(5,7,15,0.82);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:16px;';
+    wrap.innerHTML = `
+      <div style="width:100%;max-width:360px;background:var(--bg-secondary,#141726);border:1px solid rgba(139,92,246,0.45);border-radius:16px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,0.7);color:#f8fafc;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px;">Двухфакторная защита (2FA)</div>
+        <div style="font-size:13px;color:#cbd5e1;margin-bottom:14px;line-height:1.45;">${promptMessage}</div>
+        <input id="storm-totp-modal-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000"
+          style="width:100%;padding:12px 14px;font-size:20px;letter-spacing:6px;text-align:center;font-weight:700;border-radius:10px;border:1px solid rgba(255,255,255,0.18);background:rgba(8,10,18,0.9);color:#fff;outline:none;margin-bottom:16px;">
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button type="button" id="storm-totp-cancel-btn" class="storm-btn storm-btn-secondary storm-btn-sm">Отмена</button>
+          <button type="button" id="storm-totp-confirm-btn" class="storm-btn storm-btn-primary storm-btn-sm">Подтвердить</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    const inp = wrap.querySelector('#storm-totp-modal-input');
+    const finish = (val) => { wrap.remove(); resolve(val); };
+    wrap.querySelector('#storm-totp-cancel-btn').onclick = () => finish(null);
+    wrap.querySelector('#storm-totp-confirm-btn').onclick = () => finish(inp.value.trim() || null);
+    wrap.addEventListener('click', (ev) => { if (ev.target === wrap) finish(null); });
+    inp.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); finish(inp.value.trim() || null); }
+      if (ev.key === 'Escape') { ev.preventDefault(); finish(null); }
+    });
+    setTimeout(() => inp.focus(), 40);
+  });
 }

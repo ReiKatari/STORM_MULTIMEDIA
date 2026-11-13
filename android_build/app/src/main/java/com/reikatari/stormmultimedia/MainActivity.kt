@@ -49,9 +49,12 @@ class MainActivity : ComponentActivity() {
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
-        private val primaryUrl = "https://stormmultimedia.ru/"
+    private val primaryUrl = "https://stormmultimedia.ru/"
     private val localLanUrl = "http://192.168.1.154:3900/"
+    private val devLanUrl = "http://192.168.1.191:3900/"
     private val liftPrimaryIp = "89.42.231.205"
+    @Volatile private var isRemoteServerOnline: Boolean = false
+    @Volatile private var activeServerBaseUrl: String = "https://stormmultimedia.ru"
 
     private val isTvDevice: Boolean by lazy {
         val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
@@ -227,22 +230,36 @@ class MainActivity : ComponentActivity() {
 
     private fun loadAppContent() {
         Thread {
-            val isPrimaryReachable = probeUrlHealth("https://stormmultimedia.ru/api/health", 2500)
-            if (isPrimaryReachable) {
-                runOnUiThread {
-                    webView.loadUrl(primaryUrl)
-                }
+            var wanOk = false
+            var lanOk = false
+            var devOk = false
+            val tWan = Thread { wanOk = probeUrlHealth("https://stormmultimedia.ru/api/health", 2200) }
+            val tLan = Thread { lanOk = probeUrlHealth("http://192.168.1.154:3900/api/health", 1400) }
+            val tDev = Thread { devOk = probeUrlHealth("http://192.168.1.191:3900/api/health", 1200) }
+            tWan.start(); tLan.start(); tDev.start()
+            try { tLan.join(1450) } catch (_: Throwable) {}
+            if (lanOk) {
+                isRemoteServerOnline = true
+                activeServerBaseUrl = "http://192.168.1.154:3900"
+                runOnUiThread { webView.loadUrl(localLanUrl) }
+                return@Thread
+            }
+            try { tWan.join(2250) } catch (_: Throwable) {}
+            if (wanOk) {
+                isRemoteServerOnline = true
+                activeServerBaseUrl = "https://stormmultimedia.ru"
+                runOnUiThread { webView.loadUrl(primaryUrl) }
+                return@Thread
+            }
+            try { tDev.join(400) } catch (_: Throwable) {}
+            if (devOk) {
+                isRemoteServerOnline = true
+                activeServerBaseUrl = "http://192.168.1.191:3900"
+                runOnUiThread { webView.loadUrl(devLanUrl) }
                 return@Thread
             }
 
-            val isLocalReachable = probeUrlHealth("http://192.168.1.154:3900/api/health", 1500)
-            if (isLocalReachable) {
-                runOnUiThread {
-                    webView.loadUrl(localLanUrl)
-                }
-                return@Thread
-            }
-
+            isRemoteServerOnline = false
             runOnUiThread {
                 try {
                     val html = assets.open("index.html").bufferedReader().use { it.readText() }
@@ -287,9 +304,9 @@ class MainActivity : ComponentActivity() {
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.5.0"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.7.0"
         } catch (_: Throwable) {
-            "1.5.0"
+            "1.7.0"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -303,6 +320,12 @@ class MainActivity : ComponentActivity() {
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.requestFocusFromTouch()
+
+        try {
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(webView, true)
+        } catch (_: Throwable) {}
 
         val bridge = StormAndroidBridge()
         webView.addJavascriptInterface(bridge, "StormAndroidBridge")
@@ -483,20 +506,17 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             } else if (rawUrl.startsWith("http")) {
-                val wsrvUrl = "https://wsrv.nl/?url=${URLEncoder.encode(rawUrl, "UTF-8")}&w=500&q=85&output=webp"
-                val wsrvRes = fetchHttpBytes(wsrvUrl, 3800)
-                if (wsrvRes != null) {
-                    val mime = wsrvRes.first.substringBefore(";").ifBlank { "image/webp" }
-                    return WebResourceResponse(
-                        mime,
-                        null,
-                        200,
-                        "OK",
-                        corsHeaders(mime, "public, max-age=86400"),
-                        ByteArrayInputStream(wsrvRes.second)
-                    )
+                val donorReferer = when {
+                    rawUrl.contains("yandex") || rawUrl.contains("kinopoisk") -> "https://www.kinopoisk.ru/"
+                    rawUrl.contains("shikimori") -> "https://shikimori.one/"
+                    rawUrl.contains("rezka") -> "https://rezka.ag/"
+                    rawUrl.contains("anilibria") || rawUrl.contains("aniliberty") -> "https://anilibria.top/"
+                    rawUrl.contains("fanfilm") -> "https://v17.fanfilm4k.media/"
+                    rawUrl.contains("tmdb.org") -> "https://www.themoviedb.org/"
+                    else -> try { val u = URL(rawUrl); "${u.protocol}://${u.host}/" } catch (_: Throwable) { null }
                 }
-                val directRes = fetchHttpBytes(rawUrl, 3500)
+                val directUrl = if (rawUrl.contains("image.tmdb.org")) rawUrl.replace("image.tmdb.org", "imagetmdb.com") else rawUrl
+                val directRes = fetchHttpBytes(directUrl, 4000, donorReferer) ?: if (directUrl != rawUrl) fetchHttpBytes(rawUrl, 3500, donorReferer) else null
                 if (directRes != null) {
                     val mime = directRes.first.substringBefore(";").ifBlank { "image/jpeg" }
                     return WebResourceResponse(
@@ -506,6 +526,19 @@ class MainActivity : ComponentActivity() {
                         "OK",
                         corsHeaders(mime, "public, max-age=86400"),
                         ByteArrayInputStream(directRes.second)
+                    )
+                }
+                val wsrvUrl = "https://wsrv.nl/?url=${URLEncoder.encode(rawUrl, "UTF-8")}&w=500&q=85&output=webp"
+                val wsrvRes = fetchHttpBytes(wsrvUrl, 3000)
+                if (wsrvRes != null) {
+                    val mime = wsrvRes.first.substringBefore(";").ifBlank { "image/webp" }
+                    return WebResourceResponse(
+                        mime,
+                        null,
+                        200,
+                        "OK",
+                        corsHeaders(mime, "public, max-age=86400"),
+                        ByteArrayInputStream(wsrvRes.second)
                     )
                 }
             }
@@ -929,7 +962,7 @@ class MainActivity : ComponentActivity() {
         val path = uri.path ?: "/api/"
 
         if (path == "/api/health" || path == "/api/player/health") {
-            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.5.0"}""")
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.7.0"}""")
         }
 
         if (path == "/api/media/image-proxy") {
@@ -1075,6 +1108,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
+                    isRemoteServerOnline = false
                     try {
                         val html = assets.open("index.html").bufferedReader().use { it.readText() }
                         view?.loadDataWithBaseURL(
@@ -1099,6 +1133,7 @@ class MainActivity : ComponentActivity() {
                 val bottomCssPx = if (bars != null) (bars.bottom / density).toInt() else 0
                 val js = "document.documentElement.style.setProperty('--storm-safe-top', '${topCssPx}px'); document.documentElement.style.setProperty('--storm-safe-bottom', '${bottomCssPx}px');"
                 view?.evaluateJavascript(js, null)
+                try { android.webkit.CookieManager.getInstance().flush() } catch (_: Throwable) {}
             }
 
             override fun shouldInterceptRequest(
@@ -1106,9 +1141,13 @@ class MainActivity : ComponentActivity() {
                 request: WebResourceRequest?
             ): WebResourceResponse? {
                 val url = request?.url ?: return super.shouldInterceptRequest(view, request)
+                val method = request.method ?: "GET"
+                if (!method.equals("GET", ignoreCase = true)) {
+                    return super.shouldInterceptRequest(view, request)
+                }
                 val host = url.host?.lowercase()
 
-                if (host == "stormmultimedia.ru" || host == "www.stormmultimedia.ru") {
+                if (!isRemoteServerOnline && (host == "stormmultimedia.ru" || host == "www.stormmultimedia.ru")) {
                     val path = url.path ?: "/"
                     if (path == "/" || path == "/index.html") {
                         return createAssetResponse("text/html", "index.html") ?: super.shouldInterceptRequest(view, request)
@@ -1280,6 +1319,54 @@ class MainActivity : ComponentActivity() {
 
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
             }
+
+            override fun onJsPrompt(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                defaultValue: String?,
+                result: android.webkit.JsPromptResult?
+            ): Boolean {
+                if (isFinishing || isDestroyed) {
+                    result?.cancel()
+                    return true
+                }
+                val input = android.widget.EditText(this@MainActivity).apply {
+                    setText(defaultValue ?: "")
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Color.GRAY)
+                    setPadding(48, 32, 48, 32)
+                }
+                android.app.AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("STORM MULTIMEDIA")
+                    .setMessage(message ?: "")
+                    .setView(input)
+                    .setPositiveButton("OK") { _, _ -> result?.confirm(input.text?.toString() ?: "") }
+                    .setNegativeButton("Отмена") { _, _ -> result?.cancel() }
+                    .setOnCancelListener { result?.cancel() }
+                    .show()
+                return true
+            }
+
+            override fun onJsConfirm(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                result: android.webkit.JsResult?
+            ): Boolean {
+                if (isFinishing || isDestroyed) {
+                    result?.cancel()
+                    return true
+                }
+                android.app.AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("STORM MULTIMEDIA")
+                    .setMessage(message ?: "")
+                    .setPositiveButton("Да") { _, _ -> result?.confirm() }
+                    .setNegativeButton("Отмена") { _, _ -> result?.cancel() }
+                    .setOnCancelListener { result?.cancel() }
+                    .show()
+                return true
+            }
         }
     }
 
@@ -1329,9 +1416,9 @@ class MainActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.5.0"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.7.0"
             } catch (_: Throwable) {
-                "1.5.0"
+                "1.7.0"
             }
         }
 

@@ -4,8 +4,8 @@
    Leanback HUD 2.0 с динамическим авто-затуханием и полной навигацией во всех меню
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.6.5';
-import { trackClientAction } from './achievements.js?v=1.6.5';
+import { showToast } from './auth.js?v=1.7.0';
+import { trackClientAction } from './achievements.js?v=1.7.0';
 
 let isTvModeActive = false;
 let gamepadLoopId = null;

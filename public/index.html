@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <title>STORM MULTIMEDIA | Кино, сериалы и аниме онлайн</title>
-  <script src="/js/error-boundary.js?v=1.6.5"></script>
-  <script src="/js/db-state-engine.js?v=1.6.5"></script>
+  <script src="/js/error-boundary.js?v=1.7.0"></script>
+  <script src="/js/db-state-engine.js?v=1.7.0"></script>
   <script>
     (function() {
-      var VER = '1.6.1';
+      var VER = '1.7.0';
       window.__STORM_SW_MANAGED__ = true;
       try {
         var savedTheme = localStorage.getItem('storm_theme');
@@ -103,16 +103,13 @@
   <meta name="theme-color" content="#8b5cf6">
 
   <!-- Параллельная предзагрузка критического ядра ES-модулей витрины -->
-  <link rel="modulepreload" href="/js/app.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/theme.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/i18n.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/auth.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/bookmarks.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/catalog-baseline.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/status-icons.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/form-factor.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/gamepad-tv.js?v=1.6.5">
-  <link rel="modulepreload" href="/js/achievements.js?v=1.6.5">
+  <link rel="modulepreload" href="/js/app.js?v=1.7.0">
+  <link rel="modulepreload" href="/js/theme.js?v=1.7.0">
+  <link rel="modulepreload" href="/js/i18n.js?v=1.7.0">
+  <link rel="modulepreload" href="/js/auth.js?v=1.7.0">
+  <link rel="modulepreload" href="/js/bookmarks.js?v=1.7.0">
+  <link rel="modulepreload" href="/js/status-icons.js?v=1.7.0">
+  <link rel="modulepreload" href="/js/form-factor.js?v=1.7.0">
 
   <!-- Подключение 10 динамических гарнитур STORM AURORA FLUID (Cyrillic + Latin) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -120,12 +117,12 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.min.css" media="print" onload="this.media='all'">
   <!-- Стили дизайн-системы STORM SOFT -->
-  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.6.5">
-  <link rel="stylesheet" href="/styles/components.css?v=1.6.5">
-  <link rel="stylesheet" href="/styles/main.css?v=1.6.5">
-  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.6.5" id="storm-tv-mode-css" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/styles/storm-theme.css?v=1.7.0">
+  <link rel="stylesheet" href="/styles/components.css?v=1.7.0">
+  <link rel="stylesheet" href="/styles/main.css?v=1.7.0">
+  <link rel="stylesheet" href="/styles/tv-mode.css?v=1.7.0" id="storm-tv-mode-css" media="print" onload="this.media='all'">
   <script>try{if(localStorage.getItem('storm_tv_mode')==='true')document.getElementById('storm-tv-mode-css').media='all';}catch(_){}</script>
-  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.6.5"></noscript>
+  <noscript><link rel="stylesheet" href="/styles/tv-mode.css?v=1.7.0"></noscript>
 </head>
 <body data-active-tab="home">
 
@@ -133,10 +130,11 @@
   <div class="storm-sticky-header-container" id="storm-sticky-header-container">
     <header class="storm-navbar">
     <div class="storm-navbar-inner">
-      <!-- Мобильная кнопка меню (скрыта по требованию пользователя, функционал перенесён в «Ещё») -->
-      <button type="button" class="storm-mobile-menu-btn" id="mobile-menu-toggle-btn" aria-label="Открыть мобильное меню" style="display: none !important;">
-        <span>☰</span>
+      <!-- Мобильная кнопка разделов и заголовок активной категории -->
+      <button type="button" class="storm-mobile-menu-btn" id="mobile-menu-toggle-btn" aria-label="Открыть меню разделов">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
+      <div class="storm-mobile-section-title" id="storm-mobile-section-title">Новинки</div>
 
       <!-- Логотип и название экосистемы -->
       <a href="#home" class="storm-brand" onclick="window.switchTab?.('home'); return false;" title="Перейти на главную витрину STORM MULTIMEDIA">
@@ -212,13 +210,52 @@
           <span>👑</span> <span class="btn-text">Дашборд</span>
         </button>
 
+        <!-- Единое окно сгруппированных настроек -->
+        <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="desktop-unified-settings-btn" title="Настройки приложения, внешнего вида и сервисов">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="btn-text">Настройки</span>
+        </button>
+
         <!-- Профиль авторизованного пользователя -->
         <button class="user-profile-btn" id="user-profile-btn" style="display: none;">
           <img src="assets/avatar_default.svg" alt="Avatar" class="user-avatar-img" id="user-avatar-img" onerror="this.src='assets/avatar_default.svg'">
           <span id="user-name-label">Пользователь</span>
         </button>
+      </div>
 
-
+      <!-- Компактные действия верхней панели для смартфонов и Android -->
+      <div class="storm-mobile-top-actions" id="storm-mobile-top-actions">
+        <button type="button" class="storm-mobile-icon-btn" id="storm-mobile-search-toggle-btn" aria-label="Поиск">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5"/><line x1="20.5" y1="20.5" x2="16.4" y2="16.4"/></svg>
+        </button>
+        <div class="storm-mobile-overflow-wrap">
+          <button type="button" class="storm-mobile-icon-btn" id="storm-mobile-overflow-btn" aria-label="Меню и настройки">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+          <div class="storm-mobile-overflow-menu" id="storm-mobile-overflow-menu">
+            <button type="button" class="storm-mobile-overflow-item" data-overflow-action="filters">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span>Фильтры и сортировка</span>
+            </button>
+            <button type="button" class="storm-mobile-overflow-item" data-overflow-action="columns" id="storm-overflow-cols-btn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              <span id="storm-overflow-cols-label">Сетка: 3 колонки</span>
+            </button>
+            <button type="button" class="storm-mobile-overflow-item" data-overflow-action="refresh">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Обновить каталог</span>
+            </button>
+            <button type="button" class="storm-mobile-overflow-item" data-overflow-action="account">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span id="storm-overflow-account-label">Аккаунт</span>
+            </button>
+            <div class="storm-mobile-overflow-divider"></div>
+            <button type="button" class="storm-mobile-overflow-item" data-overflow-action="settings">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Настройки</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -781,7 +818,7 @@
           </div>
           <div class="filter-group" style="margin-bottom: 14px;">
             <label data-i18n="auth_username">Имя пользователя или Email</label>
-            <input type="text" class="storm-input" id="login-username" placeholder="Введите логин (например, ReiKatari)" autocomplete="username">
+            <input type="text" class="storm-input" id="login-username" placeholder="Введите логин или email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
           </div>
           <div class="filter-group" style="margin-bottom: 10px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
@@ -822,11 +859,11 @@
         <form id="register-form" novalidate style="display: none;">
           <div class="filter-group" style="margin-bottom: 12px;">
             <label data-i18n="auth_username">Имя пользователя</label>
-            <input type="text" class="storm-input" id="reg-username" placeholder="Ваш никнейм" autocomplete="username">
+            <input type="text" class="storm-input" id="reg-username" placeholder="Ваш никнейм" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
           </div>
           <div class="filter-group" style="margin-bottom: 12px;">
             <label data-i18n="auth_email">Электронная почта</label>
-            <input type="email" class="storm-input" id="reg-email" placeholder="user@example.com" autocomplete="email">
+            <input type="email" class="storm-input" id="reg-email" placeholder="user@example.com" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false">
           </div>
           <div class="filter-group" style="margin-bottom: 18px;">
             <label data-i18n="auth_password">Пароль</label>
@@ -1608,200 +1645,363 @@
   <div class="storm-toast-container" id="toast-container"></div>
 
   <!-- Мобильное выдвижное меню экосистемы (Mobile Drawer) -->
+  <!-- Левое выдвижное меню разделов каталога (Clean Navigation Drawer) -->
   <div class="storm-drawer-backdrop" id="mobile-drawer-backdrop">
-    <div class="storm-mobile-drawer" id="storm-mobile-drawer">
-      <div class="mobile-drawer-drag-handle" id="mobile-drawer-drag-handle"></div>
+    <aside class="storm-mobile-drawer" id="storm-mobile-drawer" aria-label="Разделы каталога">
       <div class="mobile-drawer-header">
-        <div class="storm-brand">
-          <img src="assets/favicon.svg" alt="STORM" class="storm-brand-logo" style="width: 32px; height: 32px;">
+        <div class="mobile-drawer-brand">
+          <img src="/assets/favicon.svg" alt="STORM MULTIMEDIA" class="storm-brand-logo" style="width: 26px; height: 26px;">
           <div class="storm-brand-text">
-            <span class="storm-brand-title" style="font-size: 16px;">STORM MULTIMEDIA</span>
+            <span class="storm-brand-title" style="font-size: 15px;">STORM MULTIMEDIA</span>
           </div>
         </div>
         <button type="button" class="storm-drawer-close" id="mobile-drawer-close-btn" title="Закрыть меню">✕</button>
       </div>
+
       <div class="mobile-drawer-body">
-        <!-- Блок профиля / входа -->
+        <!-- Компактная карточка аккаунта -->
         <div class="mobile-drawer-user-card" id="mobile-drawer-user-card">
           <div class="mobile-drawer-user-top">
-            <img src="assets/favicon.svg" alt="Avatar" class="mobile-drawer-avatar" id="mobile-drawer-avatar">
+            <img src="assets/favicon.svg" alt="Avatar" class="mobile-drawer-avatar" id="mobile-drawer-avatar" onerror="this.src='assets/favicon.svg'">
             <div class="mobile-drawer-user-info">
               <div class="mobile-drawer-user-name" id="mobile-drawer-username">Гость</div>
-              <div class="mobile-drawer-user-status" id="mobile-drawer-user-status">Авторизуйтесь для синхронизации</div>
+              <div class="mobile-drawer-user-status" id="mobile-drawer-user-status">Войдите для синхронизации</div>
             </div>
           </div>
           <button type="button" class="storm-btn storm-btn-primary mobile-drawer-auth-btn" id="mobile-drawer-auth-btn">
-            <span>Войти</span>
+            <span id="mobile-drawer-auth-text">Войти в аккаунт</span>
           </button>
         </div>
 
-        <!-- Раздел таймера сна (Sleep Timer) -->
-        <div class="mobile-drawer-section-title">⏱️ Таймер сна</div>
-        <div class="mobile-drawer-sleep-pills" id="mobile-drawer-sleep-pills">
-          <button type="button" class="drawer-sleep-pill is-active" data-sleep-min="0">Выкл</button>
-          <button type="button" class="drawer-sleep-pill" data-sleep-min="15">15 мин</button>
-          <button type="button" class="drawer-sleep-pill" data-sleep-min="30">30 мин</button>
-          <button type="button" class="drawer-sleep-pill" data-sleep-min="45">45 мин</button>
-          <button type="button" class="drawer-sleep-pill" data-sleep-min="60">60 мин</button>
-        </div>
-        <div class="drawer-sleep-status" id="drawer-sleep-status" style="display: none;">
-          <span class="sleep-status-icon">🌙</span>
-          <span class="sleep-status-text" id="drawer-sleep-status-text">Осталось: --:--</span>
-          <button type="button" class="drawer-sleep-cancel-btn" id="drawer-sleep-cancel-btn">Отмена</button>
-        </div>
-
-        <!-- Быстрая смена темы оформления прямо в мобильном меню -->
-        <div class="mobile-drawer-section-title">🎨 Тема оформления</div>
-        <div class="mobile-drawer-theme-strip" id="mobile-drawer-theme-strip">
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM MIDNIGHT">
-            <span class="drawer-theme-dot" style="background: #8b5cf6;"></span>
-            <span>Midnight</span>
+        <div class="mobile-drawer-section-title">Каталог видео</div>
+        <div class="mobile-drawer-cat-list">
+          <button type="button" class="mobile-drawer-cat-btn is-active" data-drawer-tab="new">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>Новинки</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM DARK">
-            <span class="drawer-theme-dot" style="background: #00d2ff;"></span>
-            <span>Dark</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="home">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3.5 4 5.5 4 9a4 4 0 1 1-8 0c0-3.5 2.5-5.5 4-9z"/><path d="M8.5 14.5A5.5 5.5 0 0 0 17.5 13c0-3-2-5-3-7"/></svg>
+            <span>Популярное</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM NIGHT">
-            <span class="drawer-theme-dot" style="background: #00f0ff;"></span>
-            <span>Night OLED</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="movies">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+            <span>Фильмы</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM CYBERPUNK">
-            <span class="drawer-theme-dot" style="background: #ff007f;"></span>
-            <span>Cyberpunk</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="series">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+            <span>Сериалы</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM FANTASY">
-            <span class="drawer-theme-dot" style="background: #f59e0b;"></span>
-            <span>Fantasy</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="cartoons">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            <span>Мультфильмы</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM MATRIX">
-            <span class="drawer-theme-dot" style="background: #00ff66;"></span>
-            <span>Matrix</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="cartoon-series">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+            <span>Мультсериалы</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM WARHAMMER 40K">
-            <span class="drawer-theme-dot" style="background: #d4af37;"></span>
-            <span>Warhammer</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="anime-movies">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8h6.1l-4.9 3.6 1.9 5.8-5-3.6-5 3.6 1.9-5.8-4.9-3.6h6.1z"/></svg>
+            <span>Аниме-фильмы</span>
           </button>
-          <button type="button" class="drawer-theme-card" data-drawer-theme="STORM DAY">
-            <span class="drawer-theme-dot" style="background: #0284c7;"></span>
-            <span>Day Light</span>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="anime-series">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M6 10h12M9 10v10M15 10v10"/></svg>
+            <span>Аниме-сериалы</span>
           </button>
         </div>
 
-        <!-- Раздел функций экосистемы -->
-        <div class="mobile-drawer-section-title">Сервисы и возможности</div>
-        <div class="mobile-drawer-nav-list">
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-recommender-btn">
-            <span class="mobile-nav-icon">🧠</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">ИИ-советник</span>
-              <span class="mobile-nav-desc">Персональный подбор на вечер</span>
-            </div>
+        <div class="mobile-drawer-section-title">Моя медиатека</div>
+        <div class="mobile-drawer-cat-list">
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="continue">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Продолжить просмотр</span>
           </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-calendar-btn">
-            <span class="mobile-nav-icon">📅</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Календарь релизов</span>
-              <span class="mobile-nav-desc">График выхода свежих эпизодов</span>
-            </div>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="bookmarks">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <span>Закладки и списки</span>
           </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-remote-btn">
-            <span class="mobile-nav-icon">📱</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Пульт управления</span>
-              <span class="mobile-nav-desc">Управление со смартфона</span>
-            </div>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="history">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>История просмотров</span>
           </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-rooms-btn">
-            <span class="mobile-nav-icon">👥</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Кинозал</span>
-              <span class="mobile-nav-desc">Совместный просмотр и чат</span>
-            </div>
-          </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-family-btn">
-            <span class="mobile-nav-icon">👑</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Семейные профили</span>
-              <span class="mobile-nav-desc">Детский режим и профили семьи</span>
-            </div>
-          </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-sync-btn">
-            <span class="mobile-nav-icon">🔄</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Синхронизация</span>
-              <span class="mobile-nav-desc">Shikimori, MAL, резервные копии</span>
-            </div>
-          </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-form-factor-btn">
-            <span class="mobile-nav-icon">📐</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Режим интерфейса и ТВ</span>
-              <span class="mobile-nav-desc">ПК, Мобильный или Smart TV</span>
-            </div>
-          </button>
-          <button type="button" class="mobile-drawer-nav-item" id="drawer-profile-settings-btn">
-            <span class="mobile-nav-icon">⚙️</span>
-            <div class="mobile-nav-texts">
-              <span class="mobile-nav-title">Настройки и профиль</span>
-              <span class="mobile-nav-desc">Темы, статистика и безопасность</span>
-            </div>
+          <button type="button" class="mobile-drawer-cat-btn" data-drawer-tab="offline">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Офлайн-просмотр</span>
           </button>
         </div>
 
-        <!-- Раздел управления экраном и памятью -->
-        <div id="drawer-screen-control-block">
-          <div class="mobile-drawer-section-title">📱 Экран и управление</div>
-          <div class="mobile-drawer-fullscreen-card">
-            <div class="drawer-fullscreen-info">
-              <span class="drawer-fullscreen-icon">⛶</span>
-              <div class="drawer-fullscreen-texts">
-                <span class="drawer-fullscreen-title">Полноэкранный режим</span>
-                <span class="drawer-fullscreen-desc">Просмотр без системных рамок и панелей</span>
+        <div class="mobile-drawer-bottom-actions">
+          <button type="button" class="mobile-drawer-cat-btn" id="drawer-open-filters-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span>Фильтры и сортировка</span>
+          </button>
+          <button type="button" class="mobile-drawer-cat-btn mobile-drawer-settings-trigger" id="drawer-open-unified-settings-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Настройки и сервисы</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Единый сгруппированный центр настроек (6 логических разделов) -->
+  <div class="storm-modal-backdrop" id="storm-unified-settings-modal">
+    <div class="storm-modal storm-settings-center-dialog">
+      <div class="storm-modal-header">
+        <h3 class="storm-modal-title">Настройки приложения</h3>
+        <button type="button" class="storm-modal-close" id="storm-unified-settings-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="storm-settings-layout">
+        <nav class="storm-settings-sidebar" id="storm-settings-sidebar" aria-label="Группы настроек">
+          <button type="button" class="storm-settings-nav-btn is-active" data-uset-tab="account">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Аккаунт</span>
+          </button>
+          <button type="button" class="storm-settings-nav-btn" data-uset-tab="catalog">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <span>Каталог и вид</span>
+          </button>
+          <button type="button" class="storm-settings-nav-btn" data-uset-tab="appearance">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16" cy="10" r="1.2"/></svg>
+            <span>Оформление</span>
+          </button>
+          <button type="button" class="storm-settings-nav-btn" data-uset-tab="player">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Плеер и таймер</span>
+          </button>
+          <button type="button" class="storm-settings-nav-btn" data-uset-tab="services">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <span>Сервисы</span>
+          </button>
+          <button type="button" class="storm-settings-nav-btn" data-uset-tab="system">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Система</span>
+          </button>
+        </nav>
+
+        <div class="storm-settings-content">
+          <!-- 1. Аккаунт -->
+          <section class="storm-settings-pane is-active" data-uset-pane="account">
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Профиль и авторизация</div>
+              <div class="storm-settings-account-box">
+                <div class="storm-settings-account-meta">
+                  <img src="assets/avatar_default.svg" alt="Avatar" class="storm-settings-avatar" id="uset-account-avatar" onerror="this.src='assets/avatar_default.svg'">
+                  <div>
+                    <div class="storm-settings-account-name" id="uset-account-name">Гость</div>
+                    <div class="storm-settings-account-sub" id="uset-account-sub">Войдите в аккаунт для синхронизации закладок и истории между устройствами</div>
+                  </div>
+                </div>
+                <div class="storm-settings-btn-row">
+                  <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="uset-login-or-profile-btn">Войти в аккаунт</button>
+                  <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-profile-settings-btn">Настройки профиля и 2FA</button>
+                  <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="uset-logout-btn" style="display: none; color: #f87171;">Выйти</button>
+                </div>
               </div>
             </div>
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm drawer-fs-toggle-btn" id="mobile-drawer-fs-btn">
-              <span>Во весь экран</span>
-            </button>
-          </div>
-        </div>
 
-        <!-- Раздел локального кэша и хранилища -->
-        <div class="mobile-drawer-section-title">💾 Память и кэш</div>
-        <div class="mobile-drawer-cache-card">
-          <div class="drawer-cache-top">
-            <div class="drawer-cache-meta">
-              <span class="drawer-cache-badge">ОЗУ и диск</span>
-              <span class="drawer-cache-label">Кэш каталога и сессий</span>
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Семья и облачная синхронизация</div>
+              <div class="storm-settings-actions-grid">
+                <button type="button" class="storm-settings-action-card" id="uset-family-btn">
+                  <div class="storm-settings-action-title">Семейные профили и детский режим</div>
+                  <div class="storm-settings-action-desc">Отдельные списки просмотра и возрастной фильтр</div>
+                </button>
+                <button type="button" class="storm-settings-action-card" id="uset-sync-btn">
+                  <div class="storm-settings-action-title">Синхронизация и резервная копия</div>
+                  <div class="storm-settings-action-desc">Импорт и экспорт списков Shikimori, MAL и Кинопоиск</div>
+                </button>
+                <button type="button" class="storm-settings-action-card" id="uset-admin-dashboard-btn" style="display: none;">
+                  <div class="storm-settings-action-title">Панель администратора</div>
+                  <div class="storm-settings-action-desc">Управление пользователями, сессиями и статистикой</div>
+                </button>
+              </div>
             </div>
-            <strong id="mobile-drawer-cache-size" class="drawer-cache-size-val">Оптимизирован</strong>
-          </div>
-          <div class="drawer-cache-meter-wrap">
-            <div class="drawer-cache-meter-bar"></div>
-          </div>
-          <div class="drawer-cache-actions">
-            <span class="drawer-cache-subtext">Быстрый доступ к постерам и метаданным</span>
-            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm drawer-clear-cache-action" id="mobile-drawer-clear-cache-btn">
-              <span>🧹</span> <span>Очистить кэш</span>
-            </button>
-          </div>
-        </div>
+          </section>
 
-        <!-- Раздел информации о платформе и источниках (Мобильный подвал) -->
-        <div class="mobile-drawer-section-title">О платформе и источниках</div>
-        <div class="mobile-drawer-footer-card">
-          <div class="mobile-drawer-footer-brand">
-            <strong>STORM MULTIMEDIA</strong>
-            <span>Экосистема STORM SOFT</span>
-          </div>
-          <div class="mobile-drawer-footer-sources">
-            <span class="m-source-pill">FanFilm4K</span>
-            <span class="m-source-pill">AniXart</span>
-            <span class="m-source-pill">Shikimori</span>
-            <span class="m-source-pill">TMDB</span>
-          </div>
-          <p class="mobile-drawer-footer-copy">
-            Непрерывное сохранение цифрового наследия • 2026
-          </p>
+          <!-- 2. Каталог и вид -->
+          <section class="storm-settings-pane" data-uset-pane="catalog">
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Стартовый раздел на мобильных устройствах</div>
+              <div class="storm-settings-pills" id="uset-start-tab-pills">
+                <button type="button" class="storm-uset-pill is-active" data-start-tab="new">Новинки</button>
+                <button type="button" class="storm-uset-pill" data-start-tab="home">Популярное</button>
+                <button type="button" class="storm-uset-pill" data-start-tab="movies">Фильмы</button>
+                <button type="button" class="storm-uset-pill" data-start-tab="series">Сериалы</button>
+                <button type="button" class="storm-uset-pill" data-start-tab="continue">Продолжить</button>
+              </div>
+            </div>
+
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Сетка карточек на смартфоне</div>
+              <div class="storm-settings-pills" id="uset-grid-cols-pills">
+                <button type="button" class="storm-uset-pill is-active" data-mobile-cols="3">3 колонки (компактно)</button>
+                <button type="button" class="storm-uset-pill" data-mobile-cols="2">2 колонки (крупно)</button>
+              </div>
+            </div>
+
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Фильтрация и форм-фактор</div>
+              <div class="storm-settings-card-row">
+                <div>
+                  <div class="storm-settings-row-title">Только релизы в 4K UHD</div>
+                  <div class="storm-settings-row-desc">Показывать в каталоге карточки с качеством Ultra HD</div>
+                </div>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="uset-toggle-4k-btn">Выключено</button>
+              </div>
+              <div class="storm-settings-card-row">
+                <div>
+                  <div class="storm-settings-row-title">Фильтры жанров, стран и сортировки</div>
+                  <div class="storm-settings-row-desc">Выбор источника, года выпуска и минимального рейтинга</div>
+                </div>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="uset-open-filters-btn">Открыть фильтры</button>
+              </div>
+              <div class="storm-settings-card-row">
+                <div>
+                  <div class="storm-settings-row-title">Режим интерфейса устройства</div>
+                  <div class="storm-settings-row-desc">Переключение между ПК, смартфоном и Smart TV</div>
+                </div>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="drawer-form-factor-btn">Выбрать режим</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 3. Оформление -->
+          <section class="storm-settings-pane" data-uset-pane="appearance">
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Цветовая тема оформления</div>
+              <div class="mobile-drawer-theme-strip" id="mobile-drawer-theme-strip">
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM MIDNIGHT">
+                  <span class="drawer-theme-dot" style="background: #8b5cf6;"></span>
+                  <span>Midnight</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM DARK">
+                  <span class="drawer-theme-dot" style="background: #00d2ff;"></span>
+                  <span>Dark</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM NIGHT">
+                  <span class="drawer-theme-dot" style="background: #00f0ff;"></span>
+                  <span>Night OLED</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM CYBERPUNK">
+                  <span class="drawer-theme-dot" style="background: #ff007f;"></span>
+                  <span>Cyberpunk</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM FANTASY">
+                  <span class="drawer-theme-dot" style="background: #f59e0b;"></span>
+                  <span>Fantasy</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM MATRIX">
+                  <span class="drawer-theme-dot" style="background: #00ff66;"></span>
+                  <span>Matrix</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM WARHAMMER 40K">
+                  <span class="drawer-theme-dot" style="background: #d4af37;"></span>
+                  <span>Warhammer</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM AURORA">
+                  <span class="drawer-theme-dot" style="background: #38bdf8;"></span>
+                  <span>Aurora</span>
+                </button>
+                <button type="button" class="drawer-theme-card" data-drawer-theme="STORM DAY">
+                  <span class="drawer-theme-dot" style="background: #0284c7;"></span>
+                  <span>Day Light</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Язык интерфейса</div>
+              <div class="storm-settings-pills" id="uset-lang-pills">
+                <button type="button" class="storm-uset-pill is-active" data-uset-lang="ru">Русский</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="en">English</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="de">Deutsch</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="fr">Français</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="es">Español</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="zh">中文</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="ja">日本語</button>
+                <button type="button" class="storm-uset-pill" data-uset-lang="ko">한국어</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4. Плеер и таймер -->
+          <section class="storm-settings-pane" data-uset-pane="player">
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Таймер сна</div>
+              <div class="mobile-drawer-sleep-pills" id="mobile-drawer-sleep-pills">
+                <button type="button" class="drawer-sleep-pill is-active" data-sleep-min="0">Выкл</button>
+                <button type="button" class="drawer-sleep-pill" data-sleep-min="15">15 мин</button>
+                <button type="button" class="drawer-sleep-pill" data-sleep-min="30">30 мин</button>
+                <button type="button" class="drawer-sleep-pill" data-sleep-min="45">45 мин</button>
+                <button type="button" class="drawer-sleep-pill" data-sleep-min="60">60 мин</button>
+              </div>
+              <div class="drawer-sleep-status" id="drawer-sleep-status" style="display: none; margin-top: 10px;">
+                <span class="sleep-status-text" id="drawer-sleep-status-text">Осталось: --:--</span>
+                <button type="button" class="drawer-sleep-cancel-btn" id="drawer-sleep-cancel-btn">Отмена</button>
+              </div>
+            </div>
+
+            <div class="storm-settings-group" id="drawer-screen-control-block">
+              <div class="storm-settings-group-title">Экран</div>
+              <div class="storm-settings-card-row">
+                <div>
+                  <div class="storm-settings-row-title">Полноэкранный режим</div>
+                  <div class="storm-settings-row-desc">Просмотр без системных рамок и панелей браузера</div>
+                </div>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="mobile-drawer-fs-btn">Во весь экран</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 5. Сервисы -->
+          <section class="storm-settings-pane" data-uset-pane="services">
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Дополнительные возможности экосистемы</div>
+              <div class="storm-settings-actions-grid">
+                <button type="button" class="storm-settings-action-card" id="drawer-recommender-btn">
+                  <div class="storm-settings-action-title">ИИ-советник на вечер</div>
+                  <div class="storm-settings-action-desc">Персональный подбор фильмов и аниме по настроению</div>
+                </button>
+                <button type="button" class="storm-settings-action-card" id="drawer-calendar-btn">
+                  <div class="storm-settings-action-title">Календарь релизов</div>
+                  <div class="storm-settings-action-desc">Расписание выхода новых серий и цифровых премьер</div>
+                </button>
+                <button type="button" class="storm-settings-action-card" id="drawer-remote-btn">
+                  <div class="storm-settings-action-title">Пульт STORM REMOTE</div>
+                  <div class="storm-settings-action-desc">Управление воспроизведением на ПК и ТВ со смартфона</div>
+                </button>
+                <button type="button" class="storm-settings-action-card" id="drawer-rooms-btn">
+                  <div class="storm-settings-action-title">Кинозал с друзьями</div>
+                  <div class="storm-settings-action-desc">Синхронный совместный просмотр с голосовым и текстовым чатом</div>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 6. Система -->
+          <section class="storm-settings-pane" data-uset-pane="system">
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Память и кэш</div>
+              <div class="storm-settings-card-row">
+                <div>
+                  <div class="storm-settings-row-title">Локальный кэш каталога и обложек</div>
+                  <div class="storm-settings-row-desc">Объём хранилища: <strong id="mobile-drawer-cache-size">Оптимизирован</strong></div>
+                </div>
+                <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="mobile-drawer-clear-cache-btn">Очистить кэш</button>
+              </div>
+            </div>
+
+            <div class="storm-settings-group">
+              <div class="storm-settings-group-title">Версия и обновления</div>
+              <div class="storm-settings-card-row">
+                <div>
+                  <div class="storm-settings-row-title">STORM MULTIMEDIA <span id="uset-app-version-label">1.7.0</span></div>
+                  <div class="storm-settings-row-desc" id="uset-server-status-label">Сервер синхронизации активен</div>
+                </div>
+                <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="uset-check-updates-btn">Проверить обновления</button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -2065,7 +2265,7 @@
   </div>
 
   <!-- Модуль приложения -->
-  <script type="module" src="/js/app.js?v=1.6.5"></script>
+  <script type="module" src="/js/app.js?v=1.7.0"></script>
 
   <!-- Интеллектуальный сторожевой таймер (Watchdog): резервное восстановление при обрыве мобильной сети -->
   <script>
@@ -2098,7 +2298,7 @@
           } else {
             var s = document.createElement('script');
             s.type = 'module';
-            s.src = '/js/app.js?v=1.6.5&retry=' + Date.now();
+            s.src = '/js/app.js?v=1.7.0&retry=' + Date.now();
             document.body.appendChild(s);
           }
         }
