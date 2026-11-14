@@ -13,8 +13,8 @@ android {
         applicationId = "com.reikatari.stormmultimedia"
         minSdk = 24
         targetSdk = 36
-        versionCode = 71
-        versionName = "1.8.1"
+        versionCode = 72
+        versionName = "1.8.2"
     }
 
     val stormSigningProps = Properties().apply {

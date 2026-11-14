@@ -4,7 +4,7 @@
  * мониторинг пользователей, сессий, CDN-балансеров, L1 кэша и СУБД MariaDB 10.
  */
 
-import { showToast } from './auth.js?v=1.8.1';
+import { showToast } from './auth.js?v=1.8.2';
 
 let adminDataCache = null;
 let adminBalancersCache = null;

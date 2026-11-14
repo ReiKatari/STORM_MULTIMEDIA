@@ -4,22 +4,22 @@
    Ambilight эффекта, пропуска интро/аутро, PiP, субтитров и совместного просмотра
    ========================================================================== */
 
-import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.8.1';
-import { getUser, showToast } from './auth.js?v=1.8.1';
-import { t } from './i18n.js?v=1.8.1';
-import { trackClientAction } from './achievements.js?v=1.8.1';
-import { renderReviewsSection } from './reviews.js?v=1.8.1';
-import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.8.1';
-import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.8.1';
-import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.8.1';
-import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.8.1';
-import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.8.1';
-import { saveMediaForOffline } from './offline-storage.js?v=1.8.1';
-import { renderTorrServerSettings } from './torrserver-client.js?v=1.8.1';
-import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.8.1';
-import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.8.1';
-import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.8.1';
-import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.8.1';
+import { saveBookmarkStatus, deleteBookmark, syncWatchProgress, fetchCustomLists, addItemToCollection, createCustomCollection, detectClientMediaType, detectClientYear } from './bookmarks.js?v=1.8.2';
+import { getUser, showToast } from './auth.js?v=1.8.2';
+import { t } from './i18n.js?v=1.8.2';
+import { trackClientAction } from './achievements.js?v=1.8.2';
+import { renderReviewsSection } from './reviews.js?v=1.8.2';
+import { attachPlayerToRoom, createWatchRoom, joinWatchRoom, leaveWatchRoom, getActiveRoom, renderRoomUi, broadcastEpisodeSync } from './watch-together.js?v=1.8.2';
+import { initSubtitlesManager, renderSubtitlesControls } from './subtitles-manager.js?v=1.8.2';
+import { initSmartSkip, renderChaptersOnTrack, setSmartSkipIntervals } from './smart-skip.js?v=1.8.2';
+import { sendSmartLightsFrame, renderSmartLightsSettings } from './smart-lights.js?v=1.8.2';
+import { toggleWhisperAiSubtitles } from './whisper-subtitles.js?v=1.8.2';
+import { saveMediaForOffline } from './offline-storage.js?v=1.8.2';
+import { renderTorrServerSettings } from './torrserver-client.js?v=1.8.2';
+import { applyProVideoSettings, initProAudioEngine, initVideoUpscalerShaders, stopVideoUpscalerShaders, renderProVideoPanel, renderProAudioPanel, setProAudioNightMode, getProAudioNightMode, applyProAudioSettings } from './pro-media-engine.js?v=1.8.2';
+import { getStatusIconSvg, getStatusLabel, STATUS_LIST } from './status-icons.js?v=1.8.2';
+import { mountCleanViewOverlay, toggleCleanViewModal, initAdSkipper, applyMaskSettings } from './ad-shield.js?v=1.8.2';
+import { resolveFanFilmUrl } from './fanfilm-catalog-intel.js?v=1.8.2';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -42,6 +42,7 @@ let iframeWatchInterval = null;
 let currentWatchTimeSeconds = 0;
 let hasCinemaHistoryEntry = false;
 let isClosingCinemaViaHistoryBack = false;
+let activeIframeIsLift = false;
 let activeResumePromptState = null;
 let isResumePromptPending = false;
 let pendingResumeSeekSeconds = 0;
@@ -1254,12 +1255,103 @@ function initFullscreenControls() {
           }
         }
         if (data.type === 'STORM_LIFT_AUDIO_TRACKS' && Array.isArray(data.tracks) && data.tracks.length > 0) {
+          activeIframeIsLift = true;
+          const isUhdMedia = Boolean(currentMedia?.is4K || currentMedia?.is_4k);
+          const liftTracks = data.tracks.map((name, idx) => ({
+            id: `lift_vo_${idx}`,
+            name: String(name),
+            quality: isUhdMedia ? '4K UHD' : '1080p FHD',
+            is_uhd: isUhdMedia
+          }));
           if (currentMedia) {
-            currentMedia.realAudioTracks = data.tracks.map((name, idx) => ({ id: String(idx), name: String(name) }));
+            currentMedia.realAudioTracks = liftTracks;
             currentMedia.stream_verified = true;
             currentMedia.is_upcoming = false;
             if (typeof window.unmarkMediaIdAsUpcoming === 'function') {
               window.unmarkMediaIdAsUpcoming(currentMedia.id || currentMedia.tmdb_id);
+            }
+          }
+
+          if (!quickBarSeriesData || !Array.isArray(quickBarSeriesData.seasons) || quickBarSeriesData.seasons.length === 0) {
+            const isSer = checkIfMediaIsSeries(currentMedia);
+            quickBarSeriesData = {
+              success: true,
+              type: isSer ? 'series' : 'movie',
+              source: 'lift',
+              seasons: [{
+                season: quickBarActiveSeason || 1,
+                name: isSer ? `Сезон ${quickBarActiveSeason || 1}` : 'Фильм',
+                episodes_count: 1,
+                episodes: [{
+                  episode: quickBarActiveEpisode || 1,
+                  name: isSer ? `${quickBarActiveEpisode || 1} серия` : 'Фильм',
+                  translations: liftTracks
+                }]
+              }]
+            };
+            const qbEl = document.getElementById('player-series-quick-bar');
+            const cmEl = document.getElementById('cinema-modal');
+            if (qbEl) qbEl.style.display = 'flex';
+            if (cmEl) cmEl.classList.add('has-series-bar');
+            adjustCinemaModalScale();
+            setupQuickBarOutsideListeners();
+          } else {
+            quickBarSeriesData.seasons.forEach(s => {
+              if (Array.isArray(s.episodes)) {
+                s.episodes.forEach(ep => {
+                  if (!Array.isArray(ep.translations) || ep.translations.length === 0 || (!quickBarSeriesData.isAnime && !ep.translations.some(t => String(t.id).startsWith('lift_vo_')))) {
+                    ep.translations = liftTracks;
+                  }
+                });
+              }
+            });
+          }
+
+          const sObjSync = quickBarSeriesData.seasons.find(s => Number(s.season) === Number(quickBarActiveSeason)) || quickBarSeriesData.seasons[0];
+          const epObjSync = sObjSync?.episodes?.find(e => Number(e.episode) === Number(quickBarActiveEpisode)) || sObjSync?.episodes?.[0];
+          const transListSync = epObjSync?.translations || liftTracks;
+
+          // Если QuickBar уже выбрал другую озвучку до инициализации плеера, повторно отправляем ее в iframe
+          const selectedTrackSync = transListSync.find(t => String(t.id) === String(quickBarActiveTranslationId));
+          if (selectedTrackSync && data.active && String(selectedTrackSync.name).toLowerCase() !== String(data.active).toLowerCase()) {
+            const selIdx = transListSync.indexOf(selectedTrackSync);
+            try {
+              const curIframe = document.querySelector('.cinema-player-iframe');
+              curIframe?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: selectedTrackSync.name, index: selIdx >= 0 ? selIdx : 0 }, '*');
+              curIframe?.contentWindow?.postMessage({ req: 'setting set', key: 'sound', value: selectedTrackSync.name }, '*');
+            } catch (_) {}
+          } else if (data.active) {
+            const matchedActive = transListSync.find(t => String(t.name).toLowerCase() === String(data.active).toLowerCase());
+            if (matchedActive) quickBarActiveTranslationId = matchedActive.id;
+          } else if (!quickBarActiveTranslationId && transListSync[0]) {
+            const prefMatch = findPreferredVoiceoverMatch(transListSync) || transListSync[0];
+            quickBarActiveTranslationId = prefMatch.id;
+          }
+
+          renderQuickBarDropdowns();
+          const voiceSheetOpen = document.getElementById('player-inplayer-voice-sheet');
+          if (voiceSheetOpen && voiceSheetOpen.classList.contains('is-open')) {
+            renderInPlayerVoiceSheet(voiceSheetOpen);
+          }
+        }
+        if (data.type === 'STORM_LIFT_PREF_CHANGED') {
+          activeIframeIsLift = true;
+          if (data.audioTitle) {
+            const audioStr = String(data.audioTitle);
+            savePreferredVoiceover(audioStr);
+            const voiceValEl = document.getElementById('quick-voiceover-val');
+            if (voiceValEl) {
+              voiceValEl.textContent = audioStr;
+              voiceValEl.title = audioStr;
+            }
+            if (quickBarSeriesData?.seasons) {
+              const sObjPref = quickBarSeriesData.seasons.find(s => Number(s.season) === Number(quickBarActiveSeason)) || quickBarSeriesData.seasons[0];
+              const epObjPref = sObjPref?.episodes?.find(e => Number(e.episode) === Number(quickBarActiveEpisode)) || sObjPref?.episodes?.[0];
+              const matchedPref = (epObjPref?.translations || []).find(t => String(t.name).toLowerCase() === audioStr.toLowerCase());
+              if (matchedPref && String(quickBarActiveTranslationId) !== String(matchedPref.id)) {
+                quickBarActiveTranslationId = matchedPref.id;
+                renderQuickBarDropdowns();
+              }
             }
           }
         }
@@ -2611,6 +2703,8 @@ export async function openPlayerModal(mediaItem, options = {}) {
     }
   } catch (e) {}
   quickBarSeriesData = null;
+  quickBarActiveTranslationId = null;
+  activeIframeIsLift = false;
   currentEpisodes = [];
   currentEpisodeIndex = 1;
   toggleInPlayerEpisodesSheet(null, false);
@@ -3498,6 +3592,7 @@ function selectPlayer(player, isUserManual = false) {
   }
 
   currentActivePlayer = player;
+  activeIframeIsLift = Boolean(player.id === 'lift_adfree' || (typeof player.url === 'string' && player.url.includes('/api/player/lift-embed')));
   updatePlayerTriggerInfo(player);
 
   // Синхронизируем активный элемент в выпадающем списке выбора плееров
@@ -3902,7 +3997,9 @@ async function initSeriesQuickBar(playerUrl) {
     renderQuickBarDropdowns();
     setupQuickBarOutsideListeners();
 
-    if (autoVoiceMatched || (data.type !== 'movie' && (quickBarActiveSeason > 1 || quickBarActiveEpisode > 1))) {
+    if (autoVoiceMatched && !(data.type !== 'movie' && (quickBarActiveSeason > 1 || quickBarActiveEpisode > 1))) {
+      updateQuickIframeSrc({ voiceOnly: true });
+    } else if (autoVoiceMatched || (data.type !== 'movie' && (quickBarActiveSeason > 1 || quickBarActiveEpisode > 1))) {
       updateQuickIframeSrc();
     }
     if (autoVoiceMatched && matchedTrans) {
@@ -4476,9 +4573,9 @@ function renderQuickBarDropdowns() {
 
   if (voiceList) {
     voiceList.innerHTML = translations.map(t => {
-      const isAct = t.id === quickBarActiveTranslationId;
+      const isAct = String(t.id) === String(quickBarActiveTranslationId);
       return `
-        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-trans-id="${t.id}" title="${escapeHtml(t.name)}">
+        <div class="quick-dropdown-item ${isAct ? 'active' : ''}" data-trans-id="${escapeHtml(String(t.id))}" title="${escapeHtml(t.name)}">
           <span class="quick-voice-title">${escapeHtml(t.name)}</span>
           ${t.is_uhd ? '<span class="uhd-pill">4K UHD</span>' : '<span class="fhd-pill">' + (t.quality || 'FHD') + '</span>'}
         </div>
@@ -4488,7 +4585,8 @@ function renderQuickBarDropdowns() {
     voiceList.querySelectorAll('.quick-dropdown-item').forEach(item => {
       item.onclick = (e) => {
         e.stopPropagation();
-        const tId = parseInt(item.dataset.transId, 10);
+        const rawId = item.dataset.transId ?? '';
+        const tId = /^\d+$/.test(rawId) ? Number(rawId) : rawId;
         selectQuickVoiceover(tId);
         if (voiceMenu) voiceMenu.style.display = 'none';
         if (voiceDropdown) voiceDropdown.classList.remove('is-open');
@@ -5056,7 +5154,8 @@ function setupQuickBarOutsideListeners() {
   });
 }
 
-async function updateQuickIframeSrc() {
+async function updateQuickIframeSrc(opts = {}) {
+  const voiceOnly = Boolean(opts && opts.voiceOnly);
   const activePlayerId = currentActivePlayer?.id || '';
   const isUsingNativeAnimePlayer = !activePlayerId || activePlayerId === 'anilibria_hls' || (activePlayerId.startsWith('anixart_') && activePlayerId !== 'anixart_stream');
   if (quickBarSeriesData?.isAnime && isUsingNativeAnimePlayer) {
@@ -5169,16 +5268,56 @@ async function updateQuickIframeSrc() {
     }
   }
 
+  // 3.5. Прямой HLS поток с несколькими аудиодорожками
+  if (voiceOnly && window._stormHls && Array.isArray(window._stormHls.audioTracks) && window._stormHls.audioTracks.length > 1) {
+    const transPool = curEpObj?.translations || currentMedia?.realAudioTracks || [];
+    const activeIdx = transPool.findIndex(t => String(t.id) === String(quickBarActiveTranslationId));
+    const hlsTrack = activeIdx >= 0 ? activeIdx : parseInt(String(quickBarActiveTranslationId || '').replace(/^hls_vo_/, ''), 10);
+    if (!isNaN(hlsTrack) && hlsTrack >= 0 && hlsTrack < window._stormHls.audioTracks.length) {
+      window._stormHls.audioTrack = hlsTrack;
+    }
+    return;
+  }
+
   // 4. Lift 4K / Kodik / FanFilm Iframe
   const iframe = document.querySelector('.cinema-player-iframe');
   if (iframe) {
-    const isLiftSrc = activePlayerId === 'lift_adfree' || (quickBarBaseUrl && quickBarBaseUrl.includes('/api/player/lift-embed')) || (iframe.src && iframe.src.includes('/api/player/lift-embed'));
+    const transPool = (curEpObj?.translations && curEpObj.translations.length > 0)
+      ? curEpObj.translations
+      : (currentMedia?.realAudioTracks || currentMedia?.translations || []);
+    const activeTransIdx = transPool.findIndex(t => String(t.id) === String(quickBarActiveTranslationId));
+    const activeTransObj = activeTransIdx >= 0 ? transPool[activeTransIdx] : null;
+    const activeVoiceName = activeTransObj?.name || '';
+
+    const setOrReplaceQueryParam = (rawUrl, key, val) => {
+      if (!rawUrl || !val) return rawUrl;
+      const encKey = encodeURIComponent(key);
+      const encVal = encodeURIComponent(val);
+      const re = new RegExp(`([?&])${encKey}=[^&]*`, 'i');
+      if (re.test(rawUrl)) {
+        return rawUrl.replace(re, `$1${encKey}=${encVal}`);
+      }
+      return rawUrl + (rawUrl.includes('?') ? '&' : '?') + `${encKey}=${encVal}`;
+    };
+
+    const isLiftSrc = activeIframeIsLift || activePlayerId === 'lift_adfree' || (quickBarBaseUrl && quickBarBaseUrl.includes('/api/player/lift-embed')) || (iframe.src && iframe.src.includes('/api/player/lift-embed'));
     if (isLiftSrc) {
-      const activeTransObj = curEpObj?.translations?.find(t => String(t.id) === String(quickBarActiveTranslationId));
       try {
-        if (activeTransObj && activeTransObj.name) {
-          iframe.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: activeTransObj.name }, '*');
+        if (activeVoiceName) {
+          const trackIndex = activeTransIdx >= 0 ? activeTransIdx : 0;
+          iframe.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: activeVoiceName, index: trackIndex }, '*');
+          iframe.contentWindow?.postMessage({ req: 'setting set', key: 'sound', value: activeVoiceName }, '*');
         }
+      } catch (_) {}
+
+      if (voiceOnly) {
+        if (currentActivePlayer && currentActivePlayer.url && activeVoiceName) {
+          currentActivePlayer.url = setOrReplaceQueryParam(currentActivePlayer.url, 'voice', activeVoiceName);
+        }
+        return;
+      }
+
+      try {
         if (quickBarSeriesData?.type !== 'movie') {
           iframe.contentWindow?.postMessage({
             event: 'playlist go',
@@ -5197,6 +5336,9 @@ async function updateQuickIframeSrc() {
           } else {
             newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
           }
+          if (activeVoiceName) {
+            newUrl = setOrReplaceQueryParam(newUrl, 'voice', activeVoiceName);
+          }
           if (newUrl !== curSrc) {
             replaceIframeSrcNoHistory(iframe, newUrl);
           }
@@ -5205,12 +5347,30 @@ async function updateQuickIframeSrc() {
     } else if (quickBarBaseUrl && (quickBarBaseUrl.includes('fanfilm') || quickBarBaseUrl.includes('stravers'))) {
       const titleParam = currentMedia?.title ? `&title=${encodeURIComponent(currentMedia.title)}` : '';
       const yearParam = currentMedia?.year ? `&year=${encodeURIComponent(currentMedia.year)}` : '';
-      let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${quickBarActiveTranslationId || ''}&hidden=season,episode,translation${titleParam}${yearParam}`;
+      let url = `/api/player/fanfilm-embed?url=${encodeURIComponent(quickBarBaseUrl)}&translation=${encodeURIComponent(quickBarActiveTranslationId || '')}&hidden=season,episode,translation${titleParam}${yearParam}`;
       if (quickBarSeriesData?.type !== 'movie') {
         url += `&season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
       }
       replaceIframeSrcNoHistory(iframe, url);
     } else {
+      if (voiceOnly) {
+        try {
+          if (activeVoiceName) {
+            const trackIndex = activeTransIdx >= 0 ? activeTransIdx : 0;
+            iframe.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: activeVoiceName, index: trackIndex }, '*');
+            iframe.contentWindow?.postMessage({ req: 'setting set', key: 'sound', value: activeVoiceName }, '*');
+          }
+        } catch (_) {}
+        const curSrcVoice = iframe.src || (currentActivePlayer?.url || '');
+        if (curSrcVoice && activeVoiceName && curSrcVoice.includes('/api/player/kinobox-embed')) {
+          const nextVoiceUrl = setOrReplaceQueryParam(curSrcVoice, 'voice', activeVoiceName);
+          if (nextVoiceUrl !== curSrcVoice && !activeIframeIsLift) {
+            replaceIframeSrcNoHistory(iframe, nextVoiceUrl);
+          }
+        }
+        return;
+      }
+
       let curSrc = iframe.src || (currentActivePlayer?.url || '');
       if (curSrc) {
         let newUrl = curSrc;
@@ -5220,10 +5380,15 @@ async function updateQuickIframeSrc() {
         } else {
           newUrl += (newUrl.includes('?') ? '&' : '?') + `season=${quickBarActiveSeason}&episode=${quickBarActiveEpisode}`;
         }
+        if (activeVoiceName && newUrl.includes('/api/player/kinobox-embed')) {
+          newUrl = setOrReplaceQueryParam(newUrl, 'voice', activeVoiceName);
+        }
         replaceIframeSrcNoHistory(iframe, newUrl);
       }
     }
-    showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+    if (!voiceOnly) {
+      showToast(`🎬 Сезон ${quickBarActiveSeason} • Серия ${quickBarActiveEpisode}`, 'info');
+    }
     updatePlayerUrl(currentMedia, quickBarActiveSeason, quickBarActiveEpisode, currentActivePlayer);
     highlightActiveEpisodeInGrid(quickBarActiveEpisode);
     updateInPlayerEpisodeInfo();
@@ -5353,12 +5518,15 @@ async function selectQuickVoiceover(translationId) {
   }
 
   renderQuickBarDropdowns();
-  updateQuickIframeSrc();
+  await updateQuickIframeSrc({ voiceOnly: true });
 
   let voiceName = 'Озвучка обновлена';
-  const sObj = quickBarSeriesData?.seasons?.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData?.seasons?.[0];
-  const epObj = sObj?.episodes?.find(e => e.episode === quickBarActiveEpisode) || sObj?.episodes?.[0];
-  const transObj = epObj?.translations?.find(t => String(t.id) === String(translationId));
+  const sObj = quickBarSeriesData?.seasons?.find(s => Number(s.season) === Number(quickBarActiveSeason)) || quickBarSeriesData?.seasons?.[0];
+  const epObj = sObj?.episodes?.find(e => Number(e.episode) === Number(quickBarActiveEpisode)) || sObj?.episodes?.[0];
+  const transPool = (epObj?.translations && epObj.translations.length > 0)
+    ? epObj.translations
+    : (currentMedia?.realAudioTracks || currentMedia?.translations || []);
+  const transObj = transPool.find(t => String(t.id) === String(translationId));
   if (transObj) {
     savePreferredVoiceover(transObj.name);
     voiceName = `🎙️ ${transObj.name}${transObj.is_uhd ? ' (4K UHD)' : ''}`;
@@ -5609,6 +5777,14 @@ function playStreamUrl(url) {
         hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
           manifestReady = true;
           clearTimeout(watchdog);
+          if (Array.isArray(hls.audioTracks) && hls.audioTracks.length > 1 && currentMedia) {
+            currentMedia.realAudioTracks = hls.audioTracks.map((tr, i) => ({
+              id: `hls_vo_${i}`,
+              name: tr.name || tr.lang || `Аудиодорожка ${i + 1}`,
+              quality: 'HLS Audio',
+              is_uhd: Boolean(currentMedia.is4K || currentMedia.is_4k)
+            }));
+          }
         });
 
         hls.on(window.Hls.Events.ERROR, (_event, data) => {
@@ -7374,9 +7550,21 @@ export function renderInPlayerVoiceSheet(sheet) {
 
   let translations = [];
   if (quickBarSeriesData?.seasons) {
-    const sObj = quickBarSeriesData.seasons.find(s => s.season === quickBarActiveSeason) || quickBarSeriesData.seasons[0];
-    const epObj = sObj?.episodes?.find(e => e.episode === quickBarActiveEpisode) || sObj?.episodes?.[0];
+    const sObj = quickBarSeriesData.seasons.find(s => Number(s.season) === Number(quickBarActiveSeason)) || quickBarSeriesData.seasons[0];
+    const epObj = sObj?.episodes?.find(e => Number(e.episode) === Number(quickBarActiveEpisode)) || sObj?.episodes?.[0];
     translations = epObj?.translations || [];
+  }
+
+  if (!translations.length && Array.isArray(currentMedia?.realAudioTracks) && currentMedia.realAudioTracks.length > 0) {
+    translations = currentMedia.realAudioTracks;
+  }
+
+  if (!translations.length && window._stormHls && Array.isArray(window._stormHls.audioTracks) && window._stormHls.audioTracks.length > 1) {
+    translations = window._stormHls.audioTracks.map((tr, i) => ({
+      id: `hls_vo_${i}`,
+      name: tr.name || tr.lang || `Аудиодорожка ${i + 1}`,
+      quality: 'HLS Audio'
+    }));
   }
 
   if (!translations.length && currentMedia?.translations) {
@@ -7419,7 +7607,7 @@ export function renderInPlayerVoiceSheet(sheet) {
       `;
     }).join('');
 
-    listEl.querySelectorAll('.inplayer-voice-item').forEach(item => {
+    listEl.querySelectorAll('.inplayer-voice-item').forEach((item, idx) => {
       item.onclick = (e) => {
         e.stopPropagation();
         const vId = item.dataset.voiceId;
@@ -7434,7 +7622,11 @@ export function renderInPlayerVoiceSheet(sheet) {
         sheet.style.display = 'none';
         const voiceBtn = document.getElementById('inplayer-voice-btn');
         if (voiceBtn) voiceBtn.classList.remove('active');
-        try { document.querySelector('.cinema-player-iframe')?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName, index: parseInt(vId, 10) || 0 }, '*'); } catch (_) {}
+        try {
+          const iframeEl = document.querySelector('.cinema-player-iframe');
+          iframeEl?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName, hint: vId, index: idx }, '*');
+          iframeEl?.contentWindow?.postMessage({ req: 'setting set', key: 'sound', value: vName }, '*');
+        } catch (_) {}
         syncInPlayerDrawerState();
         showToast(`🎙️ Выбрана аудиодорожка: ${vName}`, 'info');
       };
@@ -7446,7 +7638,7 @@ export function renderInPlayerVoiceSheet(sheet) {
   listEl.innerHTML = translations.map(t => {
     const isAct = String(t.id) === String(quickBarActiveTranslationId) || String(t.id) === String(currentVoiceoverId);
     return `
-      <div class="inplayer-voice-item ${isAct ? 'active' : ''}" data-voice-id="${t.id}" data-voice-name="${escapeHtml(t.name || 'Озвучка')}">
+      <div class="inplayer-voice-item ${isAct ? 'active' : ''}" data-voice-id="${escapeHtml(String(t.id))}" data-voice-name="${escapeHtml(t.name || 'Озвучка')}">
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 16px;">🎙️</span>
           <div>
@@ -7459,20 +7651,39 @@ export function renderInPlayerVoiceSheet(sheet) {
     `;
   }).join('');
 
-  listEl.querySelectorAll('.inplayer-voice-item').forEach(item => {
+  listEl.querySelectorAll('.inplayer-voice-item').forEach((item, idx) => {
     item.onclick = async (e) => {
       e.stopPropagation();
-      const vId = item.dataset.voiceId;
+      const rawId = item.dataset.voiceId ?? '';
+      const vId = /^\d+$/.test(rawId) ? Number(rawId) : rawId;
       const vName = item.dataset.voiceName;
-      quickBarActiveTranslationId = vId;
-      await selectQuickVoiceover(vId);
+      const prevTranslationId = quickBarActiveTranslationId;
+
+      if (window._stormHls && Array.isArray(window._stormHls.audioTracks) && window._stormHls.audioTracks.length > 1) {
+        const hlsIdx = String(vId).startsWith('hls_vo_')
+          ? (parseInt(String(vId).replace('hls_vo_', ''), 10) || 0)
+          : idx;
+        window._stormHls.audioTrack = hlsIdx;
+      }
+
+      if (String(prevTranslationId) !== String(vId)) {
+        await selectQuickVoiceover(vId);
+      } else {
+        try {
+          const iframeEl = document.querySelector('.cinema-player-iframe');
+          iframeEl?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName, index: idx }, '*');
+          iframeEl?.contentWindow?.postMessage({ req: 'setting set', key: 'sound', value: vName }, '*');
+        } catch (_) {}
+      }
+
       sheet.classList.remove('is-open');
       sheet.style.display = 'none';
       const voiceBtn = document.getElementById('inplayer-voice-btn');
       if (voiceBtn) voiceBtn.classList.remove('active');
-      try { document.querySelector('.cinema-player-iframe')?.contentWindow?.postMessage({ type: 'STORM_SET_AUDIO', name: vName, index: parseInt(vId, 10) || 0 }, '*'); } catch (_) {}
       syncInPlayerDrawerState();
-      showToast(`🎙️ Озвучка: ${vName}`, 'info');
+      if (String(prevTranslationId) === String(vId)) {
+        showToast(`🎙️ Озвучка: ${vName}`, 'info');
+      }
     };
   });
 }

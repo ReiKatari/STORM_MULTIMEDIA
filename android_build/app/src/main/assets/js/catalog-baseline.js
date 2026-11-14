@@ -4,64 +4,24 @@
 export const VERIFIED_CATALOG_BASELINE = {
   "popular": [
     {
-      "id": "rutube_landyshi",
-      "title": "Ландыши",
-      "original_title": "Ландыши. Такая нежная любовь",
-      "poster": "https://image.tmdb.org/t/p/w500/cprDjfg7O1Rdo3uEYaFa4bfJoDc.jpg",
-      "year": "2025–2026",
+      "id": "82529",
+      "title": "Человек-паук: Новый день",
+      "original_title": "Spider-Man: Brand New Day",
+      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
+      "year": "2026",
       "rating": 8.5,
-      "quality": "1080p FHD",
-      "is4K": false,
-      "media_type": "series",
-      "category": "Сериал",
+      "quality": "4K Ultra HD",
+      "is4K": true,
+      "media_type": "movie",
+      "category": "Фильм",
       "genres": [
-        "Мелодрама",
-        "Драма",
-        "Музыка"
+        "Фантастика",
+        "Боевик",
+        "Приключения"
       ],
-      "source": "rutube",
-      "rutube_id": "564f31c881b83373bfe0cb26979d44cf",
-      "owner_id": -195528184,
-      "video_id": 456244337,
-      "vk_url": "https://vkvideo.ru/video-195528184_456244337",
-      "vk_embed_url": "https://vk.com/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0",
-      "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=0",
-      "video_url": "https://rutube.ru/video/564f31c881b83373bfe0cb26979d44cf/",
-      "total_episodes": 16,
-      "seasons_count": 2,
-      "seasons": [
-        {
-          "season_number": 1,
-          "name": "Сезон 1",
-          "episode_count": 8,
-          "episodes": [
-            { "season_number": 1, "episode_number": 1, "name": "1 серия", "rutube_id": "564f31c881b83373bfe0cb26979d44cf", "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf" },
-            { "season_number": 1, "episode_number": 2, "name": "2 серия" },
-            { "season_number": 1, "episode_number": 3, "name": "3 серия" },
-            { "season_number": 1, "episode_number": 4, "name": "4 серия" },
-            { "season_number": 1, "episode_number": 5, "name": "5 серия" },
-            { "season_number": 1, "episode_number": 6, "name": "6 серия" },
-            { "season_number": 1, "episode_number": 7, "name": "7 серия" },
-            { "season_number": 1, "episode_number": 8, "name": "8 серия" }
-          ]
-        },
-        {
-          "season_number": 2,
-          "name": "Сезон 2 (Вторая весна)",
-          "episode_count": 8,
-          "episodes": [
-            { "season_number": 2, "episode_number": 1, "name": "1 серия (9)" },
-            { "season_number": 2, "episode_number": 2, "name": "2 серия (10)" },
-            { "season_number": 2, "episode_number": 3, "name": "3 серия (11)" },
-            { "season_number": 2, "episode_number": 4, "name": "4 серия (12)" },
-            { "season_number": 2, "episode_number": 5, "name": "5 серия (13)" },
-            { "season_number": 2, "episode_number": 6, "name": "6 серия (14)" },
-            { "season_number": 2, "episode_number": 7, "name": "7 серия (15)" },
-            { "season_number": 2, "episode_number": 8, "name": "8 серия (16)" }
-          ]
-        }
-      ],
-      "description": "Популярная музыкальная мелодрама Wink о Кате Орловой и Лехе Данилине: любовь, распад группы, интриги и борьба за наследство."
+      "source": "fanfilm4k",
+      "url": "https://v17.fanfilm4k.media/82529-chelovek-pauk-novyj-den-film.html",
+      "description": "Питер Паркер сталкивается с последствиями стертой памяти мира и новыми угрозами Нью-Йорка в новой эре."
     },
     {
       "id": "tmdb_dune2",
@@ -140,7 +100,7 @@ export const VERIFIED_CATALOG_BASELINE = {
     },
     {
       "id": "rhs_arcane2",
-      "title": "Аркейн",
+      "title": "Аркейн (2 сезон)",
       "original_title": "Arcane Season 2",
       "poster": "https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg",
       "year": "2024",
@@ -502,6 +462,26 @@ export const VERIFIED_CATALOG_BASELINE = {
   ],
   "new": [
     {
+      "id": "82529",
+      "title": "Человек-паук: Новый день",
+      "original_title": "Spider-Man: Brand New Day",
+      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
+      "year": "2026",
+      "rating": 8.5,
+      "quality": "4K Ultra HD",
+      "is4K": true,
+      "media_type": "movie",
+      "category": "Фильм",
+      "genres": [
+        "Фантастика",
+        "Боевик",
+        "Приключения"
+      ],
+      "source": "fanfilm4k",
+      "url": "https://v17.fanfilm4k.media/82529-chelovek-pauk-novyj-den-film.html",
+      "description": "Питер Паркер сталкивается с последствиями стертой памяти мира и новыми угрозами Нью-Йорка в новой эре."
+    },
+    {
       "id": "lostfilm_gentlemen",
       "title": "Джентльмены",
       "original_title": "The Gentlemen",
@@ -597,7 +577,7 @@ export const VERIFIED_CATALOG_BASELINE = {
     },
     {
       "id": "rhs_arcane2",
-      "title": "Аркейн",
+      "title": "Аркейн (2 сезон)",
       "original_title": "Arcane Season 2",
       "poster": "https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg",
       "year": "2024",
@@ -938,6 +918,26 @@ export const VERIFIED_CATALOG_BASELINE = {
     }
   ],
   "movies": [
+    {
+      "id": "82529",
+      "title": "Человек-паук: Новый день",
+      "original_title": "Spider-Man: Brand New Day",
+      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
+      "year": "2026",
+      "rating": 8.5,
+      "quality": "4K Ultra HD",
+      "is4K": true,
+      "media_type": "movie",
+      "category": "Фильм",
+      "genres": [
+        "Фантастика",
+        "Боевик",
+        "Приключения"
+      ],
+      "source": "fanfilm4k",
+      "url": "https://v17.fanfilm4k.media/82529-chelovek-pauk-novyj-den-film.html",
+      "description": "Питер Паркер сталкивается с последствиями стертой памяти мира и новыми угрозами Нью-Йорка в новой эре."
+    },
     {
       "id": "tmdb_dune2",
       "title": "Дюна: Часть вторая",
@@ -1372,66 +1372,6 @@ export const VERIFIED_CATALOG_BASELINE = {
     }
   ],
   "series": [
-    {
-      "id": "rutube_landyshi",
-      "title": "Ландыши",
-      "original_title": "Ландыши. Такая нежная любовь",
-      "poster": "https://image.tmdb.org/t/p/w500/cprDjfg7O1Rdo3uEYaFa4bfJoDc.jpg",
-      "year": "2025–2026",
-      "rating": 8.5,
-      "quality": "1080p FHD",
-      "is4K": false,
-      "media_type": "series",
-      "category": "Сериал",
-      "genres": [
-        "Мелодрама",
-        "Драма",
-        "Музыка"
-      ],
-      "source": "rutube",
-      "rutube_id": "564f31c881b83373bfe0cb26979d44cf",
-      "owner_id": -195528184,
-      "video_id": 456244337,
-      "vk_url": "https://vkvideo.ru/video-195528184_456244337",
-      "vk_embed_url": "https://vk.com/video_ext.php?oid=-195528184&id=456244337&hd=2&autoplay=0&js_api=1&muted=0&mute=0",
-      "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf?skinColor=00d2ff&autoPlay=0",
-      "video_url": "https://rutube.ru/video/564f31c881b83373bfe0cb26979d44cf/",
-      "total_episodes": 16,
-      "seasons_count": 2,
-      "seasons": [
-        {
-          "season_number": 1,
-          "name": "Сезон 1",
-          "episode_count": 8,
-          "episodes": [
-            { "season_number": 1, "episode_number": 1, "name": "1 серия", "rutube_id": "564f31c881b83373bfe0cb26979d44cf", "embed_url": "https://rutube.ru/play/embed/564f31c881b83373bfe0cb26979d44cf" },
-            { "season_number": 1, "episode_number": 2, "name": "2 серия" },
-            { "season_number": 1, "episode_number": 3, "name": "3 серия" },
-            { "season_number": 1, "episode_number": 4, "name": "4 серия" },
-            { "season_number": 1, "episode_number": 5, "name": "5 серия" },
-            { "season_number": 1, "episode_number": 6, "name": "6 серия" },
-            { "season_number": 1, "episode_number": 7, "name": "7 серия" },
-            { "season_number": 1, "episode_number": 8, "name": "8 серия" }
-          ]
-        },
-        {
-          "season_number": 2,
-          "name": "Сезон 2 (Вторая весна)",
-          "episode_count": 8,
-          "episodes": [
-            { "season_number": 2, "episode_number": 1, "name": "1 серия (9)" },
-            { "season_number": 2, "episode_number": 2, "name": "2 серия (10)" },
-            { "season_number": 2, "episode_number": 3, "name": "3 серия (11)" },
-            { "season_number": 2, "episode_number": 4, "name": "4 серия (12)" },
-            { "season_number": 2, "episode_number": 5, "name": "5 серия (13)" },
-            { "season_number": 2, "episode_number": 6, "name": "6 серия (14)" },
-            { "season_number": 2, "episode_number": 7, "name": "7 серия (15)" },
-            { "season_number": 2, "episode_number": 8, "name": "8 серия (16)" }
-          ]
-        }
-      ],
-      "description": "Популярная музыкальная мелодрама Wink о Кате Орловой и Лехе Данилине: любовь, распад группы, интриги и борьба за наследство."
-    },
     {
       "id": "lostfilm_gentlemen",
       "title": "Джентльмены",
@@ -2343,7 +2283,7 @@ export const VERIFIED_CATALOG_BASELINE = {
   "cartoon-series": [
     {
       "id": "rhs_arcane2",
-      "title": "Аркейн",
+      "title": "Аркейн (2 сезон)",
       "original_title": "Arcane Season 2",
       "poster": "https://image.tmdb.org/t/p/w500/kVioUjk1SXGWblJNaKsIJcBqUcY.jpg",
       "year": "2024",
@@ -2497,7 +2437,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_batman_tas",
       "title": "Бэтмен (1992)",
       "original_title": "Batman: The Animated Series",
-      "poster": "https://image.tmdb.org/t/p/w500/wLB0VhC2FafMr6QEVH9ReX0Id3j.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/l1xXi5wrZkrEogTRqN7Gmlb4vUR.jpg",
       "year": "1992",
       "rating": 9,
       "quality": "4K Ultra HD",
@@ -2554,7 +2494,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_spider_man_94",
       "title": "Человек-паук (1994)",
       "original_title": "Spider-Man",
-      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/xEJaSQaNqWUd0JQjKRhMFcc4TuA.jpg",
       "year": "1994",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -2573,7 +2513,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_castlevania",
       "title": "Кастлвания",
       "original_title": "Castlevania",
-      "poster": "https://image.tmdb.org/t/p/w500/w15qxusZtam6ipBGEWBcwg9WQNN.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/1y74WH7RU7Rgdf8DGJNFLi7ebpU.jpg",
       "year": "2021",
       "rating": 8.5,
       "quality": "4K Ultra HD",
@@ -2592,7 +2532,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_bojack_horseman",
       "title": "Конь БоДжек",
       "original_title": "BoJack Horseman",
-      "poster": "https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/t4on3Lm3thEIOHVBJdb6T637mbT.jpg",
       "year": "2014",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -2610,7 +2550,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_samurai_jack",
       "title": "Самурай Джек",
       "original_title": "Samurai Jack",
-      "poster": "https://image.tmdb.org/t/p/w500/vReLRjDV9XPhiOSEW7QWow4DXwf.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/7VcdVqfUY3wObWGjM7aVQcdkJY4.jpg",
       "year": "2001",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -2629,7 +2569,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_futurama",
       "title": "Футурама",
       "original_title": "Futurama",
-      "poster": "https://image.tmdb.org/t/p/w500/6D1NA4IMUFI8lBNuCBUlp7eLYDP.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/sbjCH9Ed1G97Z0ESawKbOamJi5y.jpg",
       "year": "2023",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -2647,7 +2587,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_adventure_time",
       "title": "Время приключений",
       "original_title": "Adventure Time",
-      "poster": "https://image.tmdb.org/t/p/w500/iHaIPGGPxMFUprrjLkNXFvjj0ky.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/wq2n0OLK4dL1eZBORliFMvIR6qf.jpg",
       "year": "2010",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -2666,7 +2606,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_over_the_garden_wall",
       "title": "По ту сторону изгороди",
       "original_title": "Over the Garden Wall",
-      "poster": "https://image.tmdb.org/t/p/w500/lO3ZWFH7EKHadZayhwiYEgigL5.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/j1FIjPMuKjv3UdtnpX4MzChkPwW.jpg",
       "year": "2014",
       "rating": 8.9,
       "quality": "4K Ultra HD",
@@ -2685,7 +2625,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_harley_quinn",
       "title": "Харли Квинн",
       "original_title": "Harley Quinn",
-      "poster": "https://image.tmdb.org/t/p/w500/4Li3gy8Ga6q0bAz2odg7ZFoRqLy.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/4jNimEp4AJgPMDDKUWBZaE9CXkq.jpg",
       "year": "2023",
       "rating": 8.4,
       "quality": "4K Ultra HD",
@@ -2704,7 +2644,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_scavengers_reign",
       "title": "Царство падальщиков",
       "original_title": "Scavengers Reign",
-      "poster": "https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/uHUjIul2J5HQQlPRgSczcNtJwdf.jpg",
       "year": "2023",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -2723,7 +2663,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_primal",
       "title": "Первобытный",
       "original_title": "Primal",
-      "poster": "https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/im9BS6yx0V7eNTTLg6oV02jl2S.jpg",
       "year": "2022",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -2742,7 +2682,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_south_park",
       "title": "Южный Парк",
       "original_title": "South Park",
-      "poster": "https://image.tmdb.org/t/p/w500/3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/69lJGPmFoUplHWoVnCbCcXKRqOl.jpg",
       "year": "2024",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -2759,7 +2699,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_simpsons",
       "title": "Симпсоны",
       "original_title": "The Simpsons",
-      "poster": "https://image.tmdb.org/t/p/w500/7o3XRf31lEtAaRNtgupOGTDD3sP.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/171yRAHGCziNjtO53sEil1PH64v.jpg",
       "year": "2024",
       "rating": 8.5,
       "quality": "4K Ultra HD",
@@ -2776,7 +2716,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "tmdb_family_guy",
       "title": "Гриффины",
       "original_title": "Family Guy",
-      "poster": "https://image.tmdb.org/t/p/w500/bpy9uaV0oOlKnEoPzodwrSSUFXg.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/9zdZeAxt7Xxu5omPufFu1TMl8BP.jpg",
       "year": "2024",
       "rating": 8.2,
       "quality": "4K Ultra HD",
@@ -2890,7 +2830,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_suzume",
       "title": "Судзумэ, закрывающая двери",
       "original_title": "Suzume no Tojimari",
-      "poster": "https://image.tmdb.org/t/p/w500/6YkQu9TRAsZhGGh0t7U7DP1BuhQ.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/ynCt7v5VVKSwaA3EEq9quFaKFct.jpg",
       "year": "2022",
       "rating": 8.4,
       "quality": "4K Ultra HD",
@@ -2947,7 +2887,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_princess_mononoke",
       "title": "Принцесса Мононоке",
       "original_title": "Mononoke Hime",
-      "poster": "https://image.tmdb.org/t/p/w500/txaVo4whnSduKuczZiJexhLDVQC.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/8rQhVh5Dn3RQpCIuLC5Ee7Klzo5.jpg",
       "year": "1997",
       "rating": 8.9,
       "quality": "4K Ultra HD",
@@ -2966,7 +2906,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_weathering",
       "title": "Дитя погоды",
       "original_title": "Tenki no Ko",
-      "poster": "https://image.tmdb.org/t/p/w500/iH2WDCYLIUjc7oPWRT7Kxgxza6k.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/1xJxXW8SoX5weacFcRU2PNMwNfi.jpg",
       "year": "2019",
       "rating": 8.3,
       "quality": "4K Ultra HD",
@@ -2985,7 +2925,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_grave_fireflies",
       "title": "Могила светлячков",
       "original_title": "Hotaru no Haka",
-      "poster": "https://image.tmdb.org/t/p/w500/c0Gv8xTSEmIcQPxbhINKvkbJO8s.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/r25pROjJSaORRtyCkbbrEp9kMaL.jpg",
       "year": "1988",
       "rating": 9,
       "quality": "4K Ultra HD",
@@ -3004,7 +2944,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_akira",
       "title": "Акира",
       "original_title": "Akira",
-      "poster": "https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/T37u3QdoPlVDzO9G91nzCwBfVs.jpg",
       "year": "1988",
       "rating": 8.5,
       "quality": "4K Ultra HD",
@@ -3023,7 +2963,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_ghost_shell",
       "title": "Призрак в доспехах",
       "original_title": "Koukaku Kidoutai",
-      "poster": "https://image.tmdb.org/t/p/w500/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/q1rLN197K4faderh0YT5YLx13IQ.jpg",
       "year": "1995",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -3042,7 +2982,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_perfect_blue",
       "title": "Истинная грусть",
       "original_title": "Perfect Blue",
-      "poster": "https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/d2FkkyKzihw9UbS1bCZorpZ0YSg.jpg",
       "year": "1997",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -3061,7 +3001,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_wind_rises",
       "title": "Ветер крепчает",
       "original_title": "Kaze Tachinu",
-      "poster": "https://image.tmdb.org/t/p/w500/oTmSnrE9MuQMhZkosZRE5bYvstK.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/hHzIDZUnhgsmNgbZlrH92fe5mWG.jpg",
       "year": "2013",
       "rating": 8.4,
       "quality": "4K Ultra HD",
@@ -3080,7 +3020,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_nausicaa",
       "title": "Навсикая из Долины ветров",
       "original_title": "Kaze no Tani no Nausicaa",
-      "poster": "https://image.tmdb.org/t/p/w500/txaVo4whnSduKuczZiJexhLDVQC.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/tEPKp9uUEepiTvSsews2kcJQqsP.jpg",
       "year": "1984",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -3099,7 +3039,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_i_want_eat_pancreas",
       "title": "Я хочу съесть твою поджелудочную",
       "original_title": "Kimi no Suizou wo Tabetai",
-      "poster": "https://image.tmdb.org/t/p/w500/c0Gv8xTSEmIcQPxbhINKvkbJO8s.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/avj8X4mamOl9Co9rARHwivaP2Td.jpg",
       "year": "2018",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -3137,7 +3077,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_castle_sky",
       "title": "Небесный замок Лапута",
       "original_title": "Tenkuu no Shiro Laputa",
-      "poster": "https://image.tmdb.org/t/p/w500/oQvAlVSjYsJZPg9raiQRYE0aVrv.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/hVcKHYcJv9nYjzkZOKcA7gCrpg1.jpg",
       "year": "1986",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -3156,7 +3096,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_kikis_delivery",
       "title": "Ведьмина служба доставки",
       "original_title": "Majo no Takkyuubin",
-      "poster": "https://image.tmdb.org/t/p/w500/hTiDmJh24P7sKVEmtTZQU46f1LB.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/ufr0XB3QSLZCwrrIyQSVATp9jCU.jpg",
       "year": "1989",
       "rating": 8.5,
       "quality": "4K Ultra HD",
@@ -3193,7 +3133,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_paprika",
       "title": "Паприка",
       "original_title": "Paprika",
-      "poster": "https://image.tmdb.org/t/p/w500/edv5CZvWj09upOsy2Y6IwDhK8bt.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/hg3uIIlFyUxv5twSN0UpooL3Odl.jpg",
       "year": "2006",
       "rating": 8.4,
       "quality": "4K Ultra HD",
@@ -3212,7 +3152,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_redline",
       "title": "Редлайн",
       "original_title": "Redline",
-      "poster": "https://image.tmdb.org/t/p/w500/4Li3gy8Ga6q0bAz2odg7ZFoRqLy.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/1OlvOUB4SOxqGf6lKrX79Nb2I23.jpg",
       "year": "2009",
       "rating": 8.4,
       "quality": "4K Ultra HD",
@@ -3231,7 +3171,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "shiki_evangelion_3",
       "title": "Евангелион 3.0+1.0",
       "original_title": "Shin Evangelion Gekijouban: ||",
-      "poster": "https://image.tmdb.org/t/p/w500/8u56LKz0An8xa9YaFtkxsDKc5N5.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/op8963o0zcm0L8VzEEdlnxaZXpf.jpg",
       "year": "2021",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -3290,7 +3230,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_jujutsu_kaisen",
       "title": "Магическая битва",
       "original_title": "Jujutsu Kaisen",
-      "poster": "https://image.tmdb.org/t/p/w500/gsBwgwaW1YWHrQYbVymarruw1yN.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/6qQzMJG27XOJsyAEEIisoJB45j2.jpg",
       "year": "2023",
       "rating": 8.9,
       "quality": "4K Ultra HD",
@@ -3366,7 +3306,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_death_note",
       "title": "Тетрадь смерти",
       "original_title": "Death Note",
-      "poster": "https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/yzTD7P7dmZRxAQjoNxC1GxOLRiH.jpg",
       "year": "2006",
       "rating": 9,
       "quality": "4K Ultra HD",
@@ -3385,7 +3325,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_one_piece",
       "title": "Ван-Пис",
       "original_title": "One Piece",
-      "poster": "https://image.tmdb.org/t/p/w500/c0Gv8xTSEmIcQPxbhINKvkbJO8s.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/osRT8GsND3PfhvevsS5DK9px0LI.jpg",
       "year": "2024",
       "rating": 9,
       "quality": "4K Ultra HD",
@@ -3404,7 +3344,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_naruto_shippuden",
       "title": "Наруто: Ураганные хроники",
       "original_title": "Naruto: Shippuuden",
-      "poster": "https://image.tmdb.org/t/p/w500/zg3GrU3jAoTGxmlGGhkfNYMOHlb.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/d43i3GyHhEHmANAXoxkRcjAeK6f.jpg",
       "year": "2007",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -3423,7 +3363,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_bleach_tybw",
       "title": "Блич: Тысячелетняя кровавая война",
       "original_title": "Bleach: Sennen Kessen-hen",
-      "poster": "https://image.tmdb.org/t/p/w500/8u56LKz0An8xa9YaFtkxsDKc5N5.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/67es5yof4jfDUPYkOmUhcVd5ASl.jpg",
       "year": "2024",
       "rating": 9,
       "quality": "4K Ultra HD",
@@ -3442,7 +3382,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_fullmetal_alchemist",
       "title": "Стальной алхимик: Братство",
       "original_title": "Hagane no Renkinjutsushi: Fullmetal Alchemist",
-      "poster": "https://image.tmdb.org/t/p/w500/9whSxgqSW7dPIIMJyM4WG3BYVo7.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/n2M0BslYmciTcxHc0SpwSljujUG.jpg",
       "year": "2009",
       "rating": 9.3,
       "quality": "4K Ultra HD",
@@ -3461,7 +3401,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_hunter_hunter",
       "title": "Хантер х Хантер",
       "original_title": "Hunter x Hunter",
-      "poster": "https://image.tmdb.org/t/p/w500/gsBwgwaW1YWHrQYbVymarruw1yN.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/hAoNFUYu3tOrEDgwx7OcSVMLseP.jpg",
       "year": "2011",
       "rating": 9.1,
       "quality": "4K Ultra HD",
@@ -3480,7 +3420,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_vinland_saga",
       "title": "Сага о Винланде",
       "original_title": "Vinland Saga",
-      "poster": "https://image.tmdb.org/t/p/w500/1de3R902B5EEMmohBQsExd5V87Y.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/aFJf2FeSFSGGBFUm4L97tUw1nQe.jpg",
       "year": "2023",
       "rating": 8.9,
       "quality": "4K Ultra HD",
@@ -3499,7 +3439,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_oshi_no_ko",
       "title": "Звёздное дитя",
       "original_title": "Oshi no Ko",
-      "poster": "https://image.tmdb.org/t/p/w500/bxWVzZ6oq5SdUBOcG74IavUlHGd.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/nFR6uUdk6hDWhgTZ8bgFfOYeS6X.jpg",
       "year": "2024",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -3518,7 +3458,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_dandadan",
       "title": "Дандадан",
       "original_title": "Dandadan",
-      "poster": "https://image.tmdb.org/t/p/w500/92Ds0hOHObvZBekqneimrGpxyXh.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/9PwQYncRgFiPidLWeZYJqOrEKg8.jpg",
       "year": "2024",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -3537,7 +3477,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_spy_family",
       "title": "Семья шпиона",
       "original_title": "SPY x FAMILY",
-      "poster": "https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/xMqGSPjjnc4awD4R8JrRTW0IGOt.jpg",
       "year": "2023",
       "rating": 8.6,
       "quality": "4K Ultra HD",
@@ -3556,7 +3496,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_steins_gate",
       "title": "Врата Штейна",
       "original_title": "Steins;Gate",
-      "poster": "https://image.tmdb.org/t/p/w500/c0Gv8xTSEmIcQPxbhINKvkbJO8s.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/bWu6vWi3QPAvILVFKx8kG8ij3Kw.jpg",
       "year": "2011",
       "rating": 9.1,
       "quality": "4K Ultra HD",
@@ -3575,7 +3515,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_code_geass",
       "title": "Код Гиас: Восставший Лелуш",
       "original_title": "Code Geass: Hangyaku no Lelouch",
-      "poster": "https://image.tmdb.org/t/p/w500/zg3GrU3jAoTGxmlGGhkfNYMOHlb.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/gnFH0nFU1Sjab0v2KchJhs3rzCJ.jpg",
       "year": "2006",
       "rating": 8.9,
       "quality": "4K Ultra HD",
@@ -3594,7 +3534,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_mob_psycho",
       "title": "Моб Психо 100",
       "original_title": "Mob Psycho 100",
-      "poster": "https://image.tmdb.org/t/p/w500/8u56LKz0An8xa9YaFtkxsDKc5N5.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/4HJKaviTLn1incPtSZKAJZ6NJrv.jpg",
       "year": "2022",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -3613,7 +3553,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_evangelion_series",
       "title": "Евангелион",
       "original_title": "Shin Seiki Evangelion",
-      "poster": "https://image.tmdb.org/t/p/w500/9whSxgqSW7dPIIMJyM4WG3BYVo7.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/hqi15xMrQKWBOmYvEKcDIl59SgP.jpg",
       "year": "1995",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -3632,7 +3572,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_hells_paradise",
       "title": "Адский рай",
       "original_title": "Jigokuraku",
-      "poster": "https://image.tmdb.org/t/p/w500/gsBwgwaW1YWHrQYbVymarruw1yN.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/75OaIA4S8ZKFVNmKnTCgAcNqwlC.jpg",
       "year": "2023",
       "rating": 8.4,
       "quality": "4K Ultra HD",
@@ -3651,7 +3591,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_cyberpunk_anime",
       "title": "Киберпанк: Бегущие по краю",
       "original_title": "Cyberpunk: Edgerunners",
-      "poster": "https://image.tmdb.org/t/p/w500/1de3R902B5EEMmohBQsExd5V87Y.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/w15qxusZtam6ipBGEWBcwg9WQNN.jpg",
       "year": "2022",
       "rating": 8.8,
       "quality": "4K Ultra HD",
@@ -3670,7 +3610,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_bleach",
       "title": "Блич",
       "original_title": "Bleach",
-      "poster": "https://image.tmdb.org/t/p/w500/bxWVzZ6oq5SdUBOcG74IavUlHGd.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/ldLzOgDlAeoX3NgyhFQI1H3MXGk.jpg",
       "year": "2004",
       "rating": 8.7,
       "quality": "4K Ultra HD",
@@ -3689,7 +3629,7 @@ export const VERIFIED_CATALOG_BASELINE = {
       "id": "anilibria_berserk",
       "title": "Берсерк",
       "original_title": "Kenpuu Denki Berserk",
-      "poster": "https://image.tmdb.org/t/p/w500/92Ds0hOHObvZBekqneimrGpxyXh.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/rKCYDYqbta7ubmRLWPEiZmx9bPh.jpg",
       "year": "1997",
       "rating": 9.1,
       "quality": "4K Ultra HD",
@@ -3713,50 +3653,7 @@ export function getBaselineCatalog(category = 'popular') {
   return [...list];
 }
 
-function stemBaselineRuWord(word) {
-  const w = String(word || '').toLowerCase().replace(/ё/g, 'е').trim();
-  if (w.length <= 3) return w;
-  const st = w.replace(/(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|иях|ием|ией|ию|ия|ие|ии|ью|ей|ой|ый|ий|ая|яя|ое|ее|ые|ам|ям|ах|ях|ом|ем|ов|ев|у|ю|а|я|о|е|и|ы|ь)$/u, '');
-  return st.length >= 3 ? st : w.slice(0, 3);
-}
-
-export function searchBaselineCatalog(query) {
-  if (!query || typeof query !== 'string') return [];
-  const qNorm = query.toLowerCase().replace(/ё/g, 'е').trim();
-  if (qNorm.length < 2) return [];
-
-  const qWords = qNorm.split(/[^\p{L}\p{N}]+/gu).filter(w => w.length >= 2);
-  const qStems = qWords.map(stemBaselineRuWord);
-  const matched = [];
-  const seenIds = new Set();
-
-  const allCategories = Object.keys(VERIFIED_CATALOG_BASELINE);
-  for (const cat of allCategories) {
-    const list = VERIFIED_CATALOG_BASELINE[cat];
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
-      if (!item || seenIds.has(item.id)) continue;
-      const title = String(item.title || '').toLowerCase().replace(/ё/g, 'е');
-      const origTitle = String(item.original_title || '').toLowerCase().replace(/ё/g, 'е');
-      const desc = String(item.description || '').toLowerCase().replace(/ё/g, 'е');
-      const genres = (Array.isArray(item.genres) ? item.genres.join(' ') : String(item.genres || '')).toLowerCase().replace(/ё/g, 'е');
-
-      let isMatch = title.includes(qNorm) || origTitle.includes(qNorm);
-      if (!isMatch && qStems.length > 0) {
-        isMatch = qStems.every(st => title.includes(st) || origTitle.includes(st) || desc.includes(st) || genres.includes(st));
-      }
-
-      if (isMatch) {
-        seenIds.add(item.id);
-        matched.push({ ...item });
-      }
-    }
-  }
-  return matched;
-}
-
 if (typeof window !== 'undefined') {
   window.STORM_CATALOG_BASELINE = VERIFIED_CATALOG_BASELINE;
   window.getBaselineCatalog = getBaselineCatalog;
-  window.searchBaselineCatalog = searchBaselineCatalog;
 }

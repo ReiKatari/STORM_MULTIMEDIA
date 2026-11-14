@@ -390,4 +390,55 @@ describe('STORM MULTIMEDIA 1.8.1 - Automated Quality & Security Suite', () => {
     const closeFnSlice = appJs.slice(closeFnIdx, closeFnIdx + 420);
     assert.ok(closeFnSlice.includes("classList.remove('modal-open')"), 'closeUnifiedSettingsModal must clean up body.modal-open');
   });
+
+  it('11. 1.8.2 fixes: voiceover switching preserves string IDs without iframe reload, Lift bridge resilience, and zero cross-franchise duplicate baseline posters', async () => {
+    const playerJs = readFileSync(join(process.cwd(), 'public', 'js', 'player.js'), 'utf8');
+    const serverJs = readFileSync(join(process.cwd(), 'server.js'), 'utf8');
+    const { VERIFIED_CATALOG_BASELINE } = await import('../public/js/catalog-baseline.js');
+
+    // QuickBar voiceover handler preserves string translation IDs (e.g. "lift_vo_1") instead of parseInt -> NaN
+    const qvIdx = playerJs.indexOf("voiceList.querySelectorAll('.quick-dropdown-item')");
+    assert.ok(qvIdx !== -1, 'QuickBar voiceover item handler must exist');
+    const qvSlice = playerJs.slice(qvIdx, qvIdx + 420);
+    assert.equal(qvSlice.includes('parseInt(item.dataset.transId, 10)'), false, 'QuickBar voiceover handler must not parseInt("lift_vo_X") into NaN');
+    assert.ok(qvSlice.includes('const rawId = item.dataset.transId'), 'QuickBar voiceover handler must preserve non-numeric string IDs');
+
+    // In-player voice sheet must NOT pre-assign quickBarActiveTranslationId before selectQuickVoiceover()
+    const sheetIdx = playerJs.indexOf('export function renderInPlayerVoiceSheet(');
+    assert.ok(sheetIdx !== -1, 'renderInPlayerVoiceSheet must exist');
+    const sheetEnd = playerJs.indexOf('export function checkIfMediaIsSeries(', sheetIdx);
+    const sheetBody = playerJs.slice(sheetIdx, sheetEnd !== -1 ? sheetEnd : sheetIdx + 4500);
+    assert.equal(/quickBarActiveTranslationId\s*=\s*vId\s*;/.test(sheetBody), false, 'renderInPlayerVoiceSheet must not pre-set quickBarActiveTranslationId before selectQuickVoiceover');
+    assert.ok(sheetBody.includes('currentMedia?.realAudioTracks'), 'renderInPlayerVoiceSheet must expose live realAudioTracks');
+
+    // updateQuickIframeSrc supports voiceOnly without destroying Lift iframe and selectQuickVoiceover passes { voiceOnly: true }
+    assert.ok(playerJs.includes('async function updateQuickIframeSrc(opts = {})'), 'updateQuickIframeSrc must accept options object');
+    assert.ok(playerJs.includes('await updateQuickIframeSrc({ voiceOnly: true })'), 'selectQuickVoiceover must use voiceOnly mode');
+    assert.ok(playerJs.includes("data.type === 'STORM_LIFT_PREF_CHANGED'"), 'player.js must sync STORM_LIFT_PREF_CHANGED back to QuickBar');
+
+    // server.js Lift bridge queues early audio requests and rewrites dead js.fprxnet.ws CDN
+    assert.ok(serverJs.includes('var pendingAudioRequest = null;'), 'server.js Lift bridge must queue early STORM_SET_AUDIO');
+    assert.ok(serverJs.includes('function resolveMatchingSound('), 'server.js Lift bridge must include resolveMatchingSound');
+    assert.ok(serverJs.includes('https://js-jd.utilit.info/npm/player-venom@'), 'server.js Lift embed must rewrite 502 js.fprxnet.ws CDN');
+
+    // Baseline catalog: zero cross-franchise duplicate posters, Castlevania != Cyberpunk
+    const allBaseline = [];
+    for (const arr of Object.values(VERIFIED_CATALOG_BASELINE)) {
+      if (Array.isArray(arr)) allBaseline.push(...arr);
+    }
+    const castlevania = allBaseline.find(x => x.id === 'tmdb_castlevania');
+    const cyberpunk = allBaseline.find(x => x.id === 'tmdb_cyberpunk_edgerunners');
+    assert.ok(castlevania && cyberpunk, 'Castlevania and Cyberpunk must exist in baseline');
+    assert.notEqual(castlevania.poster, cyberpunk.poster, 'Castlevania must not reuse Cyberpunk poster');
+
+    const posterOwners = new Map();
+    for (const it of allBaseline) {
+      if (!it.poster) continue;
+      const normWork = String(it.original_title || it.title || it.id).toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '');
+      if (!posterOwners.has(it.poster)) posterOwners.set(it.poster, new Set());
+      posterOwners.get(it.poster).add(normWork);
+    }
+    const crossWorkDupes = [...posterOwners.entries()].filter(([, works]) => works.size > 1);
+    assert.equal(crossWorkDupes.length, 0, `Baseline must have 0 cross-franchise duplicate posters, found: ${JSON.stringify(crossWorkDupes.map(([u, w]) => [u, [...w]]))}`);
+  });
 });

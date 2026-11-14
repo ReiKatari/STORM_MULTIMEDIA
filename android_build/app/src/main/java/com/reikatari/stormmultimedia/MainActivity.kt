@@ -930,6 +930,7 @@ class MainActivity : ComponentActivity() {
                     html = html.replace(Regex("stats:\\s*\\[[^\\]]*\\]\\s*,"), "stats: [],")
                     html = html.replace(Regex("src=[\"']//embed\\.liftw\\.ws/cdn\\.js[\"']", RegexOption.IGNORE_CASE), "src=\"/api/player/lift-cdn.js\"")
                     html = html.replace(Regex("src=[\"']//embed\\.liftw\\.ws/js/listen-player\\.js[\"']", RegexOption.IGNORE_CASE), "src=\"/api/player/lift-listen.js\"")
+                    html = html.replace(Regex("(?:https?:)?//js\\.fprxnet\\.ws/npm/player-venom@([^/\"']+)/dist/player\\.js", RegexOption.IGNORE_CASE)) { m -> "https://js-jd.utilit.info/npm/player-venom@${m.groupValues[1]}/dist/player.js" }
                     val sNum = season.toIntOrNull() ?: 1
                     val eStr = (episode.toIntOrNull() ?: 1).toString()
                     if (sNum > 1 || eStr != "1") {
@@ -937,6 +938,144 @@ class MainActivity : ComponentActivity() {
                             Regex("current:\\s*\\{\\s*season:\\s*\\d+\\s*,\\s*episode:\\s*[\"'][^\"']+[\"']\\s*\\}"),
                             "current: { season: $sNum, episode: \"$eStr\" }"
                         )
+                    }
+                    val reqVoiceJson = JSONObject.quote((uri.getQueryParameter("voice") ?: "").trim())
+                    val nativeBridge = """
+<script>
+(function() {
+  var LIFT_ID = ${JSONObject.quote(matchedLiftId)};
+  var REQ_VOICE = $reqVoiceJson;
+  var pendingAudioRequest = null;
+  var userChangedAudio = false;
+  function resolveMatchingSound(availSounds, reqName, reqIdx) {
+    if (!Array.isArray(availSounds) || availSounds.length === 0) return reqName || '';
+    var vLow = String(reqName || '').trim().toLowerCase();
+    if (!vLow) return (typeof reqIdx === 'number' && availSounds[reqIdx]) ? availSounds[reqIdx] : '';
+    var exact = availSounds.find(function(n) { return String(n).trim().toLowerCase() === vLow; });
+    if (exact) return exact;
+    var alias = availSounds.find(function(n) {
+      var sLow = String(n).toLowerCase();
+      if (vLow === 'rhs' || vLow.indexOf('red head') !== -1) return sLow.indexOf('red head') !== -1 || sLow.indexOf('rhs') !== -1 || sLow.indexOf('lostfilm') !== -1;
+      if (vLow.indexOf('hdrezka') !== -1 || vLow.indexOf('резка') !== -1) return sLow.indexOf('hdrezka') !== -1 || sLow.indexOf('резка') !== -1 || sLow.indexOf('tvshows') !== -1;
+      if (vLow === 'original' || vLow === 'sub' || vLow.indexOf('субтитр') !== -1) return sLow.indexOf('оригинал') !== -1 || sLow.indexOf('original') !== -1 || sLow.indexOf('eng') !== -1;
+      return false;
+    });
+    if (alias) return alias;
+    var partial = availSounds.find(function(n) {
+      var sLow = String(n).trim().toLowerCase();
+      return sLow && (sLow.indexOf(vLow) !== -1 || vLow.indexOf(sLow) !== -1);
+    });
+    if (partial) return partial;
+    if (typeof reqIdx === 'number' && reqIdx >= 0 && availSounds[reqIdx]) return availSounds[reqIdx];
+    return '';
+  }
+  function applyTargetAudio(reqName, reqIdx) {
+    try {
+      REQ_VOICE = '';
+      pendingAudioRequest = { name: reqName, index: reqIdx };
+      if (!window.app || !app._settings || !app._settings.ctrl || !app._settings.ctrl.sound) return false;
+      var ctrl = app._settings.ctrl;
+      var avail = (ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value)) ? ctrl.ls.sound.value : [];
+      var target = resolveMatchingSound(avail, reqName, reqIdx) || reqName;
+      if (target) {
+        ctrl.sound.value = target;
+        try {
+          localStorage.setItem('storm_lift_audio_' + LIFT_ID, target);
+          localStorage.setItem('storm_lift_default_audio', target);
+        } catch (_) {}
+        pendingAudioRequest = null;
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+  function applySavedPrefs() {
+    try {
+      if (!window.app || !app._settings || !app._settings.ctrl) return;
+      var ctrl = app._settings.ctrl;
+      var savedAudio = '';
+      try { savedAudio = localStorage.getItem('storm_lift_audio_' + LIFT_ID) || localStorage.getItem('storm_lift_default_audio') || ''; } catch (_) {}
+      if (ctrl.sound && ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value)) {
+        var avail = ctrl.ls.sound.value;
+        var chosen = '';
+        if (pendingAudioRequest) {
+          chosen = resolveMatchingSound(avail, pendingAudioRequest.name, pendingAudioRequest.index);
+          pendingAudioRequest = null;
+        }
+        if (!chosen && userChangedAudio && savedAudio) chosen = resolveMatchingSound(avail, savedAudio, -1);
+        if (!chosen && REQ_VOICE) chosen = resolveMatchingSound(avail, REQ_VOICE, -1);
+        if (!chosen && savedAudio) chosen = resolveMatchingSound(avail, savedAudio, -1);
+        if (chosen) ctrl.sound.value = chosen;
+      }
+    } catch (_) {}
+  }
+  window.addEventListener('message', function(e) {
+    var d = e.data || {};
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = {}; } }
+    var vidEl = document.querySelector('video');
+    if ((d.type === 'STORM_SEEK_DELTA' || d.action === 'seek') && vidEl) {
+      var ds = Number(d.delta !== undefined ? d.delta : d.val) || 0;
+      if (ds) vidEl.currentTime = Math.max(0, Math.min(vidEl.duration || Infinity, (vidEl.currentTime || 0) + ds));
+    }
+    if (d.type === 'STORM_SEEK_TO' && vidEl && d.time !== undefined) {
+      vidEl.currentTime = Math.max(0, Number(d.time) || 0);
+    }
+    if ((d.type === 'STORM_SET_SPEED' || d.action === 'speed') && vidEl && d.speed) {
+      vidEl.playbackRate = Number(d.speed) || 1;
+    }
+    if (d.type === 'STORM_PLAY_PAUSE' && vidEl) {
+      if (d.action === 'pause') vidEl.pause();
+      else if (d.action === 'play') vidEl.play().catch(function(){});
+      else if (vidEl.paused) vidEl.play().catch(function(){});
+      else vidEl.pause();
+    }
+    if (d.type === 'STORM_SET_AUDIO' && (d.name || typeof d.index === 'number')) {
+      userChangedAudio = true;
+      applyTargetAudio(d.name || '', typeof d.index === 'number' ? d.index : -1);
+    }
+    if (d.req === 'setting set' && d.key === 'sound' && d.value) {
+      userChangedAudio = true;
+      REQ_VOICE = '';
+      try {
+        localStorage.setItem('storm_lift_audio_' + LIFT_ID, d.value);
+        localStorage.setItem('storm_lift_default_audio', d.value);
+      } catch (_) {}
+    }
+  });
+  var tmr = setInterval(function() {
+    if (!window.app || !app._settings || !app._settings.ctrl) return;
+    clearInterval(tmr);
+    setTimeout(applySavedPrefs, 450);
+    var ctrl = app._settings.ctrl;
+    try {
+      if (ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value) && ctrl.ls.sound.value.length > 0) {
+        window.parent.postMessage({
+          type: 'STORM_LIFT_AUDIO_TRACKS',
+          liftId: LIFT_ID,
+          tracks: ctrl.ls.sound.value,
+          active: ctrl.sound ? ctrl.sound.value : ''
+        }, '*');
+      }
+    } catch (_) {}
+    if (ctrl.sound && typeof ctrl.sound.watch === 'function') {
+      ctrl.sound.watch(function(v) {
+        if (v) {
+          try {
+            localStorage.setItem('storm_lift_audio_' + LIFT_ID, v);
+            localStorage.setItem('storm_lift_default_audio', v);
+          } catch (_) {}
+          window.parent.postMessage({ type: 'STORM_LIFT_PREF_CHANGED', liftId: LIFT_ID, audioTitle: v }, '*');
+        }
+      });
+    }
+  }, 300);
+})();
+</script>
+""".trimIndent()
+                    html = if (html.contains("</body>", ignoreCase = true)) {
+                        html.replaceFirst(Regex("</body>", RegexOption.IGNORE_CASE), "$nativeBridge\n</body>")
+                    } else {
+                        "$html\n$nativeBridge"
                     }
                     return createHtmlResponse(html)
                 }
@@ -1006,11 +1145,156 @@ class MainActivity : ComponentActivity() {
         return out
     }
 
+    private fun handleNativeSeriesOptions(uri: Uri): WebResourceResponse {
+        try {
+            val targetUrl = uri.getQueryParameter("url") ?: ""
+            val targetUri = if (targetUrl.isNotBlank()) Uri.parse("http://localhost$targetUrl") else uri
+            val liftIdParam = targetUri.getQueryParameter("lift_id")
+                ?: uri.getQueryParameter("mediaId")?.removePrefix("lift_") ?: ""
+            val title = uri.getQueryParameter("title") ?: targetUri.getQueryParameter("title") ?: ""
+            val origTitle = targetUri.getQueryParameter("original_title") ?: ""
+            val year = targetUri.getQueryParameter("year") ?: ""
+            val matchedLiftId = resolveLiftIdByTitle(liftIdParam, title, origTitle, year)
+            if (matchedLiftId.isNotBlank()) {
+                val embedResp = fetchLiftRaw("https://embed.liftw.ws/embed/movie/$matchedLiftId?host=liftw.ws", "embed.liftw.ws", 5500)
+                if (embedResp != null && embedResp.first in 200..299 && embedResp.second.isNotEmpty()) {
+                    val html = String(embedResp.second, Charsets.UTF_8)
+                    val sIdx = html.indexOf("seasons:")
+                    if (sIdx != -1) {
+                        val bStart = html.indexOf('[', sIdx)
+                        if (bStart != -1) {
+                            var depth = 0
+                            var bEnd = -1
+                            for (i in bStart until html.length) {
+                                val ch = html[i]
+                                if (ch == '[') depth++
+                                else if (ch == ']') {
+                                    depth--
+                                    if (depth == 0) { bEnd = i + 1; break }
+                                }
+                            }
+                            if (bEnd > bStart) {
+                                val rawSeasons = JSONArray(html.substring(bStart, bEnd))
+                                val formattedSeasons = JSONArray()
+                                for (si in 0 until rawSeasons.length()) {
+                                    val sObj = rawSeasons.optJSONObject(si) ?: continue
+                                    val sNum = sObj.optInt("season", si + 1)
+                                    val rawEps = sObj.optJSONArray("episodes") ?: JSONArray()
+                                    val formattedEps = JSONArray()
+                                    for (ei in 0 until rawEps.length()) {
+                                        val eObj = rawEps.optJSONObject(ei) ?: continue
+                                        val epNum = eObj.optString("episode", (ei + 1).toString()).toIntOrNull() ?: (ei + 1)
+                                        val audioNames = eObj.optJSONObject("audio")?.optJSONArray("names") ?: JSONArray()
+                                        val transArr = JSONArray()
+                                        for (ai in 0 until audioNames.length()) {
+                                            val voName = audioNames.optString(ai, "").trim()
+                                            if (voName.isNotBlank()) {
+                                                transArr.put(JSONObject().apply {
+                                                    put("id", "lift_vo_$ai")
+                                                    put("name", voName)
+                                                    put("quality", "1080p / 4K")
+                                                    put("is_uhd", true)
+                                                })
+                                            }
+                                        }
+                                        formattedEps.put(JSONObject().apply {
+                                            put("episode", epNum)
+                                            put("id", eObj.optInt("id", epNum))
+                                            put("name", eObj.optString("title", "").ifBlank { "$epNum серия" })
+                                            put("translations", transArr)
+                                        })
+                                    }
+                                    formattedSeasons.put(JSONObject().apply {
+                                        put("season", sNum)
+                                        put("name", "Сезон $sNum")
+                                        put("episodes_count", formattedEps.length())
+                                        put("episodes", formattedEps)
+                                    })
+                                }
+                                if (formattedSeasons.length() > 0) {
+                                    val firstTrans = formattedSeasons.optJSONObject(0)
+                                        ?.optJSONArray("episodes")?.optJSONObject(0)
+                                        ?.optJSONArray("translations")?.optJSONObject(0)
+                                    val out = JSONObject().apply {
+                                        put("success", true)
+                                        put("type", "series")
+                                        put("source", "lift")
+                                        put("lift_id", matchedLiftId)
+                                        put("active", JSONObject().apply {
+                                            put("season", formattedSeasons.optJSONObject(0)?.optInt("season", 1) ?: 1)
+                                            put("episode", formattedSeasons.optJSONObject(0)?.optJSONArray("episodes")?.optJSONObject(0)?.optInt("episode", 1) ?: 1)
+                                            put("translation", firstTrans?.optString("name", "Дубляж") ?: "Дубляж")
+                                            put("id_translation", firstTrans?.optString("id", "lift_vo_0") ?: "lift_vo_0")
+                                            put("is_uhd", true)
+                                        })
+                                        put("seasons", formattedSeasons)
+                                    }
+                                    return createJsonResponse(out.toString())
+                                }
+                            }
+                        }
+                    }
+                    // Фильм без seasons[]: извлекаем первый блок "audio":{"names":[...]}
+                    val aIdx = html.indexOf("\"audio\":{")
+                    if (aIdx != -1) {
+                        val bStart = html.indexOf('{', aIdx + 7)
+                        val bEnd = html.indexOf('}', bStart)
+                        if (bStart != -1 && bEnd > bStart) {
+                            val audioNames = JSONObject(html.substring(bStart, bEnd + 1)).optJSONArray("names")
+                            if (audioNames != null && audioNames.length() > 0) {
+                                val transArr = JSONArray()
+                                for (ai in 0 until audioNames.length()) {
+                                    val voName = audioNames.optString(ai, "").trim()
+                                    if (voName.isNotBlank()) {
+                                        transArr.put(JSONObject().apply {
+                                            put("id", "lift_vo_$ai")
+                                            put("name", voName)
+                                            put("quality", "4K UHD")
+                                            put("is_uhd", true)
+                                        })
+                                    }
+                                }
+                                val epObj = JSONObject().apply {
+                                    put("episode", 1)
+                                    put("name", "Фильм")
+                                    put("translations", transArr)
+                                }
+                                val seasonObj = JSONObject().apply {
+                                    put("season", 1)
+                                    put("name", "Фильм")
+                                    put("episodes_count", 1)
+                                    put("episodes", JSONArray().put(epObj))
+                                }
+                                val firstTrans = transArr.optJSONObject(0)
+                                val out = JSONObject().apply {
+                                    put("success", true)
+                                    put("type", "movie")
+                                    put("source", "lift")
+                                    put("lift_id", matchedLiftId)
+                                    put("active", JSONObject().apply {
+                                        put("season", 1)
+                                        put("episode", 1)
+                                        put("translation", firstTrans?.optString("name", "Дубляж") ?: "Дубляж")
+                                        put("id_translation", firstTrans?.optString("id", "lift_vo_0") ?: "lift_vo_0")
+                                        put("is_uhd", true)
+                                    })
+                                    put("seasons", JSONArray().put(seasonObj))
+                                }
+                                return createJsonResponse(out.toString())
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+        return createJsonResponse("""{"success":false,"seasons":[]}""")
+    }
+
     private fun handleStormApiIntercept(uri: Uri): WebResourceResponse {
         val path = uri.path ?: "/api/"
 
         if (path == "/api/health" || path == "/api/player/health") {
-            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.8.1"}""")
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.8.2"}""")
         }
 
         if (path == "/api/media/image-proxy") {
@@ -1019,7 +1303,7 @@ class MainActivity : ComponentActivity() {
 
         if (path.startsWith("/api/player/")) {
             if (path == "/api/player/series-options") {
-                return createJsonResponse("""{"seasons":[]}""")
+                return handleNativeSeriesOptions(uri)
             }
             if (path == "/api/player/check-stream") {
                 return createJsonResponse("""{"alive":true}""")

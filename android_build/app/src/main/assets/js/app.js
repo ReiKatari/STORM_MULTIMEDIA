@@ -52,15 +52,15 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.8.1';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.8.1';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.8.1';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.8.1';
+import { initTheme, setTheme } from './theme.js?v=1.8.2';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.8.2';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.8.2';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.8.2';
 let _baselineMod = null;
 let _baselineModPromise = null;
 function loadBaselineCatalogMod() {
   if (_baselineMod) return Promise.resolve(_baselineMod);
-  return (_baselineModPromise ||= import('./catalog-baseline.js?v=1.8.1').then(m => (_baselineMod = m)).catch(() => null));
+  return (_baselineModPromise ||= import('./catalog-baseline.js?v=1.8.2').then(m => (_baselineMod = m)).catch(() => null));
 }
 function getBaselineCatalog(category) {
   if (_baselineMod && typeof _baselineMod.getBaselineCatalog === 'function') {
@@ -76,11 +76,11 @@ function searchBaselineCatalog(q) {
   loadBaselineCatalogMod();
   return [];
 }
-import { getStatusIconSvg } from './status-icons.js?v=1.8.1';
-import { initFormFactorEngine } from './form-factor.js?v=1.8.1';
+import { getStatusIconSvg } from './status-icons.js?v=1.8.2';
+import { initFormFactorEngine } from './form-factor.js?v=1.8.2';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.8.1';
+const STORM_ASSET_VER = '1.8.2';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;

@@ -1,11 +1,11 @@
-import { trackClientAction } from './achievements.js?v=1.8.1';
+import { trackClientAction } from './achievements.js?v=1.8.2';
 /* ==========================================================================
    STORM MULTIMEDIA - МОДУЛЬ ЗАКЛАДОК, СТАТУСОВ И ПОЛЬЗОВАТЕЛЬСКИХ СПИСКОВ
    ========================================================================== */
 
-import { getToken, showToast } from './auth.js?v=1.8.1';
-import { t } from './i18n.js?v=1.8.1';
-import { normalizeStatus } from './status-icons.js?v=1.8.1';
+import { getToken, showToast } from './auth.js?v=1.8.2';
+import { t } from './i18n.js?v=1.8.2';
+import { normalizeStatus } from './status-icons.js?v=1.8.2';
 
 let memoryBookmarksCache = [];
 const bookmarksByIdMap = new Map();

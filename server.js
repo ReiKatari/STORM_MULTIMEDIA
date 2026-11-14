@@ -1528,7 +1528,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    version: '1.8.1',
+    version: '1.8.2',
     l1Cache: l1Cache.getStats(),
     database: {
       connected: isMariaDbActive()
@@ -8440,6 +8440,7 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
       is_series = '',
       season = '',
       episode = '',
+      voice = '',
       fallback_mode = '',
       no_lift = ''
     } = req.query;
@@ -8545,11 +8546,13 @@ app.get('/api/player/kinobox-embed', async (req, res) => {
           new Promise(r => setTimeout(() => r(''), 3200))
         ]);
         if (matchedLiftId) {
-          let voiceHint = '';
-          if (balancer === 'rhs') voiceHint = 'rhs';
-          else if (balancer === 'hdrezka') voiceHint = 'hdrezka';
-          else if (balancer === 'collaps' || balancer === 'alloha') voiceHint = 'дубляж';
-          else if (balancer === 'vidsrc') voiceHint = 'original';
+          let voiceHint = String(voice || '').trim();
+          if (!voiceHint) {
+            if (balancer === 'rhs') voiceHint = 'rhs';
+            else if (balancer === 'hdrezka') voiceHint = 'hdrezka';
+            else if (balancer === 'collaps' || balancer === 'alloha') voiceHint = 'дубляж';
+            else if (balancer === 'vidsrc') voiceHint = 'original';
+          }
           const voiceParam = voiceHint ? `&voice=${encodeURIComponent(voiceHint)}` : '';
           return res.redirect(302, `/api/player/lift-embed?lift_id=${encodeURIComponent(matchedLiftId)}&title=${encodeURIComponent(cleanTitle)}${original_title ? `&original_title=${encodeURIComponent(original_title)}` : ''}${year ? `&year=${encodeURIComponent(year)}` : ''}${wantSeries ? '&is_series=1' : ''}${epQuery}${voiceParam}`);
         }
@@ -10425,9 +10428,10 @@ app.get('/api/player/lift-embed', async (req, res) => {
     html = html.replace(/new\s+Image\(\)\.src\s*=\s*["']https:\/\/s\.myangular\.life\/player\?["']\s*\+\s*s\s*;/g, 'void 0;');
     html = html.replace(/stats:\s*\[[^\]]*\]\s*,/g, 'stats: [],');
 
-    // 3. Проксирование скриптов cdn.js и listen-player.js через наш сервер (обход проблем с DNS у клиентов)
+    // 3. Проксирование скриптов cdn.js и listen-player.js и замена недоступного CDN player-venom (502)
     html = html.replace(/src=["']\/\/embed\.liftw\.ws\/cdn\.js["']/gi, 'src="/api/player/lift-cdn.js"');
     html = html.replace(/src=["']\/\/embed\.liftw\.ws\/js\/listen-player\.js["']/gi, 'src="/api/player/lift-listen.js"');
+    html = html.replace(/(?:https?:)?\/\/js\.fprxnet\.ws\/npm\/player-venom@([^/"']+)\/dist\/player\.js/gi, 'https://js-jd.utilit.info/npm/player-venom@$1/dist/player.js');
 
     // 4. Фирменная стилизация плеера под палитру STORM MULTIMEDIA
     html = html.replace(
@@ -10619,6 +10623,59 @@ app.get('/api/player/lift-embed', async (req, res) => {
   }, 500);
 
   // Восстановление и сохранение выбранной озвучки и субтитров
+  var pendingAudioRequest = null;
+  var userChangedAudio = false;
+
+  function resolveMatchingSound(availSounds, reqName, reqIdx) {
+    if (!Array.isArray(availSounds) || availSounds.length === 0) return reqName || '';
+    var vLow = String(reqName || '').trim().toLowerCase();
+    if (!vLow) {
+      return (typeof reqIdx === 'number' && availSounds[reqIdx]) ? availSounds[reqIdx] : '';
+    }
+    var exact = availSounds.find(function(n) { return String(n).trim().toLowerCase() === vLow; });
+    if (exact) return exact;
+    var aliasMatch = availSounds.find(function(n) {
+      var sLow = String(n).toLowerCase();
+      if (vLow === 'rhs' || vLow.includes('red head')) return sLow.includes('red head') || sLow.includes('rhs') || sLow.includes('lostfilm') || sLow.includes('лостфильм');
+      if (vLow === 'hdrezka' || vLow.includes('hdrezka') || vLow.includes('резка')) return sLow.includes('hdrezka') || sLow.includes('резка') || sLow.includes('tvshows') || sLow.includes('jaskier');
+      if (vLow === 'lostfilm' || vLow.includes('lostfilm')) return sLow.includes('lostfilm') || sLow.includes('лостфильм');
+      if (vLow === 'original' || vLow === 'sub' || vLow.includes('субтитр')) return sLow.includes('оригинал') || sLow.includes('original') || sLow.includes('eng') || sLow.includes('субтитр');
+      if (vLow === 'orig_51' || vLow === 'дубляж') return sLow.includes('дубляж') || sLow.includes('dub') || sLow.includes('пифагор') || sLow.includes('невесомость') || sLow.includes('мосфильм');
+      return false;
+    });
+    if (aliasMatch) return aliasMatch;
+    var partial = availSounds.find(function(n) {
+      var sLow = String(n).trim().toLowerCase();
+      return sLow && (sLow.includes(vLow) || vLow.includes(sLow));
+    });
+    if (partial) return partial;
+    if (typeof reqIdx === 'number' && reqIdx >= 0 && availSounds[reqIdx]) return availSounds[reqIdx];
+    return '';
+  }
+
+  function applyTargetAudio(reqName, reqIdx) {
+    try {
+      REQ_VOICE = '';
+      pendingAudioRequest = { name: reqName, index: reqIdx };
+      if (!window.app || !app._settings || !app._settings.ctrl || !app._settings.ctrl.sound) {
+        return false;
+      }
+      var ctrlSnd = app._settings.ctrl;
+      var availList = (ctrlSnd.ls && ctrlSnd.ls.sound && Array.isArray(ctrlSnd.ls.sound.value)) ? ctrlSnd.ls.sound.value : [];
+      var targetAudio = resolveMatchingSound(availList, reqName, reqIdx) || reqName;
+      if (targetAudio) {
+        ctrlSnd.sound.value = targetAudio;
+        try {
+          localStorage.setItem('storm_lift_audio_' + LIFT_ID, targetAudio);
+          localStorage.setItem('storm_lift_default_audio', targetAudio);
+        } catch (_) {}
+        pendingAudioRequest = null;
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   function applySavedPreferences() {
     try {
       if (!window.app || !app._settings || !app._settings.ctrl) return;
@@ -10629,18 +10686,18 @@ app.get('/api/player/lift-embed', async (req, res) => {
       if (ctrl.sound && ctrl.ls && ctrl.ls.sound && Array.isArray(ctrl.ls.sound.value)) {
         var availSounds = ctrl.ls.sound.value;
         var chosenSound = '';
-        if (REQ_VOICE) {
-          var vLow = REQ_VOICE.toLowerCase();
-          chosenSound = availSounds.find(function(n) {
-            var sLow = String(n).toLowerCase();
-            if (vLow === 'rhs') return sLow.includes('red head') || sLow.includes('rhs') || sLow.includes('lostfilm') || sLow.includes('лостфильм');
-            if (vLow === 'hdrezka') return sLow.includes('hdrezka') || sLow.includes('резка') || sLow.includes('tvshows') || sLow.includes('jaskier');
-            if (vLow === 'original') return sLow.includes('оригинал') || sLow.includes('original') || sLow.includes('eng') || sLow.includes('субтитр');
-            return sLow.includes(vLow);
-          }) || '';
+        if (pendingAudioRequest) {
+          chosenSound = resolveMatchingSound(availSounds, pendingAudioRequest.name, pendingAudioRequest.index);
+          pendingAudioRequest = null;
+        }
+        if (!chosenSound && userChangedAudio && savedAudio) {
+          chosenSound = resolveMatchingSound(availSounds, savedAudio, -1);
+        }
+        if (!chosenSound && REQ_VOICE) {
+          chosenSound = resolveMatchingSound(availSounds, REQ_VOICE, -1);
         }
         if (!chosenSound && savedAudio) {
-          chosenSound = availSounds.find(function(n) { return String(n).toLowerCase() === savedAudio.toLowerCase(); }) || '';
+          chosenSound = resolveMatchingSound(availSounds, savedAudio, -1);
         }
         if (chosenSound) ctrl.sound.value = chosenSound;
       }
@@ -10701,25 +10758,16 @@ app.get('/api/player/lift-embed', async (req, res) => {
       else if (vidEl.paused) vidEl.play().catch(function(){});
       else vidEl.pause();
     }
-    if (d.type === 'STORM_SET_AUDIO' && d.name && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.sound) {
-      var ctrlSnd = app._settings.ctrl;
-      var availList = (ctrlSnd.ls && ctrlSnd.ls.sound && Array.isArray(ctrlSnd.ls.sound.value)) ? ctrlSnd.ls.sound.value : [];
-      var targetAudio = d.name;
-      if (availList.length > 0) {
-        var reqLow = String(d.name).toLowerCase();
-        var exact = availList.find(function(x) { return String(x).toLowerCase() === reqLow; });
-        var partial = availList.find(function(x) {
-          var xl = String(x).toLowerCase();
-          return xl.includes(reqLow) || reqLow.includes(xl);
-        });
-        if (exact) targetAudio = exact;
-        else if (partial) targetAudio = partial;
-        else if (typeof d.index === 'number' && availList[d.index]) targetAudio = availList[d.index];
-      }
-      ctrlSnd.sound.value = targetAudio;
+    if (d.type === 'STORM_SET_AUDIO' && (d.name || typeof d.index === 'number')) {
+      userChangedAudio = true;
+      applyTargetAudio(d.name || '', typeof d.index === 'number' ? d.index : -1);
+    }
+    if (d.req === 'setting set' && d.key === 'sound' && d.value) {
+      userChangedAudio = true;
+      REQ_VOICE = '';
       try {
-        localStorage.setItem('storm_lift_audio_' + LIFT_ID, targetAudio);
-        localStorage.setItem('storm_lift_default_audio', targetAudio);
+        localStorage.setItem('storm_lift_audio_' + LIFT_ID, d.value);
+        localStorage.setItem('storm_lift_default_audio', d.value);
       } catch (_) {}
     }
     if (d.type === 'STORM_SET_SUBTITLE' && d.name !== undefined && window.app && app._settings && app._settings.ctrl && app._settings.ctrl.cc) {
@@ -10793,7 +10841,22 @@ app.get('/api/player/lift-embed', async (req, res) => {
           if (ep && Array.isArray(ep.sections)) {
             activeSections = ep.sections;
           }
-          setTimeout(applySavedPreferences, 350);
+          setTimeout(function() {
+            applySavedPreferences();
+            try {
+              if (app._settings && app._settings.ctrl) {
+                var c = app._settings.ctrl;
+                if (c.ls && c.ls.sound && Array.isArray(c.ls.sound.value) && c.ls.sound.value.length > 0) {
+                  window.parent.postMessage({
+                    type: 'STORM_LIFT_AUDIO_TRACKS',
+                    liftId: LIFT_ID,
+                    tracks: c.ls.sound.value,
+                    active: c.sound ? c.sound.value : ''
+                  }, '*');
+                }
+              }
+            } catch (_) {}
+          }, 350);
           window.parent.postMessage({
             type: 'STORM_LIFT_EPISODE_CHANGED',
             liftId: LIFT_ID,
@@ -11866,7 +11929,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (STORM GAMES WORLD GIT + GITHUB RELEASES DUAL MIRROR)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.8.1';
+  let currentAppVersion = '1.8.2';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -11903,7 +11966,7 @@ app.get('/api/updates/check', async (req, res) => {
     try {
       const sgwRes = await fetch('https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA', {
         headers: {
-          'User-Agent': 'STORM-Multimedia-Client/1.8.1 (+https://stormgamesworld.ru)',
+          'User-Agent': 'STORM-Multimedia-Client/1.8.2 (+https://stormgamesworld.ru)',
           'Accept': 'application/json'
         },
         signal: AbortSignal.timeout(5000)
@@ -12839,9 +12902,9 @@ app.get('*', (req, res) => {
 
 // Запуск сервера с поддержкой WebSockets и фоновых демонов балансеров
 server.listen(PORT, () => {
-  logger.info('STORM MULTIMEDIA 1.8.1 Server started', { port: PORT });
+  logger.info('STORM MULTIMEDIA 1.8.2 Server started', { port: PORT });
   console.log(`====================================================`);
-  console.log(`🚀 STORM MULTIMEDIA 1.8.1 Сервер запущен на порту ${PORT}`);
+  console.log(`🚀 STORM MULTIMEDIA 1.8.2 Сервер запущен на порту ${PORT}`);
   refreshLiftHomeRailsServer(16).catch(() => {});
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);
