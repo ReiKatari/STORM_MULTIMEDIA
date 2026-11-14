@@ -34,7 +34,7 @@ import {
   db
 } from '../db.js';
 
-describe('STORM MULTIMEDIA 1.8.0 - Automated Quality & Security Suite', () => {
+describe('STORM MULTIMEDIA 1.8.1 - Automated Quality & Security Suite', () => {
   after(async () => {
     try { flushWatchProgressBatch(); } catch (_) {}
     try { await closeMariaDbPool(); } catch (_) {}
@@ -328,5 +328,66 @@ describe('STORM MULTIMEDIA 1.8.0 - Automated Quality & Security Suite', () => {
     assert.ok(indexHtml.includes('id="storm-layout-picker-modal"'), 'Layout picker modal with 6 modes must exist');
     assert.ok(wtJs.includes('export function toggleWatchRoomMinimize('), 'watch-together.js must support room minimize/expand');
     assert.ok(indexHtml.includes('id="watch-together-mini-pill"'), 'index.html must include watch-together mini pill');
+  });
+
+  it('10. 1.8.1 fixes: 1/4-col grids, openAchievementsModal, unified settings panes, sleep pills, valid themes, modal close box & modal-open cleanup', () => {
+    const mainCss = readFileSync(join(process.cwd(), 'public', 'styles', 'main.css'), 'utf8');
+    const compCss = readFileSync(join(process.cwd(), 'public', 'styles', 'components.css'), 'utf8');
+    const achJs = readFileSync(join(process.cwd(), 'public', 'js', 'achievements.js'), 'utf8');
+    const indexHtml = readFileSync(join(process.cwd(), 'public', 'index.html'), 'utf8');
+    const themeJs = readFileSync(join(process.cwd(), 'public', 'js', 'theme.js'), 'utf8');
+    const appJs = readFileSync(join(process.cwd(), 'public', 'js', 'app.js'), 'utf8');
+
+    // End-of-cascade 1-col and 4-col rules must appear after base 3-col rules
+    const baseMobile3Idx = mainCss.indexOf('body:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active)');
+    const baseFormFactor3Idx = mainCss.indexOf('body.form-factor-mobile:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active)');
+    assert.ok(baseMobile3Idx !== -1 && baseFormFactor3Idx !== -1, 'Base 3-col grid rules must exist in main.css');
+
+    const mobCol1Idx = mainCss.lastIndexOf('body[data-mobile-cols="1"]:not(.tv-mode) #media-render-container');
+    const mobCol4Idx = mainCss.lastIndexOf('body[data-mobile-cols="4"]:not(.tv-mode) #media-render-container');
+    const ffCol1Idx = mainCss.lastIndexOf('body.form-factor-mobile[data-mobile-cols="1"]:not(.tv-mode) #media-render-container');
+    const ffCol4Idx = mainCss.lastIndexOf('body.form-factor-mobile[data-mobile-cols="4"]:not(.tv-mode) #media-render-container');
+    const deskGrid1Idx = mainCss.lastIndexOf('body:not(.form-factor-mobile):not(.tv-mode)[data-catalog-layout="grid-1"]');
+    const deskGrid4Idx = mainCss.lastIndexOf('body:not(.form-factor-mobile):not(.tv-mode)[data-catalog-layout="grid-4"]');
+
+    assert.ok(mobCol1Idx > baseMobile3Idx && mobCol4Idx > baseMobile3Idx, 'Mobile 1-col and 4-col overrides must appear after base 3-col rule');
+    assert.ok(ffCol1Idx > baseFormFactor3Idx && ffCol4Idx > baseFormFactor3Idx, 'Form-factor mobile 1-col and 4-col overrides must appear after base rule');
+    assert.ok(deskGrid1Idx > baseFormFactor3Idx && deskGrid4Idx > baseFormFactor3Idx, 'Desktop grid-1 and grid-4 rules must appear at end of main.css');
+
+    // Achievements modal export
+    assert.ok(/export\s+(?:async\s+)?function\s+openAchievementsModal\s*\(/.test(achJs), 'achievements.js must export openAchievementsModal');
+
+    // Unified Settings structure: .storm-settings-layout + 5 panes + .drawer-sleep-pill + valid themes
+    const usetStart = indexHtml.indexOf('id="storm-unified-settings-modal"');
+    const usetEnd = indexHtml.indexOf('id="storm-layout-picker-modal"', usetStart);
+    assert.ok(usetStart !== -1 && usetEnd > usetStart, 'Unified settings modal markup must exist');
+    const usetSlice = indexHtml.slice(usetStart, usetEnd);
+    assert.ok(usetSlice.includes('class="storm-settings-layout"'), 'Unified settings must use .storm-settings-layout');
+    for (const pane of ['catalog', 'appearance', 'player', 'account', 'system']) {
+      assert.ok(usetSlice.includes(`data-uset-pane="${pane}"`), `Unified settings must include pane "${pane}"`);
+    }
+    assert.ok(indexHtml.includes('drawer-sleep-pill'), 'Unified settings / drawer must use .drawer-sleep-pill');
+    assert.equal(indexHtml.includes('drawer-sleep-btn'), false, 'Legacy broken .drawer-sleep-btn class must not exist');
+
+    const themesMatch = themeJs.match(/export const THEMES\s*=\s*\[([^\]]+)\]/);
+    assert.ok(themesMatch, 'THEMES array must exist in theme.js');
+    const validThemes = new Set([...themesMatch[1].matchAll(/'([^']+)'/g)].map(m => m[1]));
+    const htmlThemes = [...indexHtml.matchAll(/data-drawer-theme="([^"]+)"/g)].map(m => m[1]);
+    assert.ok(htmlThemes.length >= 9, 'Drawer/settings must expose theme cards');
+    for (const th of htmlThemes) {
+      assert.ok(validThemes.has(th), `data-drawer-theme="${th}" must exist in THEMES`);
+    }
+
+    // Modal close button anti-squish rules
+    const closeIdx = compCss.indexOf('.storm-modal-close {');
+    assert.ok(closeIdx !== -1, '.storm-modal-close rule must exist in components.css');
+    const closeRule = compCss.slice(closeIdx, closeIdx + 360);
+    assert.ok(closeRule.includes('flex: 0 0 34px') && closeRule.includes('aspect-ratio: 1 / 1'), '.storm-modal-close must enforce non-shrinking 1:1 box');
+
+    // closeUnifiedSettingsModal modal-open cleanup
+    const closeFnIdx = appJs.indexOf('function closeUnifiedSettingsModal(');
+    assert.ok(closeFnIdx !== -1, 'closeUnifiedSettingsModal must exist in app.js');
+    const closeFnSlice = appJs.slice(closeFnIdx, closeFnIdx + 420);
+    assert.ok(closeFnSlice.includes("classList.remove('modal-open')"), 'closeUnifiedSettingsModal must clean up body.modal-open');
   });
 });

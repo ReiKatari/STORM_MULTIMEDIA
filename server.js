@@ -1528,7 +1528,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
-    version: '1.8.0',
+    version: '1.8.1',
     l1Cache: l1Cache.getStats(),
     database: {
       connected: isMariaDbActive()
@@ -11866,7 +11866,7 @@ app.get('/api/media/skip-times', async (req, res) => {
 // 12. ПРОВЕРКА ОБНОВЛЕНИЙ (STORM GAMES WORLD GIT + GITHUB RELEASES DUAL MIRROR)
 // ==========================================
 app.get('/api/updates/check', async (req, res) => {
-  let currentAppVersion = '1.8.0';
+  let currentAppVersion = '1.8.1';
   try {
     const pkgPath = path.join(__dirname, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -11903,7 +11903,7 @@ app.get('/api/updates/check', async (req, res) => {
     try {
       const sgwRes = await fetch('https://stormgamesworld.ru/api/programs?repo=STORM_MULTIMEDIA', {
         headers: {
-          'User-Agent': 'STORM-Multimedia-Client/1.8.0 (+https://stormgamesworld.ru)',
+          'User-Agent': 'STORM-Multimedia-Client/1.8.1 (+https://stormgamesworld.ru)',
           'Accept': 'application/json'
         },
         signal: AbortSignal.timeout(5000)
@@ -12839,9 +12839,9 @@ app.get('*', (req, res) => {
 
 // Запуск сервера с поддержкой WebSockets и фоновых демонов балансеров
 server.listen(PORT, () => {
-  logger.info('STORM MULTIMEDIA 1.8.0 Server started', { port: PORT });
+  logger.info('STORM MULTIMEDIA 1.8.1 Server started', { port: PORT });
   console.log(`====================================================`);
-  console.log(`🚀 STORM MULTIMEDIA 1.8.0 Сервер запущен на порту ${PORT}`);
+  console.log(`🚀 STORM MULTIMEDIA 1.8.1 Сервер запущен на порту ${PORT}`);
   refreshLiftHomeRailsServer(16).catch(() => {});
   console.log(`🌐 Адрес портала: http://localhost:${PORT}`);
   console.log(`====================================================`);

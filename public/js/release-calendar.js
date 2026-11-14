@@ -5,9 +5,9 @@ const _stormCalMemoryCache = new Map();
    с переключением недель, фильтрами, реальными обложками и студиями
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.8.0';
+import { showToast } from './auth.js?v=1.8.1';
 const openPlayerModal = (...args) => (typeof window !== 'undefined' && window.openPlayerModal ? window.openPlayerModal(...args) : console.warn('Player modal not ready'));
-import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.8.0';
+import { DEFAULT_CURRENT_WEEK, DEFAULT_NEXT_WEEK } from './release-calendar-data.js?v=1.8.1';
 
 let selectedWeek = 'current'; // 'current' | 'next'
 let selectedDay = new Date().getDay(); // 0=ВС, 1=ПН, 2=ВТ...
@@ -218,7 +218,7 @@ export async function openReleaseCalendarModal() {
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Выход новых эпизодов и премьер в оригинале и студийном дубляже</div>
             </div>
           </div>
-          <button type="button" class="storm-modal-close" id="calendar-modal-close-btn" title="Закрыть">✕</button>
+          <button type="button" class="storm-modal-close" id="calendar-modal-close-btn" title="Закрыть" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div class="storm-modal-body" id="release-calendar-body" style="padding: 16px 20px 24px;"></div>
       </div>
@@ -250,11 +250,11 @@ async function renderCalendarContent(container) {
         <div class="cal-week-switcher" style="margin-bottom: 0;">
           <button type="button" class="cal-week-btn ${selectedWeek === 'current' ? 'active' : ''}" data-week="current">
             <span class="cal-week-icon">🗓️</span>
-            <span>Текущая неделя (${curWeekDays[0].date} — ${curWeekDays[6].date})</span>
+            <span>Текущая неделя (${curWeekDays[0].date} - ${curWeekDays[6].date})</span>
           </button>
           <button type="button" class="cal-week-btn ${selectedWeek === 'next' ? 'active' : ''}" data-week="next">
             <span class="cal-week-icon">⏭️</span>
-            <span>Следующая неделя (${nxtWeekDays[0].date} — ${nxtWeekDays[6].date})</span>
+            <span>Следующая неделя (${nxtWeekDays[0].date} - ${nxtWeekDays[6].date})</span>
           </button>
         </div>
 

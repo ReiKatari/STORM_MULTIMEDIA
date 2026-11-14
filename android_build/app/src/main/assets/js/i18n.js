@@ -1972,7 +1972,7 @@ export function setLanguage(lang) {
       const jsonStr = JSON.stringify(merged);
       localStorage.setItem('storm_lang_history', jsonStr);
       localStorage.setItem('storm_langs_history', jsonStr);
-      import('./achievements.js?v=1.8.0').then(m => {
+      import('./achievements.js?v=1.8.1').then(m => {
         m.trackClientAction?.('switch_lang', { langs_count: merged.length, lang });
       }).catch(() => {});
     } catch (_) {}

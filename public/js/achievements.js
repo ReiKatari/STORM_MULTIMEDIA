@@ -3,7 +3,7 @@
    Гибридный движок: 100% поддержка Гостевого (локального) и Облачного режимов
    ========================================================================== */
 
-import { getUser } from './auth.js?v=1.8.0';
+import { getUser } from './auth.js?v=1.8.1';
 
 export const ACHIEVEMENTS_CATALOG = [
   // 1. Киномарафон (Фильмы и сериалы)
@@ -928,6 +928,72 @@ export async function autoSyncAchievementsFromState() {
     console.warn('Авто-синхронизация достижений:', err?.message);
     return buildMergedCatalog(cachedAchievements);
   }
+}
+
+function closeAchievementsModal(modal) {
+  const target = modal || document.getElementById('storm-achievements-modal');
+  if (!target) return;
+  target.classList.remove('is-open');
+  if (!document.querySelector('.storm-modal-backdrop.is-open')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+export async function openAchievementsModal(initialCategory = 'all') {
+  try {
+    if (typeof window.closeMobileDrawer === 'function') {
+      window.closeMobileDrawer();
+    } else {
+      document.getElementById('mobile-drawer-backdrop')?.classList.remove('is-open');
+      document.body.classList.remove('drawer-open');
+    }
+    document.getElementById('storm-mobile-overflow-menu')?.classList.remove('is-open');
+    document.getElementById('storm-unified-settings-modal')?.classList.remove('is-open');
+    document.getElementById('family-profiles-modal')?.classList.remove('is-open');
+  } catch (_) {}
+
+  let modal = document.getElementById('storm-achievements-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'storm-modal-backdrop';
+    modal.id = 'storm-achievements-modal';
+    modal.style.zIndex = '120500';
+    modal.innerHTML = `
+      <div class="storm-modal storm-achievements-dialog">
+        <div class="storm-modal-header">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            <h3 class="storm-modal-title" style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Достижения и звания</h3>
+          </div>
+          <button type="button" class="storm-modal-close" id="storm-achievements-close-btn" aria-label="Закрыть" title="Закрыть">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="storm-modal-body storm-achievements-modal-body" id="storm-achievements-modal-body">
+          <div style="text-align:center;padding:28px 16px;color:var(--text-muted);">Загрузка достижений...</div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('#storm-achievements-close-btn')?.addEventListener('click', () => closeAchievementsModal(modal));
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeAchievementsModal(modal);
+    });
+  }
+
+  modal.classList.add('is-open');
+  document.body.classList.add('modal-open');
+
+  const bodyEl = document.getElementById('storm-achievements-modal-body');
+  if (bodyEl) {
+    bodyEl.scrollTop = 0;
+    await renderProfileAchievements(bodyEl, initialCategory);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.openAchievementsModal = openAchievementsModal;
 }
 
 export async function renderProfileAchievements(containerElement, filterCategory = 'all') {

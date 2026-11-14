@@ -2,7 +2,7 @@
    STORM MULTIMEDIA - МОДУЛЬ АУТЕНТИФИКАЦИИ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
    ========================================================================== */
 
-import { t, formatDate } from './i18n.js?v=1.8.0';
+import { t, formatDate } from './i18n.js?v=1.8.1';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -1158,18 +1158,18 @@ export function openProfileModal() {
   if (profileLangSelect) {
     profileLangSelect.value = localStorage.getItem('storm_lang') || 'ru';
     profileLangSelect.onchange = (e) => {
-      import('./i18n.js?v=1.8.0').then(m => m.setLanguage(e.target.value));
+      import('./i18n.js?v=1.8.1').then(m => m.setLanguage(e.target.value));
       showToast('🌐 Язык интерфейса обновлён', 'info');
     };
   }
 
   // Синхронизируем счётчик достижений на вкладке сразу при открытии профиля
-  import('./achievements.js?v=1.8.0').then(achMod => {
+  import('./achievements.js?v=1.8.1').then(achMod => {
     achMod.autoSyncAchievementsFromState?.();
   }).catch(() => {});
 
   // Тема оформления, акцент, шрифт и масштаб в настройках профиля
-  import('./theme.js?v=1.8.0').then(themeMod => {
+  import('./theme.js?v=1.8.1').then(themeMod => {
     const currentTheme = themeMod.getTheme ? themeMod.getTheme() : (localStorage.getItem('storm_theme') || 'STORM MIDNIGHT');
     const currentAccent = themeMod.getAccent ? themeMod.getAccent() : (localStorage.getItem('storm_accent') || 'default');
     const currentFont = themeMod.getFont ? themeMod.getFont() : (localStorage.getItem('storm_font') || 'Inter');
@@ -1233,7 +1233,7 @@ export function openProfileModal() {
       const val = e.target.value || 'lift_adfree';
       localStorage.setItem('storm_default_player', val);
       localStorage.setItem('storm_default_player_v42_migrated', '1');
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.setPreferredDefaultPlayerId) m.setPreferredDefaultPlayerId(val);
       }).catch(() => {});
       const selectedOptionText = defaultPlayerSelect.options[defaultPlayerSelect.selectedIndex]?.text || val;
@@ -1247,10 +1247,10 @@ export function openProfileModal() {
     adblockToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_adblock_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.setAdblockEnabled) m.setAdblockEnabled(enabled);
       }).catch(() => {});
-      import('./ad-shield.js?v=1.8.0').then(m => {
+      import('./ad-shield.js?v=1.8.1').then(m => {
         if (m.setAdShieldEnabled) m.setAdShieldEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '🛡️ Защита от рекламы AdShield включена' : '⚪ Блокировка рекламы отключена', 'info');
@@ -1274,7 +1274,7 @@ export function openProfileModal() {
         parsed.watermarkMaskEnabled = enabled;
         localStorage.setItem('storm_cleanview_settings', JSON.stringify(parsed));
       } catch (_) {}
-      import('./ad-shield.js?v=1.8.0').then(m => {
+      import('./ad-shield.js?v=1.8.1').then(m => {
         if (m.setCleanViewMaskEnabled) m.setCleanViewMaskEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '✂️ Маскирование водяных знаков CleanView включено' : '⚪ Маска водяных знаков выключена', 'info');
@@ -1287,7 +1287,7 @@ export function openProfileModal() {
     autoskipToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autoskip_intro', enabled ? 'true' : 'false');
-      import('./smart-skip.js?v=1.8.0').then(m => {
+      import('./smart-skip.js?v=1.8.1').then(m => {
         if (m.setAutoSkipIntroEnabled) m.setAutoSkipIntroEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏩ Автопропуск заставок и титров включен' : '⚪ Автопропуск заставок выключен', 'info');
@@ -1300,7 +1300,7 @@ export function openProfileModal() {
     autonextToggle.onchange = (e) => {
       const enabled = e.target.checked;
       localStorage.setItem('storm_autonext_enabled', enabled ? 'true' : 'false');
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.setAutoNextEnabled) m.setAutoNextEnabled(enabled);
       }).catch(() => {});
       showToast(enabled ? '⏭ Автопереключение серий и резервный плеер включены' : '⚪ Автопереключение серий выключено', 'info');
@@ -1318,11 +1318,11 @@ export function openProfileModal() {
         ambiAura.classList.toggle('active', enabled);
         ambiAura.style.opacity = enabled ? '0.85' : '0';
       }
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.setAmbilightEnabled) m.setAmbilightEnabled(enabled);
       }).catch(() => {});
       if (enabled) {
-        import('./achievements.js?v=1.8.0').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
+        import('./achievements.js?v=1.8.1').then(m => m.trackClientAction?.('use_ambilight')).catch(() => {});
       }
       showToast(enabled ? '✨ Подсветка Ambilight включена' : '⚪ Подсветка Ambilight выключена', 'info');
     };
@@ -1545,7 +1545,7 @@ export function switchProfileTab(tabName) {
   if (achievements) {
     achievements.style.display = tabName === 'achievements' ? 'block' : 'none';
     if (tabName === 'achievements') {
-      import('./achievements.js?v=1.8.0').then(m => m.renderProfileAchievements(achievements));
+      import('./achievements.js?v=1.8.1').then(m => m.renderProfileAchievements(achievements));
     }
   }
 }
@@ -1630,7 +1630,7 @@ export function initProfileHandlers() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
-        import('./achievements.js?v=1.8.0').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
+        import('./achievements.js?v=1.8.1').then(m => m.trackClientAction?.('sync_data')).catch(() => {});
         showToast('📥 Резервная копия базы успешно сохранена!', 'success');
       } catch (err) {
         showToast('Ошибка экспорта базы: ' + err.message, 'error');
@@ -2268,7 +2268,8 @@ function getProfileQuickStats(p) {
 // -------------------------------------------------------------
 export function openProfileSwitcherModal() {
   if (!isRealAuthenticatedAccount()) {
-    showToast('Войдите в аккаунт или зарегистрируйтесь для настройки семейных профилей', 'info');
+    showToast('Войдите в аккаунт для настройки семейных профилей', 'info');
+    document.getElementById('auth-modal')?.classList.add('is-open');
     return;
   }
   let modal = document.getElementById('family-profiles-modal');
@@ -2277,30 +2278,26 @@ export function openProfileSwitcherModal() {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'family-profiles-modal';
     modal.innerHTML = `
-      <div class="storm-modal family-profiles-modal-box" style="max-width: 880px; width: 95vw; text-align: center;">
-        <div class="storm-modal-header" style="justify-content: space-between; padding: 18px 24px;">
-          <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
-            <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(0, 210, 255, 0.14); border: 1px solid rgba(0, 210, 255, 0.35); display: flex; align-items: center; justify-content: center; font-size: 21px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);">👥</div>
-            <div>
-              <h3 class="storm-modal-title" style="margin: 0; font-size: 18px;">Кто смотрит?</h3>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Выберите персональный профиль для синхронизации рекомендаций, темы и возрастного ценза</div>
+      <div class="storm-modal family-profiles-modal-box" style="max-width: 820px; width: 95vw; text-align: center; display:flex; flex-direction:column; max-height: 88dvh; padding: 0; overflow: hidden;">
+        <div class="storm-modal-header" style="justify-content: space-between; padding: 14px 16px;">
+          <div style="display: flex; align-items: center; gap: 10px; text-align: left; min-width: 0; flex: 1 1 auto;">
+            <div style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: rgba(0, 210, 255, 0.14); border: 1px solid rgba(0, 210, 255, 0.35); display: flex; align-items: center; justify-content: center; color: var(--accent, #00d2ff);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div style="min-width: 0;">
+              <h3 class="storm-modal-title" style="margin: 0; font-size: 16px;">Семейный доступ</h3>
+              <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Профили, рекомендации и детский режим</div>
             </div>
           </div>
-          <button type="button" class="storm-modal-close" id="close-profiles-modal-btn" title="Закрыть">✕</button>
+          <button type="button" class="storm-modal-close" id="close-profiles-modal-btn" aria-label="Закрыть" title="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
-        <div class="storm-modal-body" id="family-profiles-modal-body" style="padding: 20px 24px 22px; max-height: 76vh; overflow-y: auto;"></div>
-        <div class="storm-modal-footer" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);">
+        <div class="storm-modal-body" id="family-profiles-modal-body" style="padding: 14px 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;"></div>
+        <div class="storm-modal-footer" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary); flex-shrink: 0;">
           <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-            <button type="button" class="storm-btn storm-btn-secondary" id="manage-profiles-mode-btn" style="font-size: 13px;">
-              <span>⚙️</span> Управление профилями
-            </button>
-            <button type="button" class="storm-btn storm-btn-secondary" id="open-personal-cabinet-from-switcher-btn" style="font-size: 13px;">
-              <span>👤</span> Личный кабинет и достижения
-            </button>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="manage-profiles-mode-btn">Управление</button>
+            <button type="button" class="storm-btn storm-btn-secondary storm-btn-sm" id="open-personal-cabinet-from-switcher-btn">Достижения</button>
           </div>
-          <button type="button" class="storm-btn storm-btn-primary" id="add-new-profile-btn" style="font-size: 13px; font-weight: 800;">
-            <span>＋</span> Добавить профиль
-          </button>
+          <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="add-new-profile-btn" style="font-weight: 800;">+ Профиль</button>
         </div>
       </div>
     `;
@@ -2453,7 +2450,11 @@ export function openProfileSwitcherModal() {
   if (cabinetBtn) {
     cabinetBtn.onclick = () => {
       modal.classList.remove('is-open');
-      openProfileModal();
+      if (typeof window.openAchievementsModal === 'function') {
+        window.openAchievementsModal();
+      } else {
+        openProfileModal();
+      }
     };
   }
 
@@ -2478,19 +2479,18 @@ export function openProfileManagementModal() {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'family-profiles-manage-modal';
     modal.innerHTML = `
-      <div class="storm-modal family-profiles-modal-box" style="max-width: 880px; width: 95vw; text-align: center;">
-        <div class="storm-modal-header" style="justify-content: space-between; padding: 18px 24px;">
-          <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
-            <span style="font-size: 22px;">⚙️</span>
-            <div>
-              <h3 class="storm-modal-title" style="margin: 0;">Управление семейными профилями</h3>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Настройка аватаров, тем оформления, родительского контроля и PIN-кодов</div>
+      <div class="storm-modal family-profiles-modal-box" style="max-width: 820px; width: 95vw; text-align: center; display:flex; flex-direction:column; max-height: 88dvh; padding: 0; overflow: hidden;">
+        <div class="storm-modal-header" style="justify-content: space-between; padding: 14px 16px;">
+          <div style="display: flex; align-items: center; gap: 10px; text-align: left; min-width: 0; flex: 1 1 auto;">
+            <div style="min-width: 0;">
+              <h3 class="storm-modal-title" style="margin: 0; font-size: 16px;">Управление профилями</h3>
+              <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">Аватары, возрастной ценз и PIN-коды</div>
             </div>
           </div>
-          <button type="button" class="storm-modal-close" id="close-manage-profiles-btn">✕</button>
+          <button type="button" class="storm-modal-close" id="close-manage-profiles-btn" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
-        <div class="storm-modal-body" id="manage-profiles-modal-body" style="padding: 20px 24px; max-height: 74vh; overflow-y: auto;"></div>
-        <div class="storm-modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);">
+        <div class="storm-modal-body" id="manage-profiles-modal-body" style="padding: 14px 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;"></div>
+        <div class="storm-modal-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary); flex-shrink: 0;">
           <button type="button" class="storm-btn storm-btn-secondary" id="back-to-switcher-btn" style="font-size: 13px;">
             <span>←</span> Назад к выбору профиля
           </button>
@@ -2620,16 +2620,16 @@ export function openProfileEditorModal(profileId = null) {
     modal.className = 'storm-modal-backdrop';
     modal.id = 'family-profile-editor-modal';
     modal.innerHTML = `
-      <div class="storm-modal" style="max-width: 660px; width: 95vw;">
-        <div class="storm-modal-header" style="justify-content: space-between; padding: 18px 24px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 22px;" id="editor-title-icon">✏️</span>
-            <h3 class="storm-modal-title" id="editor-title-text" style="margin: 0;">Редактирование профиля</h3>
+      <div class="storm-modal" style="max-width: 660px; width: 95vw; display:flex; flex-direction:column; max-height: 88dvh; padding: 0; overflow: hidden;">
+        <div class="storm-modal-header" style="justify-content: space-between; padding: 14px 16px;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto;">
+            <span style="font-size: 18px; flex-shrink: 0;" id="editor-title-icon">✏️</span>
+            <h3 class="storm-modal-title" id="editor-title-text" style="margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Редактирование профиля</h3>
           </div>
-          <button type="button" class="storm-modal-close" id="close-profile-editor-btn">✕</button>
+          <button type="button" class="storm-modal-close" id="close-profile-editor-btn" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
-        <div class="storm-modal-body" id="profile-editor-body" style="padding: 20px 24px; max-height: 74vh; overflow-y: auto;"></div>
-        <div class="storm-modal-footer" id="profile-editor-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary);"></div>
+        <div class="storm-modal-body" id="profile-editor-body" style="padding: 14px 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;"></div>
+        <div class="storm-modal-footer" id="profile-editor-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--bg-tertiary); flex-shrink: 0;"></div>
       </div>
     `;
     document.body.appendChild(modal);
@@ -3074,7 +3074,7 @@ export function openPinPromptModal(targetProfile, onSuccess, customTitle = null)
             <span style="font-size: 20px;">🔒</span>
             <h3 class="storm-modal-title" id="pin-prompt-header-title" style="margin: 0;">Вход в защищенный профиль</h3>
           </div>
-          <button type="button" class="storm-modal-close" id="close-pin-prompt-btn">✕</button>
+          <button type="button" class="storm-modal-close" id="close-pin-prompt-btn" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div class="storm-modal-body" id="pin-prompt-body" style="padding: 24px 20px;"></div>
       </div>

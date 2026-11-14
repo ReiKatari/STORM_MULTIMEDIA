@@ -7665,7 +7665,7 @@ body.storm-tab-hidden * {
   animation-play-state: paused !important;
 }
 
-/* === STORM 1.8.0 CLEAN MOBILE VIDEO GRID & UNIFIED SETTINGS === */
+/* === STORM 1.8.1 CLEAN MOBILE VIDEO GRID & UNIFIED SETTINGS === */
 /* Скрытие мобильных элементов на ПК по умолчанию */
 .storm-mobile-section-title,
 .storm-mobile-top-actions,
@@ -8307,7 +8307,7 @@ body.form-factor-mobile:not(.tv-mode) .media-card-meta { display: none !importan
 
 
 /* ============================================================================
-   STORM MULTIMEDIA 1.8.0 - СЕТКА 1..4 КОЛОНКИ, СПИСКИ, КОМПАКТНЫЕ НАСТРОЙКИ, КИНОЗАЛ
+   STORM MULTIMEDIA 1.8.1 - СЕТКА 1..4 КОЛОНКИ, СПИСКИ, КОМПАКТНЫЕ НАСТРОЙКИ, КИНОЗАЛ
    ============================================================================ */
 body.hide-hero-showcase #hero-showcase-container {
   display: none !important;
@@ -8470,7 +8470,7 @@ body.hide-hero-showcase #hero-showcase-container {
     pointer-events: auto !important;
   }
   body[data-mobile-cols="1"]:not(.tv-mode) .media-card-poster {
-    aspect-ratio: 16 / 9 !important;
+    aspect-ratio: 2 / 2.75 !important;
   }
   body[data-mobile-cols="4"]:not(.tv-mode) .media-card-title {
     font-size: 11px !important;
@@ -8599,5 +8599,634 @@ body.hide-hero-showcase #hero-showcase-container {
     height: min(62vh, 520px) !important;
     border-radius: 16px !important;
     z-index: 4100 !important;
+  }
+}
+
+/* ============================================================================
+   STORM MULTIMEDIA 1.8.1 - AUTHORITATIVE GRID, MODAL CLOSE & SETTINGS OVERHAUL
+   ============================================================================ */
+
+/* 1. Глобальная защита кнопок закрытия во всех окнах от сплющивания в flexbox */
+.storm-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.storm-modal-header > :first-child:not(.storm-modal-close):not(.storm-drawer-close) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.storm-modal-close,
+.storm-drawer-close {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
+  aspect-ratio: 1 / 1 !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  line-height: 1 !important;
+  box-sizing: border-box !important;
+}
+
+.storm-modal-close svg,
+.storm-drawer-close svg {
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 2. Компактная адаптация Семейного доступа и Достижений */
+#storm-achievements-modal .storm-achievements-dialog {
+  width: min(96vw, 760px) !important;
+  max-width: 760px !important;
+  max-height: 88dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+#storm-achievements-modal .storm-achievements-modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 14px 16px 20px !important;
+}
+
+@media (max-width: 640px) {
+  #family-profiles-modal .storm-modal-header,
+  #family-profiles-manage-modal .storm-modal-header,
+  #family-profile-editor-modal .storm-modal-header,
+  #family-pin-prompt-modal .storm-modal-header {
+    padding: 12px 14px !important;
+  }
+
+  #family-profiles-modal .storm-modal-body,
+  #family-profiles-manage-modal .storm-modal-body,
+  #family-profile-editor-modal .storm-modal-body {
+    padding: 12px 14px !important;
+    max-height: 70dvh !important;
+  }
+
+  #family-profiles-modal .storm-modal-footer,
+  #family-profiles-manage-modal .storm-modal-footer,
+  #family-profile-editor-modal .storm-modal-footer {
+    padding: 10px 14px !important;
+    gap: 8px !important;
+  }
+
+  .family-profiles-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .family-profile-card {
+    padding: 12px 10px !important;
+    border-radius: 12px !important;
+  }
+
+  .family-profiles-summary-bar {
+    padding: 10px 12px !important;
+    margin-bottom: 12px !important;
+    gap: 10px !important;
+  }
+}
+
+/* 3. Авторитетное управление вкладками и прокруткой в Настройках (#storm-unified-settings-modal) */
+.storm-settings-center-dialog {
+  width: min(820px, 95vw) !important;
+  max-width: 820px !important;
+  height: min(86dvh, 660px) !important;
+  max-height: 88dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+}
+
+.storm-settings-center-header {
+  padding: 12px 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.storm-settings-layout {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 196px minmax(0, 1fr) !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+.storm-settings-sidebar {
+  padding: 10px 8px !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+.storm-settings-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  padding: 14px 16px calc(22px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.storm-settings-pane {
+  display: none !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+
+.storm-settings-pane.is-active {
+  display: flex !important;
+}
+
+.storm-settings-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.storm-settings-profile-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.storm-settings-profile-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storm-settings-profile-sub {
+  font-size: 11.5px;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.3;
+}
+
+.storm-settings-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.storm-uset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.drawer-sleep-pill.is-active {
+  background: rgba(139, 92, 246, 0.24) !important;
+  border-color: var(--accent, #8b5cf6) !important;
+  color: #ffffff !important;
+}
+
+.drawer-sleep-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.storm-uset-theme-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+}
+
+@media (min-width: 560px) {
+  .storm-uset-theme-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+.drawer-theme-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary, #f8fafc);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 0;
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.drawer-theme-card span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-theme-card.active,
+.drawer-theme-card.is-active {
+  border-color: var(--accent, #8b5cf6);
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.drawer-theme-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.storm-uset-accent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 2px;
+}
+
+.storm-uset-accent-row .profile-accent-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.storm-uset-accent-row .profile-accent-dot.is-active,
+.storm-uset-accent-row .profile-accent-dot.active {
+  transform: scale(1.14);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--accent, #8b5cf6);
+}
+
+@media (max-width: 768px) {
+  .storm-settings-center-dialog {
+    width: min(96vw, 520px) !important;
+    max-width: 96vw !important;
+    height: min(86dvh, 660px) !important;
+    max-height: 86dvh !important;
+    border-radius: 16px !important;
+  }
+
+  .storm-settings-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .storm-settings-sidebar {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+
+  .storm-settings-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .storm-settings-nav-btn {
+    padding: 7px 11px !important;
+    font-size: 12px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .storm-settings-content {
+    padding: 12px 14px calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* 4. Компактная 2-колоночная структура бокового меню и меню 3 точек */
+.mobile-drawer-header {
+  padding: 12px 14px !important;
+  gap: 10px !important;
+  flex-shrink: 0 !important;
+}
+
+.mobile-drawer-body {
+  padding: 10px 12px !important;
+  gap: 8px !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.mobile-drawer-user-compact {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 9px 10px !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.mobile-drawer-user-compact .mobile-drawer-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
+  object-fit: cover !important;
+}
+
+.mobile-drawer-user-compact .mobile-drawer-user-info {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.mobile-drawer-user-compact .mobile-drawer-user-name {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mobile-drawer-user-compact .mobile-drawer-user-status {
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mobile-drawer-user-compact .mobile-drawer-auth-btn {
+  width: auto !important;
+  flex-shrink: 0 !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+}
+
+.mobile-drawer-section-title {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: var(--text-muted, #94a3b8) !important;
+  margin: 4px 2px 2px !important;
+}
+
+.mobile-drawer-cat-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 5px !important;
+}
+
+.mobile-drawer-cat-grid .mobile-drawer-cat-btn {
+  padding: 8px 9px !important;
+  gap: 7px !important;
+  font-size: 12px !important;
+  border-radius: 9px !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.mobile-drawer-cat-grid .mobile-drawer-cat-btn span {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
+}
+
+.mobile-drawer-footer {
+  flex-shrink: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  padding: 9px 12px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-tertiary, rgba(15, 23, 42, 0.9)) !important;
+}
+
+.mobile-drawer-footer-btn {
+  justify-content: center !important;
+  padding: 8px 10px !important;
+  gap: 6px !important;
+  font-size: 12.5px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.storm-mobile-overflow-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #94a3b8);
+  padding: 4px 10px 2px;
+}
+
+.storm-mobile-overflow-item {
+  padding: 8px 10px !important;
+  font-size: 13px !important;
+}
+
+.filter-sheet-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+/* 5. Адаптивность светлой темы STORM DAY */
+[data-theme="STORM DAY"] .storm-mobile-overflow-menu,
+[data-theme="STORM DAY"] .storm-settings-center-dialog,
+[data-theme="STORM DAY"] .storm-mobile-drawer {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+}
+
+[data-theme="STORM DAY"] .storm-settings-sidebar,
+[data-theme="STORM DAY"] .mobile-drawer-footer {
+  background: #f1f5f9 !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+[data-theme="STORM DAY"] .storm-settings-nav-btn,
+[data-theme="STORM DAY"] .storm-mobile-overflow-item,
+[data-theme="STORM DAY"] .mobile-drawer-cat-btn,
+[data-theme="STORM DAY"] .storm-uset-layout-card,
+[data-theme="STORM DAY"] .storm-uset-pill,
+[data-theme="STORM DAY"] .drawer-theme-card,
+[data-theme="STORM DAY"] .storm-settings-row-info strong,
+[data-theme="STORM DAY"] .storm-settings-profile-name {
+  color: #0f172a !important;
+}
+
+[data-theme="STORM DAY"] .storm-settings-nav-btn.is-active,
+[data-theme="STORM DAY"] .storm-uset-layout-card.is-active,
+[data-theme="STORM DAY"] .storm-uset-pill.is-active,
+[data-theme="STORM DAY"] .drawer-theme-card.active,
+[data-theme="STORM DAY"] .mobile-drawer-cat-btn.is-active {
+  background: rgba(2, 132, 199, 0.14) !important;
+  border-color: #0284c7 !important;
+  color: #0f172a !important;
+}
+
+/* 6. АВТОРИТЕТНАЯ ФИНАЛЬНАЯ КАСКАДНАЯ СЕТКА ДЛЯ ВСЕХ 6 РЕЖИМОВ (МОБИЛЬНЫЕ + ПК) */
+@media (max-width: 768px) {
+  body[data-mobile-cols="1"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+  body[data-mobile-cols="1"]:not(.tv-mode) .media-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+    padding: 10px 12px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body[data-mobile-cols="1"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active) .media-card {
+    max-width: 460px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  body[data-mobile-cols="1"]:not(.tv-mode) .media-card-poster {
+    aspect-ratio: 2 / 2.75 !important;
+  }
+
+  body[data-mobile-cols="1"]:not(.tv-mode) .media-card-title {
+    font-size: 14px !important;
+    line-height: 1.3 !important;
+  }
+
+  body[data-mobile-cols="2"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+  body[data-mobile-cols="2"]:not(.tv-mode) .media-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    padding: 8px 8px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body[data-mobile-cols="3"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+  body[data-mobile-cols="3"]:not(.tv-mode) .media-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    padding: 8px 8px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body[data-mobile-cols="4"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+  body[data-mobile-cols="4"]:not(.tv-mode) .media-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+    padding: 6px 6px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body[data-mobile-cols="4"]:not(.tv-mode) .media-card-content {
+    min-height: 32px !important;
+    padding: 4px 3px 5px !important;
+  }
+
+  body[data-mobile-cols="4"]:not(.tv-mode) .media-card-title {
+    font-size: 10px !important;
+    line-height: 1.18 !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  body[data-mobile-cols="4"]:not(.tv-mode) .media-card-mobile-strip {
+    font-size: 9px !important;
+    padding: 2px 3px !important;
+  }
+
+  body[data-mobile-cols="4"]:not(.tv-mode) .media-card-mobile-type {
+    display: none !important;
+  }
+
+  body[data-mobile-cols="4"]:not(.tv-mode) .media-card .media-card-menu-btn {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 11px !important;
+  }
+}
+
+body.form-factor-mobile[data-mobile-cols="1"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+body.form-factor-mobile[data-mobile-cols="1"]:not(.tv-mode) .media-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+body.form-factor-mobile[data-mobile-cols="2"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+body.form-factor-mobile[data-mobile-cols="2"]:not(.tv-mode) .media-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+body.form-factor-mobile[data-mobile-cols="3"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+body.form-factor-mobile[data-mobile-cols="3"]:not(.tv-mode) .media-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+body.form-factor-mobile[data-mobile-cols="4"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active),
+body.form-factor-mobile[data-mobile-cols="4"]:not(.tv-mode) .media-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 5px !important;
+}
+
+@media (min-width: 769px) {
+  body:not(.form-factor-mobile):not(.tv-mode)[data-catalog-layout="grid-1"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)) !important;
+    gap: 20px !important;
+  }
+
+  body:not(.form-factor-mobile):not(.tv-mode)[data-catalog-layout="grid-2"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
+    grid-template-columns: repeat(auto-fill, minmax(235px, 1fr)) !important;
+    gap: 18px !important;
+  }
+
+  body:not(.form-factor-mobile):not(.tv-mode)[data-catalog-layout="grid-3"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
+    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  body:not(.form-factor-mobile):not(.tv-mode)[data-catalog-layout="grid-4"] #media-render-container.media-container.view-grid:not(.home-rails-active) {
+    grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)) !important;
+    gap: 12px !important;
   }
 }

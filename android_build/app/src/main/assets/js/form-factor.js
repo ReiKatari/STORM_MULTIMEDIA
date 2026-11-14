@@ -3,8 +3,8 @@
    (ADAPTIVE FORM FACTOR ENGINE: DESKTOP, MOBILE TOUCH, 10-FOOT TV)
    ========================================================================== */
 
-import { toggleTvMode } from './gamepad-tv.js?v=1.8.0';
-import { showToast } from './auth.js?v=1.8.0';
+import { toggleTvMode } from './gamepad-tv.js?v=1.8.1';
+import { showToast } from './auth.js?v=1.8.1';
 
 let currentProfile = 'auto'; // 'auto', 'desktop', 'mobile', 'tv'
 let activeEffectiveProfile = 'desktop';
@@ -112,7 +112,7 @@ export function openFormFactorModal() {
               <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Адаптивный триумвират интерфейсов STORM MULTIMEDIA</div>
             </div>
           </div>
-          <button type="button" class="storm-modal-close" id="form-factor-close-btn" style="width:40px;height:40px;font-size:18px;">✕</button>
+          <button type="button" class="storm-modal-close" id="form-factor-close-btn" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div class="storm-modal-body form-factor-fullscreen-body">
           <p style="font-size:14px;color:var(--text-secondary);margin:0 0 6px 0;line-height:1.5;text-align:center;">
@@ -149,8 +149,12 @@ export function openFormFactorModal() {
     `;
     document.body.appendChild(modal);
 
-    modal.querySelector('#form-factor-close-btn')?.addEventListener('click', () => modal.classList.remove('is-open'));
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('is-open'); });
+    const closeFF = () => {
+      modal.classList.remove('is-open');
+      if (!document.querySelector('.storm-modal-backdrop.is-open')) document.body.classList.remove('modal-open');
+    };
+    modal.querySelector('#form-factor-close-btn')?.addEventListener('click', closeFF);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeFF(); });
 
     modal.querySelectorAll('.form-factor-card').forEach(card => {
       card.addEventListener('click', () => {
@@ -201,6 +205,10 @@ export function initFormFactorEngine() {
     };
   }
 
+  if (typeof window !== 'undefined') {
+    window.openFormFactorModal = openFormFactorModal;
+  }
+
   const drawerFactorBtn = document.getElementById('drawer-form-factor-btn');
   if (drawerFactorBtn) {
     drawerFactorBtn.onclick = () => {
@@ -210,6 +218,10 @@ export function initFormFactorEngine() {
         const backdrop = document.getElementById('mobile-drawer-backdrop');
         if (backdrop) backdrop.classList.remove('is-open');
         document.body.classList.remove('drawer-open');
+      }
+      document.getElementById('storm-unified-settings-modal')?.classList.remove('is-open');
+      if (!document.querySelector('.storm-modal-backdrop.is-open')) {
+        document.body.classList.remove('modal-open');
       }
       openFormFactorModal();
     };

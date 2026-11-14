@@ -3,7 +3,7 @@
    Генерация QR-кода (с автоопределением LAN IP) и управление ТВ/плеером
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.8.0';
+import { showToast } from './auth.js?v=1.8.1';
 
 let remoteSessionId = localStorage.getItem('storm_remote_session') || ('storm_' + Math.random().toString(36).substring(2, 8));
 localStorage.setItem('storm_remote_session', remoteSessionId);
@@ -112,7 +112,7 @@ export async function openRemoteQrModal() {
           <span style="font-size: 20px;">📱</span>
           <h3 style="margin: 0; font-size: 16px;">Мобильный пульт (STORM Remote 2.0)</h3>
         </div>
-        <button type="button" class="storm-modal-close" id="remote-modal-close-btn">✕</button>
+        <button type="button" class="storm-modal-close" id="remote-modal-close-btn" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="storm-modal-body" style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px;">
         <div id="remote-host-status-badge" style="font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(0, 210, 255, 0.3); background: rgba(0, 210, 255, 0.12); color: var(--accent-primary, #00d2ff);">
@@ -241,12 +241,12 @@ export function handleIncomingRemoteAction(data) {
       }
       break;
     case 'next_ep':
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.playInPlayerNextEpisode) m.playInPlayerNextEpisode();
       }).catch(() => {});
       break;
     case 'prev_ep':
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.playInPlayerPrevEpisode) m.playInPlayerPrevEpisode();
       }).catch(() => {});
       break;
@@ -260,7 +260,7 @@ export function handleIncomingRemoteAction(data) {
       break;
     }
     case 'toggle_tv_mode':
-      import('./gamepad-tv.js?v=1.8.0').then(m => {
+      import('./gamepad-tv.js?v=1.8.1').then(m => {
         if (m.toggleTvMode) m.toggleTvMode();
       }).catch(() => {});
       break;

@@ -4,10 +4,10 @@
    настроения, компании и семантического запроса зрителя
    ========================================================================== */
 
-import { fetchUserBookmarks, fetchContinueWatching, saveBookmarkStatus } from './bookmarks.js?v=1.8.0';
+import { fetchUserBookmarks, fetchContinueWatching, saveBookmarkStatus } from './bookmarks.js?v=1.8.1';
 const openPlayerModal = (...args) => (typeof window !== 'undefined' && window.openPlayerModal ? window.openPlayerModal(...args) : console.warn('Player modal not ready'));
-import { showToast } from './auth.js?v=1.8.0';
-import { getBaselineCatalog } from './catalog-baseline.js?v=1.8.0';
+import { showToast } from './auth.js?v=1.8.1';
+import { getBaselineCatalog } from './catalog-baseline.js?v=1.8.1';
 
 let advisorState = {
   mood: 'personal',
@@ -403,9 +403,9 @@ export async function openNeuralRecommenderModal() {
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Нейросетевой анализ ваших закладок, истории просмотров и настроения на вечер</div>
             </div>
           </div>
-          <button type="button" class="storm-modal-close" id="neural-modal-close-btn" title="Закрыть">✕</button>
+          <button type="button" class="storm-modal-close" id="neural-modal-close-btn" title="Закрыть" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
-        <div class="storm-modal-body" id="neural-recommender-body" style="padding: 16px 20px 24px; overflow-y: auto;"></div>
+        <div class="storm-modal-body" id="neural-recommender-body" style="padding: 14px 16px 20px; flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;"></div>
       </div>
     `;
     document.body.appendChild(modal);

@@ -3,7 +3,7 @@
  * аналитики «Кино-итоги STORM Rewind» и сканера локальной медиатеки (ПК / NAS)
  */
 
-import { showToast, getUser, getToken } from './auth.js?v=1.8.0';
+import { showToast, getUser, getToken } from './auth.js?v=1.8.1';
 
 function getAuthHeaders() {
   const token = (typeof getToken === 'function' ? getToken() : '') || localStorage.getItem('storm_token') || localStorage.getItem('storm_auth_token');
@@ -25,10 +25,15 @@ export async function renderSyncModalContent(body = document.getElementById('syn
 
   if (!getUser()) {
     body.innerHTML = `
-      <div style="text-align: center; padding: 30px; color: var(--text-muted);">
-        <p>Пожалуйста, войдите в аккаунт для управления синхронизацией, резервными копиями и кино-итогами.</p>
+      <div style="text-align: center; padding: 24px 16px; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.45;">Войдите в аккаунт STORM для облачной синхронизации закладок, импорта списков и резервных копий.</p>
+        <button type="button" class="storm-btn storm-btn-primary storm-btn-sm" id="sync-guest-login-btn">Войти в аккаунт</button>
       </div>
     `;
+    body.querySelector('#sync-guest-login-btn')?.addEventListener('click', () => {
+      document.getElementById('sync-modal')?.classList.remove('is-open');
+      document.getElementById('auth-modal')?.classList.add('is-open');
+    });
     return;
   }
 
@@ -334,7 +339,7 @@ function renderLocalLibraryCards(container, items) {
       const item = items[parseInt(card.dataset.idx, 10)];
       if (!item) return;
       document.getElementById('sync-modal')?.classList.remove('is-open');
-      import('./player.js?v=1.8.0').then(m => {
+      import('./player.js?v=1.8.1').then(m => {
         if (m.openPlayerModal) {
           m.openPlayerModal({
             ...item,

@@ -52,15 +52,15 @@
   });
 })();
 
-import { initTheme, setTheme } from './theme.js?v=1.8.0';
-import { setLanguage, applyTranslations, t } from './i18n.js?v=1.8.0';
-import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.8.0';
-import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.8.0';
+import { initTheme, setTheme } from './theme.js?v=1.8.1';
+import { setLanguage, applyTranslations, t } from './i18n.js?v=1.8.1';
+import { checkAuth, login, register, logout, openProfileModal, showToast, getUser, onAuthChanged, initProfileHandlers, openProfileSwitcherModal, getActiveProfile, isKidModeActive, updateFamilyHeaderUI, loginAsGuest, startTvDeviceCodeSession, stopTvDeviceCodeSession, fetchSavedAccounts, requestTelegramPasswordReset, confirmPasswordReset } from './auth.js?v=1.8.1';
+import { fetchUserBookmarks, fetchContinueWatching, getLocalContinueWatching, removeFromLocalContinueWatching, isDismissedFromContinueWatching, fetchCustomLists, fetchCustomListDetails, deleteCustomListApi, createCustomCollection, addItemToCollection, removeItemFromCollection, saveBookmarkStatus, detectClientMediaType, detectClientYear, resolveMediaUserStatus } from './bookmarks.js?v=1.8.1';
 let _baselineMod = null;
 let _baselineModPromise = null;
 function loadBaselineCatalogMod() {
   if (_baselineMod) return Promise.resolve(_baselineMod);
-  return (_baselineModPromise ||= import('./catalog-baseline.js?v=1.8.0').then(m => (_baselineMod = m)).catch(() => null));
+  return (_baselineModPromise ||= import('./catalog-baseline.js?v=1.8.1').then(m => (_baselineMod = m)).catch(() => null));
 }
 function getBaselineCatalog(category) {
   if (_baselineMod && typeof _baselineMod.getBaselineCatalog === 'function') {
@@ -76,11 +76,11 @@ function searchBaselineCatalog(q) {
   loadBaselineCatalogMod();
   return [];
 }
-import { getStatusIconSvg } from './status-icons.js?v=1.8.0';
-import { initFormFactorEngine } from './form-factor.js?v=1.8.0';
+import { getStatusIconSvg } from './status-icons.js?v=1.8.1';
+import { initFormFactorEngine } from './form-factor.js?v=1.8.1';
 
 // Ленивая подгрузка тяжёлых подсистем по требованию (Code-Splitting: -75% стартового JS)
-const STORM_ASSET_VER = '1.8.0';
+const STORM_ASSET_VER = '1.8.1';
 
 let _playerModLoaded = null;
 let _playerModPromise = null;
@@ -522,7 +522,7 @@ setInterval(sendUserPresencePing, 60 * 1000);
   try {
     window.addEventListener('storm:db-hydrated', () => {
       const savedMode = localStorage.getItem('storm_view_mode');
-      if (savedMode && ['grid', 'compact-grid', 'detailed-list', 'table'].includes(savedMode) && savedMode !== currentViewMode) {
+      if (savedMode && ['grid', 'compact-grid', 'compact-list', 'detailed-list', 'table'].includes(savedMode) && savedMode !== currentViewMode) {
         currentViewMode = savedMode;
         if (savedMode !== 'grid') isHomeCustomViewActive = true;
         document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentViewMode));
@@ -779,6 +779,7 @@ export function applyUnifiedCatalogLayout(layoutKey, options = {}) {
   const allowed = ['grid-3', 'grid-2', 'grid-4', 'grid-1', 'compact-list', 'detailed-list'];
   const key = allowed.includes(layoutKey) ? layoutKey : 'grid-3';
   const prevViewMode = currentViewMode;
+  const prevCols = document.body.dataset.mobileCols || localStorage.getItem('storm_mobile_cols') || '3';
   const colsMap = { 'grid-1': '1', 'grid-2': '2', 'grid-3': '3', 'grid-4': '4' };
   const densityMap = { 'grid-1': 'large', 'grid-2': 'standard', 'grid-3': 'compact', 'grid-4': 'compact' };
 
@@ -800,8 +801,8 @@ export function applyUnifiedCatalogLayout(layoutKey, options = {}) {
     localStorage.setItem('storm_card_density', density);
     document.body.dataset.cardDensity = density;
     if (currentTab === 'home') {
-      const c = document.getElementById('media-render-container');
-      isHomeCustomViewActive = (c && c.dataset.renderedView === 'home') ? true : false;
+      const wantFlatGrid = Boolean(options.userInitiated || options.forceGrid || key !== 'grid-3');
+      isHomeCustomViewActive = wantFlatGrid || isCleanMobileMode();
     } else {
       isHomeCustomViewActive = false;
     }
@@ -809,7 +810,14 @@ export function applyUnifiedCatalogLayout(layoutKey, options = {}) {
 
   const container = document.getElementById('media-render-container');
   if (container) {
-    const keepHomeRails = currentTab === 'home' && currentViewMode === 'grid' && container.classList.contains('home-rails-active') && !options.forceGrid;
+    const keepHomeRails =
+      currentTab === 'home' &&
+      currentViewMode === 'grid' &&
+      !isCleanMobileMode() &&
+      !isHomeCustomViewActive &&
+      container.classList.contains('home-rails-active') &&
+      !options.forceGrid &&
+      !options.userInitiated;
     container.className = keepHomeRails
       ? `media-container view-${currentViewMode} home-rails-active`
       : `media-container view-${currentViewMode}`;
@@ -826,7 +834,9 @@ export function applyUnifiedCatalogLayout(layoutKey, options = {}) {
     window.syncUnifiedSettingsUI();
   }
 
-  if (options.skipRender !== true && (prevViewMode !== currentViewMode || options.forceRender)) {
+  const newCols = document.body.dataset.mobileCols || '3';
+  const layoutChanged = prevViewMode !== currentViewMode || prevCols !== newCols;
+  if (options.skipRender !== true && (layoutChanged || options.forceRender || options.userInitiated)) {
     try {
       renderFilteredCatalog();
     } catch (err) {
@@ -8524,6 +8534,12 @@ function initModals() {
     }
   });
 
+  const cleanupBodyModalLock = () => {
+    if (!document.querySelector('.storm-modal-backdrop.is-open')) {
+      document.body.classList.remove('modal-open');
+    }
+  };
+
   // Закрытие при клике по затемненному бэкдропу
   document.querySelectorAll('.storm-modal-backdrop').forEach(backdrop => {
     backdrop.addEventListener('click', (e) => {
@@ -8533,6 +8549,7 @@ function initModals() {
         } else {
           backdrop.classList.remove('is-open');
           if (backdrop.id === 'auth-modal') stopTvDeviceCodeSession();
+          cleanupBodyModalLock();
         }
       }
     });
@@ -8548,6 +8565,7 @@ function initModals() {
         } else {
           modal.classList.remove('is-open');
           if (modal.id === 'auth-modal') stopTvDeviceCodeSession();
+          cleanupBodyModalLock();
         }
       }
     });
@@ -9560,20 +9578,11 @@ function initMobileDrawer() {
     };
   }
 
-  // 8 визуальных карточек тем оформления в шторке
-  const currentTheme = localStorage.getItem('storm_theme') || 'STORM DARK';
+  // Синхронизация карточек тем в настройках (обработка клика делегирована theme.js)
+  const currentTheme = localStorage.getItem('storm_theme') || 'STORM MIDNIGHT';
   document.querySelectorAll('.drawer-theme-card').forEach(card => {
     const tName = card.dataset.themeName || card.dataset.drawerTheme;
     card.classList.toggle('active', tName === currentTheme);
-    card.onclick = () => {
-      document.querySelectorAll('.drawer-theme-card').forEach(c => c.classList.remove('active'));
-      card.classList.add('active');
-      setTheme(tName);
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate(15); } catch (_) {}
-      }
-      showToast(`Тема изменена: ${tName}`);
-    };
   });
 
   // Быстрый выбор языка
@@ -9591,10 +9600,10 @@ function initMobileDrawer() {
     fsBtn.onclick = () => {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen?.().catch(() => {});
-        fsBtn.innerHTML = '<span>⛶ Выйти из экрана</span>';
+        fsBtn.textContent = 'Обычный экран';
       } else {
         document.exitFullscreen?.().catch(() => {});
-        fsBtn.innerHTML = '<span>⛶ Во весь экран</span>';
+        fsBtn.textContent = 'Во весь экран';
       }
     };
   }
@@ -9692,6 +9701,14 @@ export function updateDrawerCacheSize() {
   }
 }
 
+export function closeUnifiedSettingsModal() {
+  const modal = document.getElementById('storm-unified-settings-modal');
+  if (modal) modal.classList.remove('is-open');
+  if (!document.querySelector('.storm-modal-backdrop.is-open')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
 export function openUnifiedSettingsModal(initialSection = 'catalog') {
   if (initialSection === 'services') initialSection = 'system';
   closeMobileDrawer();
@@ -9705,9 +9722,12 @@ export function openUnifiedSettingsModal(initialSection = 'catalog') {
       b.classList.toggle('is-active', b.dataset.usetTab === initialSection);
     });
     modal.querySelectorAll('.storm-settings-pane').forEach(p => {
-      p.classList.toggle('is-active', p.dataset.usetPane === initialSection);
+      const paneKey = p.dataset.usetPane || p.dataset.usetPanel;
+      p.classList.toggle('is-active', paneKey === initialSection);
     });
   }
+  const contentEl = modal.querySelector('.storm-settings-content');
+  if (contentEl) contentEl.scrollTop = 0;
   modal.classList.add('is-open');
   document.body.classList.add('modal-open');
 }
@@ -9730,11 +9750,11 @@ export function syncUnifiedSettingsUI() {
     if (uLoginBtn) uLoginBtn.textContent = 'Открыть профиль';
     if (uLogoutBtn) uLogoutBtn.style.display = 'inline-flex';
     const isAdmin = Boolean(user.is_admin || String(dispName).toLowerCase() === 'reikatari');
-    if (uAdminBtn) uAdminBtn.style.display = isAdmin ? 'block' : 'none';
+    if (uAdminBtn) uAdminBtn.style.display = isAdmin ? 'inline-flex' : 'none';
     if (overflowAccLabel) overflowAccLabel.textContent = dispName;
   } else {
     if (uName) uName.textContent = 'Гость';
-    if (uSub) uSub.textContent = 'Войдите в аккаунт для синхронизации закладок и истории между устройствами';
+    if (uSub) uSub.textContent = 'Войдите для синхронизации закладок и истории между устройствами';
     if (uAvatar) uAvatar.src = 'assets/avatar_default.svg';
     if (uLoginBtn) uLoginBtn.textContent = 'Войти в аккаунт';
     if (uLogoutBtn) uLogoutBtn.style.display = 'none';
@@ -9749,8 +9769,12 @@ export function syncUnifiedSettingsUI() {
 
   const layoutKey = getResolvedCatalogLayout();
   document.body.dataset.catalogLayout = layoutKey;
-  const cols = localStorage.getItem('storm_mobile_cols') || '3';
-  document.body.dataset.mobileCols = cols;
+  if (layoutKey.startsWith('grid-')) {
+    const cols = layoutKey.replace('grid-', '');
+    document.body.dataset.mobileCols = cols;
+  } else {
+    document.body.dataset.mobileCols = localStorage.getItem('storm_mobile_cols') || '3';
+  }
   document.querySelectorAll('.storm-uset-layout-card[data-layout]').forEach(btn => {
     btn.classList.toggle('is-active', btn.dataset.layout === layoutKey);
   });
@@ -9758,7 +9782,7 @@ export function syncUnifiedSettingsUI() {
     'grid-3': 'Вид: 3 колонки',
     'grid-2': 'Вид: 2 колонки',
     'grid-4': 'Вид: 4 колонки',
-    'grid-1': 'Вид: 1 колонка',
+    'grid-1': 'Вид: Крупные (1 кол.)',
     'compact-list': 'Компактный список',
     'detailed-list': 'Подробный список'
   };
@@ -9783,6 +9807,14 @@ export function syncUnifiedSettingsUI() {
     btnHero.classList.toggle('storm-btn-secondary', !heroOn);
   }
 
+  const tvOn = document.body.classList.contains('tv-mode') || document.documentElement.getAttribute('data-tv-mode') === 'true';
+  const tvUsetBtn = document.getElementById('uset-tv-mode-btn');
+  if (tvUsetBtn) {
+    tvUsetBtn.textContent = tvOn ? 'Вкл' : 'Выкл';
+    tvUsetBtn.classList.toggle('storm-btn-primary', tvOn);
+    tvUsetBtn.classList.toggle('storm-btn-secondary', !tvOn);
+  }
+
   const activeLang = localStorage.getItem('storm_lang') || 'ru';
   document.querySelectorAll('#uset-lang-pills .storm-uset-pill').forEach(btn => {
     btn.classList.toggle('is-active', btn.dataset.usetLang === activeLang);
@@ -9791,8 +9823,23 @@ export function syncUnifiedSettingsUI() {
   const activeTheme = localStorage.getItem('storm_theme') || 'STORM MIDNIGHT';
   document.querySelectorAll('.drawer-theme-card').forEach(card => {
     const tName = card.dataset.themeName || card.dataset.drawerTheme;
-    card.classList.toggle('active', tName === activeTheme);
+    const matched = tName === activeTheme;
+    card.classList.toggle('active', matched);
+    card.classList.toggle('is-active', matched);
   });
+
+  const activeAccent = localStorage.getItem('storm_accent') || 'default';
+  document.querySelectorAll('#uset-accent-dots .profile-accent-dot').forEach(dot => {
+    const aName = dot.dataset.accentDot || dot.dataset.accent;
+    dot.classList.toggle('is-active', aName === activeAccent);
+  });
+
+  const ffLabel = document.getElementById('drawer-form-factor-btn');
+  if (ffLabel) {
+    const ffMap = { auto: 'Авто', mobile: 'Смартфон', desktop: 'ПК', tv: 'Smart TV' };
+    const savedFF = localStorage.getItem('storm_form_factor') || 'auto';
+    ffLabel.textContent = ffMap[savedFF] || 'Выбрать';
+  }
 
   const statusLbl = document.getElementById('uset-server-status-label');
   if (statusLbl) {
@@ -9823,8 +9870,7 @@ export function initUnifiedMobileAndSettingsUI() {
 
   const openFilterSheetSafe = () => {
     closeMobileDrawer();
-    const modal = document.getElementById('storm-unified-settings-modal');
-    if (modal) modal.classList.remove('is-open');
+    closeUnifiedSettingsModal();
     if (typeof openFilterSheet === 'function') {
       openFilterSheet();
       return;
@@ -9860,13 +9906,13 @@ export function initUnifiedMobileAndSettingsUI() {
   layoutPickerModal?.querySelectorAll('.storm-uset-layout-card[data-layout]').forEach(card => {
     card.addEventListener('click', () => {
       const key = card.dataset.layout;
-      applyUnifiedCatalogLayout(key, { forceRender: true });
+      applyUnifiedCatalogLayout(key, { forceRender: true, userInitiated: true, forceGrid: true });
       layoutPickerModal.classList.remove('is-open');
       showToast(card.textContent.trim());
     });
   });
 
-  // Новые быстрые пункты левого меню для 100% паритета с Windows
+  // Сервисные кнопки левого меню (без зависимости от скрытых десктопных кнопок)
   const bindDrawerAction = (id, fn) => {
     document.getElementById(id)?.addEventListener('click', () => {
       closeMobileDrawer();
@@ -9876,12 +9922,21 @@ export function initUnifiedMobileAndSettingsUI() {
   bindDrawerAction('drawer-open-rooms-btn', () => document.getElementById('rooms-modal')?.classList.add('is-open'));
   bindDrawerAction('drawer-open-recommender-btn', () => openNeuralRecommenderModal());
   bindDrawerAction('drawer-open-calendar-btn', () => openReleaseCalendarModal());
-  bindDrawerAction('drawer-open-sync-btn', () => document.getElementById('header-sync-btn')?.click());
+  bindDrawerAction('drawer-open-sync-btn', () => {
+    const syncModal = document.getElementById('sync-modal');
+    if (syncModal) {
+      syncModal.classList.add('is-open');
+      renderSyncModalContent(document.getElementById('sync-modal-body'));
+    }
+  });
   bindDrawerAction('drawer-open-remote-btn', () => openRemoteQrModal());
-  bindDrawerAction('drawer-open-family-btn', () => document.getElementById('header-family-btn')?.click());
-  bindDrawerAction('drawer-open-achievements-btn', () => import(`./achievements.js?v=${STORM_ASSET_VER}`).then(m => m.openAchievementsModal?.()).catch(() => {}));
+  bindDrawerAction('drawer-open-family-btn', () => openProfileSwitcherModal());
+  bindDrawerAction('drawer-open-formfactor-btn', () => window.openFormFactorModal?.());
+  bindDrawerAction('drawer-open-achievements-btn', () => {
+    import(`./achievements.js?v=${STORM_ASSET_VER}`).then(m => m.openAchievementsModal?.()).catch(() => {});
+  });
   document.getElementById('uset-achievements-btn')?.addEventListener('click', () => {
-    document.getElementById('storm-unified-settings-modal')?.classList.remove('is-open');
+    closeUnifiedSettingsModal();
     import(`./achievements.js?v=${STORM_ASSET_VER}`).then(m => m.openAchievementsModal?.()).catch(() => {});
   });
 
@@ -9927,6 +9982,12 @@ export function initUnifiedMobileAndSettingsUI() {
         overflowMenu.classList.remove('is-open');
         if (act === 'rooms') {
           document.getElementById('rooms-modal')?.classList.add('is-open');
+        } else if (act === 'achievements') {
+          import(`./achievements.js?v=${STORM_ASSET_VER}`).then(m => m.openAchievementsModal?.()).catch(() => {});
+        } else if (act === 'family') {
+          openProfileSwitcherModal();
+        } else if (act === 'calendar') {
+          openReleaseCalendarModal();
         } else if (act === 'filters') {
           openFilterSheetSafe();
         } else if (act === 'columns') {
@@ -9955,27 +10016,26 @@ export function initUnifiedMobileAndSettingsUI() {
   // Навигация внутри единого окна настроек
   const uModal = document.getElementById('storm-unified-settings-modal');
   if (uModal) {
-    document.getElementById('storm-unified-settings-close')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
-      document.body.classList.remove('modal-open');
-    });
+    document.getElementById('storm-unified-settings-close')?.addEventListener('click', closeUnifiedSettingsModal);
     uModal.addEventListener('click', (e) => {
-      if (e.target === uModal) {
-        uModal.classList.remove('is-open');
-        document.body.classList.remove('modal-open');
-      }
+      if (e.target === uModal) closeUnifiedSettingsModal();
     });
     uModal.querySelectorAll('.storm-settings-nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const tab = btn.dataset.usetTab;
         uModal.querySelectorAll('.storm-settings-nav-btn').forEach(b => b.classList.toggle('is-active', b === btn));
-        uModal.querySelectorAll('.storm-settings-pane').forEach(p => p.classList.toggle('is-active', p.dataset.usetPane === tab));
+        uModal.querySelectorAll('.storm-settings-pane').forEach(p => {
+          const paneKey = p.dataset.usetPane || p.dataset.usetPanel;
+          p.classList.toggle('is-active', paneKey === tab);
+        });
+        const contentEl = uModal.querySelector('.storm-settings-content');
+        if (contentEl) contentEl.scrollTop = 0;
       });
     });
 
-    // Вкладка 1: Аккаунт
+    // Вкладка 4: Аккаунт и семья
     document.getElementById('uset-login-or-profile-btn')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
+      closeUnifiedSettingsModal();
       const u = getUser();
       if (u) openProfileModal();
       else document.getElementById('auth-modal')?.classList.add('is-open');
@@ -9989,11 +10049,11 @@ export function initUnifiedMobileAndSettingsUI() {
       updateMobileDrawerUser();
     });
     document.getElementById('uset-family-btn')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
+      closeUnifiedSettingsModal();
       openProfileSwitcherModal();
     });
     document.getElementById('uset-sync-btn')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
+      closeUnifiedSettingsModal();
       const syncModal = document.getElementById('sync-modal');
       if (syncModal) {
         syncModal.classList.add('is-open');
@@ -10001,11 +10061,11 @@ export function initUnifiedMobileAndSettingsUI() {
       }
     });
     document.getElementById('uset-admin-dashboard-btn')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
+      closeUnifiedSettingsModal();
       document.getElementById('admin-dashboard-btn')?.click();
     });
 
-    // Вкладка 2: Каталог и вид
+    // Вкладка 1: Вид и каталог
     document.querySelectorAll('#uset-start-tab-pills .storm-uset-pill').forEach(btn => {
       btn.addEventListener('click', () => {
         const st = btn.dataset.startTab || 'new';
@@ -10017,7 +10077,7 @@ export function initUnifiedMobileAndSettingsUI() {
     document.querySelectorAll('#uset-grid-cols-pills .storm-uset-layout-card[data-layout]').forEach(btn => {
       btn.addEventListener('click', () => {
         const layout = btn.dataset.layout || 'grid-3';
-        applyUnifiedCatalogLayout(layout, { forceRender: true });
+        applyUnifiedCatalogLayout(layout, { forceRender: true, userInitiated: true, forceGrid: true });
         showToast(btn.textContent.trim());
       });
     });
@@ -10035,12 +10095,12 @@ export function initUnifiedMobileAndSettingsUI() {
       showToast(!curOn ? 'Витрина на Главной включена' : 'Витрина на Главной скрыта');
     });
     document.getElementById('uset-open-filters-btn')?.addEventListener('click', openFilterSheetSafe);
-    document.getElementById('drawer-form-factor-btn')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
-      document.getElementById('form-factor-switcher-btn')?.click();
-    });
 
-    // Вкладка 3: Язык
+    // Вкладка 2: Оформление (Форм-фактор, Smart TV, Язык)
+    document.getElementById('uset-tv-mode-btn')?.addEventListener('click', () => {
+      closeUnifiedSettingsModal();
+      toggleTvMode();
+    });
     document.querySelectorAll('#uset-lang-pills .storm-uset-pill').forEach(btn => {
       btn.addEventListener('click', () => {
         const lang = btn.dataset.usetLang || 'ru';
@@ -10049,16 +10109,14 @@ export function initUnifiedMobileAndSettingsUI() {
       });
     });
 
-    // Вкладка 5: Закрытие окна настроек при переходе в сервисы
+    // Закрытие окна настроек при переходе в сервисы
     ['drawer-recommender-btn', 'drawer-calendar-btn', 'drawer-remote-btn', 'drawer-rooms-btn', 'drawer-profile-settings-btn'].forEach(id => {
-      document.getElementById(id)?.addEventListener('click', () => {
-        uModal.classList.remove('is-open');
-      });
+      document.getElementById(id)?.addEventListener('click', closeUnifiedSettingsModal);
     });
 
-    // Вкладка 6: Проверка обновлений
+    // Вкладка 5: Проверка обновлений
     document.getElementById('uset-check-updates-btn')?.addEventListener('click', () => {
-      uModal.classList.remove('is-open');
+      closeUnifiedSettingsModal();
       checkForUpdates(true);
     });
   }
@@ -10079,16 +10137,16 @@ export function updateMobileDrawerUser() {
       usernameEl.textContent = user.username || user.name || 'Пользователь';
       statusEl.textContent = user.email || 'Аккаунт активен';
       if (authText) {
-        authText.textContent = 'Профиль и настройки';
+        authText.textContent = 'Профиль';
       } else if (authBtn) {
-        authBtn.textContent = 'Профиль и настройки';
+        authBtn.textContent = 'Профиль';
       }
       if (avatarEl && user.avatar) avatarEl.src = user.avatar;
     } else {
       usernameEl.textContent = 'Гость';
       statusEl.textContent = 'Войдите для синхронизации';
       if (authText) {
-        authText.textContent = 'Войти в аккаунт';
+        authText.textContent = 'Войти';
       } else if (authBtn) {
         authBtn.textContent = 'Войти в аккаунт';
       }

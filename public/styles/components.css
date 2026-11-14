@@ -829,8 +829,15 @@ button:active .storm-status-svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.storm-modal-header > :first-child:not(.storm-modal-close) {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .storm-modal-title {
@@ -844,8 +851,12 @@ button:active .storm-status-svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  aspect-ratio: 1 / 1 !important;
   border-radius: 8px;
   background: rgba(239, 68, 68, 0.14);
   border: 1px solid rgba(239, 68, 68, 0.38);
@@ -878,8 +889,12 @@ button:active .storm-status-svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  aspect-ratio: 1 / 1;
   border-radius: 8px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
