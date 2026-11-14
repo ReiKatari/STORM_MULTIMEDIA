@@ -34,7 +34,7 @@ import {
   db
 } from '../db.js';
 
-describe('STORM MULTIMEDIA 1.7.0 - Automated Quality & Security Suite', () => {
+describe('STORM MULTIMEDIA 1.8.0 - Automated Quality & Security Suite', () => {
   after(async () => {
     try { flushWatchProgressBatch(); } catch (_) {}
     try { await closeMariaDbPool(); } catch (_) {}
@@ -294,5 +294,39 @@ describe('STORM MULTIMEDIA 1.7.0 - Automated Quality & Security Suite', () => {
     const posterFnEnd = appJs.indexOf('export function getPosterSrcset(', posterFnStart);
     const posterFnBody = appJs.slice(posterFnStart, posterFnEnd);
     assert.equal(posterFnBody.includes('wsrv.nl'), false, 'getSafePosterUrl must route through /api/media/image-proxy instead of wsrv.nl');
+  });
+
+  it('9. Mobile 1..4-col grid/compact-list layouts, static pagination, Android feature parity, and Watch Together minimize work', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const mainCss = fs.readFileSync(path.join(process.cwd(), 'public', 'styles', 'main.css'), 'utf8');
+    const compCss = fs.readFileSync(path.join(process.cwd(), 'public', 'styles', 'components.css'), 'utf8');
+    const appJs = fs.readFileSync(path.join(process.cwd(), 'public', 'js', 'app.js'), 'utf8');
+    const wtJs = fs.readFileSync(path.join(process.cwd(), 'public', 'js', 'watch-together.js'), 'utf8');
+    const indexHtml = fs.readFileSync(path.join(process.cwd(), 'public', 'index.html'), 'utf8');
+
+    // Grid & List selectors match #media-render-container.media-container.view-grid
+    assert.ok(compCss.includes('#media-render-container.media-container.view-grid:not(.home-rails-active)'), 'components.css must target real view-grid container');
+    assert.ok(compCss.includes('body[data-mobile-cols="3"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active)'), 'components.css must enforce 3-column mobile layout');
+    assert.ok(compCss.includes('body[data-mobile-cols="4"]:not(.tv-mode) #media-render-container.media-container.view-grid:not(.home-rails-active)'), 'components.css must enforce 4-column mobile layout');
+    assert.ok(mainCss.includes('#media-render-container.view-compact-list'), 'main.css must style compact-list layout');
+    assert.ok(appJs.includes("currentViewMode === 'compact-list'"), 'app.js must render compact-list layout');
+
+    // Pagination on mobile is static at bottom and never fixed overlay z-index 3100
+    const mobilePagIdx = mainCss.indexOf('@media (max-width: 768px) {\n  .storm-pagination-host {');
+    assert.ok(mobilePagIdx !== -1, 'Mobile static pagination rule must exist in main.css');
+    const mobilePagSlice = mainCss.slice(mobilePagIdx, mobilePagIdx + 450);
+    assert.equal(mobilePagSlice.includes('z-index: 3100'), false, 'Mobile pagination must not use floating z-index: 3100 overlay');
+    assert.equal(mobilePagSlice.includes('position: fixed'), false, 'Mobile pagination must not use position: fixed');
+    assert.ok(mobilePagSlice.includes('position: static !important'), 'Mobile pagination must use position: static');
+
+    // Windows parity features visible on Android / mobile
+    const nativeBlockIdx = mainCss.indexOf('body.is-native-app #header-remote-btn');
+    assert.ok(nativeBlockIdx !== -1, 'is-native-app feature block must exist');
+    assert.equal(mainCss.slice(nativeBlockIdx, nativeBlockIdx + 220).includes('display: none'), false, 'STORM REMOTE must not be hidden on Android');
+    assert.ok(indexHtml.includes('id="player-room-quick-btn"'), 'Player header must expose quick Watch Together button');
+    assert.ok(indexHtml.includes('id="storm-layout-picker-modal"'), 'Layout picker modal with 6 modes must exist');
+    assert.ok(wtJs.includes('export function toggleWatchRoomMinimize('), 'watch-together.js must support room minimize/expand');
+    assert.ok(indexHtml.includes('id="watch-together-mini-pill"'), 'index.html must include watch-together mini pill');
   });
 });

@@ -3,7 +3,7 @@
    Поддержка протоколов WLED, Philips Hue, Yeelight и Webhook
    ========================================================================== */
 
-import { showToast } from './auth.js?v=1.7.0';
+import { showToast } from './auth.js?v=1.8.0';
 
 let lightsConfig = {
   enabled: false,

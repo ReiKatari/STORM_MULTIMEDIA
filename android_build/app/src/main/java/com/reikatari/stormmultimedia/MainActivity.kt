@@ -42,7 +42,55 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
+import android.app.DownloadManager
+import android.widget.Toast
+import android.app.PictureInPictureParams
+import android.content.Intent
+import android.os.Environment
+import android.util.Rational
+import android.webkit.CookieManager
+import android.webkit.PermissionRequest
+import android.webkit.URLUtil
+import android.webkit.ValueCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 class MainActivity : ComponentActivity() {
+    private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingAudioPermissionRequest: PermissionRequest? = null
+
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val callback = fileUploadCallback
+        fileUploadCallback = null
+        if (callback == null) return@registerForActivityResult
+        var uris: Array<Uri>? = null
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val data = result.data!!
+            val clip = data.clipData
+            if (clip != null && clip.itemCount > 0) {
+                uris = Array(clip.itemCount) { i -> clip.getItemAt(i).uri }
+            } else if (data.data != null) {
+                uris = arrayOf(data.data!!)
+            }
+        }
+        callback.onReceiveValue(uris)
+    }
+
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val req = pendingAudioPermissionRequest
+        pendingAudioPermissionRequest = null
+        if (req != null) {
+            if (granted) {
+                req.grant(req.resources)
+            } else {
+                req.deny()
+            }
+        }
+    }
+
     private lateinit var webView: WebView
     private lateinit var customViewContainer: FrameLayout
     private lateinit var rootLayout: FrameLayout
@@ -304,9 +352,9 @@ class MainActivity : ComponentActivity() {
         settings.displayZoomControls = false
         settings.setSupportZoom(false)
         val pkgVersion = try {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.7.0"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.8.0"
         } catch (_: Throwable) {
-            "1.7.0"
+            "1.8.0"
         }
         settings.userAgentString = "${settings.userAgentString} StormMultimediaApp/$pkgVersion"
         try {
@@ -962,7 +1010,7 @@ class MainActivity : ComponentActivity() {
         val path = uri.path ?: "/api/"
 
         if (path == "/api/health" || path == "/api/player/health") {
-            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.7.0"}""")
+            return createJsonResponse("""{"status":"ok","native_android":true,"version":"1.8.0"}""")
         }
 
         if (path == "/api/media/image-proxy") {
@@ -1281,7 +1329,77 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
+            try {
+                val request = DownloadManager.Request(Uri.parse(url))
+                val fileName = URLUtil.guessFileName(url, contentDisposition, mimetype)
+                request.setMimeType(mimetype)
+                val cookies = CookieManager.getInstance().getCookie(url)
+                if (!cookies.isNullOrEmpty()) request.addRequestHeader("cookie", cookies)
+                request.addRequestHeader("User-Agent", userAgent)
+                request.setTitle(fileName)
+                request.setDescription("Загрузка файла из STORM MULTIMEDIA")
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                try {
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                } catch (_: Exception) {
+                    request.setDestinationInExternalFilesDir(this@MainActivity, Environment.DIRECTORY_DOWNLOADS, fileName)
+                }
+                val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+                dm.enqueue(request)
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Загрузка: $fileName", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (_: Exception) {}
+            }
+        }
+
         webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                fileUploadCallback?.onReceiveValue(null)
+                fileUploadCallback = filePathCallback
+                return try {
+                    val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                    }
+                    fileChooserLauncher.launch(intent)
+                    true
+                } catch (_: Exception) {
+                    fileUploadCallback = null
+                    false
+                }
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                if (request == null) return
+                val resources = request.resources ?: emptyArray()
+                val needsAudio = resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                if (needsAudio) {
+                    val hasMic = ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        android.Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (hasMic) {
+                        runOnUiThread { request.grant(resources) }
+                    } else {
+                        pendingAudioPermissionRequest = request
+                        runOnUiThread {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                } else {
+                    runOnUiThread { request.grant(resources) }
+                }
+            }
+
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                 if (customView != null) {
                     onHideCustomView()
@@ -1412,13 +1530,67 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        try {
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('storm:android-pip',{detail:{active:$isInPictureInPictureMode}}))",
+                    null
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
     inner class StormAndroidBridge {
+        @android.webkit.JavascriptInterface
+        fun enterPiP(): Boolean {
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return false
+            return try {
+                runOnUiThread {
+                    val params = PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .build()
+                    enterPictureInPictureMode(params)
+                }
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun shareLink(title: String, url: String) {
+            try {
+                runOnUiThread {
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, title)
+                        putExtra(Intent.EXTRA_TEXT, if (title.isNotBlank()) "$title\n$url" else url)
+                    }
+                    startActivity(Intent.createChooser(sendIntent, "Поделиться"))
+                }
+            } catch (_: Exception) {}
+        }
+
+        @android.webkit.JavascriptInterface
+        fun openExternalUrl(url: String) {
+            try {
+                runOnUiThread {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            } catch (_: Exception) {}
+        }
+
         @android.webkit.JavascriptInterface
         fun getAppVersion(): String {
             return try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.7.0"
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.8.0"
             } catch (_: Throwable) {
-                "1.7.0"
+                "1.8.0"
             }
         }
 

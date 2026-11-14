@@ -3,10 +3,10 @@
    WebSocket синхронизация таймкодов, воспроизведения и встроенный кибер-чат
    ========================================================================== */
 
-import { getUser, showToast } from './auth.js?v=1.7.0';
-import { trackClientAction } from './achievements.js?v=1.7.0';
+import { getUser, showToast } from './auth.js?v=1.8.0';
+import { trackClientAction } from './achievements.js?v=1.8.0';
 const openPlayerModal = (...args) => (typeof window !== 'undefined' && window.openPlayerModal ? window.openPlayerModal(...args) : console.warn('Player modal not ready'));
-import { setAudioDucking } from './pro-media-engine.js?v=1.7.0';
+import { setAudioDucking } from './pro-media-engine.js?v=1.8.0';
 
 let ws = null;
 let currentRoom = null;
@@ -78,8 +78,10 @@ function connectWebSocket(roomCode, user, mediaItem) {
     ws.close();
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}`;
+  const rawHost = String(window.location.host || '').trim();
+  const useOrigin = rawHost && window.location.protocol !== 'file:';
+  const protocol = window.location.protocol === 'http:' ? 'ws:' : 'wss:';
+  const wsUrl = useOrigin ? `${protocol}//${rawHost}` : 'wss://stormmultimedia.ru';
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
@@ -184,7 +186,7 @@ function handleSocketMessage(data) {
       break;
 
     case 'storm_remote_action':
-      import('./storm-remote.js?v=1.7.0').then(m => m.handleIncomingRemoteAction(data)).catch(() => {});
+      import('./storm-remote.js?v=1.8.0').then(m => m.handleIncomingRemoteAction(data)).catch(() => {});
       break;
 
     case 'error':
@@ -413,6 +415,8 @@ export function renderRoomUi(room) {
 
   if (!room) {
     container.style.display = 'none';
+    const pill = document.getElementById('watch-together-mini-pill');
+    if (pill) pill.style.display = 'none';
     currentReplyTo = null;
     return;
   }
@@ -423,7 +427,10 @@ export function renderRoomUi(room) {
 
   const media = room.media || null;
   const mediaTitle = media ? (media.title || 'Фильм') : 'Медиа не выбрано';
-  const mediaPoster = media ? (media.poster || 'assets/favicon.svg') : 'assets/favicon.svg';
+  const rawPoster = media && media.poster ? String(media.poster) : '';
+  const mediaPoster = (!rawPoster || rawPoster.startsWith('/') || rawPoster.startsWith('assets/') || rawPoster.startsWith('data:'))
+    ? (rawPoster || 'assets/favicon.svg')
+    : `/api/media/image-proxy?url=${encodeURIComponent(rawPoster)}`;
   const mediaYear = media ? (media.year || '') : '';
 
   container.innerHTML = `
@@ -433,6 +440,7 @@ export function renderRoomUi(room) {
         <div style="font-size: 15px; font-weight: 800;">Код: <span id="room-code-display" style="color: var(--accent); cursor: pointer;" title="Скопировать код">${room.code}</span></div>
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
+        <button type="button" class="storm-btn storm-btn-sm" id="room-minimize-btn" title="Свернуть чат комнаты" style="padding: 4px 8px; font-size: 12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
         <button type="button" class="storm-btn storm-btn-sm" id="room-wallpaper-btn" title="Сменить обои кинокомнаты" style="padding: 4px 8px; font-size: 12px;">🖼️</button>
         <button type="button" class="storm-btn storm-btn-danger storm-btn-sm" id="leave-room-btn" title="Выйти из комнаты" style="padding: 4px 8px; font-size: 11px;">✕</button>
       </div>
@@ -572,6 +580,19 @@ export function renderRoomUi(room) {
       wpPopover.style.display = 'none';
     };
   });
+
+  // Свернуть / развернуть чат комнаты
+  const minBtn = container.querySelector('#room-minimize-btn');
+  if (minBtn) {
+    minBtn.onclick = () => toggleWatchRoomMinimize(true);
+  }
+  const miniPill = document.getElementById('watch-together-mini-pill');
+  if (miniPill) {
+    miniPill.style.display = 'none';
+    const miniText = document.getElementById('watch-together-mini-text');
+    if (miniText) miniText.textContent = `Кинозал: ${room.code}`;
+    miniPill.onclick = () => toggleWatchRoomMinimize(false);
+  }
 
   // Выход
   const leaveBtn = container.querySelector('#leave-room-btn');
@@ -1039,4 +1060,28 @@ export function broadcastEpisodeSync(season, episode, voiceoverId = '', voiceove
     voiceoverId,
     voiceoverName
   }));
+}
+
+export function toggleWatchRoomMinimize(forceMinimize) {
+  const sidebar = document.getElementById('watch-together-sidebar');
+  const pill = document.getElementById('watch-together-mini-pill');
+  if (!sidebar) return;
+  const shouldMin = typeof forceMinimize === 'boolean'
+    ? forceMinimize
+    : sidebar.style.display !== 'none';
+  if (shouldMin) {
+    sidebar.style.display = 'none';
+    if (pill && currentRoom) {
+      const miniText = document.getElementById('watch-together-mini-text');
+      if (miniText) miniText.textContent = `Кинозал: ${currentRoom.code}`;
+      pill.style.display = 'inline-flex';
+    }
+  } else {
+    sidebar.style.display = 'flex';
+    if (pill) pill.style.display = 'none';
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.toggleWatchRoomMinimize = toggleWatchRoomMinimize;
 }
